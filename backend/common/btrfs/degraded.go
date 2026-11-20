@@ -880,8 +880,9 @@ func resyncScrub(ctx context.Context, uuid, run string, report func(percent floa
 
 // checkScrubbedWrites fails when a present device failed writes or flushes
 // since its scan in run began. While a disk stays attached the kernel does
-// not mark it missing (before 7.1 it does so only at mount, since 7.1 also
-// when its block device goes away, btrfs_remove_bdev): a disk whose writes
+// not mark it missing (it does so at mount, and since 7.1 when its block
+// device goes away, btrfs_remove_bdev, which LinuxIO reads on an older
+// kernel too, see markDroppedOut): a disk whose writes
 // fail only raises its error counters, writes made meanwhile miss it, and a
 // repair whose write fails
 // still counts as corrected (scrub.c at 6.8 and 7.3: scrub_write_endio only
@@ -892,8 +893,8 @@ func resyncScrub(ctx context.Context, uuid, run string, report func(percent floa
 //
 // It refuses what it cannot read: counters it could not read would read as
 // 0, and a device it could not list would not be compared. A disk gone
-// missing (since 7.1 the kernel marks one whose block device went away)
-// starts a new episode, as errDiskMissing. A scrub that no longer covers
+// missing, one whose block device went away included, starts a new
+// episode, as errDiskMissing. A scrub that no longer covers
 // the pool, or a record no longer this run's, fails with errScrubStale.
 func checkScrubbedWrites(ctx context.Context, uuid, run string) error {
 	fs, err := FindFilesystem(ctx, uuid)

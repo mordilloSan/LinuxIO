@@ -57,6 +57,17 @@ interface Health {
 
 /** The worst condition first: it is the one to act on. */
 const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
+  // A disk that dropped out counts the writes that failed as it went, so it
+  // comes before the errors: they are what the dropout left.
+  const dropped = filesystem.devices.find((d) => d.droppedOut);
+  if (dropped)
+    return {
+      action: "replace",
+      color: STATUS_COLOR.warning,
+      icon: "mdi:shield-alert-outline",
+      text: `${dropped.path} dropped out of ${name} while it was mounted, and the pool runs on its other disks. The pool takes the disk back only when it is mounted again: reconnect the disk, then unmount and mount the pool, or restart, and LinuxIO resyncs it. Or replace the disk.`,
+      title: "Disk dropped out",
+    };
   if (filesystem.devices.some((d) => deviceErrorCount(d) > 0))
     return {
       color: STATUS_COLOR.error,

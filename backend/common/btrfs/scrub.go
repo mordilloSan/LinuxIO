@@ -711,12 +711,20 @@ func (r *scrubRun) store(ctx context.Context) {
 // its members in /sys/fs/btrfs/<uuid>/devices: by their kernel names, which
 // name a device node where the path DEV_INFO reports may not, as /dev/root
 // for a root mounted without an initramfs, or a disk's name before it was
-// renamed. The list holds every present member, those this run scrubs too.
+// renamed. The list holds every present member, those this run scrubs too,
+// and the link of a member whose block device went away, which reaches
+// nothing until the pool is mounted again and is passed by (see
+// markDroppedOut).
 func (r *scrubRun) flush() error {
-	members, err := os.ReadDir(filepath.Join(sysFSBtrfs, r.uuid, "devices"))
+	dir := filepath.Join(sysFSBtrfs, r.uuid, "devices")
+	members, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("list the disks of the pool: %w", err)
 	}
+	members = slices.DeleteFunc(members, func(m os.DirEntry) bool {
+		_, err := os.Stat(filepath.Join(dir, m.Name()))
+		return errors.Is(err, os.ErrNotExist)
+	})
 	// A shorter list misses a disk, an empty one all of them. Where /dev
 	// has no node of a member, as in a container, the flush fails too.
 	if len(members) < r.present {

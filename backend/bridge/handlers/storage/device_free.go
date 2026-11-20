@@ -95,7 +95,10 @@ func memberConflict(dev string, m apischema.StorageMember) error {
 // mount just for now (forMount without persist) ignores /etc/fstab, so a
 // partition listed there can still be mounted. Pool membership comes from
 // the kernel's and the superblocks' view (fss, offline), which also knows
-// the members of a mounted pool that no mount names.
+// the members of a mounted pool that no mount names. While a member of a
+// mounted pool is dropped out (btrfs.BtrfsDevice.DroppedOut), what is at
+// its old path, and a disk whose own superblock names that pool, may be the
+// disk the pool takes back when it is mounted again, so both are refused.
 func deviceInUse(dev apischema.StorageBlockDevice, fss []btrfs.BtrfsFilesystem, offline []btrfs.BtrfsOfflinePool, forMount, persist bool) error {
 	inUse := func(reason string) error {
 		return fmt.Errorf("%w: %s: %s", bridgeipc.ErrConflict, dev.Path, reason)
@@ -107,8 +110,17 @@ func deviceInUse(dev apischema.StorageBlockDevice, fss []btrfs.BtrfsFilesystem, 
 		return inUse("Mounted at " + dev.Mountpoints[0])
 	}
 	for _, fs := range fss {
-		if slices.ContainsFunc(fs.Devices, func(b btrfs.BtrfsDevice) bool { return b.Path == dev.Path }) {
+		i := slices.IndexFunc(fs.Devices, func(b btrfs.BtrfsDevice) bool { return b.Path == dev.Path })
+		if i >= 0 && !fs.Devices[i].DroppedOut {
 			return memberConflict(dev.Path, apischema.StorageMember{Kind: "btrfs", Name: fs.Label, UUID: fs.UUID})
+		}
+		// The kernel keeps a dropped member's old path, and the disk comes
+		// back under it or another name. Under another name it is told by
+		// the superblock udev probed; one udev has not probed yet is not
+		// told here.
+		m := memberOf(dev)
+		if i >= 0 || m != nil && m.Kind == "btrfs" && m.UUID == fs.UUID && slices.ContainsFunc(fs.Devices, func(b btrfs.BtrfsDevice) bool { return b.DroppedOut }) {
+			return inUse(fmt.Sprintf("May be the disk that dropped out of btrfs pool %s, which takes it back when it is mounted again; replace or remove the dropped device in the pool first", cmp.Or(fs.Label, fs.UUID)))
 		}
 	}
 	for _, pool := range offline {

@@ -140,6 +140,38 @@ describe("BtrfsHealthBanner", () => {
     ).toBeInTheDocument();
   });
 
+  it("says a disk dropped out, ahead of the errors its failed writes count", async () => {
+    const user = userEvent.setup();
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...filesystem,
+          devices: [
+            filesystem.devices[0],
+            {
+              ...filesystem.devices[1],
+              path: "/dev/sdb",
+              droppedOut: true,
+              errors: { ...noErrors, write: 40, flush: 3 },
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("Disk dropped out")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /\/dev\/sdb dropped out of data while it was mounted.*takes the disk back only when it is mounted again/,
+      ),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Replace missing disk" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Replace missing disk" }),
+    ).toBeInTheDocument();
+  });
+
   it("reports uncorrectable scrub errors ahead of a healthy state", () => {
     render(
       <BtrfsHealthBanner
@@ -199,6 +231,23 @@ describe("BtrfsDevicesCard", () => {
     expect(screen.getByText("Missing")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("60 GB used · 40 GB free")).toBeInTheDocument();
+  });
+
+  it("marks a disk that dropped out of the mounted pool as such", () => {
+    render(
+      <BtrfsDevicesCard
+        filesystem={{
+          ...filesystem,
+          devices: [
+            filesystem.devices[0],
+            { ...filesystem.devices[1], path: "/dev/sdb", droppedOut: true },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("/dev/sdb")).toBeInTheDocument();
+    expect(screen.getByText("Dropped out")).toBeInTheDocument();
+    expect(screen.queryByText("Missing")).not.toBeInTheDocument();
   });
 
   it("keeps the last present device", () => {

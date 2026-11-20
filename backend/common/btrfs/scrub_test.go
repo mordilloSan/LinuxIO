@@ -1395,6 +1395,36 @@ func TestScrubSkippedSaveStillTakesACancel(t *testing.T) {
 	}
 }
 
+// A disk that dropped out of the mounted pool is missing and not scrubbed,
+// and the kernel's link to its gone block device stays until the pool is
+// mounted again: the flush has no disk to reach there and passes it by.
+func TestScrubPassesTheFlushOfADiskThatDroppedOutBy(t *testing.T) {
+	k := raid1Kernel()
+	stubKernel(t, k)
+	goneLink(t, "sdb1")
+	var mu sync.Mutex
+	flushed := map[string]bool{}
+	flushDevice = func(path string) error {
+		if path == "/dev/sdb1" {
+			return &os.PathError{Op: "open", Path: path, Err: unix.ENOENT}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		flushed[path] = true
+		return nil
+	}
+	got, err := ScrubFrom(t.Context(), dataUUID, "job-1", func(BtrfsScrubStatus) {})
+	if err != nil || got.Status != "finished" {
+		t.Fatalf("got=%+v err=%v, want the scrub of the disk left finished", got, err)
+	}
+	if want := map[string]bool{"/dev/sda1": true}; !reflect.DeepEqual(flushed, want) {
+		t.Fatalf("flushed %v, want %v", flushed, want)
+	}
+	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"SCRUB 1"}) {
+		t.Fatalf("calls = %v, want the disk left scrubbed alone", calls)
+	}
+}
+
 // A member list shorter than the pool's present devices, an empty one
 // included, cannot cover them all: the flush fails rather than passing, so
 // no offset is saved unflushed and the scrub does not end finished.

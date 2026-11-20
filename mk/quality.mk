@@ -119,10 +119,11 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 
 # The root btrfs and partition kernel tests, run on this host by
 # test-btrfs-integration and in the test VM by vm-test-btrfs-integration:
-# common/btrfs, and the bridge storage rules that decide which disks a pool
-# may take (TestBtrfsMemberIntegration) and destroy (TestBtrfsDestroyIntegration)
-# and which members Format, Delete and Initialize erase (TestPartitionMemberIntegration).
-BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Unready|Resume|Replicate|Member|ArrayMember|AddWipe|Destroy)?|Partition(Claim|Member)?)Integration$$
+# common/btrfs (TestBtrfsDropoutIntegration needs the scsi_debug module), and
+# the bridge storage rules that decide which disks a pool may take
+# (TestBtrfsMemberIntegration) and destroy (TestBtrfsDestroyIntegration) and
+# which members Format, Delete and Initialize erase (TestPartitionMemberIntegration).
+BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Dropout|Unready|Resume|Replicate|Member|ArrayMember|AddWipe|Destroy)?|Partition(Claim|Member)?)Integration$$
 BTRFS_INTEGRATION_PKGS := ./common/btrfs ./bridge/handlers/storage
 
 # -p 1: with two packages go test otherwise holds each one's output until it

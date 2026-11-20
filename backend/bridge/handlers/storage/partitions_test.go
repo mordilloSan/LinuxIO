@@ -169,6 +169,34 @@ func TestDeviceInUse(t *testing.T) {
 	}
 }
 
+// A disk that dropped out of a mounted pool is still the pool's: the pool
+// takes it back when it is mounted again. The kernel keeps its old path for
+// the dead block device, and the disk comes back under that name or another,
+// before udev probed it or after: what is at the old path, and a disk whose
+// own superblock names the pool, are refused while the member is dropped
+// out.
+func TestDeviceInUseRefusesADiskThatDroppedOutOfAMountedPool(t *testing.T) {
+	fss := []btrfs.BtrfsFilesystem{{UUID: "f1", Label: "tank", Devices: []btrfs.BtrfsDevice{
+		{ID: 1, Path: "/dev/sdb"},
+		{ID: 2, Path: "/dev/sdc", Missing: true, DroppedOut: true},
+	}}}
+	disk := func(path, fsType, uuid string) apischema.StorageBlockDevice {
+		return apischema.StorageBlockDevice{Path: path, Type: "disk", FSType: fsType, UUID: uuid}
+	}
+	for _, dev := range []apischema.StorageBlockDevice{disk("/dev/sde", "btrfs", "f1"), disk("/dev/sdc", "btrfs", "f1"), disk("/dev/sdc", "", "")} {
+		err := deviceInUse(dev, fss, nil, false, false)
+		if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "dropped out of btrfs pool tank") || !strings.Contains(err.Error(), "mounted again") {
+			t.Errorf("%s (%q signature): err = %v, want a conflict saying it may have dropped out of tank", dev.Path, dev.FSType, err)
+		}
+	}
+	// A superblock of a pool that lacks no disk is left to each caller's
+	// rule for members.
+	fss[0].Devices[1] = btrfs.BtrfsDevice{ID: 2, Path: "/dev/sdd"}
+	if err := deviceInUse(disk("/dev/sde", "btrfs", "f1"), fss, nil, false, false); err != nil {
+		t.Errorf("an old member of a whole pool: err = %v, want it left to the caller", err)
+	}
+}
+
 func TestCreatePartitionValidatesBeforeWriting(t *testing.T) {
 	req := func(edit func(*apischema.PartitionCreateRequest)) apischema.PartitionCreateRequest {
 		r := apischema.PartitionCreateRequest{
@@ -1020,6 +1048,22 @@ func TestVanishedDeviceIsNotFound(t *testing.T) {
 	env.initErr = gone
 	if _, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb"}); !errors.Is(err, bridgeipc.ErrConflict) {
 		t.Errorf("initialize: err = %v, want a conflict", err)
+	}
+}
+
+// TestDestroyLeavesOutADiskThatDroppedOut: the kernel keeps a dropped disk's
+// old path, which names no device of the pool and, once the pool is
+// unmounted, may name another disk. A disk the kernel found again after a
+// mount without it is the pool's own and is wiped.
+func TestDestroyLeavesOutADiskThatDroppedOut(t *testing.T) {
+	fs := btrfs.BtrfsFilesystem{Devices: []btrfs.BtrfsDevice{
+		{ID: 1, Path: "/dev/linuxio-test-a"},
+		{ID: 2, Path: "/dev/linuxio-test-b", Missing: true, DroppedOut: true},
+		{ID: 3, Path: "/dev/linuxio-test-c", Missing: true},
+		{ID: 4, Missing: true},
+	}}
+	if got, want := destroyDevices(fs), []string{"/dev/linuxio-test-a", "/dev/linuxio-test-c"}; !slices.Equal(got, want) {
+		t.Fatalf("devices to wipe = %v, want %v", got, want)
 	}
 }
 

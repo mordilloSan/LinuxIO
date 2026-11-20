@@ -304,6 +304,20 @@ func removePoolFstabEntries(uuid string, mounts []btrfs.Mount) error {
 	return nil
 }
 
+// destroyDevices returns the devices of a mounted pool that Destroy wipes:
+// those the kernel names by a path, but not a disk that dropped out, whose
+// old path names no device of the pool and, once the pool is unmounted and
+// the kernel frees the name, may name another disk.
+func destroyDevices(fs btrfs.BtrfsFilesystem) []string {
+	var devices []string
+	for _, d := range fs.Devices {
+		if d.Path != "" && !d.DroppedOut {
+			devices = append(devices, d.Path)
+		}
+	}
+	return devices
+}
+
 // poolDevicesForDestroy unmounts a mounted pool and returns its present
 // devices, or the devices of an offline pool.
 func poolDevicesForDestroy(ctx context.Context, uuid string) ([]string, error) {
@@ -322,13 +336,7 @@ func poolDevicesForDestroy(ctx context.Context, uuid string) ([]string, error) {
 				return nil, fmt.Errorf("unmount %s: %w", m, err)
 			}
 		}
-		var devices []string
-		for _, d := range fs.Devices {
-			if d.Path != "" {
-				devices = append(devices, d.Path)
-			}
-		}
-		return devices, nil
+		return destroyDevices(fs), nil
 	}
 	pool, err := findOfflinePool(ctx, uuid)
 	if err != nil {

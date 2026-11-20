@@ -61,9 +61,12 @@ Docker's btrfs storage-driver subvolumes are hidden from every list.
 
 Each pool's details show its devices, allocation, profiles and per-device
 error counters. A device the kernel knows but cannot find is listed as missing
-with an empty path, so it can be removed or replaced. The health banner at the
+with an empty path, so it can be removed or replaced; one that dropped out of
+the mounted pool is listed as dropped out, with the path it had (see
+[Missing disks](#missing-disks)). The health banner at the
 top of the details leads with the worst condition and the one action that
-fixes it: **Replace missing disk** on a degraded pool, **Reclaim space** when
+fixes it: **Replace missing disk** on a degraded pool, a disk that dropped
+out coming before the errors its failed writes count, **Reclaim space** when
 metadata is nearly full. Health, scrub and space alerts link to those details;
 snapshot and replication alerts link to the Subvolumes tab's Snapshots and
 Replication views.
@@ -77,7 +80,7 @@ filesystems, covering pools created after install.
 
 | Alert | Severity | Raised when | Resolved when |
 |---|---|---|---|
-| `btrfs/health-<uuid>` | error | a device reports errors or is missing; "running without n of m disks" when degraded | the counters are zero and no device is missing |
+| `btrfs/health-<uuid>` | error | a device reports errors or is missing; "running without n of m disks" when degraded, naming a disk that dropped out of the mounted pool and saying the pool takes it back only when mounted again | the counters are zero and no device is missing |
 | `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
 | `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing or the boot check refused to mount it, and then says why) | the pool is mounted |
@@ -251,7 +254,8 @@ makes the check refuse a set that was in fact current: the safe side.
 
 **When the disk is back.** A disk that reappears while the pool is mounted is
 listed by the kernel but never opened, so it is shown as missing until the
-pool is mounted again (a reboot). Once every disk is in use, the health run
+pool is mounted again (a reboot); so is one that dropped out of the mounted
+pool (see below). Once every disk is in use, the health run
 starts `linuxio-btrfs-resync@<uuid>.service` (`linuxio-worker resync`), unless
 a scrub of the pool runs (a start while the unit runs joins its run):
 a scrub checks every copy and rewrites those the returned disk missed from
@@ -287,13 +291,68 @@ every data chunk, and a power loss cuts the resync past half its scrub; the
 next run reads less than nine tenths of a full scrub, still corrects stale
 copies, and the returned disk alone then holds every file and scrubs clean.
 
+**A disk that drops out of a mounted pool**, unplugged or off its bus, has
+its block device deleted. Since 7.1 the kernel then marks the member missing
+itself (`btrfs_remove_bdev` in `super.c`, also in 6.19 and 7.0 built with
+`CONFIG_BTRFS_EXPERIMENTAL`, which Ubuntu's 7.0 is not), and continues
+degraded, or shuts the filesystem down when the remaining disks cannot keep
+it read-write; DEV_INFO names that disk `<missing disk>`, which LinuxIO
+lists as a missing disk with no path. An older kernel keeps the member with
+its dead block device until the pool is unmounted: DEV_INFO still names it
+by its path (`btrfs_ioctl_dev_info`), sysfs calls it neither missing nor
+unwriteable, chunks are still allocated on it, and every write to it fails
+and is counted in its write and flush errors, so what is written meanwhile
+has one good copy. Nor does the mounted pool take the disk back: a scan of
+it under another device number is refused as a duplicate, and one under its
+old path changes nothing (`device_list_add` in `volumes.c`). LinuxIO counts
+such a member missing and dropped out (`markDroppedOut` in `dropout.go`).
+The kernel links each block device it opened for the pool under
+`/sys/fs/btrfs/<uuid>/devices`, named after it (`btrfs_sysfs_add_device` in
+`sysfs.c`), and removes the link only when the member leaves the pool; once
+the block device is deleted the link reaches nothing. A device that has its
+name again, the same disk back or another, is reached by the link but is not
+the one the pool holds: btrfs holds its members exclusively, so an exclusive
+open fails with `EBUSY` on a member it holds and succeeds on any other
+device. That open is read-only, so it makes udev probe nothing again, and
+one refused opens nothing. A member is matched to the link of its own name,
+else of the device its path resolves to; one that matches none, as
+`/dev/root` for a root the kernel mounted without an initramfs, counts as
+dropped out only when as many links of gone devices match no member, and its
+health is unknown when they disagree. The next health run therefore opens
+the episode while the pool runs on the others, with the disk's counters as
+the pool was last seen whole, and the health alert and the pool's details
+say the disk dropped out and that the pool takes it back only when it is
+mounted again: unmounted and mounted from the Storage overview, which
+registers the pool's disks first, or a reboot. Until then no resync starts,
+and one started anyway stops without counting a failed attempt; the mount
+that takes the disk back gives a complete pool with a stale member, and the
+next health run starts the resync. A reboot without the disk takes the
+degraded path above, mounting the pool on the disks that took the writes.
+The disk, back under its old name or another, carries the superblock of the
+mounted pool, which does not hold it: until the pool takes it back or its
+device in the pool is replaced or removed, every operation that writes a
+device refuses a disk whose superblock names that pool, and whatever is at
+the old path, which udev may not have probed yet, as possibly the disk that
+dropped out (`deviceInUse`). A bridge of a session without sudo, whose
+exclusive open is refused, still sees a link that reaches nothing. The
+kernel removes a member's link before it lets the block device go, as the
+member leaves the pool or the pool is unmounted (`btrfs_rm_device`,
+`close_ctree`), so a device found gone counts only while its link is still
+there. A scrub started meanwhile
+scans the disks left, and its flush passes the gone link by. In the test VM
+on 7.0.0-44, a `scsi_debug` disk deleted from its SCSI bus under a mounted
+raid1 pool kept its path in DEV_INFO with sysfs `missing` 0 and `writeable`
+1 and a link that reached nothing; it came back under a new name, since the
+kernel keeps the old one while the pool holds the dead block device, and
+its registration was refused (`EEXIST`). Mounted again, the resync's scrub
+corrected 16412 errors of the copies it missed, after which the disk alone
+held every file (`TestBtrfsDropoutIntegration`).
+
 A disk whose writes fail while it stays attached, as when its cable comes
-loose, is not marked missing: the kernel does that at mount, and since 7.1
-also when a member's block device goes away (`btrfs_remove_bdev`, which
-continues degraded, or shuts the filesystem down when the remaining disks
-cannot keep it read-write). DEV_INFO then names that disk `<missing disk>`;
-LinuxIO reads it as missing from sysfs, and the next health run records the
-episode. Only the disk's write and flush error counters rise, while the
+loose, or under a device-mapper or md device that stays when the disk under
+it goes, is not marked missing: the kernel does that at mount, or when the
+block device it holds goes away (above). Only the disk's write and flush
+error counters rise, while the
 other disks take every write, some below its saved offset. The scrub record
 therefore keeps each device's write and flush error counters as they were
 when its scan began. A continued resync scans a device whose counters
@@ -500,9 +559,32 @@ once it is fixed repairs what it missed.
   pool that lost a disk before any health run saw it whole, uses the counters
   each disk read once it was missing.
 - The reset does not cover a disk that dropped out of a mounted pool, which
-  keeps the writes that failed; on a kernel without `btrfs_remove_bdev` such
-  a dropout opens no episode while the pool stays mounted, and none at all
-  when the disk is back before the next mount ([backlog](./TODO/backlog.md)).
+  keeps the writes that failed.
+- A dropout opens the episode at the next health run (ten minutes at most).
+  When the pool is unmounted or the machine shut down before that run, and
+  a later mount takes the disk back, no episode opens: a pool that is not
+  mounted is only checked for what keeps it from mounting, and a mount of a
+  complete pool opens none. The copies the disk missed stay stale until a
+  scrub.
+- The pool listing tells a dropped disk by an exclusive open, which fails at
+  once on a disk the pool holds. When a pool is being unmounted or a disk
+  removed at that instant the open can succeed and claim the disk for a
+  moment, and a Destroy or wipe running then is refused as busy; a retry
+  finishes it.
+- On a kernel that marks the member missing itself (7.1), a returned disk
+  the kernel has not listed again is refused as a disk with a filesystem,
+  which **Overwrite existing data** erases, not as the pool's disk. Not run
+  on such a kernel.
+- A dropout is seen in the block device the pool holds: a disk under a
+  device-mapper or md device (dm-crypt, for one) that drops out leaves that
+  device, whose I/O fails, and counts as a disk whose writes fail. A new
+  disk under a dropped disk's name that something else holds exclusively
+  reads as the pool's; the kernel keeps that name while the pool holds the
+  dead block device, as the test VM showed for SCSI. A healthy member that
+  no device link matches (`/dev/root` on a root mounted without an
+  initramfs) reads as dropped out when the target of a running replace
+  goes away, since the kernel links the target and DEV_INFO does not list
+  it: a wrong alert and an extra scrub, nothing erased.
 - The kernel keeps only the last replace: a replace that finished during the
   episode followed by one that was cancelled hides the first. An episode
   start taken from a clock running ahead at boot can be later than a
@@ -829,7 +911,11 @@ Create pool, Add device and Replace device refuse a device that is:
    [Safety](./storage-disks.md#safety)).
 
 The first three are the check every device operation shares with the
-[Disks page](./storage-disks.md#safety) and md RAID. Any other filesystem
+[Disks page](./storage-disks.md#safety) and md RAID. While a disk of a
+mounted pool is dropped out, rule 2 also refuses a disk whose own superblock
+names that pool and whatever is at the dropped disk's old path: either may
+be that disk, which the pool takes back when mounted again (see
+[Missing disks](#missing-disks)). Any other filesystem
 signature needs **Force**, which erases it: the bridge zeroes the device's
 first and last 2 MiB before the add, and `mkfs.btrfs -f` does the same for a
 create. Replace has no **Force**: its target must be blank.

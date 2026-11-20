@@ -327,8 +327,10 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 			}
 		}
 	}
-	oldIoctl, oldCtl, oldSize, oldInterval, oldProgs, oldFlush, oldSys := fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir, flushDevice, sysFSBtrfs
+	oldIoctl, oldCtl, oldSize, oldInterval, oldProgs, oldFlush, oldSys, oldNotBusy := fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir, flushDevice, sysFSBtrfs, deviceNotBusy
 	flushDevice, sysFSBtrfs = func(string) error { return nil }, sys
+	// The pool holds every member it lists.
+	deviceNotBusy = func(device string) error { return fmt.Errorf("%s is in use: %w", device, unix.EBUSY) }
 	fsIoctl = k.ioctl
 	// A descriptor of the mount is one of a folder of its own, which the
 	// kernel answers; any other descriptor goes on as before.
@@ -358,6 +360,6 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 	progressInterval = time.Millisecond
 	progsScrubDir = t.TempDir()
 	t.Cleanup(func() {
-		fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir, flushDevice, sysFSBtrfs = oldIoctl, oldCtl, oldSize, oldInterval, oldProgs, oldFlush, oldSys
+		fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir, flushDevice, sysFSBtrfs, deviceNotBusy = oldIoctl, oldCtl, oldSize, oldInterval, oldProgs, oldFlush, oldSys, oldNotBusy
 	})
 }

@@ -376,6 +376,7 @@ export interface BtrfsDevice {
   sizeBytes: number;
   usedBytes: number;
   missing: boolean;
+  droppedOut?: boolean;
   errors: BtrfsDeviceErrors;
   physicalBytes: number;
   growable: boolean;

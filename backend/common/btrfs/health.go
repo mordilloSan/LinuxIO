@@ -101,17 +101,28 @@ func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Obser
 	}
 	missing := 0
 	returned := false
+	var dropped []string
 	for _, d := range fs.Devices {
-		if d.Missing {
+		switch {
+		case d.DroppedOut:
+			missing++
+			dropped = append(dropped, d.Path)
+		case d.Missing:
 			missing++
 			returned = returned || d.Path != ""
 		}
 	}
 	if missing > 0 {
 		obs.Title = fmt.Sprintf("Pool %s is running without %d of %d disks", name, missing, len(fs.Devices))
-		obs.Message = "Its data is available, but with less redundancy until every disk is back. Replace the missing disk from the pool details, or reconnect it and reboot; LinuxIO then resyncs the pool."
-		if returned {
+		switch {
+		case len(dropped) > 0:
+			// The kernel keeps the dropped disk's block device until the pool
+			// is unmounted, whether the disk is back or not (markDroppedOut).
+			obs.Message = strings.Join(dropped, ", ") + " dropped out while the pool was mounted. Its data is available from the other disks, but with less redundancy, and the pool takes the disk back only when it is mounted again: reconnect it, then unmount the pool and mount it again from the Storage overview, or reboot; LinuxIO then resyncs the pool. Or replace the disk from the pool details."
+		case returned:
 			obs.Message = "A missing disk is connected again, but it gets no writes until the pool is mounted again. Reboot, and LinuxIO resyncs the pool."
+		default:
+			obs.Message = "Its data is available, but with less redundancy until every disk is back. Replace the missing disk from the pool details, or reconnect it and reboot; LinuxIO then resyncs the pool."
 		}
 		obs.Message += " Reported: " + occurrence + "."
 	}
@@ -282,6 +293,12 @@ func errorOccurrence(fs BtrfsFilesystem) string {
 			prefix string
 			n      uint64
 		}{{"w", d.Errors.Write}, {"r", d.Errors.Read}, {"f", d.Errors.Flush}, {"c", d.Errors.Corruption}, {"g", d.Errors.Generation}} {
+			// Every read, write and flush sent to a disk that dropped out
+			// fails, so those counts rise with each run while the pool is
+			// used: the dropout is the occurrence, not each count.
+			if d.DroppedOut && c.prefix != "c" && c.prefix != "g" {
+				continue
+			}
 			if c.n > 0 {
 				counters = append(counters, c.prefix+strconv.FormatUint(c.n, 10))
 			}

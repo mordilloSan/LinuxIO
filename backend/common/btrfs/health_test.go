@@ -2,6 +2,7 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -52,6 +53,18 @@ func TestErrorOccurrence(t *testing.T) {
 	}
 	if got, want := errorOccurrence(failing), "1:r2,c3;2:w5,g1;missing"; got != want {
 		t.Fatalf("occurrence = %q, want %q", got, want)
+	}
+	// A disk that dropped out fails every read, write and flush sent to it,
+	// so those counts rise with each health run and are no new occurrence.
+	dropped := BtrfsFilesystem{
+		Degraded: true,
+		Devices: []BtrfsDevice{
+			{ID: 1, Path: "/dev/sda1"},
+			{ID: 2, Path: "/dev/sdb1", Missing: true, DroppedOut: true, Errors: BtrfsDeviceErrors{Write: 83, Read: 4, Flush: 6, Corruption: 2}},
+		},
+	}
+	if got, want := errorOccurrence(dropped), "2:c2;missing"; got != want {
+		t.Fatalf("dropped-out occurrence = %q, want %q", got, want)
 	}
 	many := BtrfsFilesystem{HealthKnown: true}
 	for i := 1; i <= 16; i++ {
@@ -224,6 +237,71 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 	}
 }
 
+// healthRun runs CheckHealth and fails unless it starts a resync of exactly
+// the pools in want.
+func healthRun(t *testing.T, what string, want ...string) {
+	t.Helper()
+	resync, err := CheckHealth(context.Background())
+	if err != nil || !slices.Equal(resync, want) {
+		t.Fatalf("CheckHealth %s = %v, %v; want resyncs of %v", what, resync, err, want)
+	}
+}
+
+// A disk that drops out of the mounted pool opens the episode at the next
+// health run while the pool runs on, recorded with the counters it had while
+// the pool was whole. The resync waits while the kernel holds the dead block
+// device, also once the disk is back under its name, and an attempt then
+// counts no failure; once the pool is mounted again with the disk, it starts.
+func TestCheckHealthOpensAnEpisodeForADiskThatDroppedOut(t *testing.T) {
+	k := raid1Kernel()
+	k.generation = 42
+	k.devices[1].uuid, k.devices[2].uuid = devUUID(1), devUUID(2)
+	stubKernel(t, k)
+	stubDisks(t, nil)
+	healthRun(t, "of the whole pool")
+
+	k.setErrors(2, 40, 3)
+	goneLink(t, "sdb1")
+	healthRun(t, "after the dropout")
+	states, err := loadPoolStates()
+	s := states[dataUUID]
+	if err != nil || !s.Degraded || s.Since == 0 || !slices.Equal(s.Present, []uint64{1}) || !slices.Equal(s.Missing, []missingDisk{{ID: 2, UUID: devUUID(2), Whole: true}}) {
+		t.Fatalf("state after the dropout = %+v, %v; want an episode without devid 2, with its counters of the pool whole", s, err)
+	}
+	doc, err := alerts.Load()
+	if err != nil || !slices.ContainsFunc(doc.Alerts, func(a alerts.Alert) bool {
+		return a.Key == "health-"+dataUUID && strings.Contains(a.Message, "/dev/sdb1 dropped out")
+	}) {
+		t.Fatalf("alerts = %+v, %v; want the health alert to say the disk dropped out", doc.Alerts, err)
+	}
+
+	// The same disk is back under its name while the pool is still mounted:
+	// the kernel's link reaches it, but the pool does not hold it.
+	link := filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdb1")
+	if err = os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(link, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	held := deviceNotBusy
+	notBusy("/dev/sdb1", nil)
+	healthRun(t, "with the disk back but not taken")
+	if err = Resync(context.Background(), dataUUID, nil); !errors.Is(err, errDiskMissing) {
+		t.Fatalf("Resync while the pool holds the dead block device = %v, want %v", err, errDiskMissing)
+	}
+	if states, err = loadPoolStates(); err != nil || states[dataUUID].ResyncFailures != 0 || !states[dataUUID].Degraded {
+		t.Fatalf("state after the held resync = %+v, %v; want no failure counted", states[dataUUID], err)
+	}
+	if got := alertKeys(t); got["resync-"+dataUUID] != "" {
+		t.Fatalf("alerts = %v, want no resync warning while the disk is out", got)
+	}
+
+	// Mounted again, the pool holds the disk.
+	deviceNotBusy = held
+	healthRun(t, "once the pool holds the disk again", dataUUID)
+}
+
 func TestOfflineAlertSaysWhyThePoolWasNotMountedDegraded(t *testing.T) {
 	stubAlerts(t)
 	pool := BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2, Devices: []string{"/dev/sda1"}}
@@ -271,6 +349,16 @@ func TestHealthAlertSaysAPoolRunsWithoutADisk(t *testing.T) {
 	fs.Devices[1].Path = "/dev/sdb"
 	if obs = healthObservation(fs, "data", "missing"); !strings.Contains(obs.Message, "connected again") {
 		t.Fatalf("returned-disk alert = %q", obs.Message)
+	}
+	// A disk that dropped out of the mounted pool keeps its path, but the
+	// pool takes it back only at the next mount, whether it is back or not.
+	fs.Devices[1].DroppedOut = true
+	obs = healthObservation(fs, "data", "2:w12,f1;missing")
+	if obs.Title != "Pool data is running without 1 of 2 disks" || strings.Contains(obs.Message, "connected again") ||
+		!strings.Contains(obs.Message, "/dev/sdb dropped out while the pool was mounted") ||
+		!strings.Contains(obs.Message, "takes the disk back only when it is mounted again") ||
+		!strings.Contains(obs.Message, "LinuxIO then resyncs the pool") {
+		t.Fatalf("dropped-out alert = %q: %q", obs.Title, obs.Message)
 	}
 	errors := BtrfsFilesystem{UUID: dataUUID, Devices: []BtrfsDevice{{ID: 1, Path: "/dev/sda", Errors: BtrfsDeviceErrors{Write: 3}}}}
 	if obs = healthObservation(errors, "data", "1:w3"); obs.Title != "Btrfs filesystem data needs attention" {

@@ -269,7 +269,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
             {row.original.missing && (
               <AppChip
                 color="error"
-                label="Missing"
+                label={row.original.droppedOut ? "Dropped out" : "Missing"}
                 size="small"
                 variant="soft"
               />

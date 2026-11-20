@@ -42,12 +42,16 @@ type BtrfsAllocation struct {
 }
 
 type BtrfsDevice struct {
-	ID        int               `json:"id"`
-	Path      string            `json:"path"`
-	SizeBytes uint64            `json:"sizeBytes"`
-	UsedBytes uint64            `json:"usedBytes"`
-	Missing   bool              `json:"missing"`
-	Errors    BtrfsDeviceErrors `json:"errors"`
+	ID        int    `json:"id"`
+	Path      string `json:"path"`
+	SizeBytes uint64 `json:"sizeBytes"`
+	UsedBytes uint64 `json:"usedBytes"`
+	Missing   bool   `json:"missing"`
+	// DroppedOut is set, with Missing, when the device's block device went
+	// away while the pool is mounted (see markDroppedOut): the kernel keeps
+	// the device, with its path, until the pool is mounted again.
+	DroppedOut bool              `json:"droppedOut,omitzero"`
+	Errors     BtrfsDeviceErrors `json:"errors"`
 	// PhysicalBytes is the block device's size; Growable is set when the
 	// filesystem has not grown into it, as after replacing with a bigger disk.
 	PhysicalBytes uint64 `json:"physicalBytes"`
@@ -142,6 +146,8 @@ func fillFilesystem(fs *BtrfsFilesystem) {
 
 	fs.Devices, fs.HealthKnown = listDevices(mnt, info.MaxID, warn)
 	markUnopened(fs.UUID, fs.Devices)
+	fs.HealthKnown = markDroppedOut(fs.UUID, fs.Devices, warn) && fs.HealthKnown
+	readSizes(fs.Devices, warn)
 	var allocated uint64
 	for _, d := range fs.Devices {
 		fs.Degraded = fs.Degraded || d.Missing
@@ -188,9 +194,14 @@ func profileRatio(profile string, devices int) float64 {
 	return float64(max(profiles[profile].copies, 1))
 }
 
+// missingDiskName is the path DEV_INFO gives a device the kernel marked
+// missing (volumes.h btrfs_dev_name).
+const missingDiskName = "<missing disk>"
+
 // listDevices reads every device slot of the filesystem with its error
-// counters; a device the kernel knows but cannot find is Missing. The bool
-// is false when any read failed, so health stays unknown rather than clean.
+// counters; a device the kernel knows but cannot find is Missing, with no
+// path. The bool is false when any read failed, so health stays unknown
+// rather than clean.
 func listDevices(mnt string, maxID uint64, warn func(string, error)) ([]BtrfsDevice, bool) {
 	var devices []BtrfsDevice
 	known := true
@@ -205,15 +216,10 @@ func listDevices(mnt string, maxID uint64, warn func(string, error)) ([]BtrfsDev
 			continue
 		}
 		d := BtrfsDevice{ID: int(id), Path: cstring(info.Path[:]), SizeBytes: info.TotalBytes, UsedBytes: info.BytesUsed, UUID: formatUUID(info.UUID[:])}
-		d.Missing = d.Path == ""
-		if !d.Missing {
-			if size, err := blockDeviceSize(d.Path); err != nil {
-				warn("device size", err)
-			} else {
-				d.PhysicalBytes = size
-				d.Growable = size > d.SizeBytes && size-d.SizeBytes >= growSlack
-			}
+		if d.Path == missingDiskName {
+			d.Path = ""
 		}
+		d.Missing = d.Path == ""
 		stats := devStatsArgs{DevID: id, NrItems: 5}
 		if err := fsIoctl(mnt, iocGetDevStats, unsafe.Pointer(&stats)); err != nil {
 			warn("device stats", err)
@@ -224,6 +230,21 @@ func listDevices(mnt string, maxID uint64, warn func(string, error)) ([]BtrfsDev
 		devices = append(devices, d)
 	}
 	return devices, known
+}
+
+// readSizes reads the block device size of each present device.
+func readSizes(devices []BtrfsDevice, warn func(string, error)) {
+	for i, d := range devices {
+		if d.Missing {
+			continue
+		}
+		if size, err := blockDeviceSize(d.Path); err != nil {
+			warn("device size", err)
+		} else {
+			devices[i].PhysicalBytes = size
+			devices[i].Growable = size > d.SizeBytes && size-d.SizeBytes >= growSlack
+		}
+	}
 }
 
 // spaceInfos returns the kernel's space accounting per block-group type.
