@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DockerHostIPs, DockerSettings } from "@/api";
@@ -227,6 +227,73 @@ describe("DockerHostIPWaitSetting", () => {
       { docker: { waitForHostIPs: false } },
       expect.any(Function),
     );
+  });
+
+  // The mocked updateConfig stores nothing, which is what the page shows once
+  // a refused save has been read back.
+  it("keeps what was typed until the bridge confirms the save", async () => {
+    const { user } = renderSetting();
+
+    await user.click(toggle());
+    await user.type(screen.getByLabelText("IP address"), "10.0.0.2");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(toggle()).toBeChecked();
+    expect(rowValues()).toEqual(["10.0.0.2"]);
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    const onSaved = mocks.updateConfig.mock.calls[0][1] as () => void;
+    act(() => onSaved());
+
+    expect(toggle()).not.toBeChecked();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("keeps an edit made while the save was on its way", async () => {
+    const { user } = renderSetting();
+
+    await user.click(toggle());
+    await user.type(screen.getByLabelText("IP address"), "10.0.0.2");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.type(screen.getByLabelText("IP address"), "5");
+
+    const onSaved = mocks.updateConfig.mock.calls[0][1] as () => void;
+    act(() => onSaved());
+
+    expect(toggle()).toBeChecked();
+    expect(rowValues()).toEqual(["10.0.0.25"]);
+  });
+
+  it("has nothing to save when the stored address is in another spelling", async () => {
+    renderSetting({ hostIPs: ["2001:DB8:0::66"], waitForHostIPs: true });
+
+    expect(rowValues()).toEqual(["2001:DB8:0::66"]);
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("keeps the switch off until the bridge confirms the save", async () => {
+    const { user } = renderSetting({
+      hostIPs: ["192.168.1.66"],
+      waitForHostIPs: true,
+    });
+
+    await user.click(toggle());
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(toggle()).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("has nothing to save when a row holds another spelling of the stored address", async () => {
+    const { user } = renderSetting({
+      hostIPs: ["2001:db8::66"],
+      waitForHostIPs: true,
+    });
+
+    await user.clear(screen.getByLabelText("IP address"));
+    await user.type(screen.getByLabelText("IP address"), " 2001:DB8:0::66");
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
   it("has nothing to save when rows were edited and the switch is back off", async () => {

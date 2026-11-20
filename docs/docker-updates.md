@@ -190,9 +190,15 @@ whose service label starts with a dash, which `docker compose` would read as
 an option, is refused before any Compose command runs, by the check too.
 
 `up` removes the old container, so there is nothing to park. The old image
-stays on the host, untagged, and that is what a rollback uses. A rollback
-runs only when the new container failed: it exited, turned unhealthy, or
-kept restarting. One still coming up when the wait ended (health
+stays on the host, untagged, and that is what a rollback uses: a pull that
+moves a tag keeps the image the tag named, with no name, when no container
+runs it and through a restart of the daemon, where a build drops it at once
+([Rebuilding a built service](#rebuilding-a-built-service)). Measured with
+Docker 29.1.3 and the containerd image store, a local registry and one tag
+moved between two images, with `docker compose pull` and with `docker pull`.
+
+A rollback runs only when the new container failed: it exited, turned
+unhealthy, or kept restarting. One still coming up when the wait ended (health
 `starting`, or running and not yet settled) may already have begun to change
 its data, such as a migration at start, so it is reported as failed with
 that reason and left on the new image. So is one whose wait ended without a

@@ -1013,36 +1013,56 @@ wait_for_boot() {
 	done
 }
 
-# An orderly reboot: the guest's systemd stops its services first.
+# The seconds until this boot is 40 s old. libvirt's dnsmasq pings an address
+# for 3 s before it offers it, longer than the initrd's DHCP client lives, but
+# not again within 30 s of the last ping. A boot sooner than that after the
+# last one (seen with a reboot 9 s and one 27 s into a boot) lets the initrd
+# take the VM's address, the system gets the next one, and a spec's browser is
+# left on an address nothing answers.
+boot_age_left() {
+	local up
+	up="$(vm_ssh cut -d. -f1 /proc/uptime </dev/null)" || die "cannot read the uptime of ${DOMAIN}"
+	echo $((up < 40 ? 40 - up : 0))
+}
+
+# An orderly reboot: the guest's systemd stops its services first. A boot
+# less than 40 s old is waited for first (boot_age_left).
 reboot_vm() {
 	connect
-	local boot
+	local boot left
+	left="$(boot_age_left)"
+	sleep "$left"
 	boot="$(boot_id)"
 	v reboot "$DOMAIN" >/dev/null
 	wait_for_boot "$boot"
 }
 
-# A power loss: the domain stops at once, then boots again.
+# A power loss: the domain stops at once, then boots again, staying off for
+# what a boot less than 40 s old lacks (boot_age_left).
 power_cut() {
 	connect
-	local boot
+	local boot left
 	boot="$(boot_id)"
+	left="$(boot_age_left)"
 	v destroy "$DOMAIN" >/dev/null
+	sleep "$left"
 	start_domain
 	wait_for_boot "$boot"
 }
 
 # An orderly shutdown, SECONDS with the domain off, then a boot: what a timer
-# does with the time that passed while the host was down.
+# does with the time that passed while the host was down. The domain stays
+# off longer when a boot less than 40 s old lacks more (boot_age_left).
 off_for() {
 	local seconds=${1:-}
 	[[ $seconds =~ ^[0-9]+$ ]] || die "usage: off-for SECONDS"
 	connect
-	local boot
+	local boot left
 	boot="$(boot_id)"
+	left="$(boot_age_left)"
 	v shutdown "$DOMAIN" >/dev/null
 	wait_for_shut_off 180
-	sleep "$seconds"
+	sleep "$((seconds > left ? seconds : left))"
 	start_domain
 	wait_for_boot "$boot"
 }

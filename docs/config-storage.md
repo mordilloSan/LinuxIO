@@ -114,6 +114,20 @@ ExecStartPre=-/usr/bin/timeout 30 /usr/bin/sh -c 'until /usr/sbin/ip -o addr sho
   zone, the unspecified address, a loopback address and a duplicate. The
   drop-in is rendered from a second parse of the stored list.
 
+`docker-host-ip-wait.spec.ts` (`frontend/src/test/vm`) is the boot test, in
+the test VM (Ubuntu 26.04, Docker 29.1.3). It gives the VM an address that a
+bridge holds before the network is up, and one that is added 10 s after
+everything `docker.service` is ordered after, with a container that publishes
+a port on each. Without the setting Docker is up 10 s before the late address
+and the container stays down with "cannot assign requested address", whatever
+its restart policy. With the drop-in the settings page wrote,
+`systemd-analyze verify docker.service` passes; after a reboot the line for
+the late address ends with status 0 after 10 to 11 s and the line for the
+bridge's address in under a second, the container runs, and
+`systemd-analyze blame` gives `docker.service` 10.9 s. The two addresses are
+stand-ins: a Netplan host whose card appears late and a host after a bridge
+handoff by LinuxIO have not been run.
+
 The switch on with an empty list is refused with 400 before the config is
 saved, and a document on disk in that state fails validation. Switching off
 keeps the stored list. An empty list is left out of `config.yaml`.

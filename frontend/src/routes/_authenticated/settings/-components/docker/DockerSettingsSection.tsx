@@ -95,7 +95,8 @@ const DockerSettingsSection = () => {
   const dockerFolders = dockerSettings.folders;
   const requireMountsForFolders = dockerSettings.requireMountsForFolders;
   const setDockerFolders = useCallback(
-    (folders: string[]) => updateConfig({ docker: { folders } }),
+    (folders: string[], onSaved: () => void) =>
+      updateConfig({ docker: { folders } }, onSaved),
     [updateConfig],
   );
   const setRequireMountsForFolders = useCallback(
@@ -122,9 +123,11 @@ const DockerSettingsSection = () => {
   );
   const {
     draft: folderDraft,
+    draftPatch,
     isDirty,
     patchKey,
     reset,
+    resetSaved,
   } = useSettingsDraft<{ folders: string[] }, object>(
     savedFolders,
     undefined,
@@ -236,9 +239,12 @@ const DockerSettingsSection = () => {
             }
           }
 
-          setDockerFolders(folders);
-          reset();
-          toast.success("Docker folders saved.");
+          // The draft is cleared only once the bridge confirms: a refused
+          // save is read back, and the form then still holds what was typed.
+          setDockerFolders(folders, () => {
+            resetSaved(draftPatch);
+            toast.success("Docker folders saved.");
+          });
         } catch (error: unknown) {
           const message =
             error instanceof Error
@@ -254,8 +260,9 @@ const DockerSettingsSection = () => {
   }, [
     askCreatePrompt,
     createDockerFolder,
+    draftPatch,
     drafts,
-    reset,
+    resetSaved,
     setDockerFolders,
     validateDockerFolder,
   ]);

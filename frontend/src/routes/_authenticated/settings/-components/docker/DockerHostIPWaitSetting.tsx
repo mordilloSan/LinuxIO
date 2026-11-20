@@ -27,11 +27,14 @@ interface HostIPWaitDraft {
 }
 
 // Off sends the switch alone and keeps the stored list, so rows edited
-// before switching off are nothing to save.
+// before switching off are nothing to save. Both lists are compared in the
+// form a save stores, so a list just sent is not dirty while it is saved, and
+// neither is a stored one that was written by hand in another spelling.
+const storedForm = (hostIPs: string[]) =>
+  JSON.stringify(validateHostIPs(hostIPs).hostIPs);
 const isSameSetting = (draft: HostIPWaitDraft, saved: HostIPWaitDraft) =>
   draft.enabled === saved.enabled &&
-  (!draft.enabled ||
-    JSON.stringify(draft.hostIPs) === JSON.stringify(saved.hostIPs));
+  (!draft.enabled || storedForm(draft.hostIPs) === storedForm(saved.hostIPs));
 
 const iconStyle: CSSProperties = {
   display: "inline-flex",
@@ -57,10 +60,8 @@ const DockerHostIPWaitSetting = () => {
     enabled: waitForHostIPs,
     hostIPs: savedHostIPs,
   };
-  const { draft, draftPatch, isDirty, patchKey, reset } = useSettingsDraft<
-    HostIPWaitDraft,
-    object
-  >(saved, undefined, isSameSetting);
+  const { draft, draftPatch, isDirty, patchKey, reset, resetSaved } =
+    useSettingsDraft<HostIPWaitDraft, object>(saved, undefined, isSameSetting);
   const [errorTexts, setErrorTexts] = useState<string[]>([]);
 
   const enabled = draft?.enabled ?? saved.enabled;
@@ -110,13 +111,15 @@ const DockerHostIPWaitSetting = () => {
     setErrorTexts([]);
   };
 
+  // The draft is cleared only once the bridge confirms: a refused save is
+  // read back, and the form then still holds what was typed.
   const handleSave = () => {
     if (!enabled) {
       // Off keeps the stored list, so only the switch is sent.
-      updateConfig({ docker: { waitForHostIPs: false } }, () =>
-        toast.success("Docker no longer waits for host IPs."),
-      );
-      handleReset();
+      updateConfig({ docker: { waitForHostIPs: false } }, () => {
+        resetSaved(draftPatch);
+        toast.success("Docker no longer waits for host IPs.");
+      });
       return;
     }
     const { hostIPs, errors } = validateHostIPs(rows);
@@ -124,10 +127,10 @@ const DockerHostIPWaitSetting = () => {
       setErrorTexts(errors);
       return;
     }
-    updateConfig({ docker: { waitForHostIPs: true, hostIPs } }, () =>
-      toast.success("Docker will wait for the listed host IPs."),
-    );
-    handleReset();
+    updateConfig({ docker: { waitForHostIPs: true, hostIPs } }, () => {
+      resetSaved(draftPatch);
+      toast.success("Docker will wait for the listed host IPs.");
+    });
   };
 
   return (

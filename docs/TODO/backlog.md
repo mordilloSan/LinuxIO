@@ -44,25 +44,17 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- A refused save loses what was typed in the Docker host IPs and Docker
-  folders forms. Both clear their draft when Save is pressed
-  (`DockerHostIPWaitSetting.tsx`, `DockerSettingsSection.tsx`), and the page
-  then shows the stored value again, so the list has to be typed again. The
-  folders form also shows "Docker folders saved." before the bridge answers.
-  Clear the draft, and show that toast, in `updateConfig`'s `onSaved` instead.
+- A settings save made while the bridge cannot be reached looks stored.
+  `updateConfig` (`frontend/src/contexts/ConfigProvider.tsx`) writes the
+  patch into the page's copy before `save` finds that nothing can be sent,
+  so the form shows the new value with nothing to save, and the warning
+  toast comes only once. Decide whether a bridge setting should be applied
+  to the page at all in that state, or taken back.
 
 ## Tests that are missing
 
 ## Needs a real machine or a measurement
 
-- Docker update rollback on the containerd image store: a rebuild that moved
-  a tag left the image the container ran with no name, and Docker 29 dropped
-  it at once, so the rebuild holds it with a tag
-  ([Docker Updates](../docker-updates.md#rebuilding-a-built-service)). Whether
-  a registry pull that moves a tag drops the old image the same way is not
-  measured: the Compose rollback of an update needs that image, and the
-  integration test keeps it tagged under another name. Measure it in the VM
-  with a local registry and one tag moved between two images.
 - The automatic btrfs rebuild onto a disk that comes back
   ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio
   disks, 7.0, whose serials the rig sets. A SATA or SAS disk pulled and
@@ -73,12 +65,12 @@ after a change that issues ioctls).
 
 - Docker's wait for published host IPs
   ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips))
-  has unit tests of the drop-in text and no boot test: **needs a host**. On a
-  Netplan host where the address arrives late, turn the setting on, check
-  `systemctl cat docker.service` and `systemd-analyze verify docker.service`,
-  reboot, and confirm the container that publishes on the address starts. On
-  a host whose address is already on a handoff bridge, confirm with
-  `systemd-analyze blame` that `docker.service` does not wait 30 s.
+  has its boot test in the test VM, where a unit adds the late address and a
+  plain bridge holds the other. Not run on a real machine: a Netplan host
+  whose card appears late (turn the setting on, reboot, and confirm the
+  container that publishes on the address starts), and a host whose address
+  a bridge handoff by LinuxIO moved to a bridge (`systemd-analyze blame`
+  must not show `docker.service` waiting 30 s).
 
 ## Later, no plan yet
 

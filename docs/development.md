@@ -433,7 +433,12 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   The specs reach the VM through `linuxio-vm.sh`: `ssh`, and for host events
   `reboot` (an orderly ACPI reboot), `power-cut` (`virsh destroy`, then
   `start`) and `off-for SECONDS` (an orderly shutdown, the domain off for
-  that long, then a boot), each of which waits for the next boot. `jobs-phase2.spec.ts`
+  that long, then a boot), each of which waits for the next boot. `reboot`
+  first waits until the boot is 40 s old, and `power-cut` and `off-for` keep
+  the domain off for what is missing: libvirt's DHCP server offers an address without
+  its 3 s ping when it pinged it in the last 30 s, which is fast enough for
+  the initrd's DHCP client to take the VM's address, and the system then
+  gets another, where no spec looks for it. `jobs-phase2.spec.ts`
   installs Docker's Compose plugin, creates a btrfs pool on `vdb` and `vdc`
   and reboots the VM, so run `vm-reset` and `vm-install` before reusing it
   for other checks. A disk that drops out needs no rig command:
@@ -445,6 +450,17 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   navbar's Reboot and Power Down. It creates and removes a user without sudo
   (`e2e-ui`), a folder `/srv/e2e-link` and two busybox containers, reboots the
   VM and powers it off (the rig's `ssh` starts a domain that is shut off).
+  `docker-host-ip-wait.spec.ts` is the boot test of Docker's wait for
+  published host IPs
+  ([Bridge Configuration Storage](./config-storage.md#wait-for-published-host-ips)).
+  Two units of its own stand in for the hosts the setting is for: `e2e-early`
+  puts an address on a bridge before the network is up, and `e2e-late` adds
+  one on a dummy interface 10 s after everything Docker's unit is ordered
+  after. A busybox container publishes a port on each, and the VM reboots
+  twice, without the setting and with it. The spec removes its units, links
+  and container and leaves the setting off; a run that stops between its
+  save and its last test leaves it on, with addresses the VM no longer has,
+  and the next run switches it off first.
   `capability-install.spec.ts` installs zram from Capabilities
   ([Capabilities](./capabilities.md#zram)), and on Ubuntu cancels a second
   install while apt holds dpkg back for 30 s, through an apt drop-in it
