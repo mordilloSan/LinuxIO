@@ -17,7 +17,7 @@ import (
 const AlertSource = "btrfs"
 
 // alertKinds are the per-filesystem alert key prefixes CheckHealth owns.
-var alertKinds = []string{"health", "scrub", "space", "offline", "resync", "resynced", "bound"}
+var alertKinds = []string{"health", "scrub", "space", "offline", "resync", "resynced", "bound", "spare"}
 
 func poolName(label, uuid string) string {
 	if label != "" {
@@ -87,6 +87,7 @@ func RaiseAlerts(ctx context.Context, fs BtrfsFilesystem) {
 	} else {
 		resolve(ctx, "space-"+fs.UUID)
 	}
+	raiseSpareAlert(ctx, fs)
 	resolve(ctx, "offline-"+fs.UUID)
 }
 

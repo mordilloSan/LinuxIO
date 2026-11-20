@@ -87,6 +87,7 @@ filesystems, covering pools created after install.
 | `btrfs/bound-<uuid>` | warning | by the health run only: systemd still stops a mount of the pool with the disk it names, though its `/etc/fstab` line says `x-systemd.device-bound=false`: LinuxIO recorded the mount under its source and systemd keeps the dependency, or the record could not be written (see [Pools](#pools)) | no mount of the pool stops with a device, or the pool is no longer mounted; left as it was when systemd could not be asked |
 | `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
 | `btrfs/resynced-<uuid>` | info; a warning when its scrub found uncorrectable errors, which it counts in its title, or while a device of the pool still counts errors, for which it says why | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default); it names the returned disks whose error counters it reset or kept | dismissed, or the next resync starts |
+| `btrfs/spare-<uuid>` | warning | the pool's [hot spare](#hot-spare) is absent, too small or no longer empty; one occurrence per state | the spare is ready again, it is removed, or the pool is gone |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
 longer exist are dropped by the timer, the resync unit's run alert
@@ -997,9 +998,10 @@ Create pool, Add device and Replace device refuse a device that is:
    running or the volume group active or not. The md and LVM2 signatures are
    also read from the device itself just before the write, so one udev has
    not probed yet is refused too (see
-   [Safety](./storage-disks.md#safety)).
+   [Safety](./storage-disks.md#safety));
+6. a pool's [hot spare](#hot-spare), except to Replace device in that pool.
 
-The first three are the check every device operation shares with the
+Rules 1 to 3 and 6 are the check every device operation shares with the
 [Disks page](./storage-disks.md#safety) and md RAID. While a disk of a
 mounted pool is dropped out, rule 2 also refuses a disk whose own superblock
 names that pool and whatever is at the dropped disk's old path: either may
@@ -1080,7 +1082,8 @@ primary superblock at 64 KiB.
 |---|---|
 | Add device | Free devices only (see [Which disks a pool may take](#which-disks-a-pool-may-take)). **Force** erases an old filesystem, never a disk of another pool, md array or volume group. |
 | Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined or have no minimum LinuxIO knows (`raid5`, `raid6`). |
-| Replace device | Replaces one member with a free, blank device. A bigger replacement disk is grown into automatically. |
+| Replace device | Replaces one member with a free, blank device, or with the pool's own [hot spare](#hot-spare). A bigger replacement disk is grown into automatically. |
+| Hot spare | Sets, changes the delay of, or removes the pool's hot spare (see [Hot spare](#hot-spare)). |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
 | Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
@@ -1097,6 +1100,127 @@ aborted that way loses its target). A freeze still interrupts them: a scrub
 continues by itself (see [Scrub progress](#scrub-progress)), a replace fails.
 A refusal the kernel answers with a positive code, such as 8
 ("exclusive operation in progress"), fails the job.
+
+### Hot spare
+
+A pool can have one **hot spare**: an empty whole disk the administrator
+names for it on the pool's Disks card (**Set hot spare**). When a member of
+the pool has been missing for the spare's delay, LinuxIO replaces it onto
+the spare, the way an md array uses its spare. A disk is the spare of one
+pool only; there are no global spares. The designation is LinuxIO's own
+state, `/var/lib/linuxio/btrfs-spares.json` by pool UUID (`spare.go` in
+`backend/common/btrfs`): nothing is written to the disk until a replace uses
+it, so a spare carries no signature another system or tool could misread.
+
+**What may be a spare.** Only a pool whose every profile keeps a second copy
+(`raid1`, `raid1c3`, `raid1c4`, `raid10`) is offered one: a `single`,
+`raid0` or `dup` pool cannot run with a member missing, so there is nothing
+for a spare to stand in for, and the card says so. The disk must be:
+
+1. a whole disk, never a partition, device-mapper, md, loop or RAM device,
+   that rules 1 to 6 of [Which disks a pool may take](#which-disks-a-pool-may-take)
+   accept without **Force**, as a replace target must be: unused, with no
+   partitions or holders, and no filesystem or member signature, by udev and
+   by an exclusive read of the disk's own md, LVM2 and primary btrfs
+   signatures. A partition table with no partitions, as **Initialize disk**
+   leaves, counts as empty;
+2. recognisable after a reboot: udev reports a WWN or a serial
+   (`ID_WWN_WITH_EXTENSION` or `ID_WWN`, and `ID_SERIAL`) that, with its
+   size, names no other connected disk. The designation records these and
+   the size, never the kernel name, which another disk can take after a
+   reboot;
+3. no smaller than any member as the filesystem knows it (each device's
+   `total_bytes`, a missing member's included): the kernel refuses a replace
+   onto a smaller target (`btrfs_init_dev_replace_tgtdev` in
+   `fs/btrfs/dev-replace.c`). A larger spare is grown into after the
+   replace, as after a manual one.
+
+A refusal is a 400 when the disk or the request cannot serve (not a whole
+disk, no identity, an identity another disk shares, too small, a pool that
+keeps one copy, a delay outside 0 to 10080 minutes), and a 409 when the disk
+is in use, not empty, or the spare of another pool that is there.
+
+**Reservation.** While a disk is a pool's spare, the block-device inventory
+marks it, and any partition of it, with `hotSpareOf` (the pool's UUID and
+label), and `deviceInUse` refuses it with a 409 naming the pool, such as
+"Hot spare of pool tank; remove the hot spare in the pool's details first".
+So every operation that writes a device refuses it: Create pool (whole disks
+and free space), Add device, Replace device in another pool, Initialize
+disk, Create partition, Format, Delete, Mount, md add and replace, and
+setting it as another pool's spare. The disk pickers list it disabled as
+"Hot spare of tank". The one exception is Replace device in the spare's own
+pool: the administrator may pick the spare (never a partition of it) as the
+new disk. It stays the spare, and reserved, while the replace runs, and the
+designation is dropped once the replace has installed it, on the first run
+or on a resume after a reboot, which finds the new disk by its slot; a
+replace that fails or is canceled leaves it the spare, which the kernel has
+then blanked again. The reservation holds while the pool is there: mounted,
+named by the superblock of a connected disk, or reported by udev on a
+member. A pool destroyed outside LinuxIO reserves nothing, and naming the
+disk as another pool's spare drops that stale designation, with an Info
+line in the log. **Destroy pool** drops its pool's. When a designation's
+identity names several connected disks, the spare is `absent` and every one
+of them is reserved.
+
+**State.** Each pool of `storage.btrfs_list` carries its spare (`spare`) as
+it is when read: the disk's node now, its identity and size, the delay, and
+a state, with the reason when it is not ready. A read of the pool, by the
+page, a write's checks or the health run, looks at sysfs and udev's database
+only and never opens the spare, so it neither wakes a disk that spun down
+nor claims it under a replace. The disk's own md, LVM2 and btrfs signatures
+and any claim on it are read through an exclusive open when the spare is
+set and right before it is used (`btrfs.SpareOf`).
+
+| State | When |
+|---|---|
+| `ready` | its identity names exactly one connected disk of its size, no smaller than any member, unclaimed and empty |
+| `absent` | its identity names no connected disk of its size, or more than one; no other disk stands in |
+| `too-small` | a member is larger than the spare, as after a replace onto a bigger disk grew it |
+| `in-use` | something other than LinuxIO partitioned it, wrote a signature udev reports, or holds it; at use time also a claim or a signature only the disk shows |
+| `unknown` | it could not be checked: with the pool's devices not all read, or, at use time, without the privilege to open the disk |
+
+`absent`, `too-small` and `in-use` raise the `btrfs/spare-<uuid>` warning
+(see [Filesystem health](#filesystem-health)); `unknown` leaves it as it
+was.
+
+**Delay.** "Use the spare after a disk has been missing for N minutes", per
+pool: 10 by default, from 0, which is the next health run (the health timer
+runs every ten minutes), to a week. It is set with the spare and changed
+with **Change delay**.
+
+**Routes.** `storage.btrfs_spare_set` (`uuid`, `device`, `delayMinutes`),
+`storage.btrfs_spare_delay` (`uuid`, `delayMinutes`) and
+`storage.btrfs_spare_clear` (`uuid`), each a privileged Mutation with no
+result; the page refreshes the pool list and the inventory.
+
+**Automatic replace.** *(To be written with the runner that uses the spare:
+when the health run starts the replace onto it, what it reads first
+(`btrfs.SpareOf`, which checks the spare again at that moment) and when it
+drops the designation (`btrfs.ClearSpare`).)*
+
+#### Known limits
+
+- Nothing is written to the spare, so the reservation is LinuxIO's alone:
+  `mkfs`, `mdadm` or `pvcreate` run by hand can still take the disk, which
+  then reads `in-use` and raises the warning.
+- A disk udev reports no WWN or serial for, as many virtual disks and every
+  loop device, cannot be a spare; nor can a multipath disk, whose paths
+  share one identity.
+- The exclusive read that finds the spare empty is closed before the
+  kernel's own claim, as for any replace target (see
+  [Safety](./storage-disks.md#safety)).
+- Between uses the state comes from udev: a signature udev has not reported,
+  or a claim without a holder, shows only when the spare is set or about to
+  be used, which then refuses it.
+- A designation is kept only while its pool is there, so the spare of a
+  pool whose every disk is disconnected, such as an enclosure switched off,
+  may be given to another pool, which drops the first pool's designation.
+- An unmounted pool keeps its spare reserved, but its spare is not shown or
+  checked, and its warning stays as it was, until the pool is mounted.
+- A state file that cannot be read fails every operation that writes a
+  device, Replace device included, with an error naming the file, until it
+  is repaired or removed; the Disks page then lists the disks without the
+  reservation.
 
 ### Cancel
 
@@ -1426,10 +1550,11 @@ btrfsmaintenance timers.
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem, and a running one's progress; written under `btrfs-scrub.json.lock` |
 | `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, whether and on which disks it ran degraded, when the episode began, the disks it ran without with their error counters as the pool was last seen whole or as they went missing, each device's error counters as a health run or the end of an episode last saw the pool whole, and the run of the episode's resync scrub (`resyncRun`) |
 | `/var/lib/linuxio/btrfs-label.lock` | root | Lock taken around every label change, the resync's commit of a counter reset included |
+| `/var/lib/linuxio/btrfs-spares.json` | root, `0644` | Per pool: its [hot spare](#hot-spare)'s WWN, serial and size, and the delay; written under `btrfs-spares.json.lock`. Readable by everyone, so an unprivileged session's Disks page shows the reservation too |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries; `x-systemd.device-bound=false` on the `UUID=` lines of mounted pools (the health run, see [Pools](#pools)) |
 | `/run/mount/utab` | root | libmount's record of mounts' userspace options, written through `mount --fake` by the health run for a pool mount systemd would stop with its disk; gone at the next boot |
-| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/bound-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
+| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/bound-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/spare-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
 
 ## Not implemented
 

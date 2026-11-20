@@ -182,6 +182,35 @@ describe("BtrfsCreatePoolDialog", () => {
     );
   });
 
+  it("offers no free space on a pool's hot spare", async () => {
+    mocks.topology.mockResolvedValue({
+      devices: [
+        device("/dev/sdd", {
+          freeBytes: 100 * GiB,
+          hotSpareOf: { uuid: "u1", label: "tank" },
+        }),
+        device("/dev/sdd1", { type: "part", parents: ["/dev/sdd"] }),
+        device("/dev/sde", { freeBytes: 100 * GiB }),
+        device("/dev/sde1", { type: "part", parents: ["/dev/sde"] }),
+      ],
+      mounts: [],
+    });
+    render(
+      <BtrfsCreatePoolDialog
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        pooledDevices={[]}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("checkbox", { name: /Free space on \/dev\/sde/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /Free space on \/dev\/sdd/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps metadata at least as redundant as data, raid1c3 from three disks", async () => {
     const user = userEvent.setup();
     mocks.topology.mockResolvedValue({

@@ -21,7 +21,15 @@ func TestMain(m *testing.M) {
 	// No test asks the machine's systemd what it is: without a version, the
 	// health run leaves /etc/fstab and the mounts as they are.
 	managerVersion = func(context.Context) (int, error) { return 0, errors.New("no systemd in unit tests") }
-	os.Exit(m.Run())
+	// Every filesystem list reads the hot spares: never the host's.
+	dir, err := os.MkdirTemp("", "btrfs-spares")
+	if err != nil {
+		panic(err)
+	}
+	SparePath = filepath.Join(dir, "btrfs-spares.json")
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 // A folder on another filesystem, or a top level that is no btrfs at all,

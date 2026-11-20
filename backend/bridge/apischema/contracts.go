@@ -5,6 +5,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
@@ -138,6 +139,7 @@ var StringEnums = map[string][]string{
 	"SwapFileUnmanagedReason":   enumNames("", SwapFileNotInFstab, SwapFileOthersCanWrite, SwapFileUnitUnusable),
 	"SwapStep":                  enumNames(SwapSteps...),
 	"SwapLeftWhat":              enumNames(SwapLeftSwapFile, SwapLeftZram, SwapLeftZramSize),
+	"BtrfsSpareState":           enumNames(btrfs.SpareReady, btrfs.SpareAbsent, btrfs.SpareTooSmall, btrfs.SpareInUse, btrfs.SpareUnknown),
 	"SwapLeftReason":            enumNames(SwapLeftNotEnoughMemory, SwapLeftZramNotSwapping, SwapLeftNotIdentified, SwapLeftOthersCanWrite, SwapLeftNotManaged, SwapLeftNoOtherSwap, SwapLeftOtherSize),
 }
 

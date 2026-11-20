@@ -4,6 +4,8 @@ import type {
   StorageBlockDevice,
 } from "@/api";
 
+import { hotSpareReason } from "../storageMember";
+
 export type LayoutRow =
   | {
       kind: "partition";
@@ -12,7 +14,13 @@ export type LayoutRow =
       /** Name of the btrfs pool it belongs to, whatever `reason` says. */
       pool: string | null;
     }
-  | { kind: "free"; startBytes: number; sizeBytes: number };
+  | {
+      kind: "free";
+      startBytes: number;
+      sizeBytes: number;
+      /** Why no partition may be added here, or null: the disk's own. */
+      reason: string | null;
+    };
 
 const rowStart = (row: LayoutRow) =>
   row.kind === "free" ? row.startBytes : (row.device.startBytes ?? 0);
@@ -36,7 +44,8 @@ const poolOf = (
 const deviceReason = (device: StorageBlockDevice, pool: string | null) => {
   if (device.busy) return device.busy;
   if (device.inFstab) return "In /etc/fstab";
-  return pool ? `Member of btrfs pool ${pool}` : null;
+  if (pool) return `Member of btrfs pool ${pool}`;
+  return hotSpareReason(device);
 };
 
 /** The disk from start to end: its partitions and free regions, by start. */
@@ -58,9 +67,11 @@ export const diskLayout = (
           pool,
         };
       }),
+    // A pool's hot spare stays empty: no partition is added to it.
     ...(disk.freeRegions ?? []).map((region) => ({
       kind: "free" as const,
       ...region,
+      reason: hotSpareReason(disk),
     })),
   ];
   return rows.sort((a, b) => rowStart(a) - rowStart(b));

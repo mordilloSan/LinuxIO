@@ -30,6 +30,11 @@ type BtrfsFilesystem struct {
 	// HealthKnown is true only when both the device list and the error
 	// counters were read, so callers can tell "healthy" from "unknown".
 	HealthKnown bool `json:"-"`
+	// Spare is the pool's hot spare as it is now, nil when it has none (see
+	// spare.go). spareKnown is false when the designations could not be
+	// read, so a missing Spare does not resolve the spare alert.
+	Spare      *BtrfsSpare `json:"spare,omitzero"`
+	spareKnown bool
 }
 
 // BtrfsAllocation is one block-group type (data, metadata, system) with
@@ -121,6 +126,9 @@ func ListFilesystems(ctx context.Context) ([]BtrfsFilesystem, error) {
 		fs := byUUID[uuid]
 		fillFilesystem(fs)
 		filesystems = append(filesystems, *fs)
+	}
+	if err := attachSpares(filesystems); err != nil {
+		slog.Warn("failed to read btrfs hot spares", "path", SparePath, "error", err)
 	}
 	return filesystems, nil
 }

@@ -547,6 +547,16 @@ const linuxio = {
       { kind: "none" },
     ),
     btrfs_snapshots: defineCallWithRequest("storage.btrfs_snapshots"),
+    btrfs_spare_clear: defineMutation("storage", "btrfs_spare_clear", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_spare_delay: defineMutation("storage", "btrfs_spare_delay", {
+      kind: "object",
+    }),
+    btrfs_spare_set: defineMutation("storage", "btrfs_spare_set", {
+      kind: "object",
+    }),
     btrfs_subvolume_create: defineMutation(
       "storage",
       "btrfs_subvolume_create",

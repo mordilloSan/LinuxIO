@@ -71,11 +71,16 @@ func btrfsDeviceBindings() apischema.BindingSet {
 }
 
 // ensureBtrfsDeviceFree refuses a device that is not free to join a btrfs
-// filesystem; force only allows erasing an old filesystem left on it.
-func ensureBtrfsDeviceFree(ctx context.Context, device string, force bool) error {
+// filesystem; force only allows erasing an old filesystem left on it. The
+// hot spare of pool spareOf, if not empty, may be taken: a replace in that
+// pool may use its own spare.
+func ensureBtrfsDeviceFree(ctx context.Context, device string, force bool, spareOf string) error {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return err
+	}
+	if spareOf != "" {
+		inv.releaseSpare(spareOf)
 	}
 	if err = checkBtrfsDeviceFree(inv, device, force); err != nil {
 		return err
@@ -153,8 +158,10 @@ func resumeBtrfsRemove(ctx context.Context, req apischema.BtrfsDeviceRequest, _ 
 }
 
 func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsDeviceReplaceRequest) (btrfs.BtrfsFilesystem, error) {
-	// The kernel copies onto the target without checking it, so it must be blank.
-	if err := ensureBtrfsDeviceFree(ctx, req.NewDevice, false); err != nil {
+	// The kernel copies onto the target without checking it, so it must be
+	// blank. The pool's own hot spare may be the target: it stays reserved
+	// while the replace runs, and is no longer the spare once installed.
+	if err := ensureBtrfsDeviceFree(ctx, req.NewDevice, false, req.UUID); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
 	slog.Debug("replacing btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
@@ -166,6 +173,7 @@ func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req ap
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("replace btrfs device %d of %s with %s: %w", req.DeviceID, req.UUID, req.NewDevice, err)
 	}
+	dropTakenSpare(ctx, req.UUID, req.DeviceID, fs)
 	fs = growReplaced(ctx, req.UUID, req.DeviceID, fs)
 	slog.Info("replaced btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
 	return fs, nil
@@ -229,6 +237,7 @@ func resumeBtrfsReplace(ctx context.Context, req apischema.BtrfsDeviceReplaceReq
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
+	dropTakenSpare(ctx, req.UUID, req.DeviceID, fs)
 	fs = growReplaced(ctx, req.UUID, req.DeviceID, fs)
 	slog.Info("replaced btrfs device", "uuid", req.UUID, "device", req.DeviceID, "resumed", true)
 	return fs, nil
@@ -399,7 +408,7 @@ func profileOrKeep(p *string) string {
 
 // AddBtrfsDevice adds a free device to a filesystem.
 func AddBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (btrfs.BtrfsFilesystem, error) {
-	if err := ensureBtrfsDeviceFree(ctx, req.Device, req.Force); err != nil {
+	if err := ensureBtrfsDeviceFree(ctx, req.Device, req.Force, ""); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
 	if err := btrfs.AddDevice(ctx, req.UUID, req.Device, req.Force); err != nil {

@@ -22,6 +22,10 @@ func GetTopology(ctx context.Context) (apischema.StorageTopologyInventory, error
 	if err != nil {
 		return apischema.StorageTopologyInventory{}, err
 	}
+	// The page only shows the reservation; the writes check it again.
+	if err = markHotSpares(devices, nil, nil); err != nil {
+		slog.Warn("failed to mark btrfs hot spares", "error", err)
+	}
 	partitions, err := disk.PartitionsWithContext(ctx, true)
 	if err != nil {
 		return apischema.StorageTopologyInventory{}, fmt.Errorf("list topology mounts: %w", err)

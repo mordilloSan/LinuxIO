@@ -53,9 +53,21 @@ type StorageBlockDevice struct {
 	// Member is the btrfs pool, md array, LVM volume group or other set the
 	// device's signature makes it part of, mounted, running or active or not.
 	Member *StorageMember `json:"member,omitzero"`
+	// HotSpareOf is the btrfs pool this disk, or the disk of this
+	// partition, is the hot spare of, while a disk of that pool is
+	// connected: reserved for it, so every operation that writes a device
+	// refuses it (see docs/btrfs.md, "Hot spare").
+	HotSpareOf *StoragePoolRef `json:"hotSpareOf,omitzero"`
 	// FreeRegions, for a GPT disk, lists every free gap of at least 1 MiB in
 	// disk order.
 	FreeRegions []StorageRegion `json:"freeRegions,omitzero"`
+}
+
+// StoragePoolRef names a btrfs pool by its filesystem UUID and its label,
+// which may be empty.
+type StoragePoolRef struct {
+	UUID  string `json:"uuid"`
+	Label string `json:"label,omitzero"`
 }
 
 // StorageMember is what a device's member signature says it belongs to.
@@ -324,6 +336,21 @@ type BtrfsDeviceReplaceRequest struct {
 	UUID      string `json:"uuid"`
 	DeviceID  int    `json:"deviceId"`
 	NewDevice string `json:"newDevice"`
+}
+
+// BtrfsSpareSetRequest makes Device, an empty whole disk, the hot spare of
+// the mounted pool UUID, which replaces a member onto it once the member has
+// been missing for DelayMinutes (see docs/btrfs.md, "Hot spare").
+type BtrfsSpareSetRequest struct {
+	UUID         string `json:"uuid"`
+	Device       string `json:"device"`
+	DelayMinutes int    `json:"delayMinutes"`
+}
+
+// BtrfsSpareDelayRequest changes the delay of pool UUID's hot spare.
+type BtrfsSpareDelayRequest struct {
+	UUID         string `json:"uuid"`
+	DelayMinutes int    `json:"delayMinutes"`
 }
 
 // BtrfsBalanceRequest converts to the given profiles; a nil profile is left

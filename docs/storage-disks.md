@@ -102,14 +102,15 @@ between them. Its actions are for administrators.
 
 | Row | Action | Enabled when |
 |---|---|---|
-| Free region (GPT disk) | **Create partition**: size, the whole region by default; optionally a filesystem and label, and with them **Mount after formatting** (mount point, **Mount at boot**) | always |
+| Free region (GPT disk) | **Create partition**: size, the whole region by default; optionally a filesystem and label, and with them **Mount after formatting** (mount point, **Mount at boot**) | the disk is not a btrfs pool's [hot spare](./btrfs.md#hot-spare) |
 | Partition | **Format**: filesystem and label; **Overwrite existing data** when it already has one; the dialog names a member of an md array, LVM volume group or other set it erases | the partition is unused |
 | Partition with a filesystem, not mounted | **Mount**: mount point, **Mount at boot** | not busy, and not a btrfs pool member (pools mount from the pool view) |
 | Partition (GPT disk) | **Delete**: the confirmation names the partition, its size and its filesystem, and the md array, LVM volume group or other set it is a member of | the partition is unused |
 | Disk | **Initialize disk**: an empty GPT replaces any table; the confirmation lists every partition that will be lost and names each member of an md array or LVM volume group it erases | the disk and all its partitions are unused and the disk is writable |
 
 A disabled action's tooltip gives the reason, such as "Mounted at /srv",
-"Used by /dev/md127", "In /etc/fstab" or "Member of btrfs pool tank". A
+"Used by /dev/md127", "In /etc/fstab", "Member of btrfs pool tank" or "Hot
+spare of tank". A
 partition whose signature makes it a member of a stopped md array or an
 inactive volume group shows it under **Used by**, such as "Member of md array
 host:data", without blocking anything; Format, Delete and Initialize name it
@@ -152,17 +153,20 @@ disabled states are only hints. A device is in use when:
    and Initialize erase only once the request confirms it (below), naming
    its array, not the pool;
 4. `/etc/fstab` names it by path, `/dev/disk/by-*` link, `UUID=`,
-   `PARTUUID=`, `LABEL=` or `PARTLABEL=`.
+   `PARTUUID=`, `LABEL=` or `PARTLABEL=`;
+5. it is a btrfs pool's [hot spare](./btrfs.md#hot-spare), or a partition
+   of one, while that pool is mounted or on a connected disk (`hotSpareOf`).
 
-Format, Delete and Initialize refuse on all four, with the reason as a 409.
-Mount refuses on the first three, and on the fourth only with **Mount at
+Format, Delete and Initialize refuse on all five, with the reason as a 409.
+Mount refuses on all but the fourth, and on the fourth only with **Mount at
 boot**, so a partition already in fstab can still be mounted for now. Create
 needs a GPT disk that is not itself in use; its other partitions may be.
 Create, Format, Delete and Initialize refuse a read-only disk. Format
 overwrites any other signature only with **Overwrite existing data**.
 
-These four are the check every operation that writes a device shares
-(`deviceInUse` in `device_free.go`). md RAID add and replace also refuse a
+These five are the check every operation that writes a device shares
+(`deviceInUse` in `device_free.go`); only a btrfs Replace device in the
+spare's own pool lifts the fifth. md RAID add and replace also refuse a
 device with partitions, holders or any signature at all, naming a member of
 a btrfs pool, md array or volume group and how to free it; btrfs pools add
 their own rule (see [Which disks a pool may take](./btrfs.md#which-disks-a-pool-may-take)).
@@ -326,14 +330,23 @@ with no subprocess:
 - `/proc/swaps` and `/etc/fstab` for the in-use rule and the `inFstab` flag.
 
 Each device also reports `busy` (mounted, active swap, or used by a holder),
-`member` and, for GPT disks, `freeRegions`. `member` is what the device's
-signature makes it part of, whether that is mounted, running or active or
-not: `btrfs` with the pool label and filesystem UUID, `md` with the array
+`member`, `hotSpareOf` and, for GPT disks, `freeRegions`. `member` is what
+the device's signature makes it part of, whether that is mounted, running or
+active or not: `btrfs` with the pool label and filesystem UUID, `md` with the array
 name (`host:name`) and UUID, or `lvm` with the physical volume UUID and the
 volume group, which udev knows only from LVM's own rule once the group is
 complete (`LVM_VG_NAME_COMPLETE`). It comes from the udev database like the
 filesystem type, so it needs no privilege and also names the members of a
-mounted multi-device pool that no mount lists.
+mounted multi-device pool that no mount lists. `hotSpareOf` names the btrfs
+pool (UUID, and label as udev reports it on the pool's disks) a disk is the
+[hot spare](./btrfs.md#hot-spare) of, on the disk and its partitions, while
+udev reports a member of that pool (the checks before a write also count a
+pool the kernel mounts or a connected disk's superblock names); the
+designations are read from
+`/var/lib/linuxio/btrfs-spares.json`, which everyone may read, and a disk is
+found by the WWN, serial and size recorded there. A check before a write
+fails when the file cannot be read; `storage.get_topology` then logs it and
+lists the devices without the marks.
 
 The inventory also carries `bootEntries`: the firmware's Boot#### load
 options whose device path names a GPT partition, read from

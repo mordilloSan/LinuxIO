@@ -801,7 +801,7 @@ func TestWholeDeviceChecksReadTheSignature(t *testing.T) {
 	const want = "/dev/sdz: Member of an LVM volume group (physical volume pv9)"
 	for name, err := range map[string]error{
 		"md":    mdDeviceFree(ctx, "/dev/sdz"),
-		"btrfs": ensureBtrfsDeviceFree(ctx, "/dev/sdz", true),
+		"btrfs": ensureBtrfsDeviceFree(ctx, "/dev/sdz", true, ""),
 	} {
 		if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: err = %v, want a conflict naming %q", name, err, want)
@@ -849,7 +849,7 @@ func TestALegLeftOutOfAPoolIsStillRefused(t *testing.T) {
 			return err
 		}},
 		{"md add or replace", func() error { return mdDeviceFree(ctx, "/dev/sdb1") }},
-		{"btrfs add, replace or pool create", func() error { return ensureBtrfsDeviceFree(ctx, "/dev/sdb1", true) }},
+		{"btrfs add, replace or pool create", func() error { return ensureBtrfsDeviceFree(ctx, "/dev/sdb1", true, "") }},
 	}
 	legs := []struct {
 		name, want string

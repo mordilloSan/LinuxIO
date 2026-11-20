@@ -13,16 +13,20 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
 // No test takes the machine's fstab lock, which root alone can create, or
-// asks its systemd what it is.
+// asks its systemd what it is; and every inventory a check loads reads the
+// hot spares, never the host's.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "linuxio-storage-test")
 	if err != nil {
 		panic(err)
 	}
 	fstabLockFile = filepath.Join(dir, "fstab.lock")
+	btrfs.SparePath = filepath.Join(dir, "btrfs-spares.json")
 	unboundMountsHonoured = func(context.Context) bool { return false }
 	code := m.Run()
 	os.RemoveAll(dir)

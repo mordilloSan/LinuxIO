@@ -419,6 +419,7 @@ export interface BtrfsFilesystem {
   scrub: BtrfsScrubStatus;
   degraded: boolean;
   lowMetadataSpace: boolean;
+  spare?: BtrfsSpare;
 }
 
 export interface BtrfsJobIDRequest {
@@ -618,6 +619,38 @@ export interface BtrfsSnapshotsRequest {
   uuid: string;
   path?: string;
 }
+
+export interface BtrfsSpare {
+  disk: BtrfsSpareDisk;
+  device: string;
+  delayMinutes: number;
+  state: BtrfsSpareState;
+  reason?: string;
+}
+
+export interface BtrfsSpareDelayRequest {
+  uuid: string;
+  delayMinutes: number;
+}
+
+export interface BtrfsSpareDisk {
+  wwn?: string;
+  serial?: string;
+  sizeBytes: number;
+}
+
+export interface BtrfsSpareSetRequest {
+  uuid: string;
+  device: string;
+  delayMinutes: number;
+}
+
+export type BtrfsSpareState =
+  | "ready"
+  | "absent"
+  | "too-small"
+  | "in-use"
+  | "unknown";
 
 export interface BtrfsSubvolume {
   id: number;
@@ -3008,6 +3041,7 @@ export interface StorageBlockDevice {
   busy?: string;
   inFstab?: boolean;
   member?: StorageMember;
+  hotSpareOf?: StoragePoolRef;
   freeRegions?: StorageRegion[];
 }
 
@@ -3028,6 +3062,11 @@ export interface StorageMountResult {
   success: boolean;
   mountpoint?: string;
   warning?: string;
+}
+
+export interface StoragePoolRef {
+  uuid: string;
+  label?: string;
 }
 
 export interface StorageRegion {
@@ -4884,6 +4923,21 @@ export interface LinuxIOSchema {
       input: [request: BtrfsSnapshotsRequest];
       request: BtrfsSnapshotsRequest;
       result: BtrfsSnapshot[];
+    };
+    btrfs_spare_clear: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: void;
+    };
+    btrfs_spare_delay: {
+      input: [request: BtrfsSpareDelayRequest];
+      request: BtrfsSpareDelayRequest;
+      result: void;
+    };
+    btrfs_spare_set: {
+      input: [request: BtrfsSpareSetRequest];
+      request: BtrfsSpareSetRequest;
+      result: void;
     };
     btrfs_subvolume_create: {
       input: [request: BtrfsSubvolumeRequest];

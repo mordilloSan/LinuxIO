@@ -126,7 +126,11 @@ func loadPartitionInventory(ctx context.Context) (partitionInventory, error) {
 	if inv.fss, err = btrfsFilesystems(ctx); err != nil {
 		return inv, err
 	}
-	inv.offline, err = offlinePools(ctx)
+	if inv.offline, err = offlinePools(ctx); err != nil {
+		return inv, err
+	}
+	// A write refuses a hot spare, so designations it cannot read fail it.
+	err = markHotSpares(inv.devices, inv.fss, inv.offline)
 	return inv, err
 }
 

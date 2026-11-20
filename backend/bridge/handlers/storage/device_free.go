@@ -91,7 +91,8 @@ func memberConflict(dev string, m apischema.StorageMember) error {
 }
 
 // deviceInUse refuses dev when it is mounted, an active swap or held (Busy),
-// a member of a btrfs filesystem mounted or not, or named in /etc/fstab. A
+// a member of a btrfs filesystem mounted or not, named in /etc/fstab, or a
+// btrfs pool's hot spare or a partition of one (HotSpareOf). A
 // mount just for now (forMount without persist) ignores /etc/fstab, so a
 // partition listed there can still be mounted. Pool membership comes from
 // the kernel's and the superblocks' view (fss, offline), which also knows
@@ -130,6 +131,11 @@ func deviceInUse(dev apischema.StorageBlockDevice, fss []btrfs.BtrfsFilesystem, 
 	}
 	if dev.InFstab && (!forMount || persist) {
 		return inUse("In /etc/fstab")
+	}
+	// A pool's hot spare, or a partition of it, is kept for that pool (see
+	// markHotSpares); a replace in that pool releases it first.
+	if s := dev.HotSpareOf; s != nil {
+		return inUse("Hot spare of pool " + cmp.Or(s.Label, s.UUID) + "; remove the hot spare in the pool's details first")
 	}
 	return nil
 }

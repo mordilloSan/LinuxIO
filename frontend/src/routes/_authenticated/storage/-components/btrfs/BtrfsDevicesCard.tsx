@@ -39,6 +39,7 @@ import { formatFileSize } from "@/utils/formatters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import BtrfsBalanceDialog from "./BtrfsBalanceDialog";
+import BtrfsHotSpare from "./BtrfsHotSpare";
 import { BTRFS_POOL_TOAST_META } from "./btrfsShared";
 
 type DeviceDialog =
@@ -417,6 +418,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           maxHeight={320}
           variant="embedded"
         />
+        <BtrfsHotSpare disabled={pending} filesystem={filesystem} />
       </AppCardContent>
 
       {dialog?.kind === "add" && (
@@ -439,6 +441,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           filesystemDevices={filesystem.devices.map(({ path }) => path)}
           label="New device"
           onClose={closeDialog}
+          ownPool={uuid}
           onConfirm={(newDevice) =>
             start(() =>
               replaceDevice.mutate({

@@ -79,7 +79,7 @@ var api = apischema.Bindings(
 // which is bound to the session it acts for. Routes declares and
 // RegisterHandlers registers these same ones, so no contract route is left
 // answering "not found".
-var routes = []apischema.BindingSet{api, smartTestBindings(), btrfsRollbackBindings(), btrfsDeviceBindings(), btrfsReplicationBindings(), partitionBindings()}
+var routes = []apischema.BindingSet{api, smartTestBindings(), btrfsRollbackBindings(), btrfsDeviceBindings(), btrfsSpareBindings(), btrfsReplicationBindings(), partitionBindings()}
 
 var Routes = func() []apischema.RouteSpec {
 	var specs []apischema.RouteSpec

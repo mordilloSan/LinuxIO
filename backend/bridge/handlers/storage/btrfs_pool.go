@@ -299,6 +299,11 @@ func DestroyBtrfsPool(ctx context.Context, uuid string) error {
 		}
 	}
 	slog.Info("destroyed btrfs pool", "uuid", uuid)
+	// Its hot spare reserves nothing once no disk of the pool is left; the
+	// designation goes with it.
+	if _, err := btrfsClearSpare(ctx, uuid); err != nil {
+		slog.Warn("failed to remove the hot spare of a destroyed btrfs pool", "uuid", uuid, "error", err)
+	}
 	return nil
 }
 
