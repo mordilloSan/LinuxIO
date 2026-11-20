@@ -470,13 +470,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
         queryClient.setQueryData(uiKey, nextUI);
       }
 
-      if (
-        hasValues(pickImportantAppSettings(patch.appSettings ?? {})) ||
-        patch.assistant !== undefined ||
-        patch.docker !== undefined ||
-        patch.jobs !== undefined ||
-        patch.dismissals !== undefined
-      ) {
+      if (hasImportantPatch(patch)) {
         // A read-back answering after this change would overwrite it.
         void queryClient.cancelQueries({ exact: true, queryKey: bridgeKey });
         queryClient.setQueryData(bridgeKey, mergeBridgeConfig(bridge, patch));
