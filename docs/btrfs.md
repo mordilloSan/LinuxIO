@@ -813,7 +813,21 @@ on the Storage overview formats free disks with `mkfs.btrfs`, with the data
 and metadata profiles chosen from `single`, `dup`, `raid0`, `raid1`,
 `raid1c3`, `raid1c4` and `raid10` (`raid5` and `raid6` are refused),
 registers the disks with the kernel, mounts the pool and records it in
-`/etc/fstab` as `UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail 0 0`.
+`/etc/fstab` as
+`UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail,x-systemd.device-bound=false 0 0`.
+systemd stops a mount that comes from `/etc/fstab` when the device the mount
+names as its source goes away (`StopPropagatedFrom=` on that device's unit,
+`mount_add_device_dependencies` in systemd's `mount.c`, since 249), and a
+pool names one of its disks: pulling that disk of a raid1 pool unmounted the
+whole pool in the test VM (systemd 259), where pulling the other did not.
+`x-systemd.device-bound=false` (systemd 255; an older one reads the option's
+mere presence as bound) leaves the pool mounted, so that btrfs carries on
+with the disks it has and [Missing disks](#missing-disks) applies. A line
+without the option, written by hand or by a LinuxIO older than the option,
+keeps systemd's rule; LinuxIO does not rewrite it. Adding the option to the
+line of a pool that is mounted changes nothing until the pool is mounted
+again, as at the next boot: after `systemctl daemon-reload` the mount still
+stopped with its disk in the test VM.
 Which disks it may take is decided as for every device operation (see
 [Which disks a pool may take](#which-disks-a-pool-may-take)). The mount point
 must be an unused, empty path

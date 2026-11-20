@@ -21,7 +21,11 @@ import (
 
 // btrfsPoolFstabOptions are the mount options of a pool LinuxIO records in
 // /etc/fstab; nofail keeps a pool with a missing device from blocking boot.
-var btrfsPoolFstabOptions = []string{"defaults", "noatime", "nofail"}
+// systemd stops an fstab mount when the device the mount names as its source
+// goes away, and a pool names one member among several, so pulling that disk
+// unmounted a pool that had its other copies; x-systemd.device-bound=false
+// (systemd 255) leaves the pool mounted for btrfs to carry on without it.
+var btrfsPoolFstabOptions = []string{"defaults", "noatime", "nofail", "x-systemd.device-bound=false"}
 
 // CreateBtrfsPool validates the request, formats the member devices, mounts the
 // new pool and records it in /etc/fstab, reporting each step and, while it

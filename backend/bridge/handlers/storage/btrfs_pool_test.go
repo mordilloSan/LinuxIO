@@ -282,6 +282,27 @@ func TestCreateBtrfsPoolUndoesOnFailure(t *testing.T) {
 	}
 }
 
+// systemd stops an fstab mount when the disk the mount names as its source
+// goes away, which for a pool is one member among several.
+func TestCreateBtrfsPoolLineKeepsThePoolMountedWithoutADisk(t *testing.T) {
+	stubPoolCreate(t)
+	var options []string
+	addPoolFstab = func(_, _, _ string, o []string) error {
+		options = o
+		return nil
+	}
+	req := apischema.BtrfsPoolCreateRequest{
+		Label: "tank", Mountpoint: filepath.Join(t.TempDir(), "tank"), DataProfile: "raid1", MetadataProfile: "raid1",
+		Devices: []string{"/dev/sdb", "/dev/sdc"},
+	}
+	if _, err := CreateBtrfsPool(context.Background(), req, func(string, float64) {}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(options, "x-systemd.device-bound=false") {
+		t.Fatalf("fstab options = %q, want x-systemd.device-bound=false among them", options)
+	}
+}
+
 func TestCreateBtrfsPoolKeepsAPoolInFstab(t *testing.T) {
 	env := stubPoolCreate(t)
 	env.fail = []string{"find pool-uuid"}
