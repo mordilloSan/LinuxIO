@@ -285,17 +285,21 @@ func (h *Host) idle() bool {
 }
 
 // interruptRunning ends every running job at shutdown, suspending the
-// resumable ones, and waits for their runners.
+// resumable ones, and waits for their runners, and for the record of every job
+// that ended just before, which Recorder.Finished writes before the task is
+// Done. A job whose task ended before Started wrote its record, or before it
+// had the recorder, is finished by Started instead, on the serve goroutine or
+// a connection's, which the host waits for.
 func (h *Host) interruptRunning() {
 	ctx, cancel := jobs.DetachedContext(drainTimeout)
 	defer cancel()
-	tasks := h.rec.interruptAll()
+	running, ending := h.rec.interruptAll()
 	var wg sync.WaitGroup
-	for _, task := range tasks {
+	for _, task := range running {
 		wg.Go(func() { h.interrupt(ctx, task) })
 	}
 	wg.Wait()
-	for _, task := range tasks {
+	for _, task := range slices.Concat(running, ending) {
 		select {
 		case <-task.Done():
 		case <-ctx.Done():
@@ -329,7 +333,9 @@ func (h *Host) drainJobStreams() {
 // terminal first, so the job's own Finish leaves it interrupted. A resumable
 // task is marked interrupted before Suspend, so a handler the hook stops ends
 // interrupted, and the record its Finish wrote gets the reason and checkpoint.
-// A job its owner canceled is left to its handler, which ends it canceled.
+// A job its owner canceled is left to its handler, which ends it canceled, and
+// a task that ended on its own, as a job completes during Suspend, to its own
+// Finish, whether that reached the store first or not.
 func (h *Host) interrupt(ctx context.Context, task *bridgeipc.Task) {
 	if record, err := h.cfg.Store.Get(ctx, task.ID()); err == nil && record.CancelRequested {
 		return
@@ -340,6 +346,14 @@ func (h *Host) interrupt(ctx context.Context, task *bridgeipc.Task) {
 	checkpoint := h.suspend(ctx, task)
 	marked := false
 	record, err := h.cfg.Store.Update(ctx, task.ID(), func(r *jobs.Record) error {
+		// Read under the store lock, which Finish takes after the task ended;
+		// the task lock is never held while waiting for the store's.
+		switch task.Snapshot().State {
+		case bridgeipc.TaskStateCompleted, bridgeipc.TaskStateFailed, bridgeipc.TaskStateCanceled:
+			return nil
+		case bridgeipc.TaskStateQueued, bridgeipc.TaskStateRunning, bridgeipc.TaskStateInterrupted:
+			// Still running, or ended by this shutdown's Suspend: marked below.
+		}
 		switch {
 		case r.State == jobs.StateRunning:
 			r.State, r.FinishedAt = jobs.StateInterrupted, h.cfg.Now().UTC()

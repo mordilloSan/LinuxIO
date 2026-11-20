@@ -34,17 +34,18 @@ type recorder struct {
 	// interrupting: the shutdown has listed the running jobs to interrupt;
 	// Started interrupts a job admitted after that.
 	interrupting bool
-	// jobs holds the started jobs that have not finished; a job leaves it
-	// when it finishes, after which its progress is ignored.
+	// jobs holds the started jobs whose record is not finished. A job that
+	// ended stays until Finished has finished its record, so a shutdown
+	// waits for that write; its progress is ignored from the end on.
 	jobs map[string]*job
 }
 
 type job struct {
 	task *bridgeipc.Task
-	// created: Started has written the record. finished: Finished came
-	// first and left finishing the record to Started. resumedFrom: Started
-	// reopened the interrupted record of a resumed job, interrupted for
-	// that reason; ReasonNone for any other job.
+	// created: Started has written the record. finished: the task ended, and
+	// Finished is finishing the record, or left that to Started when it came
+	// first. resumedFrom: Started reopened the interrupted record of a
+	// resumed job, interrupted for that reason; ReasonNone for any other job.
 	created     bool
 	finished    bool
 	resumedFrom jobs.Reason
@@ -53,23 +54,29 @@ type job struct {
 	timer       *time.Timer
 }
 
+// running counts the jobs whose record is not finished, an ended one until
+// Finished has written its end.
 func (r *recorder) running() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.jobs)
 }
 
-// interruptAll lists the running jobs for the shutdown to interrupt, and makes
-// Started interrupt every job that starts from now on.
-func (r *recorder) interruptAll() []*bridgeipc.Task {
+// interruptAll lists the running jobs for the shutdown to interrupt and the
+// ended ones, whose record Finished is finishing or about to, for it to wait
+// for, and makes Started interrupt every job that starts from now on.
+func (r *recorder) interruptAll() (running, ending []*bridgeipc.Task) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.interrupting = true
-	tasks := make([]*bridgeipc.Task, 0, len(r.jobs))
 	for _, j := range r.jobs {
-		tasks = append(tasks, j.task)
+		if j.finished || j.task.IsTerminal() {
+			ending = append(ending, j.task)
+		} else {
+			running = append(running, j.task)
+		}
 	}
-	return tasks
+	return running, ending
 }
 
 // Started records a job before it runs, or moves the interrupted record of a
@@ -159,7 +166,7 @@ func (r *recorder) Progress(task *bridgeipc.Task, p bridgeipc.TaskProgress) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	j, ok := r.jobs[id]
-	if !ok {
+	if !ok || j.finished {
 		return
 	}
 	j.pending = data
@@ -207,7 +214,11 @@ func (r *recorder) stop() {
 }
 
 // Finished flushes a job's last progress and finishes its record, unless
-// Started has not written it yet.
+// Started has not written it yet, and only then drops the job. It runs on the
+// goroutine that ended the task, usually the task's own, which the host waits
+// for only through this list, so a shutdown (interruptAll) waits for the
+// write. A job Started finishes is dropped at once: Started runs on the serve
+// goroutine or a connection's, which the host waits for.
 func (r *recorder) Finished(task *bridgeipc.Task) {
 	id := task.ID()
 	r.mu.Lock()
@@ -216,7 +227,6 @@ func (r *recorder) Finished(task *bridgeipc.Task) {
 		r.mu.Unlock()
 		return
 	}
-	delete(r.jobs, id)
 	if j.timer != nil {
 		j.timer.Stop()
 		j.timer = nil
@@ -224,12 +234,21 @@ func (r *recorder) Finished(task *bridgeipc.Task) {
 	r.writeProgressLocked(id, j)
 	j.finished = true
 	created, resumedFrom := j.created, j.resumedFrom
-	r.mu.Unlock()
-	if created {
-		ctx, cancel := jobs.DetachedContext(storeTimeout)
-		defer cancel()
-		r.finish(ctx, task, resumedFrom)
+	if !created {
+		delete(r.jobs, id)
 	}
+	r.mu.Unlock()
+	if !created {
+		return
+	}
+	ctx, cancel := jobs.DetachedContext(storeTimeout)
+	defer cancel()
+	r.finish(ctx, task, resumedFrom)
+	r.mu.Lock()
+	if r.jobs[id] == j {
+		delete(r.jobs, id)
+	}
+	r.mu.Unlock()
 }
 
 // CancelRequested marks the running record of a job its owner canceled, before
@@ -238,7 +257,7 @@ func (r *recorder) CancelRequested(task *bridgeipc.Task) {
 	id := task.ID()
 	r.mu.Lock()
 	j, ok := r.jobs[id]
-	created := ok && j.created
+	created := ok && j.created && !j.finished
 	r.mu.Unlock()
 	if !created {
 		return

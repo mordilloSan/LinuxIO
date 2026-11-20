@@ -207,7 +207,11 @@ func TestRunningJobSavesItsCheckpoint(t *testing.T) {
 	saved := make(chan error, 1)
 	th := newTestHost(t, nil)
 	th.cfg.Router.Mutation("test.checkpoint", func(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
-		saved <- bridgeipc.SaveCheckpoint(ctx, map[string]any{"index": 3, "transaction": "/7_abc"})
+		// A struct, as routes save: a map's keys encode in no set order.
+		saved <- bridgeipc.SaveCheckpoint(ctx, struct {
+			Index       int    `json:"index"`
+			Transaction string `json:"transaction"`
+		}{3, "/7_abc"})
 		return th.run(ctx, nil, nil)
 	})
 	th.start()

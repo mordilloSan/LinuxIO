@@ -375,8 +375,16 @@ On SIGTERM the host interrupts each running job, in parallel:
    record's owner.
 3. The record is written `interrupted` with reason `shutdown` and the
    checkpoint, and only then is the job's context cancelled, so the cleanup
-   the cancel starts cannot turn the record `canceled`.
+   the cancel starts cannot turn the record `canceled`. A job that ended on
+   its own by then, as one that completes during its `Suspend`, is left to its
+   own `Finish`, which records how it ended and raises no interrupted alert,
+   whichever of the two reaches the store first.
 4. A job admitted as the host began to stop is interrupted the same way.
+
+A job that had just ended is not interrupted: the host waits, within the same
+100 s bound, for its record and alerts to be written before it exits, as a
+resumed job has no stream for the drain to wait on. Until then the job counts
+as running, for an idle exit, the 256-job cap and `tasks.host` too.
 
 A client attached to an interrupted job reads `job was interrupted` (`409`).
 
@@ -893,7 +901,7 @@ own lines by `job_id` (journald fields `LINUXIO_TASK_ID` and
 | `task interrupted`, `task canceled` | Info | The handler ended under a host stop or a cancel |
 | `job marked interrupted` | Info | A host start or a request marked a record, with its `reason` |
 | `job suspend failed` | Warn | A `Suspend` hook failed at shutdown; the job is interrupted without a checkpoint |
-| `job host stopped before a job ended` | Warn | The 100 s shutdown bound ran out with that job still running |
+| `job host stopped before a job ended` | Warn | The 100 s shutdown bound ran out with that job still running, or with the record and alerts of a job that had ended still being written |
 | `job resumed` / `interrupted job not resumed` | Info / Warn | A host start's resume or pick-up of a job, or why the host could not start it; a `Resume` that found nothing to follow logs `task interrupted` with why |
 | `job host refused a bridge hello` | Warn | `protocol N, want M`: an update waits for this host |
 | `job host refused a connection` | Warn | A peer of another uid |
@@ -910,7 +918,7 @@ The record itself is the quickest evidence: as root,
 | Level | Make target | Files | What |
 |---|---|---|---|
 | Go unit | `make test-go`, in `make check-backend-quiet` | `backend/common/jobs/store_test.go`, `backend/common/jobs/scheduled_test.go`, `backend/common/jobs/process_test.go` | Write policy, quick-job deletion, retention and prune, crash detection by pid and start time, history paging through equal end times, saved output chunks |
-| Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
+| Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, a stop that waits for the end of a job to be recorded, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
 | Go unit | same | `backend/bridge/internal/jobshost/pickup_test.go` | The same-boot pick-up: a crash and a stop picked up before the host serves, a stop not picked up for a route that takes crashes only, none after a reboot, a cancel, a lost job or a crash of a picked-up run; resumes after a reboot started once the host serves, and left as they were by a stop during the start; a `Resume` that finds nothing left interrupted with its reason and alert and not tried again, and one during a stop counted as the stop's; a failed resume stamped, made unresumable only for a route that resumes in the boot; a checkpoint saved while a job runs |
 | Go unit | same | `backend/bridge/handlers/storage/smart_resume_test.go`, `backend/bridge/handlers/storage/smart_test.go` | Against a fake drive (smartctl's JSON report): the drive read and saved before the test starts, a test the drive still runs followed, an ended test read from the log (completed, failed, aborted, a reset), another drive, an unreadable one, no new test, more than one, a test of another kind or a log that does not continue never taken, an NVMe drive running the other kind, Cancel aborting the test after a pick-up and in the first run, and not on a host stop, once the name is another drive's, when `-t` was refused, or when the drive runs another kind or none |
 | Go unit | same | `backend/bridge/handlers/packages/package_update_resume_test.go`, `backend/bridge/handlers/packages/packagekit_test.go` | Against a fake PackageKit on a private bus: the checkpoint saved before each package's update, a transaction followed to its end, one that ended read from the history (succeeded, failed), one PackageKit cannot account for or of another role never taken, one dropped before its role is read taken from the history, the batch's counts in the error of a job left interrupted, a non-success exit with no ErrorCode as a failure (an update and an install), Cancel sent to PackageKit after a pick-up and in the first run, refused by PackageKit, not sent while its `AllowCancel` is false (a Debug line, where a refusal is a Warn line), and not on a host stop; a cancelled install's transaction cancelled and waited for to its `Finished`, also when the cancel lands during the `InstallPackages` call, when PackageKit cannot cancel, refuses or ignores the cancel, or ends it with an error (logged), up to the install's bound or until PackageKit no longer lists it (not for one it never listed), and not for a transaction never asked to run |
@@ -1039,6 +1047,11 @@ Covered at one level only:
   is then never reported.
 - The 256-job ceiling is checked before dispatch, so concurrent starts can pass
   it by a few.
+- A job whose handler returns success after the shutdown read it as running,
+  during the record write or as its context is cancelled, ends `completed`
+  while its record stays `interrupted/shutdown` and alerted; a resumable one's
+  `Resume` hook then runs, at the start that resumes it, on work that had
+  finished.
 - A record whose error message alone exceeds 1 MiB still fails to be written
   when the job ends.
 - On the root host a live snapshot's `owner.uid` is 0 while the record holds
