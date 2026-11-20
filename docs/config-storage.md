@@ -132,6 +132,17 @@ in neither list: Docker assigns it itself after it starts, so waiting for it
 would take the whole 30 s at every boot. It is never suggested, and one typed
 into the list is marked.
 
+A container's details show the same setting from the container's side
+(`ContainerHostIPWaitHint.tsx`): under its ports, a privileged session reads
+whether Docker waits at boot for the address they are published on, and one
+that is not in the list and that the host holds now can be added from there.
+The button saves the two config fields like the settings page does, so the
+list in the Docker settings stays the only copy. When it turns the setting on,
+it leaves out stored addresses the host no longer holds, since nobody sees
+them on that page and each would cost 30 s at every boot. It reads the address from
+the container's active port bindings, which a container that is not running
+does not have.
+
 The config is stored before the drop-ins are written. When a write or the
 daemon-reload fails, the save returns the error with the setting stored, and
 saving again writes the file.

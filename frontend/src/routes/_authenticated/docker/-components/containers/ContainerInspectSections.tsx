@@ -8,6 +8,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
 import { getContainerStatusColor } from "@/constants/statusColors";
 
+import ContainerHostIPWaitHint from "./ContainerHostIPWaitHint";
+
 const Section = ({
   action,
   children,
@@ -325,6 +327,7 @@ const ContainerInspectSections = ({
               No exposed ports.
             </AppTypography>
           )}
+          <ContainerHostIPWaitHint ports={inspect.ports ?? []} />
         </Section>,
       )}
 
