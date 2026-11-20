@@ -179,6 +179,12 @@ func validateSettings(cfg *Settings) []string {
 	if _, err := ParseDockerFolders(cfg.Docker.Folders); err != nil {
 		errs = append(errs, err.Error())
 	}
+	if _, err := ParseDockerHostIPs(cfg.Docker.HostIPs); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := ValidateDockerHostIPWait(cfg.Docker); err != nil {
+		errs = append(errs, err.Error())
+	}
 	if !ValidChunkSizeMB(cfg.AppSettings.ChunkSizeMB) {
 		errs = append(errs, "appSettings.chunkSizeMB must be 0 (default) or between 1 and 32")
 	}

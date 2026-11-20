@@ -99,6 +99,51 @@ func TestApplyDockerSettingsUpdateValidatesFolders(t *testing.T) {
 	require.Equal(t, []userconfig.AbsolutePath{"/opt/a", "/opt/b"}, docker.Folders)
 }
 
+func TestApplyDockerSettingsUpdateNormalisesHostIPs(t *testing.T) {
+	docker := userconfig.Docker{Folders: []userconfig.AbsolutePath{"/srv/docker"}}
+	require.NoError(t, applyDockerSettingsUpdate(&docker, &apischema.ConfigDockerPayload{
+		WaitForHostIPs: new(true), HostIPs: []string{" 192.168.1.66 ", "2001:DB8:0::66", "::ffff:10.0.0.2"},
+	}))
+	require.True(t, docker.WaitForHostIPs)
+	require.Equal(t, []string{"192.168.1.66", "2001:db8::66", "10.0.0.2"}, docker.HostIPs)
+
+	// Off alone keeps the stored list.
+	require.NoError(t, applyDockerSettingsUpdate(&docker, &apischema.ConfigDockerPayload{WaitForHostIPs: new(false)}))
+	require.False(t, docker.WaitForHostIPs)
+	require.Equal(t, []string{"192.168.1.66", "2001:db8::66", "10.0.0.2"}, docker.HostIPs)
+
+	// A present, empty list clears it while the setting is off.
+	require.NoError(t, applyDockerSettingsUpdate(&docker, &apischema.ConfigDockerPayload{HostIPs: []string{}}))
+	require.Empty(t, docker.HostIPs)
+}
+
+func TestApplyDockerSettingsUpdateRejectsHostIPsWithoutPartialApply(t *testing.T) {
+	stored := userconfig.Docker{
+		Folders: []userconfig.AbsolutePath{"/srv/docker"}, WaitForHostIPs: true, HostIPs: []string{"192.168.1.66"},
+	}
+	for name, tt := range map[string]struct {
+		payload apischema.ConfigDockerPayload
+		message string
+	}{
+		"loopback":                 {apischema.ConfigDockerPayload{HostIPs: []string{"10.0.0.2", "127.0.0.1"}}, "loopback"},
+		"shell syntax":             {apischema.ConfigDockerPayload{HostIPs: []string{"1.2.3.4; rm -rf /"}}, "not an IP address"},
+		"on, list cleared":         {apischema.ConfigDockerPayload{HostIPs: []string{}}, "needs at least one address"},
+		"bad list with new folder": {apischema.ConfigDockerPayload{Folders: []string{"/opt/a"}, RequireMountsForFolders: new(true), HostIPs: []string{"::"}}, "unspecified"},
+	} {
+		docker := stored
+		err := applyDockerSettingsUpdate(&docker, &tt.payload)
+		require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs, name)
+		require.ErrorContains(t, err, tt.message, name)
+		require.Equal(t, stored, docker, name)
+	}
+
+	// Switching on with nothing stored is refused before anything is saved.
+	docker := userconfig.Docker{Folders: []userconfig.AbsolutePath{"/srv/docker"}}
+	err := applyDockerSettingsUpdate(&docker, &apischema.ConfigDockerPayload{WaitForHostIPs: new(true)})
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
+	require.False(t, docker.WaitForHostIPs)
+}
+
 func TestApplyJobSettingsUpdateRejectsInvalidValuesWithoutPartialApply(t *testing.T) {
 	jobs := userconfig.DefaultJobSettings()
 	err := applyJobSettingsUpdate(&jobs, &apischema.ConfigJobSettingsPayload{ProgressMinIntervalMs: new(10), ArchiveExtractWorkers: new(-1)})

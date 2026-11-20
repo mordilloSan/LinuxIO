@@ -192,6 +192,7 @@ const linuxio = {
     }),
     list_compose_projects: defineCall("docker.list_compose_projects"),
     list_containers: defineCall("docker.list_containers"),
+    list_host_ips: defineCall("docker.list_host_ips"),
     list_images: defineCall("docker.list_images"),
     list_networks: defineCall("docker.list_networks"),
     list_volumes: defineCall("docker.list_volumes"),

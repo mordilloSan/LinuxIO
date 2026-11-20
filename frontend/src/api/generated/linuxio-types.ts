@@ -875,6 +875,8 @@ export interface ConfigDockAccentGradient {
 export interface ConfigDockerPayload {
   folders?: string[];
   requireMountsForFolders?: boolean;
+  waitForHostIPs?: boolean;
+  hostIPs?: string[];
 }
 
 export interface ConfigJobSettingsPayload {
@@ -1342,6 +1344,11 @@ export interface DockerFoldersResponse {
   folders: string[];
 }
 
+export interface DockerHostIPs {
+  published: string[];
+  assigned: string[];
+}
+
 export interface DockerIconDataResponse {
   data: string;
 }
@@ -1443,6 +1450,8 @@ export interface DockerNetworkIPAMConfig {
 export interface DockerSettings {
   folders: string[];
   requireMountsForFolders: boolean;
+  waitForHostIPs: boolean;
+  hostIPs: string[];
 }
 
 export interface DockerStartedFailedResponse {
@@ -4270,6 +4279,7 @@ export interface LinuxIOSchema {
       result: ComposeProject[];
     };
     list_containers: { input: []; request: void; result: ContainerInfo[] };
+    list_host_ips: { input: []; request: void; result: DockerHostIPs };
     list_images: { input: []; request: void; result: DockerImage[] };
     list_networks: { input: []; request: void; result: DockerNetwork[] };
     list_volumes: { input: []; request: void; result: DockerVolume[] };
@@ -5498,6 +5508,7 @@ export interface LinuxIOCallSchema {
   };
   "docker.list_compose_projects": { request: void; result: ComposeProject[] };
   "docker.list_containers": { request: void; result: ContainerInfo[] };
+  "docker.list_host_ips": { request: void; result: DockerHostIPs };
   "docker.list_images": { request: void; result: DockerImage[] };
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };

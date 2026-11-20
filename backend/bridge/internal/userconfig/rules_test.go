@@ -3,6 +3,7 @@ package userconfig
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -34,6 +35,51 @@ func TestParseDockerFolders(t *testing.T) {
 		"duplicate":  {"/srv/docker", "/srv/docker/"},
 	} {
 		_, err := ParseDockerFolders(values)
+		require.Error(t, err, name)
+	}
+}
+
+func TestParseDockerHostIPs(t *testing.T) {
+	ips, err := ParseDockerHostIPs([]string{" 192.168.1.66 ", "2001:DB8:0::66", "::ffff:10.0.0.2", "169.254.10.1"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"192.168.1.66", "2001:db8::66", "10.0.0.2", "169.254.10.1"}, ips)
+
+	// The values go unquoted into a shell line that root runs at boot. The
+	// canonical text of an address holds none of $, %, quotes, spaces or
+	// newlines, whatever was sent.
+	canonical := regexp.MustCompile(`^[0-9a-f:.]+$`)
+	for _, input := range []string{"192.168.1.66", "2001:DB8::66", "::ffff:10.0.0.2", "64:ff9b::192.0.2.1", "\t10.0.0.3\n", "FD00:0:0:0:0:0:0:1"} {
+		got, parseErr := ParseDockerHostIPs([]string{input})
+		require.NoError(t, parseErr, input)
+		require.Len(t, got, 1)
+		require.Regexp(t, canonical, got[0], input)
+	}
+
+	empty, err := ParseDockerHostIPs(nil)
+	require.NoError(t, err)
+	require.NotNil(t, empty)
+	require.Empty(t, empty)
+
+	for name, values := range map[string][]string{
+		"empty address":         {""},
+		"blank address":         {"  "},
+		"unspecified IPv4":      {"0.0.0.0"},
+		"unspecified IPv6":      {"::"},
+		"loopback IPv4":         {"127.0.0.1"},
+		"loopback IPv6":         {"::1"},
+		"mapped loopback":       {"::ffff:127.0.0.1"},
+		"mapped unspecified":    {"::ffff:0.0.0.0"},
+		"zone":                  {"fe80::1%eth0"},
+		"duplicate":             {"192.168.1.66", "192.168.1.66"},
+		"duplicate by spelling": {"2001:DB8::1", "2001:db8:0::1"},
+		"duplicate by mapping":  {"10.0.0.2", "::ffff:10.0.0.2"},
+		"shell syntax":          {"1.2.3.4; rm -rf /"},
+		"command substitution":  {"$(reboot)"},
+		"prefix":                {"192.168.1.0/24"},
+		"host name":             {"localhost"},
+		"inner newline":         {"1.2.3.4\n5.6.7.8"},
+	} {
+		_, err := ParseDockerHostIPs(values)
 		require.Error(t, err, name)
 	}
 }

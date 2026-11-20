@@ -16,7 +16,7 @@ const modulePrefix = "github.com/mordilloSan/LinuxIO/backend/"
 // bridge/internal (bridge-only) or common (shared with another binary).
 var allowedHandlerEdges = map[string]map[string]string{
 	"accounts": {"control": "logs the user out through logind when the account is deleted"},
-	"config":   {"docker": "the Docker daemon mount-ordering drop-in is rewritten when its setting changes"},
+	"config":   {"docker": "the Docker startup drop-ins (mount ordering, host IP wait) are rewritten when their settings change"},
 	"capabilities": {
 		"docker": "capability probe", "memory": "capability probe", "monitoring": "the health probe reuses the daemon client",
 		"power": "capability probe", "shares": "capability probe", "storage": "capability probe", "virt": "capability probe",

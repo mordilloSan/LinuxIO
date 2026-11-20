@@ -244,8 +244,8 @@ this section states them in words:
   `bridge/handlers/register.go`. Families never import the registry.
 - **Families do not import each other**, except for the edges listed with a
   reason in `allowedHandlerEdges` (capability probes, the indexer and
-  monitoring clients, logind logoff on account deletion, the Docker
-  mount-ordering drop-in). A new edge needs a one-line reason there; code two
+  monitoring clients, logind logoff on account deletion, the Docker startup
+  drop-ins that `config.set` rewrites). A new edge needs a one-line reason there; code two
   families need is a library instead.
 - **`common` never imports a process tree.** `backend/common/*` imports only
   other `common` packages.

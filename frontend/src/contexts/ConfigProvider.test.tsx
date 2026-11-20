@@ -109,6 +109,8 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     docker: {
       folders: ["/srv/docker"],
       requireMountsForFolders: false,
+      waitForHostIPs: false,
+      hostIPs: [],
     },
     jobs: {
       archiveCompressionWorkers: 2,

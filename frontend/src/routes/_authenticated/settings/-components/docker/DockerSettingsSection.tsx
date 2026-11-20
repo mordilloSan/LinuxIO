@@ -27,6 +27,7 @@ import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
 import DockerDaemonSettingsSection from "./DockerDaemonSettingsSection";
+import DockerHostIPWaitSetting from "./DockerHostIPWaitSetting";
 import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
 
 const normalizePathInput = (value: string): string => {
@@ -332,6 +333,38 @@ const DockerSettingsSection = () => {
           </FrostedCard>
         ))}
 
+        <FrostedCard hoverLift={!isSaving} style={{ padding: 0 }}>
+          <AppButton
+            color="inherit"
+            disabled={isSaving}
+            fullWidth
+            onClick={handleAddFolder}
+            style={{
+              alignItems: "center",
+              borderRadius: "inherit",
+              display: "flex",
+              gap: "var(--app-space-6)",
+              justifyContent: "flex-start",
+              minWidth: 0,
+              opacity: isSaving ? 0.65 : 1,
+              padding: 12,
+              textAlign: "left",
+            }}
+          >
+            <div style={folderIconStyle}>
+              <Icon height={22} icon="mdi:plus" width={22} />
+            </div>
+            <div>
+              <AppTypography fontWeight={600} variant="body2">
+                Add Docker folder
+              </AppTypography>
+              <AppTypography color="text.secondary" variant="caption">
+                Add another directory for compose stacks.
+              </AppTypography>
+            </div>
+          </AppButton>
+        </FrostedCard>
+
         <FrostedCard
           hoverLift
           {...cardBodyToggleProps({
@@ -378,38 +411,6 @@ const DockerSettingsSection = () => {
           />
         </FrostedCard>
 
-        <FrostedCard hoverLift={!isSaving} style={{ padding: 0 }}>
-          <AppButton
-            color="inherit"
-            disabled={isSaving}
-            fullWidth
-            onClick={handleAddFolder}
-            style={{
-              alignItems: "center",
-              borderRadius: "inherit",
-              display: "flex",
-              gap: "var(--app-space-6)",
-              justifyContent: "flex-start",
-              minWidth: 0,
-              opacity: isSaving ? 0.65 : 1,
-              padding: 12,
-              textAlign: "left",
-            }}
-          >
-            <div style={folderIconStyle}>
-              <Icon height={22} icon="mdi:plus" width={22} />
-            </div>
-            <div>
-              <AppTypography fontWeight={600} variant="body2">
-                Add Docker folder
-              </AppTypography>
-              <AppTypography color="text.secondary" variant="caption">
-                Add another directory for compose stacks.
-              </AppTypography>
-            </div>
-          </AppButton>
-        </FrostedCard>
-
         <div
           style={{
             display: "flex",
@@ -429,6 +430,10 @@ const DockerSettingsSection = () => {
             {isSaving ? "Saving..." : "Save"}
           </AppButton>
         </div>
+      </div>
+
+      <div style={{ marginTop: "var(--app-space-6)" }}>
+        <DockerHostIPWaitSetting />
       </div>
 
       <div style={{ marginTop: "var(--app-space-6)" }}>

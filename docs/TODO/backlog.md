@@ -44,6 +44,15 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+- A settings save the bridge refuses leaves the new value on the page:
+  **checked**. `updateConfig` (`frontend/src/contexts/ConfigProvider.tsx`)
+  writes the value to the config cache before `config.set` answers and
+  `enqueueSave` does not put the old one back on a failure, so after the error
+  toast the Docker folders, both Docker startup switches and the other
+  settings show what was typed until the page is reloaded. Restore the cache
+  from the snapshot taken before the patch, or reload the config, when the
+  save fails.
+
 ## Tests that are missing
 
 ## Needs a real machine or a measurement
@@ -63,6 +72,15 @@ after a change that issues ioctls).
   pool holds the dead disk, a hot-plug that resets the link rather than
   removing the disk), and a kernel with `btrfs_remove_bdev` (7.1), are not
   run.
+
+- Docker's wait for published host IPs
+  ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips))
+  has unit tests of the drop-in text and no boot test: **needs a host**. On a
+  Netplan host where the address arrives late, turn the setting on, check
+  `systemctl cat docker.service` and `systemd-analyze verify docker.service`,
+  reboot, and confirm the container that publishes on the address starts. On
+  a host whose address is already on a handoff bridge, confirm with
+  `systemd-analyze blame` that `docker.service` does not wait 30 s.
 
 ## Later, no plan yet
 
@@ -138,6 +156,16 @@ Memory overflow:
 - `undoZramEnable` reads `/proc/swaps` and then stops the service, so a zram
   device that appears between the two is stopped without a room check. The
   window is a few milliseconds and the device would hold almost nothing.
+
+Docker startup:
+
+- Waiting for a network card instead of an IP address before Docker starts.
+  A later address on the same card would need no edit, but the card is picked
+  by name, its name would be a second free-text value in a shell line root
+  runs at boot, and a bridge handoff moves the address off the card, so the
+  handoff would have to rewrite the drop-in inside the network manager's
+  rollback window
+  ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips)).
 
 Without sudo:
 

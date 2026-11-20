@@ -72,6 +72,12 @@ type PersistedAppSettings struct {
 type Docker struct {
 	Folders                 []AbsolutePath `json:"folders" yaml:"folders"`
 	RequireMountsForFolders bool           `json:"requireMountsForFolders" yaml:"requireMountsForFolders"`
+	// WaitForHostIPs makes docker.service wait at startup until every address
+	// in HostIPs is assigned. HostIPs holds canonical addresses
+	// (ParseDockerHostIPs) and is kept while the setting is off; an empty list
+	// is left out of the file, so it loads as it was before it was saved.
+	WaitForHostIPs bool     `json:"waitForHostIPs" yaml:"waitForHostIPs"`
+	HostIPs        []string `json:"hostIPs" yaml:"hostIPs,omitempty"`
 }
 
 // Assistant holds the user's ACP agent choice for the Assistant page and, per

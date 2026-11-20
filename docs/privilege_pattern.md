@@ -48,7 +48,7 @@ A new route that changes the host therefore fails the test until it declares the
 - the Assistant routes, which run the session user's own `claude` CLI and write only under that user's home ([Assistant](./AI-assistant.md#plugins));
 - `terminal.open`, the session user's own shell;
 - `tasks.cancel`, `tasks.watch`, `tasks.data` and `tasks.events`, the caller's own jobs;
-- `config.set`, `config.set_ui` and the two `system.dismiss_*` routes, which write the session user's own settings (`config.set` refuses its one root-only Docker field in the handler);
+- `config.set`, `config.set_ui` and the two `system.dismiss_*` routes, which write the session user's own settings (`config.set` refuses its three root-only Docker fields in the handler: `docker.requireMountsForFolders`, `docker.waitForHostIPs` and `docker.hostIPs`, which end in a systemd drop-in for `docker.service`, and `docker.folders` too while the mount setting is on; see [Bridge Configuration Storage](./config-storage.md#docker-startup-settings));
 - reads that are not `RetrySafe()`: the Docker update checks and icons, the log and download streams, `network.get_network_info` and `system.get_health_summary`.
 
 ### Root acting in the session user's folders

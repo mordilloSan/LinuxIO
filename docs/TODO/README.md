@@ -5,7 +5,6 @@ the API, jobs, scheduled scripts and consistency.
 
 Plans for things that are not built yet each have their own document:
 
-- [Docker: wait for published host IPs](./docker-wait-host-ips.md)
 - [Frontend test coverage](./e2e-testing.md)
 - [Memory overflow: LinuxIO's own swap file](./memory-own-swap-file.md)
 - [Package-managed installation](./packaging.md)
