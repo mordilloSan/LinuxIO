@@ -24,8 +24,13 @@
   filter: blur(0);
 }
 
+/* Pinned to the corner of whatever box positions it: left where it falls in
+   the text, it is laid out past the end of a scroller it sits in (a chat with
+   a code block) and makes the page around that scroller scroll too. */
 .app-copy-result__status {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;
