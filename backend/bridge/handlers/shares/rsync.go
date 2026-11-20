@@ -33,7 +33,7 @@ var (
 	rsyncSystemConfigFile = "/etc/rsyncd.conf"
 	rsyncSecretsFile      = version.ConfigDir + "/rsyncd.secrets"
 	rsyncUnitFile         = "/etc/systemd/system/" + rsyncUnit
-	rsyncLockFile         = "/run/lock/linuxio-rsync.lock"
+	rsyncLockFile         = "/run/linuxio-rsync.lock"
 	rsyncLookPath         = exec.LookPath
 	rsyncStopUnit         = systemd.StopUnit
 	rsyncStartUnit        = systemd.StartUnit

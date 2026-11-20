@@ -323,8 +323,10 @@ func mkdirShareDir(dir string) error {
 }
 
 // confLockFile serialises every read-modify-write of smb.conf and
-// /etc/exports; a var so tests can use a temp path.
-var confLockFile = "/run/lock/linuxio-shares.lock"
+// /etc/exports. It is in /run, which root alone writes: in /run/lock any
+// local user could create the file first and keep root from opening it. A
+// var so tests can use a temp path.
+var confLockFile = "/run/linuxio-shares.lock"
 
 func withConfLock(ctx context.Context, fn func() error) error {
 	return filelock.RunExclusive(ctx, confLockFile, fn, filelock.WithTimeout(10*time.Second))

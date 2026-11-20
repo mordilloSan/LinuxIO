@@ -3,6 +3,8 @@ package filelock
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,5 +162,34 @@ func TestAcquireExclusiveRejectsInvalidOwnership(t *testing.T) {
 				t.Fatalf("lock exists after rejected ownership: %v", statErr)
 			}
 		})
+	}
+}
+
+// A lock root takes must be where root alone creates files. /run/lock and
+// /var/lock are world-writable with the sticky bit: any local user can create
+// the lock file first, and root then cannot open it (fs.protected_regular),
+// or hold its lock for good, so the operation it guards never runs.
+func TestNoLockLivesInAWorldWritableFolder(t *testing.T) {
+	var found []string
+	err := filepath.WalkDir("../..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if strings.Contains(line, `"/run/lock/`) || strings.Contains(line, `"/var/lock/`) {
+				found = append(found, fmt.Sprintf("%s:%d: %s", path, i+1, strings.TrimSpace(line)))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) > 0 {
+		t.Fatalf("paths in a world-writable lock folder; use /run, which root alone writes:\n%s", strings.Join(found, "\n"))
 	}
 }

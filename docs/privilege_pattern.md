@@ -88,6 +88,20 @@ A `..` the page sends after a link is taken on the path as sent, `/home/u/data/.
 
 One resolution is bounded as one path lookup by the kernel is: it follows at most 40 links in all, wherever they sit (a folder on the way, the last name, inside another link's target), and a loop or a longer chain fails with `ELOOP`. Since a link's target can name some two thousand folders, it also opens at most 4096 names before it fails with `ENAMETOOLONG`, which no path a person browses comes near; os.Root bounds its walks the same way. A resolution where a request's path enters, and every read's, stops between two names when its request is cancelled, so a listing of a folder full of crafted links costs at most that much per link and ends with the request. The handle walks a change makes itself (`linksafe.OpenDirNoUserLinks`, `linksafe.OpenNearestDirNoUserLinks`) take no cancel and run to their bound of 40 links and 4096 names.
 
+### Lock files
+
+A lock a root process takes lives in `/run` (`/run/linuxio-fstab.lock`,
+`/run/linuxio-shares.lock`, `/run/linuxio-rsync.lock`,
+`/run/linuxio-docker-update.lock`), or beside the state file it guards under
+`/var/lib/linuxio`: folders root alone writes. `/run/lock` and `/var/lock`
+are world-writable with the sticky bit, so any local user can create the
+lock file there first. Root then cannot open it at all
+(`fs.protected_regular`), or the user holds its `flock` for good, and the
+privileged operation it guards, an fstab or share edit, never runs.
+`TestNoLockLivesInAWorldWritableFolder` in `backend/common/filelock` fails on
+a path in either folder. `/run` is a tmpfs, so a lock left by an older
+LinuxIO under `/run/lock` is gone at the next boot.
+
 ### In the frontend
 
 The server's 403 is the gate; the page only avoids offering what will be refused. A control whose route is privileged is hidden for a session without sudo, read from `useAuth().privileged` or a route's `requiresPrivileged` access policy, and a privileged read that a page mounted for such a session would make is not issued. What is gated today:
