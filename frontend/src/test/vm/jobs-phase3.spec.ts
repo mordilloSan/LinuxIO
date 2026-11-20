@@ -762,6 +762,13 @@ async function mountedAtBoot(uuid: string) {
 const hashFiles = () =>
   vmSsh(`sudo sh -c 'cd ${RESYNC_DIR} && sha256sum -- *.bin' 2>&1 || true`);
 
+/** The lines of `btrfs device stats` for disk whose counter is not zero. */
+const raisedCounters = async (disk: string) =>
+  (await vmSsh(`sudo btrfs device stats /dev/${disk}`))
+    .trim()
+    .split("\n")
+    .filter((line) => !/\s0$/.test(line));
+
 // docs/btrfs.md (Missing disks): a pool that ran with a disk missing is
 // resynced once the disk is back, and a power cut mid-scrub is continued by
 // the next resync, which the health check starts two minutes after the boot.
@@ -991,13 +998,17 @@ btrfs filesystem df ${POOL_MOUNT}
       /^(Data|Metadata|System), single:/m,
     );
     expect(await storedAlert(`btrfs/resync-${uuid}`)).toBeNull();
-    expect(await storedAlert(`btrfs/resynced-${uuid}`)).toMatchObject({
+    const resynced = await storedAlert(`btrfs/resynced-${uuid}`);
+    console.log(`btrfs/resynced-${uuid}: ${JSON.stringify(resynced)}`);
+    expect(resynced).toMatchObject({
       message: expect.stringContaining(`corrected ${done.correctedErrors} `),
     });
-    // The corrections raised the returned disk's error counters, which keep
-    // the health alert up after the resync (docs/TODO/backlog.md).
-    console.log(
-      `btrfs/health-${uuid} after the resync: ${JSON.stringify(await storedAlert(`btrfs/health-${uuid}`))}`,
+    // The scrub counted the stale copies it rewrote as errors of the
+    // returned disk; the resync that made the pool whole reset them there,
+    // so no health alert is left and nobody resets them by hand.
+    expect(await storedAlert(`btrfs/health-${uuid}`)).toBeNull();
+    expect(await raisedCounters(stale), `${stale}'s error counters`).toEqual(
+      [],
     );
 
     // The returned disk alone holds every file, and every copy on it checks.
@@ -1007,6 +1018,10 @@ btrfs filesystem df ${POOL_MOUNT}
     await vmSsh(
       `sudo btrfs device scan --forget && sudo mount -o degraded,ro /dev/${stale} ${POOL_MOUNT}`,
     );
+    expect(
+      await raisedCounters(stale),
+      `${stale}'s error counters as the mount read them from the disk, the resync having committed their reset`,
+    ).toEqual([]);
     expect(await hashFiles(), `${stale} alone holds every file`).toBe(hashes);
     const check = await vmSsh(
       `sudo btrfs scrub start -B -R -r /dev/${stale} 2>&1; echo "exit $?"`,
@@ -1038,13 +1053,14 @@ btrfs filesystem df ${POOL_MOUNT}
     throw error;
   } finally {
     // Every disk back, the pool mounted whole as the later checks want it,
-    // with its fill.bin, and the health checks running again. The scrub
-    // repaired the returned disk, which raised its error counters; they are
-    // reset and the health check resolves the alert they raised. A resync
-    // left running, or one that health check starts after a failure while
-    // the pool still reads degraded, ends before the later checks scrub. A
-    // cleanup that fails is logged, so it does not hide the check's own
-    // failure.
+    // with its fill.bin, and the health checks running again. A run that
+    // failed before the resync reset the returned disk's error counters
+    // leaves them raised, which the next run's episode would keep as the
+    // disk's own; they are reset here, a no-op after a run that passed. A
+    // resync left running, or one that health check starts after a failure
+    // while the pool still reads degraded, ends before the later checks
+    // scrub. A cleanup that fails is logged, so it does not hide the check's
+    // own failure.
     await vmSsh(
       "sudo bash -s",
       `mnt=${POOL_MOUNT}

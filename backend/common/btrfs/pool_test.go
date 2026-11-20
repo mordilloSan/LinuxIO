@@ -222,7 +222,7 @@ func TestMountPool(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("mount = %v, want %v", got, want)
 	}
-	if states, err := loadPoolStates(); err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 7, Degraded: true, Present: []uint64{1}}) {
+	if states, err := loadPoolStates(); err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 7, Degraded: true, Present: []uint64{1}, Missing: []missingDisk{{ID: 2, UUID: "00000000-0000-0000-0000-000000000000"}}, Since: states[dataUUID].Since}) || states[dataUUID].Since == 0 {
 		t.Fatalf("state = %+v, %v; want generation 7, degraded on devid 1", states, err)
 	}
 	if info, err := os.Stat(target); err != nil || !info.IsDir() {

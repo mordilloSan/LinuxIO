@@ -82,7 +82,7 @@ filesystems, covering pools created after install.
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
 | `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing or the boot check refused to mount it, and then says why) | the pool is mounted |
 | `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
-| `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default) | dismissed, or the next resync starts |
+| `btrfs/resynced-<uuid>` | info; a warning when its scrub found uncorrectable errors, which it counts in its title, or while a device of the pool still counts errors, for which it says why | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default); it names the returned disks whose error counters it reset or kept | dismissed, or the next resync starts |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
 longer exist are dropped by the timer, the resync unit's run alert
@@ -133,7 +133,7 @@ path above).
 
 The record lives in `/var/lib/linuxio/btrfs-pools.json`: every mount LinuxIO
 makes and every health run notes each pool's generation, and while a pool runs
-degraded, which disks take its writes. A disk that dies while the pool is
+degraded, which disks take its writes and which miss them. A disk that dies while the pool is
 mounted is only recorded by the next health run, so a crash within those ten
 minutes, followed by only the dead disk coming back, is not caught. The
 recorded generation can belong to a transaction a crash then loses, which
@@ -215,6 +215,79 @@ with the experimental remap tree (kernel 7.0 and later, built with
 `CONFIG_BTRFS_EXPERIMENTAL`), which relocates by a raw copy with no
 checksum check.
 
+**Error counters.** The scrub counts each stale copy it finds on the
+returned disk as an error of that disk, repaired or not: a data copy whose
+checksum fails as a corruption error, a tree block of an older generation as
+a generation error (`scrub_stripe_report_errors` in 7.0; 6.8's scrub counts
+none), and a read that hit a stale data copy before counted a corruption
+error there too (`btrfs_data_csum_ok`). Nothing but a reset lowers a
+counter, so they would keep the health alert up beside the *whole again*
+notice.
+
+After a resync that ended whole, its own scrub record finished with no
+uncorrectable error and no replace running, suspended or finished during the
+episode, LinuxIO resets the counters of a disk the episode recorded missing
+if and only if the kernel uses it under the same device ID and UUID, its
+read, write and flush counters are all zero, and its counters were all zero
+the last time LinuxIO saw the pool whole, or, with no such record, when it
+went missing. It resets with `BTRFS_IOC_GET_DEV_STATS` and
+`BTRFS_DEV_STATS_RESET`, the call `btrfs device stats -z` makes, which
+zeroes all five counters of a device (`btrfs_get_dev_stats`), so what it
+clears is the corruption and generation errors of the stale copies. In every
+other case the disk keeps all its counters, the health alert stays, and a
+warning in the journal and the notice say why. A disk that counts any failed
+read, write or flush is never reset by LinuxIO, whatever the cause, so a
+disk that dropped out of a mounted pool, which counted the writes and
+flushes that failed as it went (`btrfs_log_dev_io_error`), keeps them. Once
+someone has looked at a disk, `btrfs device stats -z` clears its counters;
+LinuxIO offers no reset of its own.
+
+Every health run that sees a pool whole outside an episode saves each
+device's counters (`counters` in `btrfs-pools.json`), and so does the end of
+an episode. The episode records each disk missing as it opens (`missing`) by
+device ID and UUID, since a disk added after a removal can take a freed ID
+(`find_next_devid`), with the counters saved for it; a disk that goes
+missing later in the same episode is recorded with what it reads then. A
+replace puts a new disk under the missing disk's ID and UUID
+(`btrfs_dev_replace_finishing`), which holds no stale copy: LinuxIO's own
+replace drops that disk from the episode, and the resync resets nothing in a
+pool whose last replace, as `BTRFS_IOC_DEV_REPLACE` reports it, finished
+after the episode began or still runs. A disk that stayed present is never
+reset, and neither is any disk in an attempt that failed, was stopped or
+found uncorrectable errors, nor in an episode an older LinuxIO recorded
+without its missing disks.
+
+The reset opens the pool once, checks that the mount holds it, and issues
+every ioctl on that descriptor; a disk counts as in use as the inventory
+reads it (`devinfo/<id>/missing` and `writeable`). The kernel writes a reset
+to the device tree at its next commit (`btrfs_run_dev_stats` in
+`commit_cowonly_roots`), which the reset does not start, and 7.0 does not
+commit at unmount without a running transaction (`btrfs_commit_super`; 6.8
+starts one): with the commit below disabled by hand, the root test on
+7.0.0-44 read the counters back at the next mount with no write in between,
+an observation no step of the suite repeats. The resync therefore commits on
+every attempt that ends whole with a recorded disk in use, whether or not
+that attempt reset anything: it sets the label to itself, since
+`BTRFS_IOC_SET_FSLABEL` starts a transaction and commits it whatever the
+label (`btrfs_ioctl_set_fslabel`), under `btrfs-label.lock`, which a rename
+through LinuxIO takes too. The reset and the commit run outside the pool
+record's lock and before the resync ends the episode, so a crash at any
+point leaves an episode the next resync ends the same way, on counters
+already zero and with the commit made again. They go on past a stop of the
+resync, with two minutes at most for the mount lookup and the label lock;
+the ioctls themselves block as long as the kernel does, and setting the
+label of a frozen filesystem waits for it to thaw. Since a disk is reset
+only with its write and flush counters at zero, the scrub's check of them
+(`failedWritesSince`) reads the same before and after, and a retry does not
+scan it again. Each reset is one journal line with the pool, the device and
+every counter as the kernel returned it, a warning when a read, write or
+flush failed in the instant between the check and the reset. The notice
+says what the scrub corrected by its own record, names the counters reset,
+and while any device of the pool still counts errors is a warning that says
+why each does. The resync refreshes the pool's alerts as it ends, so the
+health alert clears at once when no device counts errors. A health run that
+cannot read the pool records leaves the resync alerts as they are.
+
 A failed resync is retried by the next health run, without scrubbing again
 once the scrub finished. **Stop check** on a resync counts as a failed
 attempt too. When a power loss cuts the resync's convert, the
@@ -247,12 +320,15 @@ marked failed and its end hook raises no run alert of its own
 ([Alerts](./alerts.md#who-writes-with-no-session)); a resync that could not
 find its pool or read its state, or whose worker is killed, fails its run
 and gets that run alert.
-Uncorrectable scrub errors go to the scrub alert. Files with copy-on-write
-disabled (`nodatacow`, common for VM images) have no checksums, so a scrub
-cannot tell their stale copies; replace a disk that returns to a pool holding
-such files instead. A disk that keeps failing writes while still attached is
-not counted as missing: the health alert reports its error counters, and a
-scrub once it is fixed repairs what it missed.
+Uncorrectable scrub errors go to the scrub alert, which stays up at error
+severity until a later scrub finds none, and the *whole again* notice of
+that resync is a warning that says how many errors could not be corrected;
+that resync resets no counters. Files with copy-on-write disabled
+(`nodatacow`, common for VM images) have no checksums, so a scrub cannot
+tell their stale copies; replace a disk that returns to a pool holding such
+files instead. A disk that keeps failing writes while still attached is not
+counted as missing: the health alert reports its error counters, and a scrub
+once it is fixed repairs what it missed.
 
 ### Known limits
 
@@ -267,6 +343,30 @@ scrub once it is fixed repairs what it missed.
   default, or as the `commit=` mount option sets), so a power cut within one
   commit interval of a failed write can lose the rise, and the continued
   resync then trusts that disk's offset.
+- The saved counters are a health run's, every ten minutes: corruption or
+  generation errors a disk counted between the last run that saw the pool
+  whole and its dropout are reset with the stale copies'; the journal line
+  keeps them.
+- A corruption or generation error is counted alike whatever caused it, so
+  every one the returned disk counted during the episode is reset with the
+  stale copies' counts: bit rot or writes the disk lost, found by the scrub
+  or by an ordinary read, also while it was back in use and another disk was
+  still missing. The journal line and the notice keep the counts.
+- A pool with no saved counters, as in a state an older LinuxIO wrote or a
+  pool that lost a disk before any health run saw it whole, uses the counters
+  each disk read once it was missing.
+- The reset does not cover a disk that dropped out of a mounted pool, which
+  keeps the writes that failed; on a kernel without `btrfs_remove_bdev` such
+  a dropout opens no episode while the pool stays mounted, and none at all
+  when the disk is back before the next mount ([backlog](./TODO/backlog.md)).
+- The kernel keeps only the last replace: a replace that finished during the
+  episode followed by one that was cancelled hides the first. An episode
+  start taken from a clock running ahead at boot can be later than a
+  replace's stop time. A suspended replace that cannot resume keeps every
+  reset from happening, the safe side.
+- The commit reads the label and sets it again: a rename by hand (`btrfs
+  filesystem label`) in the moment between the two is put back; a rename
+  through LinuxIO waits for the lock.
 - A scrub started from the pool details between two resync attempts replaces
   the resync's saved progress, and the resync then starts over; once the
   resync's scrub had finished, it also costs one failed attempt, since the
@@ -998,7 +1098,8 @@ btrfsmaintenance timers.
 | `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-worker degraded` at boot |
 | `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-worker resync <uuid>` |
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem, and a running one's progress; written under `btrfs-scrub.json.lock` |
-| `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, whether and on which disks it ran degraded, and the run of the episode's resync scrub (`resyncRun`) |
+| `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, whether and on which disks it ran degraded, when the episode began, the disks it ran without with their error counters as the pool was last seen whole or as they went missing, each device's error counters as a health run or the end of an episode last saw the pool whole, and the run of the episode's resync scrub (`resyncRun`) |
+| `/var/lib/linuxio/btrfs-label.lock` | root | Lock taken around every label change, the resync's commit of a counter reset included |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
 | `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |

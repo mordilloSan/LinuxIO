@@ -171,6 +171,11 @@ type devStatsArgs struct {
 	Unused  [121]uint64
 }
 
+// devStatsReset is BTRFS_DEV_STATS_RESET: GET_DEV_STATS returns the counters
+// and zeroes all five of the device, whatever nr_items asks for
+// (volumes.c btrfs_get_dev_stats).
+const devStatsReset = 1 << 0
+
 // balanceFilter mirrors struct btrfs_balance_args.
 type balanceFilter struct {
 	Profiles   uint64
@@ -278,6 +283,7 @@ const (
 	replaceStatusState       = 0
 	replaceStatusPerMill     = 8
 	replaceStatusTimeStarted = 16 // seconds since the epoch, kept across a power loss
+	replaceStatusTimeStopped = 24 // seconds since the epoch; 0 before any replace ended
 )
 
 // replaceResultNotStarted is also what a cancel reports when it canceled
@@ -331,6 +337,16 @@ var fsIoctl = func(mountpoint string, req uintptr, arg unsafe.Pointer) error {
 	}
 	defer unix.Close(fd)
 	return ioctlFD(fd, req, arg)
+}
+
+// openMount opens the filesystem mounted at mnt, for a sequence of ioctls
+// that must all act on that one filesystem; a var so tests can fake it.
+var openMount = func(mnt string) (int, error) {
+	fd, err := unix.Open(mnt, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, fmt.Errorf("open %s: %w", mnt, err)
+	}
+	return fd, nil
 }
 
 // ioctlFD issues one ioctl on fd, an open descriptor on the filesystem; a

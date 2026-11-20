@@ -379,6 +379,7 @@ func Replace(ctx context.Context, uuid string, id int, newDevice string, report 
 		}
 		return fmt.Errorf("replace device %d: %w", id, err)
 	}
+	forgetReplacedDisk(ctx, uuid, id)
 	return nil
 }
 
@@ -492,6 +493,7 @@ func ResumeReplace(ctx context.Context, uuid string, id int, since time.Time, re
 		if !slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id && !d.Missing }) {
 			return fmt.Errorf("the replace of device %d finished, but the device is missing from pool %s", id, uuid)
 		}
+		forgetReplacedDisk(ctx, uuid, id)
 		return nil
 	case state == replaceStateSuspended:
 		return fmt.Errorf("the kernel suspended the replace of device %d; remount the pool to continue it", id)
@@ -805,8 +807,10 @@ func SetLabel(ctx context.Context, uuid, label string) error {
 	}
 	var buf [labelSize]byte
 	copy(buf[:], label)
-	if err := fsIoctl(mnt, iocSetFSLabel, unsafe.Pointer(&buf)); err != nil {
-		return fmt.Errorf("set label: %w", err)
-	}
-	return nil
+	return withLabelLock(ctx, func() error {
+		if err := fsIoctl(mnt, iocSetFSLabel, unsafe.Pointer(&buf)); err != nil {
+			return fmt.Errorf("set label: %w", err)
+		}
+		return nil
+	})
 }

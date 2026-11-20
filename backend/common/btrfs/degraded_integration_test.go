@@ -236,6 +236,7 @@ func TestBtrfsDegradedIntegration(t *testing.T) {
 	m.resyncRepairsTheReturnedDisk()
 	m.returnedDiskHoldsEverything()
 	writeErrorsFailTheResync(t, dir)
+	mountedDropoutKeepsItsCounters(t, dir)
 }
 
 // writeWithHoles fills the data chunk mkfs made, then writes files into
@@ -397,7 +398,61 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 	if !m.hasAlert("resynced-"+m.uuid, fmt.Sprintf("corrected %d ", final.CorrectedErrors)) || m.hasAlert("resync-"+m.uuid, "") {
 		t.Fatal("the alerts do not say the pool is whole again with every correction")
 	}
+	m.resyncResetTheReturnedDisksCounters()
 	m.unmount()
+}
+
+// device returns the pool's device at path dev, with its error counters as
+// the kernel reads them.
+func (m *itMirror) device(dev string) BtrfsDevice {
+	m.t.Helper()
+	fs := m.filesystem()
+	i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.Path == dev })
+	if i < 0 {
+		m.t.Fatalf("no device %s in %+v", dev, fs.Devices)
+	}
+	return fs.Devices[i]
+}
+
+// resyncResetTheReturnedDisksCounters: the scrub counted the stale copies it
+// rewrote on a as errors of a (7.0 scrub.c scrub_stripe_report_errors), and
+// the resync that made the pool whole reset them there, not on b, so no
+// health alert is left. The resync commits the reset by setting the label
+// to itself, which keeps the label: with no write in between, a mount then
+// reads the counters as zero from the device tree.
+func (m *itMirror) resyncResetTheReturnedDisksCounters() {
+	t := m.t
+	doc, err := alerts.Load()
+	m.must("alerts", err)
+	var notice string
+	for _, x := range doc.Alerts {
+		if x.Key == "resynced-"+m.uuid {
+			notice = x.Message
+		}
+	}
+	a, b := m.device(m.a.dev), m.device(m.b.dev)
+	t.Logf("after the resync %s (devid %d) counts %+v and %s (devid %d) %+v; the notice: %q", m.a.dev, a.ID, a.Errors, m.b.dev, b.ID, b.Errors, notice)
+	switch {
+	case a.Errors != (BtrfsDeviceErrors{}):
+		t.Fatalf("the returned disk's error counters after the resync = %+v, want them reset", a.Errors)
+	case strings.Contains(notice, m.b.dev+" ("):
+		t.Fatalf("the notice names %s, which stayed present: %q", m.b.dev, notice)
+	case m.hasAlert("health-"+m.uuid, ""):
+		t.Fatal("the health alert is still up after the resync")
+	case m.filesystem().Label != "linuxio-degraded":
+		t.Fatalf("label after the resync = %q, want it kept", m.filesystem().Label)
+	}
+
+	m.unmount()
+	m.mountComplete("the resynced pool")
+	if got := m.device(m.a.dev).Errors; got != (BtrfsDeviceErrors{}) {
+		t.Fatalf("with no write since the resync, the mount read %s's error counters as %+v from the disk, want the committed reset", m.a.dev, got)
+	}
+	// The health run's check of this pool.
+	RaiseAlerts(m.ctx, m.filesystem())
+	if m.hasAlert("health-"+m.uuid, "") {
+		t.Fatal("a health check after the mount raised the health alert again")
+	}
 }
 
 // resyncWithItsConvertCut runs the continued resync until its convert has
@@ -632,6 +687,9 @@ func fstabStyleMountUnit(t *testing.T, uuid, where, present string) func() {
 // next resync scrubs it again, after which that disk alone holds every file.
 func writeErrorsFailTheResync(t *testing.T, dir string) {
 	f := newFlakyMirror(t, dir)
+	// The health run saw the pool whole, with no errors counted.
+	_, err := recordFilesystems(f.pool.ctx, []BtrfsFilesystem{f.pool.filesystem()})
+	f.pool.must("record the pool whole", err)
 	f.writeWithoutTheFlakyDisk()
 	p := f.pool
 	devices := p.filesystem().Devices
@@ -662,6 +720,17 @@ func writeErrorsFailTheResync(t *testing.T, dir string) {
 	p.must("the resync once the disk works again", Resync(p.ctx, p.uuid, nil))
 	if states, _ := loadPoolStates(); states[p.uuid].Degraded {
 		t.Fatalf("state after the resync = %+v", states[p.uuid])
+	}
+	// The writes that failed during the earlier attempts are faults of the
+	// disk while it was back, not of its absence: the resync that ended
+	// whole keeps them, and the health alert stays.
+	flaky := p.filesystem().Devices[i]
+	doc, err := alerts.Load()
+	p.must("alerts", err)
+	health := slices.ContainsFunc(doc.Alerts, func(x alerts.Alert) bool { return x.Key == "health-"+p.uuid })
+	t.Logf("after the resync that ended whole %s counts %+v; health alert up: %v", flaky.Path, flaky.Errors, health)
+	if flaky.Errors.Write == 0 || !health {
+		t.Fatalf("the failed writes of the earlier attempts were reset (%+v, health alert %v); want them kept", flaky.Errors, health)
 	}
 	f.flakyDiskHoldsEverything()
 }
@@ -766,6 +835,105 @@ func (f *flakyMirror) flakyDiskHoldsEverything() {
 	status, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	if err != nil || status.ErrorCount != 0 {
 		p.t.Fatalf("scrub of the disk alone = %+v, %v; want no errors", status, err)
+	}
+	p.must("unmount", unix.Unmount(p.mnt, 0))
+}
+
+// mountedDropoutKeepsItsCounters: a disk of a pool of its own fails while
+// the pool is mounted, as a disk that drops out does, and counts the reads,
+// writes and flushes that fail as it goes. 7.0 as Ubuntu builds it marks no
+// disk missing while it stays attached, so the episode begins at the next
+// mount, without the disk, as at a boot. The disk comes back and the resync
+// makes the pool whole. LinuxIO never resets a disk that counts a failed
+// read, write or flush: its counters, the failed writes included, and the
+// health alert stay, and the notice is a warning that says why.
+func mountedDropoutKeepsItsCounters(t *testing.T, dir string) {
+	a := newLoopDisk(t, filepath.Join(dir, "da.img"), 3<<30)
+	b := newLoopDisk(t, filepath.Join(dir, "db.img"), 3<<30)
+	drop := newDMDisk(t, "linuxio-it-dropout", b.dev)
+	p := &itPool{t: t, ctx: t.Context(), mnt: filepath.Join(dir, "dmnt")}
+	// Registered after the disks, so it runs before they are removed.
+	t.Cleanup(func() { _ = unix.Unmount(p.mnt, 0) })
+	uuid, err := CreatePool(p.ctx, "linuxio-dropout", "raid1", "raid1", []string{a.dev, drop.dev}, true, nil, nil)
+	p.must("create pool", err)
+	p.uuid = uuid
+	t.Cleanup(func() {
+		for _, dev := range []string{a.dev, drop.dev} {
+			_ = controlIoctl(iocForgetDev, dev)
+		}
+	})
+	dropped := func() BtrfsDevice {
+		t.Helper()
+		devices := p.filesystem().Devices
+		i := slices.IndexFunc(devices, func(d BtrfsDevice) bool { return canonicalPath(d.Path) == drop.dev })
+		if i < 0 {
+			t.Fatalf("no member on %s: %+v", drop.dev, devices)
+		}
+		return devices[i]
+	}
+	write := func(prefix string, n int) {
+		for i := range n {
+			writeRandom(t, filepath.Join(p.mnt, fmt.Sprintf("%s-%02d.bin", prefix, i)), 16<<20)
+		}
+		unix.Sync()
+	}
+	mountWhole := func(what string) {
+		t.Helper()
+		pools, findErr := FindOfflinePools(p.ctx, []string{a.dev, drop.dev})
+		if findErr != nil || len(pools) != 1 || len(pools[0].Devices) != 2 {
+			t.Fatalf("offline pools of %s = %+v, %v", what, pools, findErr)
+		}
+		p.must("mount "+what, MountOfflinePool(p.ctx, pools[0], p.mnt, []string{"noatime"}, false))
+	}
+	p.must("mount", MountPool(p.ctx, a.dev, p.mnt, []string{"noatime"}, false))
+	write("before", 8)
+	// The health run sees the pool whole and saves its counters.
+	_, err = recordFilesystems(p.ctx, []BtrfsFilesystem{p.filesystem()})
+	p.must("record the pool whole", err)
+
+	drop.fail()
+	write("dropout", 4)
+	gone := dropped()
+	t.Logf("%s (devid %d) after its dropout counts %+v", drop.dev, gone.ID, gone.Errors)
+	if gone.Errors.Write == 0 {
+		t.Fatalf("the dropout counted no failed write on %s: %+v", drop.dev, gone.Errors)
+	}
+	p.must("unmount", unix.Unmount(p.mnt, 0))
+
+	p.must("forget the dropped disk", controlIoctl(iocForgetDev, drop.dev))
+	pools, err := FindOfflinePools(p.ctx, []string{a.dev})
+	if err != nil || len(pools) != 1 {
+		t.Fatalf("offline pools without the disk = %+v, %v", pools, err)
+	}
+	p.must("mount degraded", MountOfflinePool(p.ctx, pools[0], p.mnt, []string{"noatime"}, true))
+	states, err := loadPoolStates()
+	p.must("pool state", err)
+	if want := []missingDisk{{ID: uint64(gone.ID), UUID: gone.UUID, Whole: true}}; !slices.Equal(states[p.uuid].Missing, want) {
+		t.Fatalf("missing disks of the episode = %+v, want %+v, with the counters of the pool whole", states[p.uuid].Missing, want)
+	}
+	write("degraded", 8)
+	p.must("unmount", unix.Unmount(p.mnt, 0))
+
+	drop.heal()
+	p.must("register the returned disk", RegisterDevice(drop.dev))
+	mountWhole("the pool with its disk back")
+	p.must("resync", Resync(p.ctx, p.uuid, nil))
+	back := dropped()
+	doc, err := alerts.Load()
+	p.must("alerts", err)
+	var notice alerts.Alert
+	health := false
+	for _, x := range doc.Alerts {
+		switch x.Key {
+		case "resynced-" + p.uuid:
+			notice = x
+		case "health-" + p.uuid:
+			health = true
+		}
+	}
+	t.Logf("after the resync %s counts %+v; health alert up: %v; the notice (%s): %q", drop.dev, back.Errors, health, notice.Severity, notice.Message)
+	if back.Errors.Write == 0 || !health || notice.Severity != alerts.SeverityWarning || !strings.Contains(notice.Message, "kept its error counters") || !strings.Contains(notice.Message, "it counts a failed read, write or flush") {
+		t.Fatalf("after the resync %s counts %+v, health alert %v, notice %+v; want the failed writes kept, the alert up and a warning saying why", drop.dev, back.Errors, health, notice)
 	}
 	p.must("unmount", unix.Unmount(p.mnt, 0))
 }

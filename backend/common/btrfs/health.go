@@ -208,7 +208,9 @@ func CheckHealth(ctx context.Context) ([]string, error) {
 	var resync []string
 	for _, fs := range filesystems {
 		RaiseAlerts(ctx, fs)
-		if raiseResyncAlert(ctx, fs, states[fs.UUID]) {
+		// Without the states, an episode reads as none: the resync alert
+		// stays as it was and no resync starts.
+		if states != nil && raiseResyncAlert(ctx, fs, states[fs.UUID]) {
 			resync = append(resync, fs.UUID)
 		}
 		live[fs.UUID] = true

@@ -87,6 +87,7 @@ func TestDevReplaceStatusMatchesKernel(t *testing.T) {
 		"replace_state offset": {replaceStatusState, unsafe.Offsetof(status.ReplaceState)},
 		"progress_1000 offset": {replaceStatusPerMill, unsafe.Offsetof(status.Progress1000)},
 		"time_started offset":  {replaceStatusTimeStarted, unsafe.Offsetof(status.TimeStarted)},
+		"time_stopped offset":  {replaceStatusTimeStopped, unsafe.Offsetof(status.TimeStopped)},
 		"STATE_STARTED":        {replaceStateStarted, 1},
 		"STATE_FINISHED":       {replaceStateFinished, 2},
 		"STATE_CANCELED":       {replaceStateCanceled, 3},
@@ -164,5 +165,23 @@ func TestKernelCodeMessages(t *testing.T) {
 	}
 	if msg := kernelCode(99).Error(); msg != "kernel refused with code 99" {
 		t.Errorf("kernelCode(99) = %q", msg)
+	}
+}
+
+// The flag and layout of BTRFS_IOC_GET_DEV_STATS the reset relies on, from
+// include/uapi/linux/btrfs.h: BTRFS_DEV_STATS_RESET and the values in
+// enum btrfs_dev_stat_values order (write, read, flush, corruption,
+// generation) after devid, nr_items and flags.
+func TestDevStatsResetMatchesKernel(t *testing.T) {
+	var a devStatsArgs
+	for name, c := range map[string]struct{ got, want uintptr }{
+		"BTRFS_DEV_STATS_RESET":     {devStatsReset, 1},
+		"values offset":             {unsafe.Offsetof(a.Values), 24},
+		"BTRFS_DEV_STAT_VALUES_MAX": {uintptr(len(a.Values)), 5},
+		"struct size":               {unsafe.Sizeof(a), 1032},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %d, want %d", name, c.got, c.want)
+		}
 	}
 }

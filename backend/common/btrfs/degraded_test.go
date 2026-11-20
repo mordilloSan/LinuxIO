@@ -295,7 +295,7 @@ func TestMountDegradedPoolsMountsWhatFstabMounts(t *testing.T) {
 		t.Fatalf("calls = %v, want %v", *calls, want)
 	}
 	states, err := loadPoolStates()
-	if err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 91, Degraded: true, Present: []uint64{1, 2}}) {
+	if err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 91, Degraded: true, Present: []uint64{1, 2}, Missing: []missingDisk{{ID: 3, UUID: "00000000-0000-0000-0000-000000000000"}}, Since: states[dataUUID].Since}) || states[dataUUID].Since == 0 {
 		t.Fatalf("state = %+v, %v", states, err)
 	}
 }
@@ -480,7 +480,7 @@ func TestResyncScrubsThenConvertsSoftly(t *testing.T) {
 	if balanced.Flags != balanceData || balanced.Data.Flags != balanceArgsConvert|balanceArgsSoft || balanced.Data.Target != bgRaid1 {
 		t.Fatalf("balance = %+v, want a soft data convert to raid1", balanced)
 	}
-	if states, _ := loadPoolStates(); !reflect.DeepEqual(states[dataUUID], poolState{Generation: 9}) {
+	if states, _ := loadPoolStates(); !reflect.DeepEqual(states[dataUUID], poolState{Generation: 9, Counters: states[dataUUID].Counters}) {
 		t.Fatalf("state = %+v, want the degraded mark cleared", states[dataUUID])
 	}
 	if !slices.Contains(k.Calls(), "SCRUB 1") {
@@ -664,7 +664,10 @@ func wantScrubCalls(t *testing.T, k *fakeKernel, want ...string) {
 // wantWhole checks that the resync ended the episode.
 func wantWhole(t *testing.T) {
 	t.Helper()
-	if states, _ := loadPoolStates(); !reflect.DeepEqual(states[dataUUID], poolState{Generation: 9}) {
+	states, _ := loadPoolStates()
+	got := states[dataUUID]
+	got.Counters = nil // the episode's end saves them, the next one's baseline
+	if !reflect.DeepEqual(got, poolState{Generation: 9}) {
 		t.Fatalf("state = %+v, want the degraded mark and the resync run cleared", states[dataUUID])
 	}
 }

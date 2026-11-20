@@ -61,6 +61,17 @@ type poolState struct {
 	// Present holds the devids that took the writes while the pool last ran
 	// degraded; every other disk missed them.
 	Present []uint64 `json:"present,omitempty"`
+	// Missing holds the disks missing then, which missed the writes: the
+	// resync resets their error counters once it made them whole.
+	Missing []missingDisk `json:"missing,omitempty"`
+	// Counters are each device's error counters as the health run last saw
+	// the pool whole outside an episode: the baseline of a disk that goes
+	// missing, read before its dropout raised them.
+	Counters []deviceCounters `json:"counters,omitempty"`
+	// Since is when the episode began, in seconds since the epoch: a
+	// replace that finished after it may have put a new disk under a
+	// missing disk's devid and UUID.
+	Since int64 `json:"since,omitzero"`
 	// Scrubbed is set once Resync's scrub finished, so a retry after a
 	// failed convert does not scrub the whole pool again.
 	Scrubbed bool `json:"scrubbed"`
@@ -83,16 +94,26 @@ type poolState struct {
 // episode, so a cause that needs a person does not scrub every ten minutes.
 const maxResyncAttempts = 3
 
-// markDegraded notes that only the present devices take the writes. It
-// starts a new episode: writes made now can land below the offsets a resync
-// scrub saved, so the next resync scrubs everything again.
+// markDegraded notes that only the present devices take the writes, and
+// which miss them: as the episode opens, each with its counters as the pool
+// was last seen whole; later, a disk newly missing with what it reads now,
+// beside those the episode already holds. Each call starts the resync
+// over: writes made now can land below the offsets a resync scrub saved, so
+// the next resync scrubs everything again.
 func (s *poolState) markDegraded(devices []BtrfsDevice) {
+	opening := !s.Degraded
+	if opening {
+		s.Missing, s.Since = nil, time.Now().Unix()
+	}
 	s.Degraded, s.Scrubbed, s.Present, s.ResyncRun = true, false, nil, ""
 	s.ConvertData, s.ConvertMetadata = "", ""
 	s.ResyncFailures, s.ResyncError = 0, ""
 	for _, d := range devices {
-		if !d.Missing {
+		switch {
+		case !d.Missing:
 			s.Present = append(s.Present, uint64(d.ID))
+		case !slices.ContainsFunc(s.Missing, func(m missingDisk) bool { return m.ID == uint64(d.ID) && m.UUID == d.UUID }):
+			s.Missing = append(s.Missing, s.newMissingDisk(d, opening))
 		}
 	}
 }
@@ -178,8 +199,9 @@ func recordMount(ctx context.Context, mnt string, degraded bool) {
 	}
 }
 
-// recordFilesystems notes the generation of every mounted filesystem and
-// marks the degraded ones, and returns the states.
+// recordFilesystems notes the generation of every mounted filesystem, marks
+// the degraded ones, saves the error counters of each it sees whole outside
+// an episode, and returns the states.
 func recordFilesystems(ctx context.Context, filesystems []BtrfsFilesystem) (map[string]poolState, error) {
 	var states map[string]poolState
 	err := updatePoolStates(ctx, func(s map[string]poolState) {
@@ -192,8 +214,11 @@ func recordFilesystems(ctx context.Context, filesystems []BtrfsFilesystem) (map[
 			}
 			state := s[fs.UUID]
 			state.Generation = max(state.Generation, info.Generation)
-			if fs.Degraded {
+			switch {
+			case fs.Degraded:
 				state.markDegraded(fs.Devices)
+			case !state.Degraded && fs.HealthKnown:
+				state.Counters = deviceCountersOf(fs.Devices)
 			}
 			s[fs.UUID] = state
 		}
@@ -482,15 +507,16 @@ func convertTargets(allocation []BtrfsAllocation) (data, meta *string) {
 // only fixed when a read happens to hit them. A scrub checks every copy and
 // rewrites the stale ones from good ones; a soft convert then moves chunks
 // written without redundancy to the pool's most redundant profile. The
-// degraded mark is cleared once both are done; a scrub that found
-// uncorrectable errors is reported by the scrub alert and not run again,
-// and one cut short is continued by the episode's next resync. A failure
-// is recorded so the health run gives up after maxResyncAttempts.
-// report, when not nil, is given the scrub's percentage as it advances. A
-// failure the pool's alerts report, refreshed here, is marked
-// scheduledrun.Reported; one that left them as they were is not.
+// degraded mark is cleared once both are done, and the error counters the
+// scrub raised on the returned disks are reset (resetReturnedCounters); a
+// scrub that found uncorrectable errors is reported by the scrub alert and
+// not run again, and one cut short is continued by the episode's next
+// resync. A failure is recorded so the health run gives up after
+// maxResyncAttempts. report, when not nil, is given the scrub's percentage
+// as it advances. A failure the pool's alerts report, refreshed here, is
+// marked scheduledrun.Reported; one that left them as they were is not.
 func Resync(ctx context.Context, uuid string, report func(percent float64)) error {
-	err := resync(ctx, uuid, report)
+	out, err := resync(ctx, uuid, report)
 	// A disk that drops out starts a new episode, not a failed resync.
 	if err != nil && ctx.Err() == nil && !errors.Is(err, errDiskMissing) {
 		if recErr := updatePoolStates(ctx, func(s map[string]poolState) {
@@ -502,17 +528,18 @@ func Resync(ctx context.Context, uuid string, report func(percent float64)) erro
 			return errors.Join(err, recErr)
 		}
 	}
-	if refreshResyncAlerts(ctx, uuid, err == nil) {
+	if refreshResyncAlerts(ctx, uuid, err == nil, out) {
 		return scheduledrun.Reported(err)
 	}
 	return err
 }
 
 // refreshResyncAlerts updates the pool's alerts when a resync ends rather
-// than at the next health run, and on success says the pool is whole again
-// unless the notification settings report resync failures only. It reports
-// whether the pool's health was known and its alerts were brought up to date.
-func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) bool {
+// than at the next health run, and on success says the pool is whole again,
+// with what became of the returned disks' error counters, unless the
+// notification settings report resync failures only. It reports whether the
+// pool's health was known and its alerts were brought up to date.
+func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool, out resyncOutcome) bool {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		slog.Warn("failed to refresh btrfs alerts after resync", "uuid", uuid, "error", err)
@@ -526,12 +553,19 @@ func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) bool {
 	RaiseAlerts(ctx, fs)
 	raiseResyncAlert(ctx, fs, states[uuid])
 	if resynced && alerts.NotificationsOrDefaults().ReportFor(alerts.KindResync) == alerts.ReportChanges {
-		raise(ctx, alerts.Observation{
-			Key: "resynced-" + uuid, Severity: alerts.SeverityInfo,
-			Title:   "Pool " + poolName(fs.Label, uuid) + " is whole again",
-			Message: fmt.Sprintf("The returned disk was resynced: the scrub corrected %d stale or damaged copies, and data written while it was missing has its redundancy back.", fs.Scrub.CorrectedErrors),
-			Link:    "/storage?pool=" + uuid, OccurrenceID: strconv.FormatInt(time.Now().Unix(), 10),
-		})
+		raise(ctx, resyncedObservation(fs, out))
+	}
+	if resynced && fs.HealthKnown && !fs.Degraded {
+		// The counters as the episode ends, kept or reset, are the baseline
+		// of a disk that drops out before the next health run.
+		if err := updatePoolStates(ctx, func(s map[string]poolState) {
+			if state := s[uuid]; !state.Degraded {
+				state.Counters = deviceCountersOf(fs.Devices)
+				s[uuid] = state
+			}
+		}); err != nil {
+			slog.Warn("failed to record btrfs pool state", "uuid", uuid, "error", err)
+		}
 	}
 	return fs.HealthKnown
 }
@@ -680,54 +714,55 @@ func checkConverted(ctx context.Context, uuid string) error {
 // errDiskMissing stops a resync while the pool lacks a disk.
 var errDiskMissing = errors.New("a disk is missing")
 
-func resync(ctx context.Context, uuid string, report func(percent float64)) error {
+func resync(ctx context.Context, uuid string, report func(percent float64)) (resyncOutcome, error) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
-		return err
+		return resyncOutcome{}, err
 	}
 	if fs.Degraded {
-		return fmt.Errorf("pool %s: %w; mount it again once every disk is back", uuid, errDiskMissing)
+		return resyncOutcome{}, fmt.Errorf("pool %s: %w; mount it again once every disk is back", uuid, errDiskMissing)
 	}
 	// Without the layout the chunks left without redundancy go unseen.
 	if !fs.HealthKnown || len(fs.Allocation) == 0 {
-		return fmt.Errorf("could not read the devices and allocation of pool %s", uuid)
+		return resyncOutcome{}, fmt.Errorf("could not read the devices and allocation of pool %s", uuid)
 	}
 	states, err := loadPoolStates()
 	if err != nil {
-		return err
+		return resyncOutcome{}, err
 	}
 	// A scrub an older build noted has no run, so no record can prove it:
 	// the first resync after the upgrade scrubs.
 	scrubbed := states[uuid].Scrubbed && states[uuid].ResyncRun != ""
 	run, err := resyncRunOf(ctx, uuid)
 	if err != nil {
-		return err
+		return resyncOutcome{}, err
 	}
 	if !scrubbed {
 		if err := resyncScrub(ctx, uuid, run, report); err != nil {
-			return err
+			return resyncOutcome{}, err
 		}
 	}
 	data, meta := convertTargets(fs.Allocation)
 	if data != nil || meta != nil {
 		if err := resyncConvert(ctx, uuid, data, meta); err != nil {
-			return err
+			return resyncOutcome{}, err
 		}
 	}
 	// It refuses a pool that went degraded meanwhile as a new episode, before
 	// new single chunks could read as chunks left to convert.
 	if err := confirmScrubbed(ctx, uuid, run); err != nil {
-		return err
+		return resyncOutcome{}, err
 	}
 	// By the rule that started the convert, system chunks with metadata.
 	if err := checkConverted(ctx, uuid); err != nil {
-		return err
+		return resyncOutcome{}, err
 	}
+	out := resetReturnedCounters(ctx, uuid, run)
 	if err := clearDegraded(ctx, uuid); err != nil {
-		return err
+		return resyncOutcome{}, err
 	}
 	slog.Info("btrfs pool resynced", "uuid", uuid, "converted", data != nil || meta != nil)
-	return nil
+	return out, nil
 }
 
 // resyncScrub scrubs the whole pool as the episode's resync run and notes
@@ -858,8 +893,8 @@ func clearDegraded(ctx context.Context, uuid string) error {
 	if err := updatePoolStates(ctx, func(s map[string]poolState) {
 		state := s[uuid]
 		if cleared = state.Scrubbed; cleared {
-			state.Degraded, state.Scrubbed, state.Present, state.ResyncRun = false, false, nil, ""
-			state.ConvertData, state.ConvertMetadata = "", ""
+			state.Degraded, state.Scrubbed, state.Present, state.Missing, state.ResyncRun = false, false, nil, nil, ""
+			state.Since, state.ConvertData, state.ConvertMetadata = 0, "", ""
 			state.ResyncFailures, state.ResyncError = 0, ""
 			s[uuid] = state
 		}

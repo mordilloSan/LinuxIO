@@ -45,10 +45,13 @@ type fakeKernel struct {
 	replaceStart    func(*devReplaceArgs) error
 	replaceStatus   func() (state, perMill uint64)
 	replaceStarted  uint64                 // STATUS time_started, seconds since the epoch
+	replaceStopped  uint64                 // STATUS time_stopped, seconds since the epoch
+	onCall          func(call string)      // sees RESET_DEV_STATS and SET_FSLABEL as they happen
 	replaceCancel   func() (result uint64) // nil: every cancel is taken
 	remove          func(id uint64) error
 	removing        atomic.Bool // the remove hook has started
 	statsFail       atomic.Bool // GET_DEV_STATS fails, as when the kernel cannot be asked
+	statsResetFail  error       // what a GET_DEV_STATS that resets fails with; nil resets
 
 	cancelled  chan struct{} // closed on the first cancel of any operation
 	cancelOnce sync.Once
@@ -81,6 +84,47 @@ func (k *fakeKernel) setErrors(id uint64, write, flush uint64) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	k.devices[id].stats[0], k.devices[id].stats[2] = write, flush
+}
+
+// setCounters sets every error counter of device id.
+func (k *fakeKernel) setCounters(id uint64, e BtrfsDeviceErrors) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.devices[id].stats = [5]uint64{e.Write, e.Read, e.Flush, e.Corruption, e.Generation}
+}
+
+// counters returns the error counters of device id.
+func (k *fakeKernel) counters(id uint64) BtrfsDeviceErrors {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	s := k.devices[id].stats
+	return BtrfsDeviceErrors{Write: s[0], Read: s[1], Flush: s[2], Corruption: s[3], Generation: s[4]}
+}
+
+// devStats is one GET_DEV_STATS call: the values up to nr_items, and with
+// BTRFS_DEV_STATS_RESET all five zeroed (volumes.c btrfs_get_dev_stats).
+func (k *fakeKernel) devStats(a *devStatsArgs) error {
+	if k.statsFail.Load() {
+		return unix.EIO
+	}
+	d, ok := k.devices[a.DevID]
+	if !ok {
+		return unix.ENODEV
+	}
+	k.mu.Lock() // setErrors changes them while a scrub runs
+	defer k.mu.Unlock()
+	if a.Flags&devStatsReset != 0 && k.statsResetFail != nil {
+		return k.statsResetFail
+	}
+	copy(a.Values[:min(a.NrItems, 5)], d.stats[:])
+	if a.Flags&devStatsReset != 0 {
+		d.stats = [5]uint64{}
+		k.calls = append(k.calls, fmt.Sprintf("RESET_DEV_STATS %d", a.DevID))
+		if k.onCall != nil {
+			k.onCall(fmt.Sprintf("RESET_DEV_STATS %d", a.DevID))
+		}
+	}
+	return nil
 }
 
 func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
@@ -116,17 +160,7 @@ func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 		a.TotalBytes, a.BytesUsed = d.total, d.used
 		k.mu.Unlock()
 	case iocGetDevStats:
-		if k.statsFail.Load() {
-			return unix.EIO
-		}
-		a := (*devStatsArgs)(arg)
-		d, ok := k.devices[a.DevID]
-		if !ok {
-			return unix.ENODEV
-		}
-		k.mu.Lock() // setErrors changes them while a scrub runs
-		a.Values = d.stats
-		k.mu.Unlock()
+		return k.devStats((*devStatsArgs)(arg))
 	case iocSpaceInfo:
 		a := (*spaceArgs)(arg)
 		a.TotalSpaces = uint64(len(k.spaces))
@@ -161,6 +195,9 @@ func (k *fakeKernel) mutate(req uintptr, arg unsafe.Pointer) error {
 	case iocSetFSLabel:
 		k.label = cstring((*[labelSize]byte)(arg)[:])
 		k.log("SET_FSLABEL %s", k.label)
+		if k.onCall != nil {
+			k.onCall("SET_FSLABEL " + k.label)
+		}
 	case iocScrub:
 		return k.scrubCall((*scrubArgs)(arg))
 	case iocScrubCancel:
@@ -238,12 +275,13 @@ func (k *fakeKernel) replace(a *devReplaceArgs) error {
 		}
 	case replaceCmdStatus:
 		if k.replaceStatus == nil {
-			return unix.ENOTCONN
+			return nil // never started: every field zero, as the kernel reports it
 		}
 		state, perMill := k.replaceStatus()
 		putU64(a.Params[:], replaceStatusState, state)
 		putU64(a.Params[:], replaceStatusPerMill, perMill)
 		putU64(a.Params[:], replaceStatusTimeStarted, k.replaceStarted)
+		putU64(a.Params[:], replaceStatusTimeStopped, k.replaceStopped)
 	case replaceCmdCancel:
 		k.log("REPLACE_CANCEL")
 		if k.replaceCancel != nil {
@@ -292,6 +330,19 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 	oldIoctl, oldCtl, oldSize, oldInterval, oldProgs, oldFlush, oldSys := fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir, flushDevice, sysFSBtrfs
 	flushDevice, sysFSBtrfs = func(string) error { return nil }, sys
 	fsIoctl = k.ioctl
+	// A descriptor of the mount is one of a folder of its own, which the
+	// kernel answers; any other descriptor goes on as before.
+	mountDir, oldOpen, oldFD := t.TempDir(), openMount, ioctlFD
+	openMount = func(string) (int, error) {
+		return unix.Open(mountDir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	}
+	ioctlFD = func(fd int, req uintptr, arg unsafe.Pointer) error {
+		if path, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", fd)); err == nil && path == mountDir {
+			return k.ioctl(mountDir, req, arg)
+		}
+		return oldFD(fd, req, arg)
+	}
+	t.Cleanup(func() { openMount, ioctlFD = oldOpen, oldFD })
 	balanceCtl = func(mnt string, cmd uintptr) error {
 		arg := int32(cmd)
 		return k.ioctl(mnt, iocBalanceCtl, unsafe.Pointer(&arg))

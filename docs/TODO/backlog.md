@@ -59,15 +59,22 @@ after a change that issues ioctls).
   `local-fs.target`, which a `nofail` mount is not part of. The owner
   decides whether the boot check also mounts a complete fstab pool whose
   device systemd did not find, and whether resumes wait for those mounts.
-- After a resync that corrected stale copies, the returned disk's
-  corruption and generation error counters stay raised, so
-  `btrfs/health-<uuid>` (*needs attention*, "Device errors were reported")
-  stays up beside the *whole again* notice, and LinuxIO cannot reset the
-  counters (`btrfs device stats -z` by hand). `errorOccurrence` in
-  `backend/common/btrfs/health.go` counts them; the resync check of
-  `jobs-phase3.spec.ts` logs the alert and resets the counters in its
-  cleanup. The owner decides whether the resync resets the returned disk's
-  counters, or the pool details offer a reset.
+
+- On a kernel without `btrfs_remove_bdev` (before 6.19, and 6.19 or 7.0
+  built without `CONFIG_BTRFS_EXPERIMENTAL`, as Ubuntu's 7.0.0-44 is; 7.1
+  always has it), a disk that drops out of a mounted pool stays listed and
+  in use, so LinuxIO opens no episode while the pool stays mounted, and none
+  at all, with no resync, when the disk is back before the next mount. Data written during the dropout has a
+  single good copy, on the other disks, until someone scrubs: a second disk
+  failure then loses it while the pool reads raid1 and whole, and a file
+  without checksums (`nodatacow`) can read stale data from the returned
+  disk. The test VM showed it on 7.0.0-44: a disk unplugged from the guest's
+  PCI bus while the pool was written came back, after a remount, with
+  131072 stale data copies that a read-only scrub found. What the
+  administrator sees is the health alert the failed writes raise (*needs
+  attention*). The owner decides whether a member whose block device went
+  away counts as missing, which would open the episode, and the resync with
+  it, while the pool is still mounted.
 
 ## Tests that are missing
 
