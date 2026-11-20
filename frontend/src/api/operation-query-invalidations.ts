@@ -440,6 +440,7 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "storage.btrfs_spare_set": BTRFS_DEVICE_KEYS,
   "storage.btrfs_spare_delay": BTRFS_DEVICE_KEYS,
   "storage.btrfs_spare_clear": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_auto_rebuild": BTRFS_DEVICE_KEYS,
   "storage.btrfs_pool_create": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_destroy": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_mount": BTRFS_POOL_KEYS,

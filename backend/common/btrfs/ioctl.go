@@ -277,6 +277,12 @@ const (
 	replaceStateCanceled  = 3
 	replaceStateSuspended = 4 // an unmount stopped it; the next rw mount resumes it
 
+	// BTRFS_IOCTL_DEV_REPLACE_CONT_READING_FROM_SRCDEV_MODE_AVOID: the copy
+	// reads another mirror first and the source only when no other copy
+	// exists (scrub.c scrub_submit_initial_read); _ALWAYS (0) reads the
+	// source first.
+	replaceReadAvoid = 1
+
 	// Offsets inside Params.
 	replaceSrcDevID          = 0
 	replaceContReading       = 8

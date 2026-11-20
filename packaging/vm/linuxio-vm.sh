@@ -363,12 +363,20 @@ start_seed() {
 	done
 }
 
+# The data disks carry a serial, as real disks do, so udev gives each one an
+# identity (ID_SERIAL, /dev/disk/by-id/virtio-linuxio-vdb): LinuxIO's hot spare
+# and its automatic rebuild recognise a disk by it (docs/btrfs.md). It names
+# the slot, not the volume, and is at most 20 bytes, virtio's limit.
+serial_of() { echo "linuxio-$1"; }
+
 define_domain() {
-	local disks="" path i
+	local disks="" path i serial
 	local -r vols=("$SYSTEM_VOL" "${DATA_VOLS[@]}") devs=(vda vdb vdc vdd vde)
 	for i in "${!vols[@]}"; do
 		path="$(v vol-path --pool "$POOL" "${vols[i]}")"
-		disks+="<disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file='${path}'/><target dev='${devs[i]}' bus='virtio'/></disk>"
+		serial=""
+		((i == 0)) || serial="<serial>$(serial_of "${devs[i]}")</serial>"
+		disks+="<disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file='${path}'/><target dev='${devs[i]}' bus='virtio'/>${serial}</disk>"
 	done
 	v define /dev/stdin >/dev/null <<EOF
 <domain type='kvm'>
@@ -1063,8 +1071,24 @@ reset() {
 	domain_exists || die "${DOMAIN} does not exist; run make vm-create"
 	if [[ "$(domain_state)" != "shut off" ]]; then v destroy "$DOMAIN" >/dev/null; fi
 	v snapshot-revert "$DOMAIN" "$SNAPSHOT"
+	disk_serials
 	rm -f "${STATE}/installed"
 	say "${DOMAIN} reverted to ${SNAPSHOT} and stopped; the next VM target starts it"
+}
+
+# Gives the data disks of the stopped domain their serials (serial_of) when
+# its definition has none: a VM created before they existed, whose clean
+# snapshot keeps the definition a revert brings back. make vm-update takes
+# the snapshot again with them.
+disk_serials() {
+	local xml dev
+	xml="$(v dumpxml --inactive "$DOMAIN")" || die "cannot read the definition of ${DOMAIN}"
+	[[ $xml != *"<serial>$(serial_of vdb)</serial>"* ]] || return 0
+	for dev in vdb vdc vdd vde; do
+		xml="${xml/"<target dev='${dev}' bus='virtio'/>"/"<target dev='${dev}' bus='virtio'/><serial>$(serial_of "$dev")</serial>"}"
+	done
+	v define /dev/stdin >/dev/null <<<"$xml" || die "cannot give the data disks of ${DOMAIN} their serials"
+	say "${DOMAIN}: the data disks have serials now"
 }
 
 # Bring the clean snapshot up to date: revert to it, upgrade every package,

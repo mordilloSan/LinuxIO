@@ -67,6 +67,9 @@ type missingDisk struct {
 	UUID   string            `json:"uuid"`
 	Errors BtrfsDeviceErrors `json:"errors,omitzero"`
 	Whole  bool              `json:"whole,omitzero"`
+	// At is when the episode recorded the disk missing, in seconds since the
+	// epoch: the hot spare's delay counts from it.
+	At int64 `json:"at,omitzero"`
 }
 
 // newMissingDisk records d, which just went missing. Only a disk missing as
@@ -74,14 +77,15 @@ type missingDisk struct {
 // whole: one that goes missing later may have counted errors of its own in
 // between, so it keeps what it reads now and takes the stricter rule.
 func (s *poolState) newMissingDisk(d BtrfsDevice, opening bool) missingDisk {
+	now := time.Now().Unix()
 	if opening {
 		for _, c := range s.Counters {
 			if c.ID == uint64(d.ID) && c.UUID == d.UUID {
-				return missingDisk{ID: c.ID, UUID: c.UUID, Errors: c.Errors, Whole: true}
+				return missingDisk{ID: c.ID, UUID: c.UUID, Errors: c.Errors, Whole: true, At: now}
 			}
 		}
 	}
-	return missingDisk{ID: uint64(d.ID), UUID: d.UUID, Errors: d.Errors}
+	return missingDisk{ID: uint64(d.ID), UUID: d.UUID, Errors: d.Errors, At: now}
 }
 
 // forgetReplacedDisk drops device id from the open episode of pool uuid

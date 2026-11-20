@@ -140,6 +140,7 @@ var StringEnums = map[string][]string{
 	"SwapStep":                  enumNames(SwapSteps...),
 	"SwapLeftWhat":              enumNames(SwapLeftSwapFile, SwapLeftZram, SwapLeftZramSize),
 	"BtrfsSpareState":           enumNames(btrfs.SpareReady, btrfs.SpareAbsent, btrfs.SpareTooSmall, btrfs.SpareInUse, btrfs.SpareUnknown),
+	"BtrfsRebuildState":         enumNames(btrfs.RebuildWaiting, btrfs.RebuildRunning, btrfs.RebuildFailed, btrfs.RebuildRefused),
 	"SwapLeftReason":            enumNames(SwapLeftNotEnoughMemory, SwapLeftZramNotSwapping, SwapLeftNotIdentified, SwapLeftOthersCanWrite, SwapLeftNotManaged, SwapLeftNoOtherSwap, SwapLeftOtherSize),
 }
 

@@ -15,8 +15,8 @@ of replication. `btrfs-progs` is used only where the kernel has no interface:
 `mkfs.btrfs`, `btrfs receive`, and the commands a replication job runs on its
 target, which may be another host. There is no daemon. Everything is on
 demand or runs from `linuxio-worker`, started by two systemd timers, a
-boot-time service, a resync service (see [Missing disks](#missing-disks)) and
-the replication service each snapshot pass starts (see
+boot-time service, a resync service and a rebuild service (see
+[Missing disks](#missing-disks)) and the replication service each snapshot pass starts (see
 [Replication](#replication)).
 
 `make test-btrfs-integration` runs every one of these operations against the
@@ -88,10 +88,13 @@ filesystems, covering pools created after install.
 | `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
 | `btrfs/resynced-<uuid>` | info; a warning when its scrub found uncorrectable errors, which it counts in its title, or while a device of the pool still counts errors, for which it says why | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default); it names the returned disks whose error counters it reset or kept | dismissed, or the next resync starts |
 | `btrfs/spare-<uuid>` | warning | the pool's [hot spare](#hot-spare) is absent, too small or no longer empty; one occurrence per state | the spare is ready again, it is removed, or the pool is gone |
+| `btrfs/rebuild-<uuid>` | warning while an [automatic rebuild](#missing-disks) runs, or waits for its disk or for the pool; error when it failed, or when a missing member was not rebuilt onto its returned disk or the spare, with the reason, one occurrence per reason | the rebuild started, failed, or was refused | the rebuild was verified, the member was replaced or removed, or nothing waits on a person any more |
+| `btrfs/rebuilt-<uuid>` | info | an automatic rebuild was verified; names the disk | dismissed, or the next rebuild is verified |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
-longer exist are dropped by the timer, the resync unit's run alert
-(`jobs/run-btrfs-resync-<uuid>`) among them. A condition that lasts is one
+longer exist are dropped by the timer, the run alerts of the resync and
+rebuild units (`jobs/run-btrfs-resync-<uuid>`, `jobs/run-btrfs-rebuild-<uuid>`)
+among them. A condition that lasts is one
 occurrence however many health checks see it, so it is delivered once, and
 again only after it cleared and came back. Scrub start/cancel is on the banner;
 see [Devices](#devices-and-profiles).
@@ -325,7 +328,8 @@ the episode while the pool runs on the others, with the disk's counters as
 the pool was last seen whole, and the health alert and the pool's details
 say the disk dropped out and that the pool takes it back only when it is
 mounted again: unmounted and mounted from the Storage overview, which
-registers the pool's disks first, or a reboot. Until then no resync starts,
+registers the pool's disks first, or a reboot; with the automatic rebuild on
+(below), that LinuxIO rebuilds the pool onto the disk once it is back. Until then no resync starts,
 and one started anyway stops without counting a failed attempt; the mount
 that takes the disk back gives a complete pool with a stale member, and the
 next health run starts the resync. A reboot without the disk takes the
@@ -335,7 +339,7 @@ mounted pool, which does not hold it: until the pool takes it back or its
 device in the pool is replaced or removed, every operation that writes a
 device refuses a disk whose superblock names that pool, and whatever is at
 the old path, which udev may not have probed yet, as possibly the disk that
-dropped out (`deviceInUse`). A bridge of a session without sudo, whose
+dropped out (`deviceInUse`); only the automatic rebuild takes it (below). A bridge of a session without sudo, whose
 exclusive open is refused, still sees a link that reaches nothing. The
 kernel removes a member's link before it lets the block device go, as the
 member leaves the pool or the pool is unmounted (`btrfs_rm_device`,
@@ -349,6 +353,255 @@ kernel keeps the old one while the pool holds the dead block device, and
 its registration was refused (`EEXIST`). Mounted again, the resync's scrub
 corrected 16412 errors of the copies it missed, after which the disk alone
 held every file (`TestBtrfsDropoutIntegration`).
+
+**Rebuild onto a disk that comes back.** When a member of a mounted pool is
+missing and its own disk comes back, pulled and plugged in again, LinuxIO
+erases that disk and replaces the member's devid onto it with
+`BTRFS_IOC_DEV_REPLACE`, without unmounting, then resyncs the pool as after
+any episode. It is on by default and switched per pool on its Disks card
+(**Rebuild automatically onto a disk that returns**, `storage.btrfs_auto_rebuild`,
+stored as `noAutoRebuild` in `btrfs-pools.json`); switched off, a disk that
+comes back waits for the pool's next mount, as above. The mounted pool cannot
+take the disk back itself: a scan of the returned disk is refused as a
+duplicate while the member holds its dead block device, and after a degraded
+mount the kernel names the member by the disk's path but never opens it
+(`device_list_add`). A replace copies every extent onto the disk from the
+other mirrors, so no stale copy is left, where a remount and a scrub repair
+only what has a checksum. This is the one place LinuxIO erases a member of a
+btrfs pool without a person. In the test VM on 7.0 (`TestBtrfsRebuildProofIntegration`)
+a disk pulled off the PCI bus and plugged back came back under a new name,
+was refused by the scan, and after `WipePoolSuperblocks` and a replace of
+its devid the pool was whole: a read-only scrub clean, every file right, the
+nodatacow file too, raid1 only, after an unmount and mount and after a reboot;
+after a degraded mount without the disk the same worked once the chunks the
+degraded mount wrote `single` were converted.
+
+The health run decides (`checkRebuilds` in `rebuild.go`) and starts
+`linuxio-btrfs-rebuild@<uuid>.service` (`linuxio-worker rebuild <uuid>`),
+which decides again on what it reads then (`Rebuild`). The disk is rebuilt
+onto only when all of these hold:
+
+- it is a whole disk (never a partition, md, device-mapper or loop device)
+  that sysfs shows nothing holding, without partitions;
+- its own primary superblock carries the pool's fsid, the devid of a member
+  that is missing now, that member's device UUID as `DEV_INFO` reports it,
+  and a generation no newer than the pool's (`FS_INFO`); a replace target's
+  superblock (devid 0) is never one;
+- its WWN and serial, with its size, as udev reports them (the identity a
+  hot spare is named by, `wholeDisks` in `spare.go`), are those LinuxIO
+  recorded for that devid while the pool was whole; a disk udev has not
+  reported yet waits for the next health run. Every health run that
+  sees the pool whole outside an episode records each member's
+  (`identities` in `btrfs-pools.json`), and a verified replace records the
+  new disk's for its devid;
+- that identity tells the disk apart: no other member was recorded with it,
+  and no other connected disk has it, as behind USB bridges that report one
+  serial number for every disk;
+- no other device carries that member's superblock;
+- the same disk, by that identity, in one attachment (its `diskseq`, which
+  the kernel raises each time a disk is attached) and one boot, was seen by
+  two health runs in a row (`returned`), about ten minutes with the timer;
+- it was not rebuilt onto in the last 24 hours (`rebuilt`), and not refused
+  or failed earlier in the episode (`refused`);
+- it is no smaller than the member as the filesystem knows it.
+
+A copy of the member's disk is identical to it in every superblock field,
+and a disk replaced earlier whose superblock was never erased (it was dead)
+claims the same devid and device UUID as its replacement; only the hardware
+identity tells them apart, so a member without one recorded, or a disk
+without a WWN or serial, is never rebuilt onto automatically. The two
+sightings keep a disk that is still being seated, or flapping on a loose
+cable, from being erased at once, and the day keeps a disk that keeps
+dropping out from being fed back in a loop: on kernels before 7.1 a target
+that dies during the replace forces a two-disk pool read-only (below).
+
+The rebuild, onto the returned disk or the spare, also needs the pool
+mounted read-write, every kind of its chunks in a profile that keeps a
+second copy (`raid1`, `raid1c3`, `raid1c4`, `raid10`), no more members
+missing than its weakest such profile loses (one for `raid1` and `raid10`,
+two for `raid1c3`, three for `raid1c4`; `beyondTolerance`), no chunk that
+keeps one copy (`single`, `dup`, `raid0`) with a stripe on the missing
+member, and nothing else running on it that the kernel or LinuxIO would refuse beside a
+replace: an exclusive operation (sysfs `exclusive_operation`: balance,
+device add or removal, replace, resize), a replace running or suspended, a
+balance, a scrub, or the pool's resync unit. The chunks are read from the
+chunk tree (`oneCopyChunks`, a tree search of tree 3): a degraded mount
+allocates `single` chunks on the disks present, which a rebuild of another
+member leaves alone, but one left on the member by an earlier episode whose
+convert gave up, or by a convert cut short, has its only copy on that disk,
+which the erase would destroy. The count of missing members is what keeps
+a second failure from becoming a loss: `raid1` on three disks keeps each
+chunk on two of them, so with two members missing, kernel-missing and
+dropped out alike, the chunks those two held together have no copy on the
+disk that stayed. Erasing the one that came back would erase their only
+copy, and a replace onto it, or onto the spare, cannot copy them, yet ends
+well for the kernel, which is still within what `raid1` loses. So nothing
+is rebuilt, and the alert and the page say to reconnect the other disks and
+mount the pool again so btrfs takes them back; a rebuild on record whose
+disk is already erased waits for the same. And a returned disk is not
+erased while a
+member that stayed counts read, corruption or generation errors: the
+returned disk's old copy may then be the only good one of a block, and the
+alert says to unmount the pool and mount it again, so btrfs takes the disk
+back and the resync repairs both disks, then to reset the counters with
+`btrfs device stats --reset <mountpoint>`, which LinuxIO has no action for.
+While that disk is connected the hot spare is not used either: rebuilding
+from a member that counts errors while a better copy sits on the returned
+disk is what the rule is against. A count that changes is the same
+refusal, one alert occurrence. For these two refusals the page and the
+alert give that advice in place of replacing the missing disk, which would
+give up the copy they keep (`advice` beside `reason` in the pool's
+`rebuild`). These are judged at every run, and only when there is something to rebuild onto:
+a pool with the switch off and no ready spare raises nothing. A busy pool,
+or one whose profiles could not be read, waits for the next health run
+without an alert; a pool that cannot be rebuilt, and a disk refused, raise
+the `btrfs/rebuild-<uuid>` error with the reason, once however many health
+runs see it (a reason never names what changes between runs, such as the
+pool's generation).
+
+Right before it writes, the runner holds the disk lock (`LockDisk`, so udev
+probes nothing meanwhile) and checks the disk again through one exclusive
+open for writing, which the kernel refuses while anything holds the disk:
+the open must reach the disk the lock holds (their device numbers), and on
+it partitions and holders by sysfs, its md and LVM2 signatures, its
+superblock and generation, and the identity udev has for that device
+number. The lock's descriptor, held until the replace has opened the disk,
+keeps the disk's name from passing to another disk meanwhile, even if it
+goes away: sd and virtio_blk give a name back only once the disk's last open
+is closed. For the hot spare, the disk the lock holds must be the one the
+spare names. A check that could not be made, as a sysfs read that failed or
+a disk udev reports no identity for at that moment, fails the run and the
+next health run tries again; only what a check found refuses the disk.
+It then records the rebuild (`rebuild` in `btrfs-pools.json`: the devid, its
+device UUID, the disk's identity and node, the time, the boot, and the start
+time the kernel reports for the pool's last replace, `prior`), erases the
+pool's superblocks through that same open (`WipePoolSuperblocks`), has the
+kernel forget the disk, and starts the replace with
+`cont_reading_from_srcdev_mode` AVOID, so the copy reads the other mirrors.
+The forget is refused with `EBUSY` once the erase is done when the kernel had
+marked the member missing, since the returned disk's scan gave that member the
+disk's device number; the runner accepts that refusal there and only there.
+The disk is refused for everyone else meanwhile (`deviceInUse`, as above);
+the runner alone takes it, through these checks, not through that rule.
+
+The kernel's word that the replace finished is not trusted. In the test VM
+a returned disk pulled again during the copy was never noticed by the
+kernel: `num_write_errors` is read in `scrub.c` but raised nowhere (6.8, 7.0,
+7.1), so the copy ran to the end, the commit that installed the dead target
+could write neither its superblock nor the dead source's, aborted, and forced
+the two-disk pool read-only, and the ioctl still returned success with the
+replace finished and `DEV_INFO` naming the dead target. So the runner, and a
+replace started from the pool details (`ReplaceResult`, `ResumeReplace`),
+check that the kernel reports the replace finished, that the devid is in use
+at the new disk's path and not dropped out, that the pool is not read-only
+(`statfs`), and that the pool holds the new disk (an exclusive open of it
+fails with `EBUSY`; one that works, or a disk gone, fails the check, and any
+other error, such as a refused permission, is a check that could not be made
+and is made again by the next run); the runner also checks the disk in the
+slot is the one it wrote, by its identity. A stop of the runner does not cut
+this check or the write that follows. Only then is the record cleared, the disk noted as
+rebuilt onto, a bigger disk grown into, and the `btrfs/rebuilt-<uuid>` notice
+raised; the runner then starts a health run, which starts the resync, whose
+scrub and soft convert end the episode as after any other (no counters are
+reset in an episode with a replace, see [Error counters](#missing-disks)).
+
+A rebuild that fails after the erase keeps its record, as failed, raises the
+`btrfs/rebuild-<uuid>` error and is not tried again onto that disk without a
+person; while the record is set no other rebuild starts on the pool, save
+onto its hot spare while the member is missing or its slot still holds the
+disk the failed rebuild wrote, and no resync runs or calls the pool whole. A
+replace of that devid from the pool details, once verified, or the device
+leaving the pool, clears it; a runner that fails after that writes nothing
+back. Whether a replace the kernel reports is the rebuild's own is told by
+its start time against `prior`, never by the clock: a replace started after
+the record has another, whatever the clock did, and the kernel's last
+replace from before it has the same, and a finished replace whose slot holds
+the recorded disk is checked as after a replace (`verifyReplaced`) before
+its record is cleared, whatever its start time says. The record matters at the next mount: after the failure
+above, the surviving disk's superblock already carries the replace with its
+cursor past every extent, and mounting the pool with the failed target
+present makes the kernel "continue" that replace, which ends at once and
+leaves on the target everything it never copied (seen in the test VM: 32768
+stale checksummed sectors a scrub then found; stale copies of nodatacow data
+cannot be found). So a mount LinuxIO makes (**Mount** and **Mount degraded**
+on the overview, `MountOfflinePool`, and the boot check, `MountDegradedPools`)
+of a pool with a record first erases the disk with the record's identity that
+carries the pool's superblock as the replace target (devid 0), mounts
+degraded when that leaves a member missing, and cancels the replace the
+kernel then suspends ("cannot continue dev_replace, tgtdev is missing") or
+continues. It decides that before it writes anything
+(`planUnverifiedErase`), and the boot check judges the pool, by the same
+plan, before anything is erased. The replace target holds no copy the pool
+needs, and is erased unless it is newer than every device that stays (a
+replace target gets the pool's superblock at every commit,
+`btrfs_init_dev_replace_tgtdev` and `write_all_supers`, so its generation is
+the last commit that reached it, as a member's is); a stale disk among those
+that stay is the ordinary rules' matter. A disk with the record's identity
+that carries the member's devid, which a finish nobody checked left there,
+or the disk a failed rebuild left untrusted that a hot spare replaces
+(`untrusted` in the record), may hold the only copy of what another member
+held: it is erased only when every other member of the pool is present and
+none is older than it, and is otherwise left as it is and the pool judged as
+without a record, never refused because of it. What is left is judged as
+without a record: the boot check's refusal of a pool that missed writes,
+or the person's choice of a degraded mount. LinuxIO refuses the mount only
+where it cannot tell, each time with a way out the reason names: two
+connected disks with the record's identity (disconnect the ones that are
+not the pool's), a device carrying devid 0, or carrying the member's devid
+where it would be erased, whose identity udev does not report, as some
+enclosures hide a disk's serial (wait until udev reports it, or disconnect
+it), and a replace target that is the only device present (reconnect the
+pool's other disks). The overview's mount then fails with the reason and the
+way out (a 409), and the boot check leaves the pool unmounted with both in
+the offline alert, which the health run raises the same way and which then
+does not advise the degraded mount that would be refused alike. The erase
+itself goes through the disk lock and an exclusive open that must reach the
+disk the lock holds and find on it the identity, the devid and the
+generation the decision was made on, and refuses it when it has
+partitions, a holder or an md or LVM2 signature. A rebuild that was cut
+rather than failed, by a stop of its unit or a power loss, is then started
+again onto the same disk, found by its identity, only as the cut left it:
+the pool's superblock with its magic zeroed and its fsid kept (LinuxIO's
+erase and the kernel's `btrfs_scratch_superblock` both zero only the
+magic), a replace target's superblock of the pool, or the member's own from
+before the erase, with no filesystem udev reports on it other than this
+pool's. A disk put to another use since, or not the only one with that
+identity, fails the rebuild instead, and one onto a hot spare the person
+has removed since fails too. A disk that is not connected is waited for,
+without the unit being started for it, while the page and the
+`btrfs/rebuild-<uuid>` warning say the rebuild waits for it, not that it
+copies (`waiting` with the reason); 20 minutes after the record, two
+health runs, it fails, saying that the disk coming back does not resume it,
+which lets a ready hot spare take the member. A rebuild started again obeys
+the pool's checks: it waits while another operation runs or the pool
+cannot take a replace. One whose disk still carries the member's own
+superblock, never erased, is set aside rather than failed when the checks
+above refuse that disk or the switch is off: the record goes, nothing was
+erased, the pool takes the disk back at a mount, and LinuxIO's next mount
+does not erase it. With the switch off, a rebuild onto a returned disk
+already erased fails, saying to replace the device. A rebuild started
+again writes its record only over its own: one a person's replace cleared
+meanwhile stays cleared. A rebuild cut by a stop or a crash in the boot it
+started in is followed to its end and checked by the next run; what runs
+on after a stop of the unit (the check and the record's writes) is
+bounded to a minute, below the 90 seconds systemd gives the unit to stop.
+When the pool was mounted with the target before LinuxIO could act (by
+systemd, with `degraded` in fstab, or by hand), a replace the kernel finished
+then is not trusted: the pool is not called whole, the error says what
+happened and to unmount the pool and mount it again from the overview, which
+erases the disk and mounts degraded, then replace the device; a ready hot
+spare replaces that member at once, reading the other mirror.
+
+`make vm-test-btrfs-integration` runs this path on the test VM's kernel
+(`TestBtrfsAutoRebuildIntegration`; it skips on a host, since it pulls the
+VM's virtio disks off the PCI bus): a rebuild onto the returned disk with the
+member dropped out and with the member missing after a degraded mount, a
+clone of the member on another disk refused by its identity and left as it
+was, two disks claiming the member refused, a replace onto the hot spare, and
+the returned disk pulled again mid-rebuild, after which the rebuild fails with
+its record kept, LinuxIO's degraded mount erases the disk and cancels the
+suspended replace, and a replace from the pool details makes the pool whole;
+each ends whole by the same checks as the proof.
 
 A disk whose writes fail while it stays attached, as when its cable comes
 loose, or under a device-mapper or md device that stays when the disk under
@@ -568,6 +821,58 @@ once it is fixed repairs what it missed.
   mounted is only checked for what keeps it from mounting, and a mount of a
   complete pool opens none. The copies the disk missed stay stale until a
   scrub.
+- The rebuild onto a disk that comes back starts at the second health run in
+  a row that sees it: up to twenty minutes after it is back with the timer,
+  sooner when health runs are started by hand, since it counts runs, not
+  time.
+- A disk without a WWN or serial, a member on a partition, md,
+  device-mapper or loop device, and a member LinuxIO never saw whole, such
+  as one missing since before the first health run of a release that
+  records identities, are never rebuilt onto automatically; the alert says
+  why.
+- The rebuild was run on 7.0 only (the test VM). On 6.8 and 7.1 it rests on
+  their source: 7.1 marks a dropped member missing itself
+  (`btrfs_remove_bdev`) and a target that dies mid-replace may then be
+  installed without the pool going read-only, which the check after the
+  replace still refuses, as the target is gone.
+- A pool unmounted by hand while its rebuild copies fails that rebuild, and
+  when the pool is then mounted by systemd at boot, where the kernel takes
+  the copy up and ends it, the record still says failed: LinuxIO did not
+  watch that end, so it keeps the alert, starts no resync, and leaves the
+  disk for a person to replace, or for the hot spare.
+- A rebuild cut by a power loss or a stop starts again from the beginning,
+  since LinuxIO erases its target before it mounts the pool rather than let
+  the kernel continue a replace it cannot check.
+- A returned disk that was mounted alone elsewhere and written stays at a
+  generation below the pool's and passes the checks: nothing on the disk
+  tells it from the member as it dropped out, and its writes are lost, as
+  they are when the pool takes the disk back at a mount.
+- A disk put to a raw use after the erase that leaves the erased superblock
+  at 64 KiB and writes no signature udev reports is taken by a rebuild
+  started again onto it.
+- A member's error counters from before the episode, which a repair at the
+  time left raised, hold the rebuild onto its returned disk back until they
+  are reset with `btrfs device stats --reset <mountpoint>`, as errors
+  counted during the episode do; LinuxIO has no action for it.
+- A replace target newer than every other disk present is not erased: the
+  pool is judged as without a record, so the boot check refuses it as a
+  pool whose disks missed writes, and a degraded mount from the overview
+  lets the kernel continue that replace.
+- A disk an unchecked finish left in the member's slot, or the untrusted
+  disk a spare replaces, is not erased while another member is missing or
+  older: the pool is mounted with it, its stale copies included, until a
+  person replaces it.
+- While an unverified rebuild is on record, a device of the pool carrying the
+  replace target's devid or the member's that udev has not reported keeps
+  LinuxIO's mount of the pool from going ahead.
+- The record tells a rebuild watched to its end from one the kernel
+  continued at a mount by its boot: a pool unmounted and mounted again by
+  hand in the boot a rebuild started in, after its runner died, has the
+  continued replace checked as if watched.
+- A disk refused or failed is not tried again automatically until the
+  episode ends, when the pool is whole again; a cause that went away
+  meanwhile does not retry it. A person replaces the member from the pool
+  details, onto that disk too.
 - The pool listing tells a dropped disk by an exclusive open, which fails at
   once on a disk the pool holds. When a pool is being unmounted or a disk
   removed at that instant the open can succeed and claim the disk for a
@@ -1005,8 +1310,9 @@ Rules 1 to 3 and 6 are the check every device operation shares with the
 [Disks page](./storage-disks.md#safety) and md RAID. While a disk of a
 mounted pool is dropped out, rule 2 also refuses a disk whose own superblock
 names that pool and whatever is at the dropped disk's old path: either may
-be that disk, which the pool takes back when mounted again (see
-[Missing disks](#missing-disks)). Any other filesystem
+be that disk, which the pool takes back when mounted again, or the automatic
+rebuild erases and replaces the member onto (see
+[Missing disks](#missing-disks)); no request takes it. Any other filesystem
 signature needs **Force**, which erases it: the bridge zeroes the device's
 first and last 2 MiB before the add, and `mkfs.btrfs -f` does the same for a
 create. Replace has no **Force**: its target must be blank.
@@ -1035,7 +1341,9 @@ two. `mkfs` repeats its own exclusive open. The target of a replace is
 written only by the kernel, which claims it exclusively the same way
 (`btrfs_init_dev_replace_tgtdev` in `fs/btrfs/dev-replace.c`).
 
-**Force** never covers rule 5. LinuxIO does not try to tell a disk with
+**Force** never covers rule 5. The one erase of a btrfs pool member without
+a person is the automatic rebuild's of a member's own returned disk, after
+its identity and stability checks ([Missing disks](#missing-disks)). LinuxIO does not try to tell a disk with
 leftover btrfs data from a member of an unmounted pool: both are freed with
 **Destroy** on the unmounted pool the overview lists. A member of a stopped
 md array or an inactive volume group is freed with `mdadm` or `vgreduce` and
@@ -1082,7 +1390,7 @@ primary superblock at 64 KiB.
 |---|---|
 | Add device | Free devices only (see [Which disks a pool may take](#which-disks-a-pool-may-take)). **Force** erases an old filesystem, never a disk of another pool, md array or volume group. |
 | Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined or have no minimum LinuxIO knows (`raid5`, `raid6`). |
-| Replace device | Replaces one member with a free, blank device, or with the pool's own [hot spare](#hot-spare). A bigger replacement disk is grown into automatically. |
+| Replace device | Replaces one member with a free, blank device, or with the pool's own [hot spare](#hot-spare). A missing member, one that dropped out included, is copied from the other mirrors (`cont_reading_from_srcdev_mode` AVOID), and so is one whose disk an automatic rebuild left unverified (a rebuild of that device on record), which may hold stale copies no checksum finds; a present one is read first, as `btrfs replace start` does. The result is checked as the automatic rebuild's is: finished, the new disk in use and held by the pool, the pool writable ([Missing disks](#missing-disks)); a replace the kernel reports done that fails this check fails the job. A bigger replacement disk is grown into automatically. |
 | Hot spare | Sets, changes the delay of, or removes the pool's hot spare (see [Hot spare](#hot-spare)). |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
@@ -1191,12 +1499,42 @@ with **Change delay**.
 **Routes.** `storage.btrfs_spare_set` (`uuid`, `device`, `delayMinutes`),
 `storage.btrfs_spare_delay` (`uuid`, `delayMinutes`) and
 `storage.btrfs_spare_clear` (`uuid`), each a privileged Mutation with no
-result; the page refreshes the pool list and the inventory.
+result; the page refreshes the pool list and the inventory. Beside them,
+`storage.btrfs_auto_rebuild` (`uuid`, `enabled`) switches the rebuild onto a
+disk that comes back ([Missing disks](#missing-disks)) for a mounted pool, a
+404 for one that is not mounted; each pool of `storage.btrfs_list` carries it as
+`autoRebuild` and its rebuild as `rebuild` (`state` `waiting`, `running`,
+`failed` or `refused`, with the devid, the disk and the reason).
 
-**Automatic replace.** *(To be written with the runner that uses the spare:
-when the health run starts the replace onto it, what it reads first
-(`btrfs.SpareOf`, which checks the spare again at that moment) and when it
-drops the designation (`btrfs.ClearSpare`).)*
+**Automatic replace.** The health run (`checkRebuilds`) starts
+`linuxio-btrfs-rebuild@<uuid>.service` for a mounted pool with a missing
+member once the member has been missing for the spare's delay, counted from
+when the episode recorded it missing (`at` in `btrfs-pools.json`), and the
+spare reads `ready`, is no smaller than the member, and was not refused
+earlier in the episode. A disk of the member that came back wins: while it
+waits for its second health run, the spare is not used, and it is used
+when that disk is refused. The runner (`Rebuild`) reads the spare again
+right before it writes, through `SpareOf`, whose exclusive open finds a
+claim or a signature udev did not report, holds its disk lock, whose disk
+must be the one the spare names, records the rebuild, and replaces the member onto it reading the other mirrors, as for
+a disk that came back but with nothing to erase. The designation is
+dropped (`ClearSpare`) only once the new member passes the check after a
+replace ([Missing disks](#missing-disks)); a replace that fails leaves the
+disk the spare, which the kernel has blanked again, and the spare is not
+tried again automatically in that episode; a person may still pick it for a
+replace from the pool details. The spare also replaces at once a member
+whose disk a failed rebuild left untrusted, while that disk is still the one
+in the slot; its record keeps that disk, which LinuxIO's mount erases too
+until the spare is verified. The same rules as for a disk that came back
+apply: a pool that is read-only, keeps one copy, holds the only copy of
+chunks on the member, or runs another operation waits or refuses, and the
+`btrfs/rebuild-<uuid>` alerts say so. The error counters of the members that
+stayed hold the spare back only while the member's own disk is connected,
+whose old copy may be the better one; with that disk away they do not,
+since nothing is erased. A rebuild onto the spare started again after a cut
+fails once the person has removed the spare. The Disks card says in one sentence what LinuxIO does by itself
+when a disk goes missing, with the switch of the rebuild onto a disk that
+comes back.
 
 #### Known limits
 
@@ -1217,6 +1555,17 @@ drops the designation (`btrfs.ClearSpare`).)*
   may be given to another pool, which drops the first pool's designation.
 - An unmounted pool keeps its spare reserved, but its spare is not shown or
   checked, and its warning stays as it was, until the pool is mounted.
+- The delay counts from the health run that recorded the member missing,
+  and the spare is used at the first health run after it: up to ten minutes
+  later than the delay with the timer.
+- A spare left with the pool's replace-target superblock, by a replace
+  canceled while the spare was missing, fails a rebuild started again onto
+  it: the spare is taken only empty, as LinuxIO's erase and the kernel's
+  cancel leave it.
+- A rebuild started again onto the spare checks it as `SpareOf` does: a
+  filesystem udev reports fails the rebuild, but a superblock udev has not
+  reported, other than an md, LVM2 or btrfs one, is not seen, and the disk
+  is taken (`TestRebuildSpareRestartOntoAForeignDisk`).
 - A state file that cannot be read fails every operation that writes a
   device, Replace device included, with an error naming the file, until it
   is repaired or removed; the Disks page then lists the disks without the
@@ -1265,7 +1614,7 @@ it again. There is no manual resume.
 |---|---|---|
 | Balance | Paused; the kernel keeps the item and continues it when the pool is mounted read-write | Follows the kernel's balance; resumes it if still paused; counts it finished if it is gone after a pause; runs it again (`soft` when converting) if it is gone and was never paused |
 | Scrub | Stopped, each device's position stored in the checkpoint; the scrub record keeps its progress too | Continues from the progress the job saved in the scrub record, after a power loss too (see [Scrub progress](#scrub-progress)); without the job's own record from each device's stored position, or from the start when none was read. The counters add up. Errors in the dev extent where each device stopped count twice |
-| Replace | Cancelled with the job's context; the source is kept | Follows the replace the kernel continued at mount, and refuses one the kernel says copies from another device. A finished replace counts only if it began after the job did; otherwise start it again. A suspended one needs the pool remounted |
+| Replace | Cancelled with the job's context; the source is kept | Follows the replace the kernel continued at mount, and refuses one the kernel says copies from another device. A finished replace counts only if it began after the job did and the new disk passes the check after a replace; otherwise start it again. A suspended one needs the pool remounted |
 | Remove | Cancelled as above; moved data stays moved | Issues the removal again, with its percentage counting what is left; refuses a degraded pool |
 
 A stop pauses a balance every time, so a paused balance holds the pool's

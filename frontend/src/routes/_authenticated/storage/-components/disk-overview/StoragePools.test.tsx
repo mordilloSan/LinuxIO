@@ -116,6 +116,7 @@ const filesystem = (
   },
   degraded: false,
   lowMetadataSpace: false,
+  autoRebuild: true,
 });
 
 const raid = filesystem(

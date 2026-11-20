@@ -77,6 +77,10 @@ func TestScheduledRunKnowsTheBtrfsUnits(t *testing.T) {
 	if !ok || kind.Route != scheduledrun.RouteResync || kind.Instance != pool {
 		t.Errorf("KindOf(%q) = %+v, %v", ResyncUnitName(pool), kind, ok)
 	}
+	kind, ok = scheduledrun.KindOf(RebuildUnitName(pool), "")
+	if !ok || kind.Route != scheduledrun.RouteRebuild || kind.Instance != pool {
+		t.Errorf("KindOf(%q) = %+v, %v", RebuildUnitName(pool), kind, ok)
+	}
 }
 
 // stubUnitManager records the manager calls of UnitFile.Start; startErr is

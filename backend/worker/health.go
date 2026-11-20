@@ -20,17 +20,23 @@ func runHealth(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Usage: linuxio-worker health")
 		return 2
 	}
-	resync, err := checkBtrfsHealth(ctx)
+	actions, err := checkBtrfsHealth(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "btrfs health check failed: %v\n", err)
 		return 1
 	}
 	code := 0
-	// A unit of its own, so a scrub that takes hours neither blocks the
-	// health timer nor stops with it.
-	for _, uuid := range resync {
+	// Units of their own, so a scrub or a replace that takes hours neither
+	// blocks the health timer nor stops with it.
+	for _, uuid := range actions.Resync {
 		if err := startUnit(ctx, btrfs.ResyncUnitName(uuid)); err != nil {
 			fmt.Fprintf(stderr, "start btrfs resync of %s: %v\n", uuid, err)
+			code = 1
+		}
+	}
+	for _, uuid := range actions.Rebuild {
+		if err := startUnit(ctx, btrfs.RebuildUnitName(uuid)); err != nil {
+			fmt.Fprintf(stderr, "start btrfs rebuild of %s: %v\n", uuid, err)
 			code = 1
 		}
 	}

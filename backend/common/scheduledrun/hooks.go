@@ -235,15 +235,17 @@ func runAlertKey(kind Kind) string {
 	return key
 }
 
-// ResyncRunAlertPool returns the pool whose resync unit raised the run alert
-// key under AlertSource. The btrfs health check uses it to clear the run
-// alert of a pool that is gone, since only the unit's next run clears it.
-func ResyncRunAlertPool(key string) (string, bool) {
-	uuid, ok := strings.CutPrefix(key, runAlertKey(Kind{Route: RouteResync})+"-")
-	if !ok || jobs.ValidateID(uuid) != nil {
-		return "", false
+// PoolRunAlertPool returns the pool whose resync or rebuild unit raised the
+// run alert key under AlertSource. The btrfs health check uses it to clear
+// the run alert of a pool that is gone, since only the unit's next run
+// clears it.
+func PoolRunAlertPool(key string) (string, bool) {
+	for _, route := range []string{RouteResync, RouteRebuild} {
+		if uuid, ok := strings.CutPrefix(key, runAlertKey(Kind{Route: route})+"-"); ok && jobs.ValidateID(uuid) == nil {
+			return uuid, true
+		}
 	}
-	return uuid, true
+	return "", false
 }
 
 // RequestCancel marks the running record of unit as canceled by request, so

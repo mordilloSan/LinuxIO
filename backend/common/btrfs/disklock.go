@@ -16,6 +16,16 @@ import (
 // formatting and mounting a partition; the table functions do not take it,
 // since a second lock from this process would wait for the first.
 func LockDisk(ctx context.Context, device string) (unlock func(), err error) {
+	f, err := lockDiskFile(ctx, device)
+	if err != nil {
+		return nil, err
+	}
+	return func() { f.Close() }, nil
+}
+
+// lockDiskFile is LockDisk returning the locked descriptor, which closing
+// unlocks.
+func lockDiskFile(ctx context.Context, device string) (*os.File, error) {
 	// Read-only on purpose: closing a descriptor opened for writing fires
 	// udev's IN_CLOSE_WRITE watch, which re-reads the partition table.
 	f, err := os.Open(device)
@@ -25,7 +35,7 @@ func LockDisk(ctx context.Context, device string) (unlock func(), err error) {
 	for {
 		err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 		if err == nil {
-			return func() { f.Close() }, nil
+			return f, nil
 		}
 		if !errors.Is(err, unix.EWOULDBLOCK) {
 			f.Close()

@@ -35,6 +35,11 @@ type BtrfsFilesystem struct {
 	// read, so a missing Spare does not resolve the spare alert.
 	Spare      *BtrfsSpare `json:"spare,omitzero"`
 	spareKnown bool
+	// AutoRebuild is set while LinuxIO rebuilds the pool onto a missing
+	// member's own disk when it comes back, and Rebuild is that rebuild, or
+	// the hot spare's, as it stands (see rebuild.go).
+	AutoRebuild bool          `json:"autoRebuild"`
+	Rebuild     *BtrfsRebuild `json:"rebuild,omitzero"`
 }
 
 // BtrfsAllocation is one block-group type (data, metadata, system) with
@@ -130,6 +135,7 @@ func ListFilesystems(ctx context.Context) ([]BtrfsFilesystem, error) {
 	if err := attachSpares(filesystems); err != nil {
 		slog.Warn("failed to read btrfs hot spares", "path", SparePath, "error", err)
 	}
+	attachRebuilds(filesystems)
 	return filesystems, nil
 }
 

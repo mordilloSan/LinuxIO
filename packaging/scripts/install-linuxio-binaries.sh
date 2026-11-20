@@ -186,6 +186,7 @@ systemd_units() {
 		linuxio-btrfs-health.timer \
 		linuxio-btrfs-degraded.service \
 		linuxio-btrfs-resync@.service \
+		linuxio-btrfs-rebuild@.service \
 		linuxio-jobs@.service \
 		linuxio-jobs@.socket \
 		linuxio-monitoring.service

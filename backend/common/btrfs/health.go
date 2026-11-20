@@ -1,6 +1,7 @@
 package btrfs
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,7 +18,7 @@ import (
 const AlertSource = "btrfs"
 
 // alertKinds are the per-filesystem alert key prefixes CheckHealth owns.
-var alertKinds = []string{"health", "scrub", "space", "offline", "resync", "resynced", "bound", "spare"}
+var alertKinds = []string{"health", "scrub", "space", "offline", "resync", "resynced", "bound", "spare", "rebuild", "rebuilt"}
 
 func poolName(label, uuid string) string {
 	if label != "" {
@@ -39,11 +40,11 @@ func resolve(ctx context.Context, key string) {
 	}
 }
 
-// resolveRunAlert resolves the run alert key of a pool's resync unit, which
-// the scheduled run hooks raise under their own source.
+// resolveRunAlert resolves the run alert key of a pool's resync or rebuild
+// unit, which the scheduled run hooks raise under their own source.
 func resolveRunAlert(ctx context.Context, key string) {
 	if err := alerts.Resolve(ctx, scheduledrun.AlertSource, key); err != nil {
-		slog.Warn("failed to resolve resync run alert", "key", key, "error", err)
+		slog.Warn("failed to resolve pool run alert", "key", key, "error", err)
 	}
 }
 
@@ -116,12 +117,18 @@ func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Obser
 	if missing > 0 {
 		obs.Title = fmt.Sprintf("Pool %s is running without %d of %d disks", name, missing, len(fs.Devices))
 		switch {
+		case len(dropped) > 0 && fs.AutoRebuild:
+			obs.Message = strings.Join(dropped, ", ") + " dropped out while the pool was mounted. Its data is available from the other disks, but with less redundancy. Reconnect the disk: once two health checks in a row have seen it back, LinuxIO erases it and rebuilds the pool onto it, then resyncs the pool. Or replace the disk from the pool details."
 		case len(dropped) > 0:
 			// The kernel keeps the dropped disk's block device until the pool
 			// is unmounted, whether the disk is back or not (markDroppedOut).
 			obs.Message = strings.Join(dropped, ", ") + " dropped out while the pool was mounted. Its data is available from the other disks, but with less redundancy, and the pool takes the disk back only when it is mounted again: reconnect it, then unmount the pool and mount it again from the Storage overview, or reboot; LinuxIO then resyncs the pool. Or replace the disk from the pool details."
+		case returned && fs.AutoRebuild:
+			obs.Message = "A missing disk is connected again, but it gets no writes until the pool is mounted again. Once two health checks in a row have seen it back, LinuxIO erases it and rebuilds the pool onto it, then resyncs the pool."
 		case returned:
 			obs.Message = "A missing disk is connected again, but it gets no writes until the pool is mounted again. Reboot, and LinuxIO resyncs the pool."
+		case fs.AutoRebuild:
+			obs.Message = "Its data is available, but with less redundancy until every disk is back. Reconnect the missing disk, and LinuxIO rebuilds the pool onto it; or replace it from the pool details."
 		default:
 			obs.Message = "Its data is available, but with less redundancy until every disk is back. Replace the missing disk from the pool details, or reconnect it and reboot; LinuxIO then resyncs the pool."
 		}
@@ -137,6 +144,13 @@ func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Obser
 // a changed reason is a new occurrence, so it replaces the message raised
 // earlier.
 func RaiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked string) {
+	raiseOfflineAlert(ctx, pool, blocked, "")
+}
+
+// raiseOfflineAlert is RaiseOfflineAlert with wayOut, when the refusal says
+// what to do, in place of the advice to mount the pool from the overview,
+// which would refuse it the same way.
+func raiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked, wayOut string) {
 	name := poolName(pool.Label, pool.UUID)
 	missing := missingDisks(pool)
 	obs := alerts.Observation{
@@ -162,11 +176,11 @@ func RaiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked strin
 		obs.Title = fmt.Sprintf("Pool %s is missing %d of %d disks", name, missing, pool.NumDevices)
 		obs.Message = "The pool is not mounted because disks are missing. Reconnect them, or mount it degraded and replace the missing disk."
 		if blocked != "" {
-			obs.Message = "LinuxIO did not mount the pool degraded because " + blocked + ". Reconnect the missing disks; mount it degraded only if they are gone for good."
+			obs.Message = "LinuxIO did not mount the pool degraded because " + blocked + ". " + cmp.Or(wayOut, "Reconnect the missing disks; mount it degraded only if they are gone for good.")
 		}
 	case blocked != "":
 		obs.Severity = alerts.SeverityError
-		obs.Message = "LinuxIO did not mount the pool because " + blocked + ". Check the disks before you mount the pool from the Storage overview."
+		obs.Message = "LinuxIO did not mount the pool because " + blocked + ". " + cmp.Or(wayOut, "Check the disks before you mount the pool from the Storage overview.")
 	}
 	if blocked != "" {
 		sum := sha256.Sum256([]byte(blocked))
@@ -187,6 +201,11 @@ func raiseResyncAlert(ctx context.Context, fs BtrfsFilesystem, state poolState) 
 		resolve(ctx, key)
 		return false
 	}
+	if state.Rebuild != nil {
+		// An automatic rebuild that is not verified may have left a disk
+		// with stale copies; its own alert says what to do.
+		return false
+	}
 	name := poolName(fs.Label, fs.UUID)
 	if state.ResyncFailures >= maxResyncAttempts {
 		raise(ctx, alerts.Observation{
@@ -198,29 +217,42 @@ func raiseResyncAlert(ctx context.Context, fs BtrfsFilesystem, state poolState) 
 		return false
 	}
 	resolve(ctx, "resynced-"+fs.UUID)
+	title, message := "Pool "+name+" is resyncing a returned disk", "A disk that missed writes while the pool ran without it is back. LinuxIO scrubs the pool to rewrite its stale copies, then restores redundancy to data written without it."
+	if len(state.Missing) == 0 {
+		// A replace put a new disk in every slot the episode lacked.
+		title, message = "Pool "+name+" is resyncing", "Every disk of the pool is in use again. LinuxIO scrubs the pool to check every copy, then restores redundancy to data written while a disk was missing."
+	}
 	raise(ctx, alerts.Observation{
 		Key: key, Severity: alerts.SeverityWarning,
-		Title:   "Pool " + name + " is resyncing a returned disk",
-		Message: "A disk that missed writes while the pool ran without it is back. LinuxIO scrubs the pool to rewrite its stale copies, then restores redundancy to data written without it.",
+		Title:   title,
+		Message: message,
 		// One occurrence while it lasts: every health check sees it again.
 		Link: "/storage?pool=" + fs.UUID, OccurrenceID: "resyncing",
 	})
 	return fs.Scrub.Status != "running"
 }
 
+// HealthActions are the units a health run starts: the resync of each pool
+// in Resync and the automatic rebuild of each in Rebuild.
+type HealthActions struct {
+	Resync  []string
+	Rebuild []string
+}
+
 // CheckHealth reads every mounted filesystem and unmounted pool, records
-// their state for the boot check, updates their alerts and drops the alerts
-// of pools that no longer exist. It returns the pools whose resync should
-// start. The health timer runs it so problems surface without anyone logged
-// in.
-func CheckHealth(ctx context.Context) ([]string, error) {
+// their state for the boot check, decides each pool's automatic rebuild,
+// updates their alerts and drops the alerts of pools that no longer exist.
+// It returns the pools whose resync or rebuild should start. The health
+// timer runs it so problems surface without anyone logged in.
+func CheckHealth(ctx context.Context) (HealthActions, error) {
+	var actions HealthActions
 	filesystems, err := ListFilesystems(ctx)
 	if err != nil {
-		return nil, err
+		return actions, err
 	}
 	pools, err := FindOfflinePools(ctx, BlockDevices())
 	if err != nil {
-		return nil, err
+		return actions, err
 	}
 	states, err := recordFilesystems(ctx, filesystems)
 	if err != nil {
@@ -230,33 +262,35 @@ func CheckHealth(ctx context.Context) ([]string, error) {
 	}
 	unbindPoolMounts(ctx, filesystems)
 	live := map[string]bool{}
-	var resync []string
+	if states != nil {
+		actions.Rebuild = checkRebuilds(ctx, filesystems, states)
+	}
 	for _, fs := range filesystems {
 		RaiseAlerts(ctx, fs)
 		// Without the states, an episode reads as none: the resync alert
 		// stays as it was and no resync starts.
 		if states != nil && raiseResyncAlert(ctx, fs, states[fs.UUID]) {
-			resync = append(resync, fs.UUID)
+			actions.Resync = append(actions.Resync, fs.UUID)
 		}
 		live[fs.UUID] = true
 	}
 	for _, pool := range pools {
-		blocked := ""
+		blocked, wayOut := "", ""
 		if len(bootMounts(pool.UUID)) > 0 {
-			blocked = refusal(pool, states[pool.UUID])
+			blocked, wayOut = refusal(pool, states[pool.UUID])
 		}
-		RaiseOfflineAlert(ctx, pool, blocked)
+		raiseOfflineAlert(ctx, pool, blocked, wayOut)
 		// What systemd does with a mount ends with the mount.
 		resolve(ctx, "bound-"+pool.UUID)
 		live[pool.UUID] = true
 	}
 	resolveStale(ctx, live)
-	return resync, nil
+	return actions, nil
 }
 
 // resolveStale resolves the alerts of filesystems that are neither mounted
-// nor found on any disk, such as destroyed pools, and the run alert of their
-// resync unit, which no later run of that unit will clear.
+// nor found on any disk, such as destroyed pools, and the run alerts of their
+// resync and rebuild units, which no later run of those units will clear.
 func resolveStale(ctx context.Context, live map[string]bool) {
 	doc, err := alerts.Load()
 	if err != nil {
@@ -276,7 +310,7 @@ func resolveStale(ctx context.Context, live map[string]bool) {
 				}
 			}
 		case scheduledrun.AlertSource:
-			if uuid, ok := scheduledrun.ResyncRunAlertPool(a.Key); ok && !live[uuid] {
+			if uuid, ok := scheduledrun.PoolRunAlertPool(a.Key); ok && !live[uuid] {
 				resolveRunAlert(ctx, a.Key)
 			}
 		}

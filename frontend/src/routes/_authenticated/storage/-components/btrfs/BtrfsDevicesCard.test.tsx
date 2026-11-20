@@ -115,6 +115,7 @@ const filesystem = (deviceCount: number): BtrfsFilesystem => ({
   },
   degraded: false,
   lowMetadataSpace: false,
+  autoRebuild: true,
 });
 
 const blockDevice = (
@@ -832,6 +833,41 @@ describe("BtrfsDevicesCard hot spare", () => {
       { uuid: "uuid-1" },
       expect.anything(),
     );
+  });
+
+  it("shows and sets the automatic rebuild, saying what it does and when", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <BtrfsDevicesCard filesystem={mirrored(spare("ready"))} />,
+    );
+    const toggle = screen.getByRole("checkbox", {
+      name: "Rebuild automatically onto a disk that returns",
+    });
+    expect(toggle).toBeChecked();
+    expect(
+      screen.getByText(
+        "When a disk of data goes missing and comes back, LinuxIO erases it and rebuilds the pool onto it once two health checks in a row (about 10 minutes) have seen it back; a disk that stays missing for 10 minutes is replaced with the hot spare.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(toggle);
+    expect(route("btrfs_auto_rebuild")).toHaveBeenCalledWith({
+      uuid: "uuid-1",
+      enabled: false,
+    });
+
+    rerender(
+      <BtrfsDevicesCard filesystem={{ ...mirrored(), autoRebuild: false }} />,
+    );
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Rebuild automatically onto a disk that returns",
+      }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByText(
+        "A disk of data that comes back is taken back only when the pool is mounted again, and nothing replaces a missing disk by itself.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("offers the pool's own spare as a replacement, never as a disk to add", async () => {

@@ -87,8 +87,11 @@ func FindFilesystem(ctx context.Context, uuid string) (BtrfsFilesystem, error) {
 			return fs, nil
 		}
 	}
-	return BtrfsFilesystem{}, fmt.Errorf("btrfs filesystem %s not found", uuid)
+	return BtrfsFilesystem{}, fmt.Errorf("btrfs filesystem %s %w", uuid, ErrFilesystemNotFound)
 }
+
+// ErrFilesystemNotFound is a filesystem FindFilesystem finds no mount of.
+var ErrFilesystemNotFound = errors.New("not found")
 
 // mountpointFor returns a mountpoint of the filesystem using only findmnt,
 // which keeps status polling cheap.
@@ -328,21 +331,46 @@ func waitOp(ctx context.Context, done <-chan error, cancel func() (taken bool), 
 
 // Replace copies device id onto newDevice and makes it the member in its
 // place, reporting progress until done; canceling ctx cancels the replace.
-// Callers check that newDevice is free.
+// Callers check that newDevice is free. A source that is missing, one that
+// dropped out included, is avoided: the copy reads the other mirrors
+// (replaceReadAvoid), as btrfs replace start -r asks, rather than failing a
+// read of a dead disk for every block first. So is the disk an automatic
+// rebuild of that device left in its slot unverified, which is what its
+// alert says to replace: it may hold stale copies no checksum finds, and a
+// copy read from it first would carry them onto the new disk.
 func Replace(ctx context.Context, uuid string, id int, newDevice string, report func(float64)) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
 	}
-	if !hasDevice(fs, id) {
+	i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id })
+	if i < 0 {
 		return fmt.Errorf("device %d not found in filesystem %s", id, uuid)
 	}
-	mnt := fs.Mountpoints[0].Mountpoint
+	avoid := fs.Devices[i].Missing
+	if !avoid {
+		states, stateErr := loadPoolStates()
+		if stateErr != nil {
+			return fmt.Errorf("read whether device %d is the disk of an unverified rebuild: %w", id, stateErr)
+		}
+		rec := states[uuid].Rebuild
+		avoid = rec != nil && rec.ID == uint64(id)
+	}
+	return replaceDevice(ctx, fs, id, newDevice, avoid, report)
+}
+
+// replaceDevice is Replace on fs, reading the source only when no other copy
+// exists when avoidSource is set.
+func replaceDevice(ctx context.Context, fs BtrfsFilesystem, id int, newDevice string, avoidSource bool, report func(float64)) error {
+	uuid, mnt := fs.UUID, fs.Mountpoints[0].Mountpoint
 	args := devReplaceArgs{Cmd: replaceCmdStart}
 	if len(newDevice) >= 1024 {
 		return fmt.Errorf("device path too long: %s", newDevice)
 	}
 	putU64(args.Params[:], replaceSrcDevID, uint64(id))
+	if avoidSource {
+		putU64(args.Params[:], replaceContReading, replaceReadAvoid)
+	}
 	copy(args.Params[replaceTgtDevName:], newDevice)
 	done := make(chan error, 1)
 	go func() {
@@ -369,7 +397,7 @@ func Replace(ctx context.Context, uuid string, id int, newDevice string, report 
 		}
 		return canceled || cancelErr != nil
 	}
-	err = waitOp(ctx, done, cancel, func() (float64, bool) {
+	err := waitOp(ctx, done, cancel, func() (float64, bool) {
 		state, pct, _, statusErr := replaceStatusOf(mnt)
 		return pct, statusErr == nil && state == replaceStateStarted
 	}, report)
@@ -383,17 +411,112 @@ func Replace(ctx context.Context, uuid string, id int, newDevice string, report 
 	return nil
 }
 
+// ErrReplaceUnverified is a replace the kernel reported finished whose new
+// disk is not working in the pool (see verifyReplaced).
+var ErrReplaceUnverified = errors.New("the replace did not leave a working disk")
+
+// poolReadOnly reports whether the filesystem mounted at mnt is read-only, as
+// a transaction abort forces it; a var so tests can fake it.
+var poolReadOnly = func(mnt string) (bool, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(mnt, &st); err != nil {
+		return false, fmt.Errorf("statfs %s: %w", mnt, err)
+	}
+	return st.Flags&unix.ST_RDONLY != 0, nil
+}
+
 // ReplaceResult returns the refreshed filesystem once a replace ended,
-// checking that newDevice took the slot.
+// checking that newDevice took the slot and works (verifyReplaced), and then
+// records the new disk for its devid (noteReplaced).
 func ReplaceResult(ctx context.Context, uuid string, id int, newDevice string) (BtrfsFilesystem, error) {
+	fs, err := verifyReplaced(ctx, uuid, id, newDevice)
+	if err == nil {
+		noteReplaced(ctx, uuid, id, newDevice)
+	}
+	return fs, err
+}
+
+// verifyReplaced checks that the replace of device id of pool uuid left a
+// working disk, target when not empty, in its place, and returns the
+// refreshed filesystem. The kernel's word is not enough: a target that dies
+// during the copy is never noticed by it (scrub.c reads num_write_errors,
+// which nothing raises, in 6.8, 7.0 and 7.1), so the copy runs to the end,
+// the commit that installs the dead target cannot write its superblock and
+// aborts, forcing a pool of two disks read-only, and the ioctl still returns
+// success with the replace FINISHED and DEV_INFO naming the dead target (seen
+// in the test VM on 7.0, docs/btrfs.md). So: the kernel says the last
+// replace finished, the device is in the pool at target's path, in use and
+// not dropped out (markDroppedOut, markUnopened), the pool is still
+// writable, and the pool holds the target's block device: an exclusive open
+// of it fails with EBUSY, as it does on every member the pool holds.
+func verifyReplaced(ctx context.Context, uuid string, id int, target string) (BtrfsFilesystem, error) {
+	mnt, err := mountpointFor(ctx, uuid)
+	if err != nil {
+		return BtrfsFilesystem{}, err
+	}
+	unverified := func(format string, a ...any) error {
+		return fmt.Errorf("replace of device %d of pool %s: %s: %w", id, uuid, fmt.Sprintf(format, a...), ErrReplaceUnverified)
+	}
+	state, _, _, err := replaceStatusOf(mnt)
+	if err != nil {
+		return BtrfsFilesystem{}, err
+	}
+	if state != replaceStateFinished {
+		return BtrfsFilesystem{}, unverified("the kernel reports it %s, not finished (see dmesg)", replaceStateName(state))
+	}
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return BtrfsFilesystem{}, err
 	}
-	if !slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id && d.Path == newDevice }) {
-		return BtrfsFilesystem{}, fmt.Errorf("replace ended without installing %s (see dmesg)", newDevice)
+	i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id })
+	switch {
+	case !fs.HealthKnown:
+		return BtrfsFilesystem{}, fmt.Errorf("could not read the devices of pool %s to check its replace of device %d", uuid, id)
+	case i < 0:
+		return BtrfsFilesystem{}, unverified("the device is no longer in the pool")
+	case target != "" && fs.Devices[i].Path != target:
+		return BtrfsFilesystem{}, unverified("it ended without installing %s (see dmesg)", target)
+	case fs.Devices[i].Missing && fs.Devices[i].Path == "":
+		return BtrfsFilesystem{}, unverified("the device is missing from the pool")
+	case fs.Devices[i].Missing:
+		return BtrfsFilesystem{}, unverified("the new disk %s is not working in the pool", fs.Devices[i].Path)
+	}
+	readOnly, err := poolReadOnly(mnt)
+	if err != nil {
+		return BtrfsFilesystem{}, err
+	}
+	if readOnly {
+		return BtrfsFilesystem{}, unverified("the pool went read-only, as when the new disk fails while the replace ends (see dmesg)")
+	}
+	// The pool holds the new disk when an exclusive open of it is refused; an
+	// open that works, or a disk gone, says it does not. Any other failure is
+	// a check that could not be made.
+	path := fs.Devices[i].Path
+	switch err := deviceNotBusy(path); {
+	case errors.Is(err, unix.EBUSY):
+	case err == nil:
+		return BtrfsFilesystem{}, unverified("the pool does not hold the new disk %s: something else can claim it", path)
+	case errors.Is(err, os.ErrNotExist), errors.Is(err, unix.ENXIO), errors.Is(err, unix.ENODEV):
+		return BtrfsFilesystem{}, unverified("the pool does not hold the new disk %s: %v", path, err)
+	default:
+		return BtrfsFilesystem{}, fmt.Errorf("check that pool %s holds its new disk %s: %w", uuid, path, err)
 	}
 	return fs, nil
+}
+
+// replaceStateName words a DEV_REPLACE status state.
+func replaceStateName(state uint64) string {
+	switch state {
+	case replaceStateStarted:
+		return "running"
+	case replaceStateFinished:
+		return "finished"
+	case replaceStateCanceled:
+		return "canceled"
+	case replaceStateSuspended:
+		return "suspended"
+	}
+	return "never started"
 }
 
 // replaceStatusOf returns the state of the pool's replace, its percent and
@@ -459,6 +582,13 @@ func checkReplaceSource(mnt, uuid string, id int) error {
 // earlier replace's. When ctx ends it returns ctx.Err() and leaves the
 // replace running; the caller decides whether to cancel it.
 func ResumeReplace(ctx context.Context, uuid string, id int, since time.Time, report func(float64)) error {
+	return resumeReplace(ctx, uuid, id, since, report, true)
+}
+
+// resumeReplace is ResumeReplace; note records the new disk for its devid
+// once the finish is checked (noteReplaced), which the automatic rebuild does
+// itself after its own check of the disk.
+func resumeReplace(ctx context.Context, uuid string, id int, since time.Time, report func(float64), note bool) error {
 	mnt, err := mountpointFor(ctx, uuid)
 	if err != nil {
 		return err
@@ -486,12 +616,14 @@ func ResumeReplace(ctx context.Context, uuid string, id int, since time.Time, re
 	case err != nil:
 		return err
 	case state == replaceStateFinished && ours:
-		fs, findErr := FindFilesystem(ctx, uuid)
-		if findErr != nil {
-			return findErr
+		// The request named the target by a path a reboot may have given to
+		// another disk, so the check takes the disk the pool has in the slot.
+		fs, verifyErr := verifyReplaced(ctx, uuid, id, "")
+		if verifyErr != nil {
+			return verifyErr
 		}
-		if !slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id && !d.Missing }) {
-			return fmt.Errorf("the replace of device %d finished, but the device is missing from pool %s", id, uuid)
+		if note {
+			noteReplaced(ctx, uuid, id, fs.Devices[slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id })].Path)
 		}
 		forgetReplacedDisk(ctx, uuid, id)
 		return nil

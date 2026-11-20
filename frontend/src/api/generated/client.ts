@@ -446,6 +446,9 @@ const linuxio = {
     }),
   },
   storage: {
+    btrfs_auto_rebuild: defineMutation("storage", "btrfs_auto_rebuild", {
+      kind: "object",
+    }),
     btrfs_balance: defineMutation("storage", "btrfs_balance", {
       kind: "object",
     }),

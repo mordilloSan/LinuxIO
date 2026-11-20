@@ -627,11 +627,21 @@ jobs, which also keep their own unit, limits and journal that way. The units:
 | `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | Snapshots | `/storage/subvolumes?view=snapshots` |
 | `scheduled.btrfs_replicate` | `linuxio-btrfs-replicate.service` (started by each snapshot pass with a job enabled) | Replication | `/storage/subvolumes?view=replication` |
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | Pool resync | `/storage?pool=<uuid>` |
+| `scheduled.btrfs_rebuild` | `linuxio-btrfs-rebuild@<uuid>.service` | Pool rebuild | `/storage?pool=<uuid>` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | Container updates | `/docker/containers` |
 | `scheduled.system_update` | `apt-daily-upgrade`, `dnf-automatic`, `dnf5-automatic` or `mintupdate-automation-upgrade.service` | System updates | `/updates` |
 
 `linuxio-btrfs-health.service`, the degraded mount at boot and the indexer's
 timer are not recorded.
+
+A pool rebuild, the automatic replace of a missing member onto its returned
+disk or the hot spare, is started by the health check too, and shows the
+replace's percentage as its progress ([Btrfs](./btrfs.md#missing-disks)). It
+is never a job of the job host either: a rebuild cut by a shutdown or a
+power loss is settled by its next run, which follows the replace the kernel
+still runs in the boot it started in, and otherwise starts it again once
+LinuxIO's mount has erased the target. A rebuild that ends well starts a
+health check, which starts the resync.
 
 A pool resync cut short, by a power loss, a shutdown or **Stop check**,
 reads interrupted or failed like any run, and its next run, which the health
@@ -684,7 +694,7 @@ unit's running record. Either takes the mark back when the stop or the cancel
 fails.
 
 **A timer program's run completes when its items fail.** LinuxIO's own
-timer programs (`linuxio-worker` for snapshots, replication and resync, and
+timer programs (`linuxio-worker` for snapshots, replication, resync and rebuild, and
 the Docker updater) raise an alert of their own for each
 rule, job, pool or container that fails, and the run did its work, so the
 program exits with 0: the unit is not failed on the Services page and the run
@@ -725,6 +735,7 @@ What the run did is in two places:
   | Snapshots (the timer's pass) | *2 taken, 3 pruned, 1 failed*, *Nothing to do* |
   | Replication | *1 sent, 1 failed*, *Nothing to do*, *Skipped: another run held every job* |
   | Pool resync | *Resynced*, *Resync failed* (the pool's alerts say why, and the health run retries it) |
+  | Pool rebuild | *Rebuilt*, *Rebuild failed* (the pool's rebuild alert says why; it waits for a person), *Nothing to do* (skipped: another operation ran on the pool, or the record needed no rebuild) |
 
   The snapshot pass before a system update runs inside that update's unit
   and stores none; a rule that fails there exits with 1.
@@ -933,15 +944,17 @@ The record itself is the quickest evidence: as root,
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
 | Go unit | same | `backend/common/scheduledrun/*_test.go`, `backend/worker/scheduled_run_test.go` | The hooks' outcomes and order, liveness, output copy, exit statuses, unit kinds |
 | C | `make test-auth-pam`, in `make test-backend` | `backend/auth/linuxio-auth-pam_test.c` | The exact `systemctl` arguments of an unprivileged login, before the session opens; a failed, missing or hanging `systemctl` keeps the login; a login the sudo probe admits (a stub `sudo`) is privileged and starts no host |
-| Installer | `make test-installation-scripts` | `packaging/scripts/tests/installer-fixtures.sh` | Unit fixtures, the run-record drop-ins, the needrestart override's content check and its six expressions |
+| Installer | `make test-installation-scripts` | `packaging/scripts/tests/installer-fixtures.sh` | Unit fixtures, the run-record drop-ins, the needrestart override's content check and its expressions |
 | Frontend unit | `make test-frontend`, in `make check-frontend-quiet` | `HistoryPage.test.tsx`, `SavedOutput.test.tsx`, `JobsUpdateBanner.test.tsx`, `useJobHostStatus.test.ts`, `useRefreshHistoryAfterUpdate.test.tsx`, `useAwayNotice.test.tsx`, `NotificationsBell.test.tsx`, `taskTitles.test.ts`, `scheduledRuns.test.ts`, `mutation-react-query.test.ts`, `call-react-query.test.ts` | Pages, banner and bell in jsdom, which has no layout; the client's resend and reattach; the `update_pending` toast |
 | Browser | `make test-frontend-browser-quiet` | `frontend/src/test/browser/history.spec.ts`, `frontend/src/test/browser/schedules.spec.ts`, `frontend/src/test/browser/background-tasks.spec.ts` | Real layout against the fixture: the history table has height, the Schedules table keeps its rows beside tall details, tray rendering |
 | Root, in the VM | `make vm-test-relay-root` | `backend/bridge/cmd/jobs_relay_test.go` | The relay tests as root: the in-process host is the root host, so its owner and privileged rules differ from a user host's |
 | Root kernel | `make test-btrfs-integration` (sudo, the user's to run); `make vm-test-btrfs-integration` in the VM | `backend/common/btrfs/integration_resume_test.go` (`TestBtrfsResumeIntegration`) | Kill and resume each btrfs operation on loop devices: signals, cancels, kills, a paused balance across a remount, a scrub from its offset, a scrub from its saved progress after a kill, a scrub across a filesystem freeze and its cancel there by its context and through `ScrubCancel`, a replace across a simulated power cut |
 | Root kernel | same | `backend/common/btrfs/degraded_integration_test.go` (`TestBtrfsDegradedIntegration`) | A pool resync cut by a simulated power cut mid-scrub (a frozen copy of the disks and the state), booted from the copies and continued by the next resync, with corrections on both sides of the cut; a resync during whose scrub, then whose convert, one disk's writes fail through a device-mapper error target fails naming it, and the next one makes that disk whole and keeps the write errors of the failed attempts in its counters; a resync whose convert was paused, then continued by the kernel at the next mount, is followed to the end without a balance of its own; the returned disk's error counters, which the scrub raised, read zero through the kernel after the resync, with no health alert, and still at the next mount with no write in between, the resync having committed the reset; a disk of a pool of its own fails through a device-mapper error target while the pool is mounted, the pool runs without it at the next mount, and once it is back the resync that ends whole keeps its counters, the failed writes included, and its health alert, with a whole again warning that says why |
 | Root kernel | same (needs the `scsi_debug` module) | `backend/common/btrfs/dropout_integration_test.go` (`TestBtrfsDropoutIntegration`) | A disk of a mounted raid1 pool deleted from its SCSI bus while the pool is written: missing and dropped out, the episode opened by the health run, no resync while the pool holds the gone block device, also once the disk is back under a new name, and none counted failed; mounted again with the disk, the health run starts the resync, which corrects the copies the disk missed and keeps its failed writes with a warning that says why, after which the disk alone holds every file and scrubs clean |
+| Root kernel | `make vm-test-btrfs-integration` (the VM only: it pulls virtio disks off the PCI bus) | `backend/common/btrfs/rebuild_integration_test.go` (`TestBtrfsAutoRebuildIntegration`) | The `scheduled.btrfs_rebuild` runner's own path: a raid1 member that dropped out, then one missing after a degraded mount, rebuilt onto its returned disk after two health runs and resynced whole; a clone of the member on another disk refused by its identity and left as it was, then two disks claiming the member refused; a replace onto the hot spare; the returned disk pulled again mid-rebuild, the failure kept on record with an error, LinuxIO's degraded mount erasing the disk and canceling the suspended replace, and a replace from the pool details making it whole |
 | Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser-rerun` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; a package update picked up from PackageKit after a `kill -9` of the root host during dpkg; uploads; a scrub across logout; host stop, kill, reboot and power cut |
 | Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; a `scheduled.btrfs_resync` run cut by a power cut mid-scrub, after a disk dropped out on the guest's PCI bus and the boot check mounted the pool degraded, read interrupted, and the next run, which the health check starts, continuing its scrub to *Resynced* with no health alert left and the returned disk's error counters reset, still zero as the next mount reads them with no write in between, the returned disk then alone holding every file; pool create rollback; the Docker storage switch killed |
+| Test VM | same | `frontend/src/test/vm/btrfs-rebuild.spec.ts` | A disk of the mounted test pool pulled off the bus and put back under a new name: the pool page shows it dropped out, back, rebuilding and resyncing, then healthy, with the `scheduled.btrfs_rebuild` run *Rebuilt* and the resync *Resynced* from the units the installer put there; after a reboot the pool is whole and the other disk is rebuilt the same way |
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner; needrestart deferring a job host |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5b.spec.ts` | Notification settings, the grid at delivery and in the bell, a schedule's choice, an interruption as a warning, the notice at sign-in |

@@ -349,6 +349,11 @@ export interface BtrfsAllocation {
   usedBytes: number;
 }
 
+export interface BtrfsAutoRebuildRequest {
+  uuid: string;
+  enabled: boolean;
+}
+
 export interface BtrfsBalanceRequest {
   uuid: string;
   dataProfile?: string;
@@ -420,6 +425,8 @@ export interface BtrfsFilesystem {
   degraded: boolean;
   lowMetadataSpace: boolean;
   spare?: BtrfsSpare;
+  autoRebuild: boolean;
+  rebuild?: BtrfsRebuild;
 }
 
 export interface BtrfsJobIDRequest {
@@ -497,6 +504,17 @@ export interface BtrfsQuotaRequest {
   uuid: string;
   enabled: boolean;
 }
+
+export interface BtrfsRebuild {
+  state: BtrfsRebuildState;
+  deviceId?: number;
+  device?: string;
+  spare?: boolean;
+  reason?: string;
+  advice?: string;
+}
+
+export type BtrfsRebuildState = "waiting" | "running" | "failed" | "refused";
 
 export interface BtrfsReplicationJob {
   id: string;
@@ -4765,6 +4783,11 @@ export interface LinuxIOSchema {
   };
 
   storage: {
+    btrfs_auto_rebuild: {
+      input: [request: BtrfsAutoRebuildRequest];
+      request: BtrfsAutoRebuildRequest;
+      result: void;
+    };
     btrfs_balance: {
       input: [request: BtrfsBalanceRequest];
       request: BtrfsBalanceRequest;

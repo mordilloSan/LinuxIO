@@ -122,7 +122,13 @@ and the login) lives in `~/.cache/linuxio-vm`.
 
 While it runs, a VM takes up to 4 GiB of RAM and 4 vCPU. Its disks are
 sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
-(`vdb`–`vde`) for storage tests.
+(`vdb`–`vde`) for storage tests. Each data disk carries a serial,
+`linuxio-vdb` to `linuxio-vde`, which udev reports as `ID_SERIAL`, as a real
+disk's: the btrfs hot spare and the automatic rebuild recognise a disk by it.
+A VM created before the disks had serials gets them at its next
+`make vm-reset`, which every test target without `VM` runs, since the revert
+to `clean` brings back the definition the snapshot kept; `make vm-update`
+takes the snapshot again with them.
 
 `make test-vm-browser` is the whole browser run in one command. It builds
 LinuxIO and the update build the update checks install (`vm-update-build`,

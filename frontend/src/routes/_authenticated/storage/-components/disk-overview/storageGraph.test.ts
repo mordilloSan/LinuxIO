@@ -79,6 +79,7 @@ const filesystem = (overrides: Partial<BtrfsFilesystem>): BtrfsFilesystem => ({
   },
   degraded: false,
   lowMetadataSpace: false,
+  autoRebuild: true,
   ...overrides,
 });
 

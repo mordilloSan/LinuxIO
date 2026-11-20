@@ -887,7 +887,7 @@ runs it. Each run writes a record of its own from two hooks on its unit
 ([Process & Systemd Architecture](./process-systemd-architecture.md#scheduled-runs)):
 `/var/lib/linuxio/jobs/scheduled/<id>.json`, with a copy of its output beside
 it. The root job host reads those records, so the run shows in `tasks.list`
-and `tasks.events` while it runs. Six task types:
+and `tasks.events` while it runs. Seven task types:
 
 | Type | Unit | `metadata.label` | `metadata.identity` |
 | ---| ---| ---| ---|
@@ -895,6 +895,7 @@ and `tasks.events` while it runs. Six task types:
 | `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | `Snapshots` | none |
 | `scheduled.btrfs_replicate` | `linuxio-btrfs-replicate.service` | `Replication` | none |
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | `Pool resync` | `[<pool uuid>]` |
+| `scheduled.btrfs_rebuild` | `linuxio-btrfs-rebuild@<uuid>.service` | `Pool rebuild` | `[<pool uuid>]` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | `Container updates` | none |
 | `scheduled.system_update` | the distribution's automatic update service: `apt-daily-upgrade.service`, `dnf-automatic.service`, `dnf5-automatic.service` or `mintupdate-automation-upgrade.service` | `System updates` | none |
 
@@ -924,8 +925,8 @@ and `tasks.events` while it runs. Six task types:
   line, such as `1 updated, 1 failed`), `failures` (how many of its items
   failed with an alert of their own; absent when none) and `skipped` (set
   when the run did no work). The Docker update pass, the timer's snapshot
-  pass, the replication run and the pool resync store one, and complete also
-  when their containers, rules, jobs or pool failed
+  pass, the replication run, the pool resync and the pool rebuild store one,
+  and complete also when their containers, rules, jobs or pool failed
   ([Jobs](./jobs.md#scheduled-runs)); scripts and system updates store none. A
   `running` record counts only while systemd runs the record's invocation in
   this boot; otherwise the host marks it `interrupted`, `reboot` for a run of

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
@@ -362,6 +364,47 @@ func TestBtrfsSpareDelayAndClear(t *testing.T) {
 	}
 }
 
+// The switch of the rebuild onto a disk that returns is set on a mounted
+// pool only, and stored as the btrfs package keeps it.
+func TestSetBtrfsAutoRebuild(t *testing.T) {
+	ctx := context.Background()
+	origSet, origFind := btrfsSetAutoRebuild, btrfsFindFilesystem
+	t.Cleanup(func() { btrfsSetAutoRebuild, btrfsFindFilesystem = origSet, origFind })
+	var got []string
+	btrfsSetAutoRebuild = func(_ context.Context, uuid string, enabled bool) error {
+		got = append(got, fmt.Sprintf("%s %t", uuid, enabled))
+		return nil
+	}
+	btrfsFindFilesystem = func(_ context.Context, uuid string) (btrfs.BtrfsFilesystem, error) {
+		switch uuid {
+		case sparePool:
+			return btrfs.BtrfsFilesystem{UUID: uuid}, nil
+		case "unreadable":
+			return btrfs.BtrfsFilesystem{}, fmt.Errorf("list btrfs mounts: %w", unix.EIO)
+		}
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("btrfs filesystem %s %w", uuid, btrfs.ErrFilesystemNotFound)
+	}
+	if err := SetBtrfsAutoRebuild(ctx, apischema.BtrfsAutoRebuildRequest{UUID: sparePool, Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetBtrfsAutoRebuild(ctx, apischema.BtrfsAutoRebuildRequest{UUID: sparePool, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetBtrfsAutoRebuild(ctx, apischema.BtrfsAutoRebuildRequest{UUID: otherPool, Enabled: true}); !errors.Is(err, bridgeipc.ErrNotFound) {
+		t.Errorf("pool not mounted: err = %v, want not found", err)
+	}
+	// Mounts that could not be read are no answer: not a 404.
+	if err := SetBtrfsAutoRebuild(ctx, apischema.BtrfsAutoRebuildRequest{UUID: "unreadable", Enabled: true}); err == nil || errors.Is(err, bridgeipc.ErrNotFound) {
+		t.Errorf("mounts unreadable: err = %v, want an error that is not not-found", err)
+	}
+	if err := SetBtrfsAutoRebuild(ctx, apischema.BtrfsAutoRebuildRequest{Enabled: true}); !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+		t.Errorf("no pool: err = %v, want invalid arguments", err)
+	}
+	if want := []string{sparePool + " false", sparePool + " true"}; !slices.Equal(got, want) {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+}
+
 // The routes write host state as root, so a non-sudo session is refused.
 func TestBtrfsSpareRoutesArePrivileged(t *testing.T) {
 	for _, route := range btrfsSpareBindings().Routes() {
@@ -369,7 +412,7 @@ func TestBtrfsSpareRoutesArePrivileged(t *testing.T) {
 			t.Errorf("%s is not privileged", route.Route)
 		}
 	}
-	if n := len(btrfsSpareBindings().Routes()); n != 3 {
-		t.Errorf("%d spare routes, want set, delay and clear", n)
+	if n := len(btrfsSpareBindings().Routes()); n != 4 {
+		t.Errorf("%d spare routes, want set, delay, clear and the automatic rebuild switch", n)
 	}
 }

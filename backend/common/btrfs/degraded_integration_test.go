@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -314,6 +315,65 @@ func (m *itMirror) bootMountsTheSurvivor() {
 	}) {
 		t.Fatal("fewer than four single data chunks were allocated on one disk; the convert step would have too little to do")
 	}
+	// The chunk tree puts those single chunks on b, the disk that stayed,
+	// and none on a: the automatic rebuild of a would not be refused for
+	// them (oneCopyChunks).
+	one, err := oneCopyChunks(m.target)
+	m.must("chunk tree", err)
+	t.Logf("chunks keeping one copy, by devid: %v", one)
+	if one[2] == "" || one[1] != "" {
+		t.Fatalf("chunks keeping one copy = %v, want them on device 2 alone", one)
+	}
+	// btrfs-progs reads the same from the disk: each device's first chunk
+	// that keeps one copy, in logical order.
+	unix.Sync()
+	dump, err := exec.CommandContext(m.ctx, "btrfs", "inspect-internal", "dump-tree", "-t", "chunk", m.b.dev).CombinedOutput()
+	m.must("dump the chunk tree", err)
+	if want := progsOneCopyChunks(string(dump)); !maps.Equal(one, want) {
+		t.Fatalf("chunks keeping one copy = %v, btrfs-progs reads %v", one, want)
+	}
+}
+
+// progsOneCopyChunks is what oneCopyChunks returns, read from the chunk tree
+// as btrfs-progs prints it (inspect-internal dump-tree -t chunk): its
+// "length … type DATA|RAID1" line and its "stripe N devid D" lines.
+func progsOneCopyChunks(dump string) map[uint64]string {
+	found := map[uint64]string{}
+	what := ""
+	for line := range strings.Lines(dump) {
+		f := strings.Fields(line)
+		switch {
+		case len(f) > 0 && f[0] == "item":
+			what = ""
+		case len(f) >= 8 && f[0] == "length" && f[6] == "type":
+			what = progsOneCopyType(f[7])
+		case len(f) >= 4 && f[0] == "stripe" && f[2] == "devid" && what != "":
+			id, err := strconv.ParseUint(f[3], 10, 64)
+			if _, seen := found[id]; err == nil && !seen {
+				found[id] = what
+			}
+		}
+	}
+	return found
+}
+
+// progsOneCopyType words btrfs-progs' chunk type as oneCopyChunks does
+// ("data single"), or "" for a profile that keeps more than one copy.
+func progsOneCopyType(t string) string {
+	var kinds []string
+	profile := "single"
+	for part := range strings.SplitSeq(t, "|") {
+		switch p := strings.ToLower(part); p {
+		case "data", "metadata", "system":
+			kinds = append(kinds, p)
+		default:
+			profile = p
+		}
+	}
+	if profile != "single" && profile != "dup" && profile != "raid0" {
+		return ""
+	}
+	return strings.Join(kinds, "+") + " " + profile
 }
 
 // returnedDiskIsNotUsed: a comes back while mounted; the kernel lists it but
@@ -918,7 +978,7 @@ func mountedDropoutKeepsItsCounters(t *testing.T, dir string) {
 	p.must("mount degraded", MountOfflinePool(p.ctx, pools[0], p.mnt, []string{"noatime"}, true))
 	states, err := loadPoolStates()
 	p.must("pool state", err)
-	if want := []missingDisk{{ID: uint64(gone.ID), UUID: gone.UUID, Whole: true}}; !slices.Equal(states[p.uuid].Missing, want) {
+	if want := []missingDisk{{ID: uint64(gone.ID), UUID: gone.UUID, Whole: true}}; !slices.Equal(withoutAt(states[p.uuid].Missing), want) {
 		t.Fatalf("missing disks of the episode = %+v, want %+v, with the counters of the pool whole", states[p.uuid].Missing, want)
 	}
 	write("degraded", 8)

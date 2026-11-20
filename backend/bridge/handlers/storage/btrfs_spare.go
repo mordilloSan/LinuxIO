@@ -17,21 +17,25 @@ import (
 // it is started elsewhere. While a disk is a pool's spare the inventory marks
 // it (markHotSpares) and deviceInUse refuses it for every other write.
 
-// Seams for tests: the designations in btrfs/spare.go.
+// Seams for tests: the designations in btrfs/spare.go and the switch of the
+// automatic rebuild in btrfs/rebuild.go.
 var (
-	btrfsSpareDisks    = btrfs.SpareDisks
-	btrfsSetSpare      = btrfs.SetSpare
-	btrfsSetSpareDelay = btrfs.SetSpareDelay
-	btrfsClearSpare    = btrfs.ClearSpare
+	btrfsSpareDisks     = btrfs.SpareDisks
+	btrfsSetSpare       = btrfs.SetSpare
+	btrfsSetSpareDelay  = btrfs.SetSpareDelay
+	btrfsClearSpare     = btrfs.ClearSpare
+	btrfsSetAutoRebuild = btrfs.SetAutoRebuild
 )
 
 // The routes write LinuxIO's state under /var/lib/linuxio and read the disk
-// through an exclusive open: root only.
+// through an exclusive open: root only. The automatic rebuild's switch sits
+// beside the spare on the pool's Disks card.
 func btrfsSpareBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.MutationVoid("storage.btrfs_spare_set", SetBtrfsSpare, apischema.Privileged()),
 		apischema.MutationVoid("storage.btrfs_spare_delay", SetBtrfsSpareDelay, apischema.Privileged()),
 		apischema.MutationVoid("storage.btrfs_spare_clear", ClearBtrfsSpare, apischema.Privileged()),
+		apischema.MutationVoid("storage.btrfs_auto_rebuild", SetBtrfsAutoRebuild, apischema.Privileged()),
 	)
 }
 
@@ -91,6 +95,24 @@ func ClearBtrfsSpare(ctx context.Context, req apischema.UUIDRequest) error {
 	if cleared {
 		slog.Info("removed btrfs hot spare", "uuid", req.UUID)
 	}
+	return nil
+}
+
+// SetBtrfsAutoRebuild turns on or off the rebuild of a mounted pool onto a
+// missing member's own disk when it comes back.
+func SetBtrfsAutoRebuild(ctx context.Context, req apischema.BtrfsAutoRebuildRequest) error {
+	if req.UUID == "" {
+		return fmt.Errorf("%w: a pool is required", bridgeipc.ErrInvalidArgs)
+	}
+	if _, err := btrfsFindFilesystem(ctx, req.UUID); errors.Is(err, btrfs.ErrFilesystemNotFound) {
+		return fmt.Errorf("%w: mounted btrfs pool %s: %w", bridgeipc.ErrNotFound, req.UUID, err)
+	} else if err != nil {
+		return fmt.Errorf("find btrfs pool %s: %w", req.UUID, err)
+	}
+	if err := btrfsSetAutoRebuild(ctx, req.UUID, req.Enabled); err != nil {
+		return fmt.Errorf("set automatic rebuild of btrfs pool %s: %w", req.UUID, err)
+	}
+	slog.Info("set btrfs automatic rebuild", "uuid", req.UUID, "enabled", req.Enabled)
 	return nil
 }
 

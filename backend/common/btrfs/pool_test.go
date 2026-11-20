@@ -59,7 +59,7 @@ func TestParseSuperblock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Superblock{UUID: "12345678-9abc-def0-0102-030405060708", Label: "tank", DevID: 2, NumDevices: 3, TotalBytes: 300}
+	want := Superblock{UUID: "12345678-9abc-def0-0102-030405060708", Label: "tank", DevID: 2, DevUUID: "00000000-0000-0000-0000-000000000000", NumDevices: 3, TotalBytes: 300}
 	if sb != want {
 		t.Fatalf("got %+v, want %+v", sb, want)
 	}
@@ -222,7 +222,7 @@ func TestMountPool(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("mount = %v, want %v", got, want)
 	}
-	if states, err := loadPoolStates(); err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 7, Degraded: true, Present: []uint64{1}, Missing: []missingDisk{{ID: 2, UUID: "00000000-0000-0000-0000-000000000000"}}, Since: states[dataUUID].Since}) || states[dataUUID].Since == 0 {
+	if states, err := loadPoolStates(); err != nil || !reflect.DeepEqual(withoutMissingAt(states[dataUUID]), poolState{Generation: 7, Degraded: true, Present: []uint64{1}, Missing: []missingDisk{{ID: 2, UUID: "00000000-0000-0000-0000-000000000000"}}, Since: states[dataUUID].Since}) || states[dataUUID].Since == 0 {
 		t.Fatalf("state = %+v, %v; want generation 7, degraded on devid 1", states, err)
 	}
 	if info, err := os.Stat(target); err != nil || !info.IsDir() {

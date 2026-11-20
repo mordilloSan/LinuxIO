@@ -19,6 +19,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppSelect from "@/components/ui/AppSelect";
+import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formatters";
@@ -57,7 +58,7 @@ const parseDelay = (text: string) => {
 const delayText = (minutes: number) =>
   minutes === 0
     ? "Replaces a missing disk at the next health check"
-    : `Replaces a disk missing for ${minutes} minute${minutes === 1 ? "" : "s"}`;
+    : `Replaces a disk missing for ${minutesText(minutes)}`;
 
 /** How the spare's disk is recognised: its serial, or its WWN. */
 const identity = ({ disk }: BtrfsSpare) =>
@@ -66,6 +67,77 @@ const identity = ({ disk }: BtrfsSpare) =>
 /** A reason the bridge words as a clause, as a sentence. */
 const sentence = (clause: string) =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
+
+const minutesText = (minutes: number) =>
+  `${minutes} minute${minutes === 1 ? "" : "s"}`;
+
+/**
+ * What LinuxIO does by itself when a disk of the pool goes missing, and when
+ * (docs/btrfs.md, "Missing disks" and "Hot spare").
+ */
+const automaticReplace = (pool: string, on: boolean, spare?: BtrfsSpare) => {
+  const onSpare = spare
+    ? spare.delayMinutes === 0
+      ? "a disk that stays missing is replaced with the hot spare at the next health check"
+      : `a disk that stays missing for ${minutesText(spare.delayMinutes)} is replaced with the hot spare`
+    : "";
+  if (on)
+    return `When a disk of ${pool} goes missing and comes back, LinuxIO erases it and rebuilds the pool onto it once two health checks in a row (about 10 minutes) have seen it back${onSpare ? `; ${onSpare}` : ""}.`;
+  return `A disk of ${pool} that comes back is taken back only when the pool is mounted again, and ${onSpare || "nothing replaces a missing disk by itself"}.`;
+};
+
+/** The pool's switch of the rebuild onto a disk that returns. */
+const AutoRebuild = ({
+  disabled,
+  filesystem,
+}: {
+  disabled: boolean;
+  filesystem: BtrfsFilesystem;
+}) => {
+  const { uuid, autoRebuild } = filesystem;
+  const { mutate, isPending } = linuxio.storage.btrfs_auto_rebuild.useMutation({
+    success: "Automatic rebuild changed",
+    error: "Failed to change the automatic rebuild",
+    toast: BTRFS_POOL_TOAST_META,
+  });
+  const label = "Rebuild automatically onto a disk that returns";
+  return (
+    <>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "var(--app-space-8)",
+        }}
+      >
+        <Icon
+          color="var(--app-palette-text-secondary)"
+          height={22}
+          icon="mdi:sync"
+          width={22}
+        />
+        <AppTypography variant="body2">{label}</AppTypography>
+        <div style={{ marginLeft: "auto" }}>
+          <AppSwitch
+            aria-label={label}
+            checked={autoRebuild}
+            disabled={disabled || isPending}
+            onChange={(_, enabled) => mutate({ uuid, enabled })}
+            size="small"
+          />
+        </div>
+      </div>
+      <AppTypography color="text.secondary" variant="caption">
+        {automaticReplace(
+          filesystem.label || uuid,
+          autoRebuild,
+          filesystem.spare,
+        )}
+      </AppTypography>
+    </>
+  );
+};
 
 const DelayField = ({
   onChange,
@@ -364,6 +436,7 @@ const BtrfsHotSpare = ({
           {notOffered}
         </AppTypography>
       )}
+      {offered && <AutoRebuild disabled={disabled} filesystem={filesystem} />}
 
       {dialog === "set" && (
         <SetSpareDialog filesystem={filesystem} onClose={closeDialog} />

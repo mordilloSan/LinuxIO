@@ -146,7 +146,8 @@ disabled states are only hints. A device is in use when:
 3. it is a member of a btrfs filesystem, mounted or not, or, while a disk
    of a mounted pool is dropped out, at that disk's old path or named by its
    own superblock as that pool's: it may be the disk, which the pool takes
-   back when mounted again ([Missing disks](./btrfs.md#missing-disks)). A
+   back when mounted again, or the automatic rebuild erases and replaces the
+   member onto, its one taker ([Missing disks](./btrfs.md#missing-disks)). A
    leg of an md array, a multipath path or an LVM image that shows a pool's
    superblock is no member, and is refused by rule 2 while held and
    otherwise as the md, LVM or multipath member it is, which Format, Delete

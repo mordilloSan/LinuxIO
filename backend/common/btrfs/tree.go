@@ -16,6 +16,7 @@ import (
 // Tree ids, item types and flags from btrfs_tree.h.
 const (
 	rootTreeObjectID    = 1
+	chunkTreeObjectID   = 3
 	devTreeObjectID     = 4
 	fsTreeObjectID      = 5
 	rootTreeDirObjectID = 6
@@ -44,6 +45,17 @@ const (
 	rootItemRecvUUID   = 279
 	rootItemOtime      = 339
 	rootItemV2Size     = 439
+
+	// The chunk items of the chunk tree (BTRFS_FIRST_CHUNK_TREE_OBJECTID,
+	// BTRFS_CHUNK_ITEM_KEY), and the field offsets of the packed struct
+	// btrfs_chunk, whose struct btrfs_stripe entries (devid, offset, device
+	// UUID) follow num_stripes and sub_stripes.
+	firstChunkTreeObjectID = 256
+	chunkItemKey           = 228
+	chunkType              = 24
+	chunkNumStripes        = 44
+	chunkStripes           = 48
+	chunkStripeSize        = 32
 )
 
 // searchKey mirrors struct btrfs_ioctl_search_key.

@@ -1,6 +1,6 @@
 // Command linuxio-worker is the one program systemd starts with a word: the
-// btrfs snapshot, replication, health, boot-time degraded mount and resync
-// jobs of the timer units, and the hooks that record a scheduled run and
+// btrfs snapshot, replication, health, boot-time degraded mount, resync and
+// rebuild jobs of the timer units, and the hooks that record a scheduled run and
 // raise alerts. It is installed for root only and is not an admin command;
 // linuxio is.
 package main
@@ -24,6 +24,7 @@ const usage = `Usage: linuxio-worker snapshot [--now RFC3339]
        linuxio-worker health
        linuxio-worker degraded
        linuxio-worker resync <uuid>
+       linuxio-worker rebuild <uuid>
        linuxio-worker scheduled-run begin|end --unit <unit>
        linuxio-worker alert raise|resolve|auto-update|pending-updates [flags]`
 
@@ -85,6 +86,8 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runDegraded(ctx, args[1:], stderr)
 	case "resync":
 		return runResync(ctx, args[1:], stderr)
+	case "rebuild":
+		return runRebuild(ctx, args[1:], stderr)
 	case "scheduled-run":
 		return runScheduledRun(ctx, args[1:], os.Getenv, scheduledrun.DefaultHooks(), stderr)
 	case "alert":

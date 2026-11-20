@@ -55,6 +55,7 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-btrfs-health.service",
 		"_SYSTEMD_UNIT=linuxio-btrfs-health.timer",
 		"_SYSTEMD_UNIT=linuxio-btrfs-resync@.service",
+		"_SYSTEMD_UNIT=linuxio-btrfs-rebuild@.service",
 	}
 
 	switch mode {

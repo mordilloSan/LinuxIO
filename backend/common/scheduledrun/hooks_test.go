@@ -883,25 +883,27 @@ func TestFailedWorkerRunRaisesTheRunAlert(t *testing.T) {
 	}
 }
 
-// The btrfs health check finds the pool of a resync run alert from the key
-// the end hook raised, and no other run or job alert names a pool.
-func TestResyncRunAlertPoolReadsTheKeyTheEndHookRaises(t *testing.T) {
+// The btrfs health check finds the pool of a resync or rebuild run alert
+// from the key the end hook raised, and no other run or job alert names a
+// pool.
+func TestPoolRunAlertPoolReadsTheKeyTheEndHookRaises(t *testing.T) {
 	const pool = "0a1b2c3d-1111-2222-3333-444455556666"
-	const unit = "linuxio-btrfs-resync@" + pool + ".service"
-	h := newHooks(t)
-	mustBegin(t, h, unit, testInvocation)
-	if err := h.End(t.Context(), unit, testInvocation, Result{"exit-code", "exited", "1"}); err != nil {
-		t.Fatal(err)
+	for _, unit := range []string{"linuxio-btrfs-resync@" + pool + ".service", "linuxio-btrfs-rebuild@" + pool + ".service"} {
+		h := newHooks(t)
+		mustBegin(t, h, unit, testInvocation)
+		if err := h.End(t.Context(), unit, testInvocation, Result{"exit-code", "exited", "1"}); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.alerts) != 1 || h.alerts[0].Source != AlertSource {
+			t.Fatalf("%s: alerts = %+v, want the run alert", unit, h.alerts)
+		}
+		if got, ok := PoolRunAlertPool(h.alerts[0].Key); !ok || got != pool {
+			t.Errorf("PoolRunAlertPool(%q) = %q, %v; want %q", h.alerts[0].Key, got, ok, pool)
+		}
 	}
-	if len(h.alerts) != 1 || h.alerts[0].Source != AlertSource {
-		t.Fatalf("alerts = %+v, want the run alert", h.alerts)
-	}
-	if got, ok := ResyncRunAlertPool(h.alerts[0].Key); !ok || got != pool {
-		t.Errorf("ResyncRunAlertPool(%q) = %q, %v; want %q", h.alerts[0].Key, got, ok, pool)
-	}
-	for _, key := range []string{"run-docker-update", "run-btrfs-snapshot", "run-btrfs-resync", "run-btrfs-resync-", "run-btrfs-resync-not-a-uuid", testRunID, FinishedAlertKey(pool)} {
-		if got, ok := ResyncRunAlertPool(key); ok {
-			t.Errorf("ResyncRunAlertPool(%q) = %q; want no pool", key, got)
+	for _, key := range []string{"run-docker-update", "run-btrfs-snapshot", "run-btrfs-resync", "run-btrfs-resync-", "run-btrfs-resync-not-a-uuid", "run-btrfs-rebuild-", testRunID, FinishedAlertKey(pool)} {
+		if got, ok := PoolRunAlertPool(key); ok {
+			t.Errorf("PoolRunAlertPool(%q) = %q; want no pool", key, got)
 		}
 	}
 }

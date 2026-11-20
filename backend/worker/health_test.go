@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"testing"
@@ -17,10 +18,10 @@ func TestRunHealth(t *testing.T) {
 	t.Cleanup(func() { checkBtrfsHealth, startUnit = oldCheck, oldStart })
 	runs := 0
 	var fail error
-	var resync []string
-	checkBtrfsHealth = func(context.Context) ([]string, error) {
+	var actions btrfs.HealthActions
+	checkBtrfsHealth = func(context.Context) (btrfs.HealthActions, error) {
 		runs++
-		return resync, fail
+		return actions, fail
 	}
 	var started []string
 	startUnit = func(_ context.Context, name string) error {
@@ -38,8 +39,8 @@ func TestRunHealth(t *testing.T) {
 	if code := runHealth(context.Background(), nil, io.Discard); code != 0 || runs != 1 {
 		t.Fatalf("run = %d, runs = %d", code, runs)
 	}
-	resync = []string{"uuid-1"}
-	if code := runHealth(context.Background(), nil, io.Discard); code != 0 || !reflect.DeepEqual(started, []string{"linuxio-btrfs-resync@uuid-1.service"}) {
+	actions = btrfs.HealthActions{Resync: []string{"uuid-1"}, Rebuild: []string{"uuid-2"}}
+	if code := runHealth(context.Background(), nil, io.Discard); code != 0 || !reflect.DeepEqual(started, []string{"linuxio-btrfs-resync@uuid-1.service", "linuxio-btrfs-rebuild@uuid-2.service"}) {
 		t.Fatalf("run = %d, started = %v", code, started)
 	}
 	fail = errors.New("boom")
@@ -101,6 +102,76 @@ func TestRunDegradedAndResync(t *testing.T) {
 	}
 	if want := []scheduledrun.Summary{{Message: "Resynced"}}; !reflect.DeepEqual(*summaries, want) {
 		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
+	}
+}
+
+// The rebuild word runs the pool's automatic rebuild: its replace's percent
+// is the run's progress; a refusal or failure the pool's rebuild alert
+// reports completes the run with a summary that says so; one that found
+// nothing to do completes with Nothing to do; a rebuild that ends well
+// starts the health check, which starts the resync at once.
+func TestRunRebuild(t *testing.T) {
+	oldRebuild, oldStart := rebuildPool, startUnit
+	t.Cleanup(func() { rebuildPool, startUnit = oldRebuild, oldStart })
+	var started []string
+	startUnit = func(_ context.Context, name string) error {
+		started = append(started, name)
+		return nil
+	}
+	ctx := context.Background()
+	for _, args := range [][]string{{"rebuild"}, {"rebuild", "a", "b"}, {"rebuild", ""}} {
+		if code := runCLI(ctx, args, io.Discard, io.Discard); code != 2 {
+			t.Errorf("runCLI(%v) = %d, want 2", args, code)
+		}
+	}
+	progress := stubReportProgress(t)
+	summaries := captureSummaries(t)
+	rebuildPool = func(_ context.Context, uuid string, report func(float64)) error {
+		if uuid != "uuid-1" {
+			t.Errorf("rebuild of %q", uuid)
+		}
+		report(37.9)
+		return nil
+	}
+	if code := runCLI(ctx, []string{"rebuild", "uuid-1"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("rebuild = %d, want 0", code)
+	}
+	if want := []scheduledrun.Summary{{Message: "Rebuilt"}}; !reflect.DeepEqual(*summaries, want) {
+		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
+	}
+	if want := []string{"linuxio-btrfs-health.service"}; !reflect.DeepEqual(started, want) {
+		t.Fatalf("started = %v, want %v", started, want)
+	}
+	if want := []string{"37 Rebuilding"}; !reflect.DeepEqual(*progress, want) {
+		t.Fatalf("progress = %+v, want %+v", *progress, want)
+	}
+
+	*summaries, started = nil, nil
+	rebuildPool = func(context.Context, string, func(float64)) error {
+		return scheduledrun.Reported(errors.New("the target died"))
+	}
+	if code := runCLI(ctx, []string{"rebuild", "uuid-1"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("reported failed rebuild = %d, want 0", code)
+	}
+	if want := []scheduledrun.Summary{{Message: "Rebuild failed", Failures: 1}}; !reflect.DeepEqual(*summaries, want) || started != nil {
+		t.Fatalf("summaries = %+v, started %v; want %+v and nothing started", *summaries, started, want)
+	}
+
+	*summaries = nil
+	rebuildPool = func(context.Context, string, func(float64)) error {
+		return fmt.Errorf("%w: a scrub runs on the pool", btrfs.ErrNothingToRebuild)
+	}
+	if code := runCLI(ctx, []string{"rebuild", "uuid-1"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("rebuild with nothing to do = %d, want 0", code)
+	}
+	if want := []scheduledrun.Summary{{Message: "Nothing to do", Skipped: true}}; !reflect.DeepEqual(*summaries, want) {
+		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
+	}
+
+	*summaries = nil
+	rebuildPool = func(context.Context, string, func(float64)) error { return errors.New("pool not mounted") }
+	if code := runCLI(ctx, []string{"rebuild", "uuid-1"}, io.Discard, io.Discard); code != 1 || len(*summaries) != 0 {
+		t.Fatalf("unreported failure = %d, summaries %+v; want 1 and none", code, *summaries)
 	}
 }
 

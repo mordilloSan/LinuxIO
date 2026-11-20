@@ -88,6 +88,29 @@ type poolState struct {
 	// or degraded; at maxResyncAttempts the health run stops starting them.
 	ResyncFailures int    `json:"resyncFailures,omitempty"`
 	ResyncError    string `json:"resyncError,omitempty"`
+
+	// The automatic rebuild (rebuild.go). Identities are each member's
+	// hardware identity as the health run last saw the pool whole outside
+	// an episode, and after a verified replace for the new disk.
+	Identities []memberIdentity `json:"identities,omitempty"`
+	// Returned is the disk the last health run saw back for a missing
+	// member, with how many runs in a row saw it.
+	Returned *returnedSighting `json:"returned,omitzero"`
+	// Rebuild is a rebuild that started and is not verified yet, or failed.
+	Rebuild *rebuildRecord `json:"rebuild,omitzero"`
+	// RebuildRefusal is why the last health run started no rebuild for a
+	// missing member, when it refused one, and RebuildAdvice what to do
+	// instead of a replace, when the refusal says. RebuildWait is what the
+	// rebuild on record waits for, when it waits.
+	RebuildRefusal string `json:"rebuildRefusal,omitzero"`
+	RebuildAdvice  string `json:"rebuildAdvice,omitzero"`
+	RebuildWait    string `json:"rebuildWait,omitzero"`
+	// Refused are the disks the episode refused or failed to rebuild onto.
+	Refused []refusedDisk `json:"refused,omitempty"`
+	// Rebuilt are the disks rebuilt onto in the last day.
+	Rebuilt []rebuiltDisk `json:"rebuilt,omitempty"`
+	// NoAutoRebuild turns the rebuild onto a disk that returns off.
+	NoAutoRebuild bool `json:"noAutoRebuild,omitzero"`
 }
 
 // maxResyncAttempts bounds the resyncs the health run starts for one
@@ -103,7 +126,7 @@ const maxResyncAttempts = 3
 func (s *poolState) markDegraded(devices []BtrfsDevice) {
 	opening := !s.Degraded
 	if opening {
-		s.Missing, s.Since = nil, time.Now().Unix()
+		s.Missing, s.Since, s.Refused = nil, time.Now().Unix(), nil
 	}
 	s.Degraded, s.Scrubbed, s.Present, s.ResyncRun = true, false, nil, ""
 	s.ConvertData, s.ConvertMetadata = "", ""
@@ -200,9 +223,14 @@ func recordMount(ctx context.Context, mnt string, degraded bool) {
 }
 
 // recordFilesystems notes the generation of every mounted filesystem, marks
-// the degraded ones, saves the error counters of each it sees whole outside
-// an episode, and returns the states.
+// the degraded ones, saves the error counters and the members' hardware
+// identities of each it sees whole outside an episode, and returns the
+// states. Identities that cannot be read keep the ones saved before.
 func recordFilesystems(ctx context.Context, filesystems []BtrfsFilesystem) (map[string]poolState, error) {
+	disks, disksErr := wholeDisks()
+	if disksErr != nil {
+		slog.Warn("failed to read the identities of the disks", "error", disksErr)
+	}
 	var states map[string]poolState
 	err := updatePoolStates(ctx, func(s map[string]poolState) {
 		states = s
@@ -219,6 +247,9 @@ func recordFilesystems(ctx context.Context, filesystems []BtrfsFilesystem) (map[
 				state.markDegraded(fs.Devices)
 			case !state.Degraded && fs.HealthKnown:
 				state.Counters = deviceCountersOf(fs.Devices)
+				if disksErr == nil && state.Rebuild == nil {
+					state.Identities = memberIdentities(fs.Devices, disks)
+				}
 			}
 			s[fs.UUID] = state
 		}
@@ -335,29 +366,42 @@ func lackedOnLeg(pool BtrfsOfflinePool) string {
 
 // refusal says why the boot check leaves pool, held back by udev, unmounted,
 // or returns "": devices it cannot tell are the pool's disks (unclearDisks);
+// with an unverified rebuild on record, why its disks are not erased
+// (planUnverifiedErase), the pool being judged without those it erases;
 // for a pool missing disks, one of them showing on a leg, or
 // degradedMountBlocker's objection; for one held back only by a replace
 // target, a disk that missed writes. The health run asks too, so the
-// offline alert says the same either way. The signature read here claims
+// offline alert says the same either way. wayOut, for a refusal of the
+// rebuild's erase, says what a person can do about it. The signature read here claims
 // nothing; MountOfflinePool reads again, exclusively, before it registers.
-func refusal(pool BtrfsOfflinePool, state poolState) string {
+func refusal(pool BtrfsOfflinePool, state poolState) (reason, wayOut string) {
 	reason, err := unclearDisks(pool, peekSignature)
 	if err != nil {
-		return fmt.Sprintf("the signatures of its disks could not be read (%v)", err)
+		return fmt.Sprintf("the signatures of its disks could not be read (%v)", err), ""
 	}
 	if reason != "" {
-		return reason
+		return reason, ""
+	}
+	if state.Rebuild != nil {
+		plan, err := planUnverifiedErase(pool, state)
+		if err != nil {
+			return fmt.Sprintf("the disks of its unverified rebuild could not be checked (%v)", err), ""
+		}
+		if plan.reason != "" {
+			return plan.reason, plan.wayOut
+		}
+		pool = plan.remaining
 	}
 	switch {
 	case missingDisks(pool) > 0:
 		if reason := lackedOnLeg(pool); reason != "" {
-			return reason
+			return reason, ""
 		}
-		return degradedMountBlocker(pool, state)
+		return degradedMountBlocker(pool, state), ""
 	case slices.Contains(pool.devids, replaceTargetDevID):
-		return staleDisks(pool)
+		return staleDisks(pool), ""
 	}
-	return ""
+	return "", ""
 }
 
 type fstabPool struct {
@@ -465,15 +509,19 @@ func mountHeld(ctx context.Context, pools []fstabPool) error {
 	}
 	var errs []error
 	for _, p := range pools {
+		pool, ok, err := heldPoolToMount(ctx, p.pool, states[p.pool.UUID])
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		p.pool = pool
 		// A pool missing a disk mounts degraded even mid-replace: without
 		// degraded the kernel refuses a replace whose source is missing
 		// (dev-replace.c btrfs_init_dev_replace).
 		missing := missingDisks(p.pool)
-		if reason := refusal(p.pool, states[p.pool.UUID]); reason != "" {
-			slog.Warn("btrfs pool left unmounted", "uuid", p.pool.UUID, "reason", reason)
-			RaiseOfflineAlert(ctx, p.pool, reason)
-			continue
-		}
 		var failed []string
 		open := false
 		for _, m := range p.mounts {
@@ -501,6 +549,30 @@ func mountHeld(ctx context.Context, pools []fstabPool) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// heldPoolToMount returns pool as the boot check mounts it, or false when it
+// leaves the pool unmounted and raises its offline alert with the reason
+// (refusal). Once the pool is judged mountable, the disks of an unverified
+// automatic rebuild go first, as planUnverifiedErase decides: mounted with
+// its target, the kernel would continue that replace past what a failed
+// target missed.
+func heldPoolToMount(ctx context.Context, pool BtrfsOfflinePool, state poolState) (BtrfsOfflinePool, bool, error) {
+	// Judged before anything is erased: refusal plans the erase and judges
+	// the pool without the disks it would erase.
+	reason, wayOut := refusal(pool, state)
+	if reason == "" {
+		erased, plan, err := eraseUnverifiedTarget(ctx, pool)
+		if err != nil {
+			return pool, false, err
+		}
+		if reason, wayOut = plan.reason, plan.wayOut; reason == "" {
+			return erased, true, nil
+		}
+	}
+	slog.Warn("btrfs pool left unmounted", "uuid", pool.UUID, "reason", reason)
+	raiseOfflineAlert(ctx, pool, reason, wayOut)
+	return pool, false, nil
 }
 
 // mountLine mounts pool as fstab line m says. The first line registers the
@@ -589,8 +661,9 @@ func convertTargets(allocation []BtrfsAllocation) (data, meta *string) {
 // marked scheduledrun.Reported; one that left them as they were is not.
 func Resync(ctx context.Context, uuid string, report func(percent float64)) error {
 	out, err := resync(ctx, uuid, report)
-	// A disk that drops out starts a new episode, not a failed resync.
-	if err != nil && ctx.Err() == nil && !errors.Is(err, errDiskMissing) {
+	// A disk that drops out starts a new episode, and an unverified rebuild
+	// waits for its own end, neither a failed resync.
+	if err != nil && ctx.Err() == nil && !errors.Is(err, errDiskMissing) && !errors.Is(err, errRebuildPending) {
 		if recErr := updatePoolStates(ctx, func(s map[string]poolState) {
 			state := s[uuid]
 			state.ResyncFailures++
@@ -786,6 +859,10 @@ func checkConverted(ctx context.Context, uuid string) error {
 // errDiskMissing stops a resync while the pool lacks a disk.
 var errDiskMissing = errors.New("a disk is missing")
 
+// errRebuildPending stops a resync while an automatic rebuild of the pool is
+// on record and not verified: the disk it wrote may hold stale copies.
+var errRebuildPending = errors.New("an automatic rebuild is not verified")
+
 func resync(ctx context.Context, uuid string, report func(percent float64)) (resyncOutcome, error) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
@@ -801,6 +878,9 @@ func resync(ctx context.Context, uuid string, report func(percent float64)) (res
 	states, err := loadPoolStates()
 	if err != nil {
 		return resyncOutcome{}, err
+	}
+	if rec := states[uuid].Rebuild; rec != nil {
+		return resyncOutcome{}, fmt.Errorf("pool %s: the automatic rebuild of device %d is not verified: %w", uuid, rec.ID, errRebuildPending)
 	}
 	// A scrub an older build noted has no run, so no record can prove it:
 	// the first resync after the upgrade scrubs.
@@ -969,6 +1049,7 @@ func clearDegraded(ctx context.Context, uuid string) error {
 			state.Degraded, state.Scrubbed, state.Present, state.Missing, state.ResyncRun = false, false, nil, nil, ""
 			state.Since, state.ConvertData, state.ConvertMetadata = 0, "", ""
 			state.ResyncFailures, state.ResyncError = 0, ""
+			state.Refused, state.RebuildRefusal, state.RebuildAdvice, state.Returned = nil, "", "", nil
 			s[uuid] = state
 		}
 	}); err != nil {

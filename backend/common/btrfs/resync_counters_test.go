@@ -91,8 +91,12 @@ func TestMarkDegradedRecordsTheMissingDisks(t *testing.T) {
 	var s poolState
 	s.markDegraded([]BtrfsDevice{{ID: 1}, {ID: 2, UUID: devUUID(2), Missing: true, Errors: BtrfsDeviceErrors{Corruption: 1}}, {ID: 3}})
 	want := []missingDisk{{ID: 2, UUID: devUUID(2), Errors: BtrfsDeviceErrors{Corruption: 1}}}
-	if !slices.Equal(s.Present, []uint64{1, 3}) || !slices.Equal(s.Missing, want) {
+	if !slices.Equal(s.Present, []uint64{1, 3}) || !slices.Equal(withoutAt(s.Missing), want) {
 		t.Fatalf("state = %+v, want devid 2 missing with its UUID and counters, and 1 and 3 present", s)
+	}
+	// The hot spare's delay counts from when the disk was recorded missing.
+	if at := s.Missing[0].At; at < time.Now().Add(-time.Minute).Unix() || at > time.Now().Unix() {
+		t.Fatalf("missing at %d, want now", at)
 	}
 }
 
@@ -600,12 +604,12 @@ func TestMarkDegradedTakesTheBaselineFromThePoolWhole(t *testing.T) {
 	gone := BtrfsDevice{ID: 2, UUID: devUUID(2), Missing: true, Errors: BtrfsDeviceErrors{Write: 40, Flush: 2}}
 	s := poolState{Counters: []deviceCounters{{ID: 1, UUID: devUUID(1)}, {ID: 2, UUID: devUUID(2)}}}
 	s.markDegraded([]BtrfsDevice{{ID: 1, UUID: devUUID(1)}, gone})
-	if want := []missingDisk{{ID: 2, UUID: devUUID(2), Whole: true}}; !slices.Equal(s.Missing, want) {
+	if want := []missingDisk{{ID: 2, UUID: devUUID(2), Whole: true}}; !slices.Equal(withoutAt(s.Missing), want) {
 		t.Fatalf("missing = %+v, want %+v", s.Missing, want)
 	}
 	s = poolState{Counters: []deviceCounters{{ID: 2, UUID: devUUID(7)}}}
 	s.markDegraded([]BtrfsDevice{{ID: 1, UUID: devUUID(1)}, gone})
-	if want := []missingDisk{{ID: 2, UUID: devUUID(2), Errors: gone.Errors}}; !slices.Equal(s.Missing, want) {
+	if want := []missingDisk{{ID: 2, UUID: devUUID(2), Errors: gone.Errors}}; !slices.Equal(withoutAt(s.Missing), want) {
 		t.Fatalf("missing without a baseline = %+v, want %+v", s.Missing, want)
 	}
 }
@@ -763,7 +767,7 @@ func TestMarkDegradedKeepsTheEpisodesMissingDisks(t *testing.T) {
 	// present, then went missing.
 	s.markDegraded([]BtrfsDevice{{ID: 1, UUID: devUUID(1)}, {ID: 2, UUID: devUUID(2), Missing: true, Errors: BtrfsDeviceErrors{Read: 3}}})
 	want := []missingDisk{{ID: 1, UUID: devUUID(1), Whole: true}, {ID: 2, UUID: devUUID(2), Errors: BtrfsDeviceErrors{Read: 3}}}
-	if !slices.Equal(s.Missing, want) || s.Since != since {
+	if !slices.Equal(withoutAt(s.Missing), want) || s.Since != since {
 		t.Fatalf("missing = %+v since %d, want %+v since %d", s.Missing, s.Since, want, since)
 	}
 }
@@ -866,12 +870,12 @@ func TestCheckHealthLeavesTheResyncAlertWhenTheStateIsUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resync, err := CheckHealth(t.Context())
+	actions, err := CheckHealth(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := alertKeys(t)["resync-"+dataUUID]; got != alerts.SeverityWarning || len(resync) != 0 {
-		t.Fatalf("resync alert = %q, resyncs %v; want the alert kept and no resync started", got, resync)
+	if got := alertKeys(t)["resync-"+dataUUID]; got != alerts.SeverityWarning || len(actions.Resync) != 0 {
+		t.Fatalf("resync alert = %q, resyncs %v; want the alert kept and no resync started", got, actions.Resync)
 	}
 }
 
@@ -1131,4 +1135,19 @@ func TestResyncNoticeOfADiskItCouldNotRead(t *testing.T) {
 	if msg := resyncedMessage(t); !strings.Contains(msg, " device 2 kept its error counters: they could not be read.") {
 		t.Fatalf("whole again notice = %q, want device 2 named with no counts", msg)
 	}
+}
+
+// withoutAt is missing without the times its disks were recorded missing.
+func withoutAt(missing []missingDisk) []missingDisk {
+	out := slices.Clone(missing)
+	for i := range out {
+		out[i].At = 0
+	}
+	return out
+}
+
+// withoutMissingAt is s with its missing disks withoutAt.
+func withoutMissingAt(s poolState) poolState {
+	s.Missing = withoutAt(s.Missing)
+	return s
 }

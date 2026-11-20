@@ -35,6 +35,7 @@ const (
 	superTotalBytes = 112
 	superNumDevices = 136
 	superDevID      = 201 // dev_item.devid
+	superDevUUID    = 267 // dev_item.uuid
 	superLabel      = 299
 )
 
@@ -78,9 +79,12 @@ func RegisterDevice(device string) error {
 
 // Superblock is the part of a device's primary btrfs superblock LinuxIO reads.
 type Superblock struct {
-	UUID       string
-	Label      string
-	DevID      uint64
+	UUID  string
+	Label string
+	DevID uint64
+	// DevUUID is the device's own UUID (dev_item.uuid), which DEV_INFO
+	// reports for the member the device is.
+	DevUUID    string
 	NumDevices uint64
 	TotalBytes uint64
 	// Generation is the last transaction written to this device; every
@@ -125,6 +129,7 @@ func parseSuperblock(b []byte) (Superblock, error) {
 		UUID:       formatUUID(b[superFSID : superFSID+16]),
 		Label:      label,
 		DevID:      binary.LittleEndian.Uint64(b[superDevID:]),
+		DevUUID:    formatUUID(b[superDevUUID : superDevUUID+16]),
 		NumDevices: binary.LittleEndian.Uint64(b[superNumDevices:]),
 		TotalBytes: binary.LittleEndian.Uint64(b[superTotalBytes:]),
 		Generation: binary.LittleEndian.Uint64(b[superGeneration:]),
@@ -233,6 +238,15 @@ func MountPool(ctx context.Context, device, mountpoint string, options []string,
 // else registered before is forgotten first: the kernel keeps one device
 // for each devid (volumes.c device_list_add), and with its array not
 // registered the mount would open the leg.
+//
+// With an automatic rebuild of the pool on record and not verified, the
+// disk it wrote is erased first (eraseUnverifiedTarget), and the mount is
+// degraded when that disk had become a member; once mounted, the replace
+// the kernel suspended or continued is canceled (settleUnverifiedRebuild).
+// It erases a disk that became a member only when every other member is
+// present and none is older, and leaves it otherwise; when a disk of the
+// rebuild cannot be told, or its target is the only device present,
+// nothing is erased or mounted (ErrUnclearDisks, with a way out).
 func MountOfflinePool(ctx context.Context, pool BtrfsOfflinePool, mountpoint string, options []string, degraded bool) error {
 	if len(pool.Devices) == 0 {
 		return fmt.Errorf("%w: no disk of the pool is present", ErrUnclearDisks)
@@ -244,6 +258,16 @@ func MountOfflinePool(ctx context.Context, pool BtrfsOfflinePool, mountpoint str
 	if reason != "" {
 		return fmt.Errorf("%w: %s", ErrUnclearDisks, reason)
 	}
+	missing := missingDisks(pool)
+	erased, plan, err := eraseUnverifiedTarget(ctx, pool)
+	if err != nil {
+		return err
+	}
+	if plan.reason != "" {
+		return fmt.Errorf("%w: %s. %s", ErrUnclearDisks, plan.reason, plan.wayOut)
+	}
+	pool = erased
+	degraded = degraded || missingDisks(pool) > missing
 	for _, l := range pool.legs {
 		// ENOENT: the kernel never registered it. A path is never empty
 		// here; an empty one would forget every unmounted btrfs device.
@@ -256,7 +280,11 @@ func MountOfflinePool(ctx context.Context, pool BtrfsOfflinePool, mountpoint str
 			return err
 		}
 	}
-	return MountPool(ctx, pool.Devices[0], mountpoint, options, degraded)
+	if err := MountPool(ctx, pool.Devices[0], mountpoint, options, degraded); err != nil {
+		return err
+	}
+	settleUnverifiedRebuild(ctx, pool.UUID, mountpoint)
+	return nil
 }
 
 // WipeDevice zeroes the primary superblock magic of an unmounted btrfs
@@ -316,6 +344,17 @@ func WipePoolSuperblocks(device, uuid string) (bool, error) {
 		return false, err
 	}
 	defer f.Close()
+	return wipePoolSuperblocksOf(f, device, uuid)
+}
+
+// wipePoolSuperblocksOf is WipePoolSuperblocks through f, device opened
+// exclusively for writing by the caller, which may check what the device
+// carries first through the same open.
+func wipePoolSuperblocksOf(f *os.File, device, uuid string) (bool, error) {
+	if device == "" {
+		// The forget below would drop every unmounted btrfs device.
+		return false, errors.New("no device to erase")
+	}
 	size, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return false, fmt.Errorf("size of %s: %w", device, err)

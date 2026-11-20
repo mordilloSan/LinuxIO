@@ -235,8 +235,8 @@ for unit in linuxio-indexer.socket linuxio-indexer.service linuxio-indexer-index
 	assert_line "$unit" "$unit_list" "installer unit list"
 	grep -Fqx 'PartOf=linuxio.target' "${REPO_ROOT}/packaging/systemd/${unit}" || fail "${unit} is not part of linuxio.target"
 done
-# Boot-time and resync jobs must outlive a linuxio.target restart.
-for unit in linuxio-btrfs-degraded.service linuxio-btrfs-resync@.service; do
+# Boot-time, resync and rebuild jobs must outlive a linuxio.target restart.
+for unit in linuxio-btrfs-degraded.service linuxio-btrfs-resync@.service linuxio-btrfs-rebuild@.service; do
 	assert_line "$unit" "$unit_list" "installer unit list"
 	if grep -Fq 'PartOf=linuxio.target' "${REPO_ROOT}/packaging/systemd/${unit}"; then
 		fail "${unit} must not stop with linuxio.target"
@@ -464,8 +464,8 @@ printf '   \033[1;32m✓\033[0m %s\n' "saved units and drop-ins get this release
 
 # Scheduled units record their runs through two hook lines. The schedule units
 # are generated, so the lines reach them (and the snapshot, replication and
-# Docker update units) through one drop-in; linuxio-btrfs-resync@.service
-# carries them itself.
+# Docker update units) through one drop-in; linuxio-btrfs-resync@.service and
+# linuxio-btrfs-rebuild@.service carry them themselves.
 BEGIN_HOOK='ExecStartPre=-+/usr/local/bin/linuxio-worker scheduled-run begin --unit %n'
 END_HOOK='ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n'
 run_record_dropin_fixtures() {
@@ -529,9 +529,11 @@ run_record_dropin_fixtures() {
 }
 run_record_dropin_fixtures
 # shellcheck disable=SC2031
-RESYNC_UNIT="${REPO_ROOT}/packaging/systemd/linuxio-btrfs-resync@.service"
-grep -Fqx "$BEGIN_HOOK" "$RESYNC_UNIT" || fail "the resync unit lacks the begin hook"
-grep -Fqx "$END_HOOK" "$RESYNC_UNIT" || fail "the resync unit lacks the end hook"
+for pool_unit in resync rebuild; do
+	POOL_UNIT="${REPO_ROOT}/packaging/systemd/linuxio-btrfs-${pool_unit}@.service"
+	grep -Fqx "$BEGIN_HOOK" "$POOL_UNIT" || fail "the ${pool_unit} unit lacks the begin hook"
+	grep -Fqx "$END_HOOK" "$POOL_UNIT" || fail "the ${pool_unit} unit lacks the end hook"
+done
 printf '   \033[1;32m✓\033[0m %s\n' "scheduled units record their runs"
 
 # The needrestart override reaches /etc/needrestart/conf.d only where
@@ -560,7 +562,7 @@ needrestart_override_fixtures() {
 			printf '%s\n' "$shipped_entry" >"$one"
 			needrestart_override_valid "$one" || fail "the content check refuses the shipped line ${shipped_entry}"
 		done < <(grep '^\$nrconf' "$NEEDRESTART_CONF")
-		assert_eq "7" "$(grep -c '^\$nrconf' "$NEEDRESTART_CONF")" "shipped needrestart override entries"
+		assert_eq "8" "$(grep -c '^\$nrconf' "$NEEDRESTART_CONF")" "shipped needrestart override entries"
 		# Where Perl is present, the file must also compile under strict.
 		if command -v perl >/dev/null 2>&1; then
 			needrestart_override_loads "$NEEDRESTART_CONF" || fail "the shipped needrestart override does not compile under strict"
@@ -732,11 +734,11 @@ eval do { local(@ARGV, $/) = $fn; <> };
 die "Error parsing $fn: $@" if $@;
 my $rc = $nrconf{override_rc};
 die "override_rc lost the distribution's entries\n" unless 2 == grep { $_ eq qr(^dbus) || $_ eq qr(^user@\d+\.service) } keys %$rc;
-die "override_rc has " . scalar(keys %$rc) . " entries, want 9\n" unless 9 == keys %$rc;
+die "override_rc has " . scalar(keys %$rc) . " entries, want 10\n" unless 10 == keys %$rc;
 sub restarts { my $unit = shift; for my $re (sort keys %$rc) { return $rc->{$re} if $unit =~ /$re/ } 1 }
 my $id = "0b7c9a1e-5d2f-4c3b-9a8e-1f2e3d4c5b6a";
 for my $unit ("linuxio-jobs\@0.service", "linuxio-jobs\@1001.service", "linuxio-schedule-$id.service",
-	"linuxio-btrfs-snapshot.service", "linuxio-btrfs-replicate.service", "linuxio-btrfs-resync\@$id.service", "linuxio-docker-update.service",
+	"linuxio-btrfs-snapshot.service", "linuxio-btrfs-replicate.service", "linuxio-btrfs-resync\@$id.service", "linuxio-btrfs-rebuild\@$id.service", "linuxio-docker-update.service",
 	"linuxio-updater-1794345333839000000.service") {
 	die "$unit would be restarted\n" if restarts($unit);
 }

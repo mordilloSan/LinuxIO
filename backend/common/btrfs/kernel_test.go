@@ -1,6 +1,7 @@
 package btrfs
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,6 +53,7 @@ type fakeKernel struct {
 	removing        atomic.Bool // the remove hook has started
 	statsFail       atomic.Bool // GET_DEV_STATS fails, as when the kernel cannot be asked
 	statsResetFail  error       // what a GET_DEV_STATS that resets fails with; nil resets
+	readOnly        bool        // statfs says the pool is read-only, as after a transaction abort
 
 	cancelled  chan struct{} // closed on the first cancel of any operation
 	cancelOnce sync.Once
@@ -280,8 +282,10 @@ func (k *fakeKernel) replace(a *devReplaceArgs) error {
 		state, perMill := k.replaceStatus()
 		putU64(a.Params[:], replaceStatusState, state)
 		putU64(a.Params[:], replaceStatusPerMill, perMill)
+		k.mu.Lock()
 		putU64(a.Params[:], replaceStatusTimeStarted, k.replaceStarted)
 		putU64(a.Params[:], replaceStatusTimeStopped, k.replaceStopped)
+		k.mu.Unlock()
 	case replaceCmdCancel:
 		k.log("REPLACE_CANCEL")
 		if k.replaceCancel != nil {
@@ -332,6 +336,10 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 	// The pool holds every member it lists.
 	deviceNotBusy = func(device string) error { return fmt.Errorf("%s is in use: %w", device, unix.EBUSY) }
 	fsIoctl = k.ioctl
+	oldReadOnly, oldUnitState := poolReadOnly, unitActiveState
+	poolReadOnly = func(string) (bool, error) { return k.readOnly, nil }
+	unitActiveState = func(context.Context, string) (string, error) { return "inactive", nil }
+	t.Cleanup(func() { poolReadOnly, unitActiveState = oldReadOnly, oldUnitState })
 	// A descriptor of the mount is one of a folder of its own, which the
 	// kernel answers; any other descriptor goes on as before.
 	mountDir, oldOpen, oldFD := t.TempDir(), openMount, ioctlFD

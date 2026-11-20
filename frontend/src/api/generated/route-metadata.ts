@@ -199,6 +199,7 @@ export const ROUTE_MODES = {
   "shares.stop_rsync": "mutation",
   "shares.update_nfs_share": "mutation",
   "shares.update_samba_share": "mutation",
+  "storage.btrfs_auto_rebuild": "mutation",
   "storage.btrfs_balance": "mutation",
   "storage.btrfs_balance_cancel": "mutation",
   "storage.btrfs_device_add": "mutation",

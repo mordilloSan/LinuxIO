@@ -353,6 +353,14 @@ type BtrfsSpareDelayRequest struct {
 	DelayMinutes int    `json:"delayMinutes"`
 }
 
+// BtrfsAutoRebuildRequest turns the rebuild of the mounted pool UUID onto a
+// missing member's own disk, when it comes back, on or off (see
+// docs/btrfs.md, "Missing disks").
+type BtrfsAutoRebuildRequest struct {
+	UUID    string `json:"uuid"`
+	Enabled bool   `json:"enabled"`
+}
+
 // BtrfsBalanceRequest converts to the given profiles; a nil profile is left
 // as it is. DataUsage limits the balance to data chunks used at most that
 // percent, which reclaims unallocated space. With nothing set everything is

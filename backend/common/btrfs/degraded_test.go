@@ -308,7 +308,7 @@ func TestMountDegradedPoolsMountsWhatFstabMounts(t *testing.T) {
 		t.Fatalf("calls = %v, want %v", *calls, want)
 	}
 	states, err := loadPoolStates()
-	if err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 91, Degraded: true, Present: []uint64{1, 2}, Missing: []missingDisk{{ID: 3, UUID: "00000000-0000-0000-0000-000000000000"}}, Since: states[dataUUID].Since}) || states[dataUUID].Since == 0 {
+	if err != nil || !reflect.DeepEqual(withoutMissingAt(states[dataUUID]), poolState{Generation: 91, Degraded: true, Present: []uint64{1, 2}, Missing: []missingDisk{{ID: 3, UUID: "00000000-0000-0000-0000-000000000000"}}, Since: states[dataUUID].Since}) || states[dataUUID].Since == 0 {
 		t.Fatalf("state = %+v, %v", states, err)
 	}
 }

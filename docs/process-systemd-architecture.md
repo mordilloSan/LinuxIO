@@ -18,7 +18,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | Maintain the filesystem index | `linuxio-indexer` | Needs broad read access but a narrow write boundary → isolated, sandboxed, and socket activated. |
 | Sample and store host metrics | `linuxio-monitoring` | Needs **root** for SMART, hwmon, GPU and the Docker socket, and must keep sampling with no session open → one long-running collector, read-only metrics on a world-readable socket, commands behind a root-only one. |
 | Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. The only program an administrator types, and the only one with commands for people. |
-| Run what systemd starts with a word | `linuxio-worker` | The timer jobs (btrfs snapshots, replication, health, resync, the degraded mount at boot) and the unit hooks that record a scheduled run and raise alerts → **root**, started only by systemd, installed for root only. Every private command word lives here, so no other program takes one. |
+| Run what systemd starts with a word | `linuxio-worker` | The timer jobs (btrfs snapshots, replication, health, resync, rebuild, the degraded mount at boot) and the unit hooks that record a scheduled run and raise alerts → **root**, started only by systemd, installed for root only. Every private command word lives here, so no other program takes one. |
 
 ## Binaries
 
@@ -30,7 +30,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged); the job host as its uid | per login session; the job host per uid, started by a connection to its socket, idle exit | **yamux server**; executes reads and relays mutations to the job host; the job host runs mutations as jobs |
 | `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled update run | Docker updater |
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
-| `linuxio-worker` | Go | `backend/worker/` | root | oneshot, started by systemd timers, the snapshot pass, the unit hooks and the auto-update drop-ins | Btrfs timeline/pre-update snapshots, replication, the periodic health check, the degraded mount at boot and resync; the hooks that record scheduled runs and raise alerts |
+| `linuxio-worker` | Go | `backend/worker/` | root | oneshot, started by systemd timers, the snapshot pass, the unit hooks and the auto-update drop-ins | Btrfs timeline/pre-update snapshots, replication, the periodic health check, the degraded mount at boot, resync and the automatic rebuild; the hooks that record scheduled runs and raise alerts |
 | `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
 | `linuxio-claude-relay` | Go | `backend/claude-relay/` | logged-in user, never root | one per `claude` an Assistant chat starts | Runs the real `claude` for the ACP adapter and carries plugin pane requests to the bridge ([Assistant](./AI-assistant.md#plugin-panes)) |
 
@@ -85,7 +85,7 @@ daemon.
 | `linuxio-claude-relay` | None | Claude Code's own arguments, with `LINUXIO_CLAUDE_BIN` naming the real CLI; started only by `claude-agent-acp` in an Assistant chat. Exits 2 without that variable. |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
 | `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | No command word: `[--config PATH] [--verbose]` starts the daemon; used by `linuxio-monitoring.service`. Root only |
-| `linuxio-worker` | None: root only | `snapshot [--now RFC3339]`, `snapshot pre-update`, `replicate [--now RFC3339]`, `health`, `degraded`, `resync <uuid>`, used by the btrfs units and the pre-update hook; `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); `alert raise\|resolve\|auto-update\|pending-updates`, the alert hooks ([Alerts](./alerts.md#hook-commands)). `help` prints the list |
+| `linuxio-worker` | None: root only | `snapshot [--now RFC3339]`, `snapshot pre-update`, `replicate [--now RFC3339]`, `health`, `degraded`, `resync <uuid>`, `rebuild <uuid>`, used by the btrfs units and the pre-update hook; `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); `alert raise\|resolve\|auto-update\|pending-updates`, the alert hooks ([Alerts](./alerts.md#hook-commands)). `help` prints the list |
 
 User lookup in the job host goes through `os/user`, which
 resolves SSSD/LDAP users only in a cgo build (the default native build); a
@@ -129,6 +129,10 @@ linuxio-btrfs-degraded.service       boot oneshot, WantedBy=multi-user.target, e
 linuxio-btrfs-resync@<uuid>.service  started by the health check once a returned disk is back;
                                      runs `linuxio-worker resync <uuid>` (scrub, then soft convert);
                                      its unit file carries the scheduled-run hooks itself
+linuxio-btrfs-rebuild@<uuid>.service started by the health check for a missing member whose own
+                                     disk came back, or whose hot spare is due; runs
+                                     `linuxio-worker rebuild <uuid>` (erase the returned disk, device
+                                     replace, check); carries the scheduled-run hooks itself
 linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned by the uid; started by
                                      linuxio-auth at that user's login and by root for uid 0; a
                                      connection starts the host whenever it is down
@@ -186,7 +190,8 @@ The units systemd timers start record each run in a job store of their own
 scripts (`linuxio-schedule-<id>.service`), btrfs snapshots
 (`linuxio-btrfs-snapshot.service`), btrfs replication
 (`linuxio-btrfs-replicate.service`, which the snapshot pass starts), pool resyncs
-(`linuxio-btrfs-resync@<uuid>.service`) and Docker updates
+(`linuxio-btrfs-resync@<uuid>.service`), pool rebuilds
+(`linuxio-btrfs-rebuild@<uuid>.service`) and Docker updates
 (`linuxio-docker-update.service`). Two hooks do it:
 
 ```ini
@@ -210,8 +215,8 @@ ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n
   one of those services at most, and systemd ignores a drop-in of a unit that
   does not exist. Then it reloads systemd. The uninstaller removes the
   drop-in from the update services by its name, with the alert drop-in the
-  bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` carries the two lines
-  itself. A drop-in alone loads no unit: until a snapshot rule, a replication
+  bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` and
+  `linuxio-btrfs-rebuild@.service` carry the two lines themselves. A drop-in alone loads no unit: until a snapshot rule, a replication
   job or the Docker update settings are saved, that unit stays `not-found`.
   Schedules saved before an update record their runs after it without being
   saved again, and so does the replication unit an upgraded install's first
@@ -385,8 +390,9 @@ verified and before it replaces any of them. Each of its lines adds one
 regular expression with the value 0 ("do not restart") to needrestart's
 `$nrconf{override_rc}` and keeps the distribution's entries:
 `linuxio-jobs@<uid>.service`, the timer-run units `linuxio-schedule-*`,
-`linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`
-and `linuxio-docker-update`, and the updater's `linuxio-updater-*` unit.
+`linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`,
+`linuxio-btrfs-rebuild@*` and `linuxio-docker-update`, and the updater's
+`linuxio-updater-*` unit.
 needrestart then lists them under "Service restarts being deferred" instead of
 restarting them. The daemons the installer restarts itself (`linuxio-webserver`,
 `linuxio-monitoring`, `linuxio-indexer`, `linuxio-auth`) are not listed, and
@@ -716,7 +722,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Job host, client and their commands | `backend/bridge/internal/jobshost`, `backend/bridge/internal/jobsclient`, `backend/bridge/cmd/jobs_host.go` and `jobs_relay.go` (bridge → host relay) |
 | Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress in `/run/linuxio/jobs/<uid>/`, the host socket at `/run/linuxio/jobs/<uid>.sock` |
-| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the four LinuxIO units and the four distribution update services) and `linuxio-btrfs-resync@.service`; command `backend/worker/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
+| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the four LinuxIO units and the four distribution update services), `linuxio-btrfs-resync@.service` and `linuxio-btrfs-rebuild@.service`; command `backend/worker/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |

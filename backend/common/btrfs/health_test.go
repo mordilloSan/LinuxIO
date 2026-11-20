@@ -136,8 +136,8 @@ func TestCheckHealthFlagsOfflinePoolsAndDropsStaleAlerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resync, err := CheckHealth(ctx); err != nil || len(resync) != 0 {
-		t.Fatalf("CheckHealth = %v, %v", resync, err)
+	if actions, err := CheckHealth(ctx); err != nil || len(actions.Resync) != 0 {
+		t.Fatalf("CheckHealth = %v, %v", actions.Resync, err)
 	}
 	got := alertKeys(t)
 	keys := make([]string, 0, len(got))
@@ -202,9 +202,9 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resync, err := CheckHealth(ctx)
-	if err != nil || !reflect.DeepEqual(resync, []string{dataUUID}) {
-		t.Fatalf("CheckHealth = %v, %v; want a resync of %s", resync, err, dataUUID)
+	actions, err := CheckHealth(ctx)
+	if err != nil || !reflect.DeepEqual(actions.Resync, []string{dataUUID}) {
+		t.Fatalf("CheckHealth = %v, %v; want a resync of %s", actions.Resync, err, dataUUID)
 	}
 	if got := alertKeys(t); got["resync-"+dataUUID] != alerts.SeverityWarning {
 		t.Fatalf("alerts = %v, want the resync warning", got)
@@ -220,8 +220,8 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if resync, err = CheckHealth(ctx); err != nil || len(resync) != 0 {
-		t.Fatalf("CheckHealth after failed resyncs = %v, %v", resync, err)
+	if actions, err = CheckHealth(ctx); err != nil || len(actions.Resync) != 0 {
+		t.Fatalf("CheckHealth after failed resyncs = %v, %v", actions.Resync, err)
 	}
 	if got := alertKeys(t); got["resync-"+dataUUID] != alerts.SeverityError {
 		t.Fatalf("alerts = %v, want the resync error", got)
@@ -229,8 +229,8 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 
 	// While a disk is still missing there is nothing to resync yet.
 	k.devices[2].path = ""
-	if resync, err = CheckHealth(ctx); err != nil || len(resync) != 0 {
-		t.Fatalf("degraded CheckHealth = %v, %v", resync, err)
+	if actions, err = CheckHealth(ctx); err != nil || len(actions.Resync) != 0 {
+		t.Fatalf("degraded CheckHealth = %v, %v", actions.Resync, err)
 	}
 	if got := alertKeys(t); got["resync-"+dataUUID] != "" {
 		t.Fatalf("alerts = %v, want no resync warning while degraded", got)
@@ -241,9 +241,9 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 // the pools in want.
 func healthRun(t *testing.T, what string, want ...string) {
 	t.Helper()
-	resync, err := CheckHealth(context.Background())
-	if err != nil || !slices.Equal(resync, want) {
-		t.Fatalf("CheckHealth %s = %v, %v; want resyncs of %v", what, resync, err, want)
+	actions, err := CheckHealth(context.Background())
+	if err != nil || !slices.Equal(actions.Resync, want) {
+		t.Fatalf("CheckHealth %s = %v, %v; want resyncs of %v", what, actions.Resync, err, want)
 	}
 }
 
@@ -265,7 +265,7 @@ func TestCheckHealthOpensAnEpisodeForADiskThatDroppedOut(t *testing.T) {
 	healthRun(t, "after the dropout")
 	states, err := loadPoolStates()
 	s := states[dataUUID]
-	if err != nil || !s.Degraded || s.Since == 0 || !slices.Equal(s.Present, []uint64{1}) || !slices.Equal(s.Missing, []missingDisk{{ID: 2, UUID: devUUID(2), Whole: true}}) {
+	if err != nil || !s.Degraded || s.Since == 0 || !slices.Equal(s.Present, []uint64{1}) || !slices.Equal(withoutAt(s.Missing), []missingDisk{{ID: 2, UUID: devUUID(2), Whole: true}}) {
 		t.Fatalf("state after the dropout = %+v, %v; want an episode without devid 2, with its counters of the pool whole", s, err)
 	}
 	doc, err := alerts.Load()

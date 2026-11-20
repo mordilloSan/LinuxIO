@@ -139,9 +139,9 @@ func (p *dropoutPool) write(prefix string, n int) {
 // the pool.
 func (p *dropoutPool) health(what string) bool {
 	p.t.Helper()
-	resync, err := CheckHealth(p.ctx)
+	actions, err := CheckHealth(p.ctx)
 	p.must("health run "+what, err)
-	return slices.Contains(resync, p.uuid)
+	return slices.Contains(actions.Resync, p.uuid)
 }
 
 func (p *dropoutPool) state() poolState {

@@ -56,6 +56,13 @@ after a change that issues ioctls).
   measured: the Compose rollback of an update needs that image, and the
   integration test keeps it tagged under another name. Measure it in the VM
   with a local registry and one tag moved between two images.
+- The automatic btrfs rebuild onto a disk that comes back
+  ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio
+  disks, 7.0, whose serials the rig sets. A SATA or SAS disk pulled and
+  reseated on a real machine (its WWN as udev reads it, `sd` naming while the
+  pool holds the dead disk, a hot-plug that resets the link rather than
+  removing the disk), and a kernel with `btrfs_remove_bdev` (7.1), are not
+  run.
 
 ## Later, no plan yet
 
