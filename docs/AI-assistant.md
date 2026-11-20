@@ -517,7 +517,10 @@ advertises the matching capability.
   and refuses more than 8000 characters. One line is typed as it is. Several
   lines go as one bracketed paste, and only once the shell has turned
   bracketed paste on; a shell without it would run every line but the last,
-  so until then the terminal waits and says so. The command is removed from
+  so until then the terminal waits and says so. Into a shell the page has
+  just started, one line waits the same way, for up to 1.5 s: typed before
+  the shell reads, the terminal echoes it above the prompt and the shell
+  shows it again after it. The command is removed from
   history state once taken, so a reload does not type it again, and nothing
   is typed into an agent login PTY. Code in a plugin pane or a side question
   has Copy only.

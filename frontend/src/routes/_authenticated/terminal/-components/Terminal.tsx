@@ -205,13 +205,16 @@ const TerminalXTerm = () => {
       const pasteKnown = existing !== null && shellTakesPastes;
       // Types the Assistant's command once that cannot run it: one line at
       // once, several lines when the shell takes them as a single paste.
-      const typePending = () => {
+      // A shell started just now is not reading yet: the terminal would echo
+      // the command above the prompt and the shell would show it again after
+      // it. Turning bracketed paste on is the shell saying its prompt is up;
+      // `settled` is for the shell that never does.
+      const typePending = (settled = existing !== null) => {
         const pending = pendingCommand.current;
         if (pending === null) return;
-        const input = typedCommandInput(
-          pending,
-          pasteKnown || terminal.modes.bracketedPasteMode,
-        );
+        const takesPastes = pasteKnown || terminal.modes.bracketedPasteMode;
+        if (!settled && !takesPastes) return;
+        const input = typedCommandInput(pending, takesPastes);
         if (input === null) return;
         pendingCommand.current = null;
         // As if typed: xterm passes it on to the PTY like any keystroke.
@@ -230,7 +233,8 @@ const TerminalXTerm = () => {
           writeData(data);
           // After xterm has parsed the output, which may be the prompt that
           // turns bracketed paste on.
-          if (pendingCommand.current !== null) terminal.write("", typePending);
+          if (pendingCommand.current !== null)
+            terminal.write("", () => typePending());
         },
         onClose: login
           ? () =>
@@ -253,6 +257,7 @@ const TerminalXTerm = () => {
         }
         typePending();
         notice = window.setTimeout(() => {
+          typePending(true);
           if (pendingCommand.current === null) return;
           terminal.write(
             "\r\n[The command from the Assistant has several lines. It is typed, not run, once the shell shows a prompt that takes a paste.]\r\n",
