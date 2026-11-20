@@ -295,14 +295,14 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttac
 // resolveTarget returns the path a save without owner writes to when a
 // symlink sits at path: as the user's own programs resolve it on a bridge
 // that is not root, and, for the session user a root bridge acts for, only
-// through a link that user cannot have planted (see
-// services.ResolveNoUserLinks).
+// through a link that user cannot have planted, on the way or at the entry
+// (linksafe.Resolve reaches it as entryFollowingNoUserLinks does).
 func (t *uploadTransferTask) resolveTarget(root *fsroot.FSRoot, path string) (string, error) {
 	if !t.linkRule.Set {
 		resolved, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, path)
 		return resolved, err
 	}
-	return services.ResolveNoUserLinks(t.ctx, path, t.linkRule)
+	return linksafe.Resolve(t.ctx, path, t.linkRule)
 }
 
 // targetPath returns the path the upload writes to. Without owner (editor

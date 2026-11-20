@@ -21,7 +21,7 @@ func TestConnContextAttachesOwnUID(t *testing.T) {
 	srv := &http.Server{
 		ConnContext: ConnContext,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			uid, ok := RequestUID(r)
+			uid, ok := UID(r.Context())
 			if !ok {
 				t.Error("no peer uid on request")
 			}

@@ -53,14 +53,6 @@ func entryFollowingNoUserLinks(ctx context.Context, path string, owner Owner) (e
 	return entry{dir: dir, name: name, path: filepath.Join(dir.Name(), name)}, nil
 }
 
-// ResolveNoUserLinks returns the real path of the entry at path, following a
-// symlink at path, for a root bridge acting for owner: as
-// entryFollowingNoUserLinks reaches it, so a link the session user could have
-// planted, on the way or at the entry, is refused.
-func ResolveNoUserLinks(ctx context.Context, path string, owner Owner) (string, error) {
-	return linksafe.Resolve(ctx, path, owner)
-}
-
 // openEntry opens the folder path sits in as linksafe.OpenDirNoUserLinks does and
 // returns it with path's name in it ("." for /).
 func openEntry(root *fsroot.FSRoot, path string, owner Owner) (entry, error) {

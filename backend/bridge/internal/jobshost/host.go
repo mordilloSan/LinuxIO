@@ -812,14 +812,9 @@ func (h *Host) resolveAlert(ctx context.Context, id string) {
 // alertInterrupted raises the alert of a job its host stopped before it
 // finished, whatever the report settings say: a warning for a shutdown or a
 // reboot, and an error for a crash, whose outcome is unknown. A warning
-// follows the levels grid like any other.
-func (h *Host) alertInterrupted(ctx context.Context, r jobs.Record) {
-	h.alertInterruptedBecause(ctx, r, "")
-}
-
-// alertInterruptedBecause is alertInterrupted for a job a pick-up left
-// interrupted, which adds why, when not empty.
-func (h *Host) alertInterruptedBecause(ctx context.Context, r jobs.Record, why string) {
+// follows the levels grid like any other. A job a pick-up left interrupted
+// adds why, when not empty.
+func (h *Host) alertInterrupted(ctx context.Context, r jobs.Record, why string) {
 	severity := alerts.SeverityWarning
 	if r.Reason == jobs.ReasonCrash {
 		severity = alerts.SeverityError

@@ -91,13 +91,19 @@ func (b *NetworkdBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *NetworkdBackend) SetIPv4DHCP(ctx context.Context) error {
+func (b *NetworkdBackend) SetIPv4DHCP(ctx context.Context, dns, search []string) error {
+	if len(dns) > 0 || len(search) > 0 {
+		return unsupportedDNS(b, "DNS alongside DHCP")
+	}
 	return b.update(ctx, func(cfg *ini.File) error {
 		return updateNetworkdConfig(cfg, 4, "", "", nil)
 	})
 }
 
-func (b *NetworkdBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
+func (b *NetworkdBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns, search []string) error {
+	if len(search) > 0 {
+		return unsupportedDNS(b, "DNS search domains")
+	}
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}

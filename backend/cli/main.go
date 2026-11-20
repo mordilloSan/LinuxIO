@@ -30,9 +30,9 @@ func runCLI(args []string) int {
 	case "logs":
 		return runLogs(cmdArgs)
 	case "start":
-		return runSystemctl(ctx, "start", linuxioTargetName)
+		return runSystemctl(ctx, "start", []string{linuxioTargetName}, linuxioTargetName)
 	case "stop":
-		return runSystemctl(ctx, "stop", linuxioTargetName)
+		return runSystemctl(ctx, "stop", []string{linuxioTargetName}, linuxioTargetName)
 	case "restart":
 		return runRestart(ctx, cmdArgs)
 	case "verbose":

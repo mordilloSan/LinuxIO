@@ -11,6 +11,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -37,7 +38,7 @@ func streamGeneralLogsChannel(parent context.Context, stream net.Conn, _ runtime
 	defer cleanup()
 	req := parseGeneralLogsRequest(request)
 	if req.scopeError != nil {
-		return writeLogError(stream, req.scopeError)
+		return streamrelay.WriteError(stream, 0, req.scopeError)
 	}
 	slog.Debug("starting general log channel",
 		"component", "logs",
@@ -50,7 +51,7 @@ func streamGeneralLogsChannel(parent context.Context, stream net.Conn, _ runtime
 		"follow", req.follow)
 
 	if req.afterCursor != "" && !isValidJournalCursor(req.afterCursor) {
-		return writeLogError(stream, errors.New("invalid journal cursor"))
+		return streamrelay.WriteError(stream, 0, errors.New("invalid journal cursor"))
 	}
 
 	var newestCursor string
@@ -71,7 +72,7 @@ func streamGeneralLogsChannel(parent context.Context, stream net.Conn, _ runtime
 					"route", streamTypeGeneralLogs,
 					"error", err)
 			}
-			return writeLogErrorUnlessCanceled(ctx, stream, err)
+			return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, err)
 		}
 	}
 
@@ -89,7 +90,7 @@ func streamGeneralLogsChannel(parent context.Context, stream net.Conn, _ runtime
 	}
 
 	if err := streamGeneralLogsFollow(ctx, stream, req, newestCursor); err != nil {
-		return writeLogErrorUnlessCanceled(ctx, stream, err)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, err)
 	}
 	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
 }

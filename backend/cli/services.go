@@ -40,11 +40,7 @@ var (
 	pause           = sleepContext
 )
 
-func runSystemctl(ctx context.Context, action, target string) int {
-	return runSystemctlTargets(ctx, action, []string{target}, target)
-}
-
-func runSystemctlTargets(parent context.Context, action string, targets []string, successLabel string) int {
+func runSystemctl(parent context.Context, action string, targets []string, successLabel string) int {
 	if len(targets) == 0 {
 		fmt.Fprintf(os.Stderr, "No targets provided for systemctl %s\n", action)
 		return 1
@@ -163,7 +159,7 @@ func runRestart(ctx context.Context, args []string) int {
 		return 1
 	}
 
-	return runSystemctlTargets(ctx, "restart", targets, successLabel)
+	return runSystemctl(ctx, "restart", targets, successLabel)
 }
 
 func restartTargets(args []string) ([]string, string, error) {

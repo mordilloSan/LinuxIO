@@ -313,7 +313,7 @@ func (r Route[Request, Result]) Handle(handle TypedHandlerFunc[Request, Result],
 // It panics at binding time if Result is anything else, so the declaration and
 // the handler cannot drift apart.
 func (r Route[Request, Result]) HandleVoid(handle VoidHandlerFunc[Request], options ...bridgeipc.RouteOption) HandlerBinding {
-	if !r.spec.Result.Void() {
+	if !IsVoidType(r.spec.Result.GoType) {
 		panic(fmt.Sprintf("apischema: route %s returns %s, so it cannot use HandleVoid", r.spec.Route, r.spec.Result.GoType))
 	}
 	if r.spec.Mode != bridgeipc.ModeCall {
@@ -552,7 +552,7 @@ func decodeRecord[Req any](spec RouteSpec, record jsontext.Value) (Req, jsontext
 // erasedResult erases a typed Call or Mutation result at the bridge boundary.
 // A NoResponse result is sent as no result.
 func erasedResult[Res any](spec RouteSpec, result Res, err error) (any, error) {
-	if err != nil || spec.Result.Void() {
+	if err != nil || IsVoidType(spec.Result.GoType) {
 		return nil, err
 	}
 	return result, nil

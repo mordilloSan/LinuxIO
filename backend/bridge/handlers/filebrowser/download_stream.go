@@ -32,7 +32,7 @@ func streamFileDownload(parent context.Context, stream net.Conn, req apischema.P
 
 	file, size, err := openDownloadFile(ctx, req.Path)
 	if err != nil {
-		return writeFileDownloadError(stream, err)
+		return streamrelay.WriteError(stream, 0, err)
 	}
 	defer file.Close()
 
@@ -102,8 +102,4 @@ func copyDownloadFile(ctx context.Context, stream net.Conn, file io.Reader) erro
 			return fmt.Errorf("read file: %w", readErr)
 		}
 	}
-}
-
-func writeFileDownloadError(stream net.Conn, err error) error {
-	return streamrelay.WriteError(stream, 0, err)
 }

@@ -214,7 +214,7 @@ func TestBootCheckEvaluatesTheDisksOfAPoolSystemdDidNotFind(t *testing.T) {
 	calls := stubMountFS(t, nil)
 	asked := stubDevicesReady(t, true)
 	read := stubMemberSignatures(t, nil)
-	RaiseOfflineAlert(context.Background(), BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2}, "")
+	raiseOfflineAlert(context.Background(), BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2}, "", "")
 	sd := stubBootSystemd(t, waitingUnits())
 	sd.onStart = func(string) {
 		if got := uevents(t); !reflect.DeepEqual(got, []string{"sdb:change", "sdc:"}) {

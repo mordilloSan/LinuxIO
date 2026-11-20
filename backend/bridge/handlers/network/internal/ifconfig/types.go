@@ -39,8 +39,11 @@ type DNSOptions struct {
 type ConfigBackend interface {
 	Name() string
 	Read() (InterfaceConfig, error)
-	SetIPv4DHCP(ctx context.Context) error
-	SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error
+	// SetIPv4DHCP and SetIPv4Manual refuse, with ErrUnsupportedBackend, DNS
+	// settings the backend cannot write: servers alongside DHCP and search
+	// domains, which only a backend that reports DNSOptions has.
+	SetIPv4DHCP(ctx context.Context, dns, search []string) error
+	SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns, search []string) error
 	SetIPv6DHCP(ctx context.Context) error
 	SetIPv6Static(ctx context.Context, addressCIDR string) error
 	SetMTU(ctx context.Context, mtu uint32) error
@@ -52,12 +55,6 @@ type ConfigBackend interface {
 // required for the host to be considered online at boot.
 type OptionalSetter interface {
 	SetOptional(ctx context.Context, optional bool) error
-}
-
-// DNSOptionsSetter is implemented by backends that report DNSOptions.
-type DNSOptionsSetter interface {
-	SetIPv4DHCPWithDNS(ctx context.Context, dns, search []string) error
-	SetIPv4ManualWithSearch(ctx context.Context, addressCIDR, gateway string, dns, search []string) error
 }
 
 type CommandRunner interface {

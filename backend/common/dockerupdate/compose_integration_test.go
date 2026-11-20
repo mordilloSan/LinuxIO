@@ -735,7 +735,7 @@ func registerDockerUpdateComposeEnvironmentCleanup(t *testing.T, target ComposeT
 }
 
 func runComposeProjectWithEnvironment(ctx context.Context, target ComposeTarget, name, value string, args ...string) error {
-	commandArgs, err := composeCommandArgs(target, args...)
+	commandArgs, err := composeCommandArgs(target, "json", args...)
 	if err != nil {
 		return err
 	}

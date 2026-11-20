@@ -346,7 +346,7 @@ func TestParseBtmpFailures(t *testing.T) {
 	data = appendBtmpRecordWithDetails(data, "other", newer, "ssh:notty", "192.168.1.20")
 	data = appendBtmpRecordWithDetails(data, "miguel", newer, "ssh:notty", "192.168.1.30")
 
-	logins := parseBtmpFailures("miguel", data, 1)
+	logins := parseBtmpFailures("miguel", data, 0, 0, 1)
 
 	require.Len(t, logins, 1)
 	require.Equal(t, "miguel", logins[0].Username)
@@ -364,7 +364,7 @@ func TestParseBtmpFailuresWithoutUsernameIncludesAllLoginUsers(t *testing.T) {
 	data = appendBtmpRecordWithDetails(data, "badname", newer, "web", "192.168.1.20")
 	data = appendBtmpRecordWithDetails(data, "reboot", newer+1, "system boot", "")
 
-	logins := parseBtmpFailures("", data, 10)
+	logins := parseBtmpFailures("", data, 0, 0, 10)
 
 	require.Len(t, logins, 2)
 	require.Equal(t, "badname", logins[0].Username)
@@ -464,7 +464,7 @@ func TestParseBtmpFailuresBetweenFiltersByStartTime(t *testing.T) {
 	data = appendBtmpRecord(data, "miguel", 120)
 	data = append(data, []byte("partial")...)
 
-	require.Len(t, parseBtmpFailuresBetween("miguel", data, 110, 0, 0), 1)
+	require.Len(t, parseBtmpFailures("miguel", data, 110, 0, 0), 1)
 }
 
 func TestParseBtmpFailuresAcceptsUserProcess(t *testing.T) {
@@ -473,7 +473,7 @@ func TestParseBtmpFailuresAcceptsUserProcess(t *testing.T) {
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
 	putUtmpTime(record, 120)
 
-	require.Len(t, parseBtmpFailures("miguel", record, 0), 1)
+	require.Len(t, parseBtmpFailures("miguel", record, 0, 0, 0), 1)
 }
 
 func TestParseBtmpFailuresSkipsDeadProcess(t *testing.T) {
@@ -482,7 +482,7 @@ func TestParseBtmpFailuresSkipsDeadProcess(t *testing.T) {
 	copy(record[btmpUserOffset:btmpUserOffset+btmpUserSize], "miguel")
 	putUtmpTime(record, 120)
 
-	require.Empty(t, parseBtmpFailures("miguel", record, 0))
+	require.Empty(t, parseBtmpFailures("miguel", record, 0, 0, 0))
 }
 
 func TestPreviousSuccessfulLoginUnix(t *testing.T) {

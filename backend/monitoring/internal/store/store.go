@@ -189,44 +189,11 @@ func (s *Store) init(ctx context.Context) error {
 		return err
 	}
 	switch version {
-	case 0:
-		return createSchema(ctx, s.db)
-	case 4, 5, 6:
-		return s.migrateToV7(ctx, version)
-	case storeSchemaVersion:
+	case 0, storeSchemaVersion:
 		return createSchema(ctx, s.db)
 	default:
 		return fmt.Errorf("unsupported store schema version %d", version)
 	}
-}
-
-func (s *Store) migrateToV7(ctx context.Context, version int) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer rollbackTx(tx, "migrate schema")
-
-	if version < 6 {
-		if err = dropLegacySnapshotTables(ctx, tx); err != nil {
-			return err
-		}
-	}
-	if err = deleteLegacyRollupRows(ctx, tx); err != nil {
-		return err
-	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-
-	// Remove the old payload bytes from both the WAL and the main database
-	// before marking the schema upgrade complete.
-	for _, statement := range []string{"PRAGMA wal_checkpoint(TRUNCATE)", "VACUUM", "PRAGMA wal_checkpoint(TRUNCATE)"} {
-		if _, err = s.db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
-	}
-	return createSchema(ctx, s.db)
 }
 
 // rollbackTx is deferred right after Begin; it is a no-op once Commit succeeded.
@@ -234,37 +201,6 @@ func rollbackTx(tx *sql.Tx, operation string) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 		slog.Warn("rollback failed", "operation", operation, "error", err)
 	}
-}
-
-func dropLegacySnapshotTables(ctx context.Context, tx *sql.Tx) error {
-	for _, plugin := range plugins.Names() {
-		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+plugin+"_current"); err != nil {
-			return err
-		}
-	}
-	for _, plugin := range []string{plugins.Processes, plugins.Programs} {
-		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+pluginHistoryTable(plugin)); err != nil {
-			return err
-		}
-	}
-	_, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS meta")
-	return err
-}
-
-func deleteLegacyRollupRows(ctx context.Context, tx *sql.Tx) error {
-	for _, plugin := range plugins.HistoryCapable() {
-		table := pluginHistoryTable(plugin)
-		var exists int
-		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&exists); err != nil {
-			return err
-		}
-		if exists > 0 {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE resolution <> ?", resolution1m); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 type schemaExecer interface {

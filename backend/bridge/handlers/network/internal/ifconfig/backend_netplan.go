@@ -88,13 +88,9 @@ func (b *NetplanBackend) Read() (InterfaceConfig, error) {
 	return cfg, nil
 }
 
-func (b *NetplanBackend) SetIPv4DHCP(ctx context.Context) error {
-	return b.SetIPv4DHCPWithDNS(ctx, nil, nil)
-}
-
-// SetIPv4DHCPWithDNS keeps DHCP for the address and gateway; non-empty dns
+// SetIPv4DHCP keeps DHCP for the address and gateway; non-empty dns
 // replaces the DHCP-provided IPv4 servers instead of adding to them.
-func (b *NetplanBackend) SetIPv4DHCPWithDNS(ctx context.Context, dns, search []string) error {
+func (b *NetplanBackend) SetIPv4DHCP(ctx context.Context, dns, search []string) error {
 	return b.update(ctx, func(ifaceMap map[string]any) error {
 		ifaceMap["dhcp4"] = true
 		ifaceMap["addresses"] = replaceNetplanAddresses(ifaceMap["addresses"], 4, nil)
@@ -106,11 +102,7 @@ func (b *NetplanBackend) SetIPv4DHCPWithDNS(ctx context.Context, dns, search []s
 	})
 }
 
-func (b *NetplanBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
-	return b.SetIPv4ManualWithSearch(ctx, addressCIDR, gateway, dns, nil)
-}
-
-func (b *NetplanBackend) SetIPv4ManualWithSearch(ctx context.Context, addressCIDR, gateway string, dns, search []string) error {
+func (b *NetplanBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns, search []string) error {
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}

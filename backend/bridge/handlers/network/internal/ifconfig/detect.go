@@ -12,6 +12,12 @@ import (
 
 var ErrUnsupportedBackend = errors.New("unsupported network backend")
 
+// unsupportedDNS is the refusal of a backend asked for a DNS setting it
+// cannot write.
+func unsupportedDNS(b ConfigBackend, what string) error {
+	return fmt.Errorf("%w: %s cannot set %s", ErrUnsupportedBackend, b.Name(), what)
+}
+
 func OpenBackend(env Environment, iface string) (ConfigBackend, error) {
 	if err := validateInterfaceName(iface); err != nil {
 		return nil, err

@@ -44,7 +44,7 @@ func TestComposeCommandArgsPreservesOverrideOrder(t *testing.T) {
 		EnvironmentFiles: []string{"/srv/media/.env", "/srv/media/production.env"},
 		WorkingDir:       "/srv/media",
 	}
-	got, err := composeCommandArgs(target, "up", "-d", "--no-deps", "server")
+	got, err := composeCommandArgs(target, "json", "up", "-d", "--no-deps", "server")
 	if err != nil {
 		t.Fatalf("composeCommandArgs: %v", err)
 	}
@@ -63,13 +63,13 @@ func TestComposeCommandArgsPreservesOverrideOrder(t *testing.T) {
 }
 
 func TestComposeCommandArgsRejectsIncompleteTarget(t *testing.T) {
-	if _, err := composeCommandArgs(ComposeTarget{}, "up"); err == nil {
+	if _, err := composeCommandArgs(ComposeTarget{}, "json", "up"); err == nil {
 		t.Fatal("composeCommandArgs accepted an empty project")
 	}
-	if _, err := composeCommandArgs(ComposeTarget{Name: "media"}, "up"); err == nil {
+	if _, err := composeCommandArgs(ComposeTarget{Name: "media"}, "json", "up"); err == nil {
 		t.Fatal("composeCommandArgs accepted a project without config files")
 	}
-	if _, err := composeCommandArgs(ComposeTarget{Name: "media", ConfigFiles: []string{"compose.yml"}, EnvironmentFiles: []string{""}}, "up"); err == nil {
+	if _, err := composeCommandArgs(ComposeTarget{Name: "media", ConfigFiles: []string{"compose.yml"}, EnvironmentFiles: []string{""}}, "json", "up"); err == nil {
 		t.Fatal("composeCommandArgs accepted an empty environment file path")
 	}
 }

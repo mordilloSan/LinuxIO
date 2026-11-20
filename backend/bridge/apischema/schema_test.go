@@ -545,7 +545,7 @@ func TestRedactedMutationRecordsItsRequestWithoutTheSecret(t *testing.T) {
 
 func TestMutationVoidRequiresNoResponse(t *testing.T) {
 	binding := apischema.MutationVoid("test.void_mutation", func(context.Context, poolRequest) error { return nil })
-	if !binding.Route.Result.Void() {
+	if !apischema.IsVoidType(binding.Route.Result.GoType) {
 		t.Fatalf("MutationVoid result = %v, want NoResponse", binding.Route.Result.GoType)
 	}
 }

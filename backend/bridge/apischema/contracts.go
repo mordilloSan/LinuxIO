@@ -50,12 +50,6 @@ func derefType(t reflect.Type) reflect.Type {
 	return t
 }
 
-// Void reports whether this payload carries no result. Reads the reflect.Type
-// the route already materialized at construction — no extra reflection.
-func (t TypeSpec) Void() bool {
-	return IsVoidType(t.GoType)
-}
-
 // Common route contract fragments.
 type MessageResponse struct {
 	Message string `json:"message"`

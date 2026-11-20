@@ -84,7 +84,7 @@ func TestRaiseAlertsRaisesAndResolves(t *testing.T) {
 		Devices: []BtrfsDevice{{ID: 1, Errors: BtrfsDeviceErrors{Write: 1}}},
 		Scrub:   BtrfsScrubStatus{Status: "finished", UncorrectableErrors: 2, FinishedAt: &end},
 	}
-	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2, Devices: []string{"/dev/sda1"}}, "")
+	raiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2, Devices: []string{"/dev/sda1"}}, "", "")
 	if got := alertKeys(t); got["offline-"+dataUUID] != alerts.SeverityError {
 		t.Fatalf("offline alert = %v", got)
 	}
@@ -305,7 +305,7 @@ func TestCheckHealthOpensAnEpisodeForADiskThatDroppedOut(t *testing.T) {
 func TestOfflineAlertSaysWhyThePoolWasNotMountedDegraded(t *testing.T) {
 	stubAlerts(t)
 	pool := BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2, Devices: []string{"/dev/sda1"}}
-	RaiseOfflineAlert(context.Background(), pool, "/dev/sda1 missed writes the other present disks have")
+	raiseOfflineAlert(context.Background(), pool, "/dev/sda1 missed writes the other present disks have", "")
 	doc, err := alerts.Load()
 	if err != nil || len(doc.Alerts) != 1 || !strings.Contains(doc.Alerts[0].Message, "did not mount the pool degraded because /dev/sda1 missed writes") {
 		t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
@@ -325,7 +325,7 @@ func TestOfflineAlertSaysWhereAPoolWithoutDisksShows(t *testing.T) {
 		{"", alerts.SeverityWarning},
 		{"disk 1 of the pool shows only on /dev/sdb, which carries an md signature", alerts.SeverityError},
 	} {
-		RaiseOfflineAlert(context.Background(), pool, c.blocked)
+		raiseOfflineAlert(context.Background(), pool, c.blocked, "")
 		doc, err := alerts.Load()
 		if err != nil || len(doc.Alerts) != 1 {
 			t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
@@ -394,8 +394,8 @@ func TestOfflineAlertCountsAReplaceTargetAsNoMember(t *testing.T) {
 	}
 
 	stubAlerts(t)
-	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
-	wantMissingOne("RaiseOfflineAlert")
+	raiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "", "")
+	wantMissingOne("raiseOfflineAlert")
 
 	stubAlerts(t)
 	if _, err := CheckHealth(ctx); err != nil {
@@ -414,7 +414,7 @@ func TestCheckHealthShowsARefusalAfterTheUnblockedAlert(t *testing.T) {
 		"sdd": {UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 1, Generation: 3},
 	})
 	ctx := context.Background()
-	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 1, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
+	raiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 1, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "", "")
 	writeFstab(t, "UUID=cold-uuid /srv/cold btrfs defaults 0 0\n")
 	if _, err := CheckHealth(ctx); err != nil {
 		t.Fatal(err)

@@ -26,7 +26,7 @@ network:
 	if err != nil {
 		t.Fatalf("DetectNetplanBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual(context.Background(), "192.168.10.50/24", "192.168.10.1", []string{"1.1.1.1", "8.8.8.8"})
+	setErr := backend.SetIPv4Manual(context.Background(), "192.168.10.50/24", "192.168.10.1", []string{"1.1.1.1", "8.8.8.8"}, nil)
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -111,12 +111,8 @@ network:
 	if err != nil {
 		t.Fatalf("DetectNetplanBackend: %v", err)
 	}
-	setter, ok := backend.(DNSOptionsSetter)
-	if !ok {
-		t.Fatalf("%T does not implement DNSOptionsSetter", backend)
-	}
-	if setErr := setter.SetIPv4DHCPWithDNS(context.Background(), []string{"192.168.1.66"}, []string{"lan", "home.arpa"}); setErr != nil {
-		t.Fatalf("SetIPv4DHCPWithDNS: %v", setErr)
+	if setErr := backend.SetIPv4DHCP(context.Background(), []string{"192.168.1.66"}, []string{"lan", "home.arpa"}); setErr != nil {
+		t.Fatalf("SetIPv4DHCP: %v", setErr)
 	}
 	cfg, err := backend.Read()
 	if err != nil {
@@ -132,8 +128,8 @@ network:
 		t.Fatalf("DNSOptions = %+v", cfg.DNSOptions)
 	}
 
-	if setErr := setter.SetIPv4DHCPWithDNS(context.Background(), nil, nil); setErr != nil {
-		t.Fatalf("SetIPv4DHCPWithDNS(nil): %v", setErr)
+	if setErr := backend.SetIPv4DHCP(context.Background(), nil, nil); setErr != nil {
+		t.Fatalf("SetIPv4DHCP(nil): %v", setErr)
 	}
 	updated, err := os.ReadFile(path)
 	if err != nil {
@@ -163,13 +159,9 @@ network:
 	if err != nil {
 		t.Fatalf("DetectNetplanBackend: %v", err)
 	}
-	setter, ok := backend.(DNSOptionsSetter)
-	if !ok {
-		t.Fatalf("%T does not implement DNSOptionsSetter", backend)
-	}
-	setErr := setter.SetIPv4ManualWithSearch(context.Background(), "10.0.0.5/24", "10.0.0.1", []string{"10.0.0.1"}, []string{"corp.example"})
+	setErr := backend.SetIPv4Manual(context.Background(), "10.0.0.5/24", "10.0.0.1", []string{"10.0.0.1"}, []string{"corp.example"})
 	if setErr != nil {
-		t.Fatalf("SetIPv4ManualWithSearch: %v", setErr)
+		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
 	cfg, err := backend.Read()
 	if err != nil {
@@ -244,7 +236,7 @@ DNS=2001:4860:4860::8888
 	if err != nil {
 		t.Fatalf("DetectNetworkdBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual(context.Background(), "10.0.0.20/24", "10.0.0.1", []string{"9.9.9.9"})
+	setErr := backend.SetIPv4Manual(context.Background(), "10.0.0.20/24", "10.0.0.1", []string{"9.9.9.9"}, nil)
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -279,7 +271,7 @@ iface eth0 inet dhcp
 	if err != nil {
 		t.Fatalf("detectIfupdownBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual(context.Background(), "172.16.0.10/24", "172.16.0.1", []string{"1.1.1.1"})
+	setErr := backend.SetIPv4Manual(context.Background(), "172.16.0.10/24", "172.16.0.1", []string{"1.1.1.1"}, nil)
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -336,7 +328,7 @@ iface eth0 inet static
 	if err != nil {
 		t.Fatalf("detectIfupdownBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual(context.Background(), "10.0.0.5/16", "10.0.0.1", nil)
+	setErr := backend.SetIPv4Manual(context.Background(), "10.0.0.5/16", "10.0.0.1", nil, nil)
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -369,7 +361,7 @@ ONBOOT=yes # keep
 	if err != nil {
 		t.Fatalf("detectIfcfgBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual(context.Background(), "192.168.1.20/24", "192.168.1.1", []string{"8.8.8.8", "1.1.1.1"})
+	setErr := backend.SetIPv4Manual(context.Background(), "192.168.1.20/24", "192.168.1.1", []string{"8.8.8.8", "1.1.1.1"}, nil)
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -419,7 +411,7 @@ mtu=1500
 	if err != nil {
 		t.Fatalf("detectNMConnectionBackend: %v", err)
 	}
-	setErr := backend.SetIPv4Manual(context.Background(), "192.168.50.10/24", "192.168.50.1", []string{"4.4.4.4"})
+	setErr := backend.SetIPv4Manual(context.Background(), "192.168.50.10/24", "192.168.50.1", []string{"4.4.4.4"}, nil)
 	if setErr != nil {
 		t.Fatalf("SetIPv4Manual: %v", setErr)
 	}
@@ -464,7 +456,7 @@ method=auto
 	if err != nil {
 		t.Fatalf("detectNMConnectionBackend: %v", err)
 	}
-	if err := backend.SetIPv4DHCP(context.Background()); err != nil {
+	if err := backend.SetIPv4DHCP(context.Background(), nil, nil); err != nil {
 		t.Fatalf("SetIPv4DHCP: %v", err)
 	}
 	requireCalls(
@@ -497,5 +489,24 @@ func TestNetplanUintRejectsValuesThatDoNotFitUint32(t *testing.T) {
 		if got != test.want || ok != test.wantOK {
 			t.Errorf("netplanUint(%#v) = (%d, %v), want (%d, %v)", test.value, got, ok, test.want, test.wantOK)
 		}
+	}
+}
+
+// A backend that cannot write search domains, or DNS servers beside DHCP,
+// refuses them before it touches its file.
+func TestBackendsWithoutDNSOptionsRefuseThem(t *testing.T) {
+	for _, backend := range []ConfigBackend{&NetworkdBackend{}, &IfupdownBackend{}, &nmConnectionBackend{}, &ifcfgBackend{}} {
+		t.Run(backend.Name(), func(t *testing.T) {
+			err := backend.SetIPv4Manual(t.Context(), "10.0.0.5/24", "10.0.0.1", []string{"10.0.0.1"}, []string{"lan"})
+			if !errors.Is(err, ErrUnsupportedBackend) {
+				t.Fatalf("SetIPv4Manual with search = %v, want ErrUnsupportedBackend", err)
+			}
+			if err := backend.SetIPv4DHCP(t.Context(), []string{"10.0.0.1"}, nil); !errors.Is(err, ErrUnsupportedBackend) {
+				t.Fatalf("SetIPv4DHCP with DNS = %v, want ErrUnsupportedBackend", err)
+			}
+			if err := backend.SetIPv4DHCP(t.Context(), nil, []string{"lan"}); !errors.Is(err, ErrUnsupportedBackend) {
+				t.Fatalf("SetIPv4DHCP with search = %v, want ErrUnsupportedBackend", err)
+			}
+		})
 	}
 }

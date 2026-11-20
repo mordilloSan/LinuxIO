@@ -136,7 +136,7 @@ func authorizeTransportMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "indexer connection transport unavailable", http.StatusForbidden)
 			return
 		}
-		uid, ok := peercred.RequestUID(r)
+		uid, ok := peercred.UID(r.Context())
 		if !ok || uid != 0 {
 			http.Error(w, "this operation requires root privileges; run with sudo", http.StatusForbidden)
 			return

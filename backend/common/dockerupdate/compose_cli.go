@@ -181,13 +181,9 @@ func composeCommand(ctx context.Context, target ComposeTarget, args []string) *e
 	return cmd
 }
 
-func composeCommandArgs(target ComposeTarget, args ...string) ([]string, error) {
-	return composeCommandArgsWithProgress(target, "json", args...)
-}
-
-// composeCommandArgsWithProgress is composeCommandArgs with Compose's
-// --progress mode.
-func composeCommandArgsWithProgress(target ComposeTarget, progress string, args ...string) ([]string, error) {
+// composeCommandArgs is the docker command line for target; progress is
+// Compose's --progress mode.
+func composeCommandArgs(target ComposeTarget, progress string, args ...string) ([]string, error) {
 	if strings.TrimSpace(target.Name) == "" {
 		return nil, fmt.Errorf("compose project name is empty")
 	}
@@ -222,7 +218,7 @@ func RunComposeProject(ctx context.Context, target ComposeTarget, emitter Compos
 	// progress update (per-layer current/total/percent) instead of the
 	// humanized, TTY-less text dump. We parse those below into structured
 	// progress and a clean humanized line.
-	baseArgs, err := composeCommandArgs(target, args...)
+	baseArgs, err := composeCommandArgs(target, "json", args...)
 	if err != nil {
 		return err
 	}
@@ -365,7 +361,7 @@ var composeBuildAttestations = []string{"BUILDX_NO_DEFAULT_ATTESTATIONS=1"}
 // line; with --progress=json Compose passes BuildKit's raw status objects
 // through instead.
 func composeBuildService(ctx context.Context, target ComposeTarget, service string, emitter ComposeLineEmitter) error {
-	args, err := composeCommandArgsWithProgress(target, "plain", "build", "--pull", service)
+	args, err := composeCommandArgs(target, "plain", "build", "--pull", service)
 	if err != nil {
 		return err
 	}
@@ -379,7 +375,7 @@ func composeBuildService(ctx context.Context, target ComposeTarget, service stri
 // is named. Compose writes its warnings to stderr, so only stdout is read as
 // the configuration.
 func composeServiceSettingsOf(ctx context.Context, target ComposeTarget, services []string) (map[string]composeServiceSettings, error) {
-	args, err := composeCommandArgs(target, append([]string{"config", "--format", "json"}, services...)...)
+	args, err := composeCommandArgs(target, "json", append([]string{"config", "--format", "json"}, services...)...)
 	if err != nil {
 		return nil, err
 	}

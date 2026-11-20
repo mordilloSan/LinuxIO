@@ -137,19 +137,14 @@ func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Obser
 	return obs
 }
 
-// RaiseOfflineAlert flags an unmounted pool: an error when disks are
+// raiseOfflineAlert flags an unmounted pool: an error when disks are
 // missing or the boot check refused it, a warning when it is merely
 // unmounted. A pool that shows only on parts of other devices (no disk of
 // its own, see FindOfflinePools) gets an alert that says where it shows. blocked is why the boot check did not mount it, if it did not;
 // a changed reason is a new occurrence, so it replaces the message raised
-// earlier.
-func RaiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked string) {
-	raiseOfflineAlert(ctx, pool, blocked, "")
-}
-
-// raiseOfflineAlert is RaiseOfflineAlert with wayOut, when the refusal says
-// what to do, in place of the advice to mount the pool from the overview,
-// which would refuse it the same way.
+// earlier. wayOut, when the refusal says what to do, takes the place of the
+// advice to mount the pool from the overview, which would refuse it the same
+// way.
 func raiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked, wayOut string) {
 	name := poolName(pool.Label, pool.UUID)
 	missing := missingDisks(pool)

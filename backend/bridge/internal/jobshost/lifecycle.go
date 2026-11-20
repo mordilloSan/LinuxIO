@@ -65,7 +65,7 @@ func (h *Host) reconcile(ctx context.Context) (resumes, error) {
 	for _, record := range slices.Concat(rebooted, crashed) {
 		slog.Info("job marked interrupted", "job_id", record.ID, "route", record.Route, "reason", record.Reason)
 		if !slices.Contains(toResume.inBoot, record.ID) && !slices.Contains(toResume.afterReboot, record.ID) {
-			h.alertInterrupted(ctx, record)
+			h.alertInterrupted(ctx, record, "")
 		}
 	}
 	if h.cfg.Scheduled != nil {
@@ -210,7 +210,7 @@ func (h *Host) keepInterrupted(ctx context.Context, id string, reason jobs.Reaso
 			why = after
 		}
 	}
-	h.alertInterruptedBecause(ctx, record, why)
+	h.alertInterrupted(ctx, record, why)
 }
 
 // run waits for SIGTERM (ctx done), idle exit or a listener failure.
@@ -373,7 +373,7 @@ func (h *Host) interrupt(ctx context.Context, task *bridgeipc.Task) {
 		slog.Warn("job not marked interrupted", "job_id", task.ID(), "error", err)
 	}
 	if marked {
-		h.alertInterrupted(ctx, record)
+		h.alertInterrupted(ctx, record, "")
 	}
 }
 

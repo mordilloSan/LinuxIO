@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/indexing"
 )
 
@@ -92,6 +93,30 @@ func reconcileHardlinksAfterReindexPerFile(ctx context.Context, db dbExecutor, i
 			if err := updateParentDirectorySizesThrough(ctx, db, indexID, delta.path, delta.delta, stopPath); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// updateParentDirectorySizesThrough is updateParentDirectorySizes as the
+// per-file reconcile used it: it stops after the folder at stopPath.
+func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, indexID int64, childPath string, sizeDelta int64, stopPath string) error {
+	if sizeDelta == 0 {
+		return nil
+	}
+	if stopPath != "" {
+		stopPath = indexerapi.NormalizePath(stopPath)
+	}
+	for currentPath := parentDirKey(childPath); currentPath != ""; currentPath = parentDirKey(currentPath) {
+		if _, err := db.ExecContext(ctx, `
+			UPDATE entries
+			SET size = size + ?
+			WHERE index_id = ? AND relative_path = ? AND type = 'directory';
+		`, sizeDelta, indexID, currentPath); err != nil {
+			return err
+		}
+		if currentPath == "/" || currentPath == stopPath {
+			break
 		}
 	}
 	return nil

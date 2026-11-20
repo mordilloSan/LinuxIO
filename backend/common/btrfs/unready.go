@@ -465,7 +465,7 @@ func reportBroughtUp(ctx context.Context, p unreadyPool, state mountState) {
 			slog.Info("btrfs pool device found after udev evaluated its disks again", args...)
 		default:
 			slog.Warn("btrfs pool not mounted after udev evaluated its disks again", args...)
-			RaiseOfflineAlert(ctx, p.pool, "")
+			raiseOfflineAlert(ctx, p.pool, "", "")
 		}
 		return
 	}

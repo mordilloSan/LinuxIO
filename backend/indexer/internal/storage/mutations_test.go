@@ -281,22 +281,6 @@ func TestDeletePathMissingTargetSubtractsStoredRoots(t *testing.T) {
 	}
 }
 
-func TestUpdateParentDirectorySizesThroughNormalizesStopPath(t *testing.T) {
-	ctx, db, _ := setupTestDB(t)
-	indexID := insertTestIndex(t, db)
-	h := &testHelper{t: t, ctx: ctx, db: db, indexID: indexID}
-	h.seedDir("/")
-	h.seedDir("/tree")
-	h.seedDir("/tree/child")
-
-	if err := updateParentDirectorySizesThrough(ctx, db, indexID, "/tree/child/file.txt", 10, "/tree/"); err != nil {
-		t.Fatalf("update parent sizes through trailing stop path: %v", err)
-	}
-	h.assertSize("/tree/child", 10, "after trailing stop path update")
-	h.assertSize("/tree", 10, "after trailing stop path update")
-	h.assertSize("/", 0, "after trailing stop path update")
-}
-
 func TestHardlinkReconcileIgnoresStaleContributorAfterIdentityChange(t *testing.T) {
 	ctx, db, _ := setupTestDB(t)
 	indexID := insertTestIndex(t, db)

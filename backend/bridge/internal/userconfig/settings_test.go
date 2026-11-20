@@ -68,18 +68,6 @@ func TestCoreExplicitFalseAndZeroSurviveValidatedRoundTrip(t *testing.T) {
 	require.Zero(t, reloaded.Jobs.ProgressMinBytesMB)
 }
 
-func TestParseCoreConfigAcceptsRemovedHeavyArchiveConcurrency(t *testing.T) {
-	base := t.TempDir()
-	cfg, err := parseCoreConfig([]byte("jobs:\n  heavyArchiveConcurrency: 4\n  progressMinBytesMB: 3\n"), base)
-	require.NoError(t, err)
-	require.Equal(t, 3, cfg.Jobs.ProgressMinBytesMB)
-	require.Nil(t, cfg.Jobs.LegacyHeavyArchiveConcurrency)
-
-	out, err := yaml.Marshal(cfg)
-	require.NoError(t, err)
-	require.NotContains(t, string(out), "heavyArchiveConcurrency")
-}
-
 func TestInitializeCreatesMissingFilesIndependently(t *testing.T) {
 	base := t.TempDir()
 	cfgPath := filepath.Join(base, cfgFileName)

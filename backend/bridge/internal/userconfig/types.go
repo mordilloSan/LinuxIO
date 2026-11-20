@@ -97,11 +97,6 @@ type PersistedJobSettings struct {
 	ProgressMinBytesMB        int `json:"progressMinBytesMB" yaml:"progressMinBytesMB"`
 	ArchiveCompressionWorkers int `json:"archiveCompressionWorkers" yaml:"archiveCompressionWorkers"`
 	ArchiveExtractWorkers     int `json:"archiveExtractWorkers" yaml:"archiveExtractWorkers"`
-
-	// LegacyHeavyArchiveConcurrency is the removed archive concurrency limit.
-	// Strict decoding rejects unknown keys, so old files are still accepted;
-	// parseCoreConfig discards the value and it is never written back.
-	LegacyHeavyArchiveConcurrency *int `json:"-" yaml:"heavyArchiveConcurrency,omitempty"`
 }
 
 // Accepted UIPreferences.NavigationMode values.
