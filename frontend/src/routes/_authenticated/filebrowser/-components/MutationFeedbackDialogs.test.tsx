@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import { fireEvent, render, screen, waitFor } from "@/test/render";
 
+import { FileBrowserDeleteDialog } from "./FileBrowserPanels";
 import FileCard from "./FileCard";
 import FileListRow from "./FileListRow";
 import InputDialog from "./InputDialog";
@@ -147,28 +148,25 @@ describe("file mutation feedback dialogs", () => {
     expect(screen.getByRole("textbox")).toHaveValue("");
   });
 
-  it("shows Task progress and prevents closing a pending delete", async () => {
+  it("hands a confirmed delete to the page and shows no progress of its own", async () => {
     const onClose = vi.fn();
     const onConfirm = vi.fn();
     const { user } = render(
-      <AppConfirmDialog
-        isPending
-        message="Delete one item?"
+      <FileBrowserDeleteDialog
+        mode="permanent"
         onClose={onClose}
         onConfirm={onConfirm}
         open
-        progress={{ percentage: 40, phase: "deleting" }}
-        title="Delete Items"
+        pendingDeletePaths={["/srv/report.txt"]}
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("deleting (40%)");
-    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "Deleting…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    await user.keyboard("{Enter}{Escape}");
-    fireEvent.click(document.querySelector(".app-dialog__backdrop")!);
-    expect(onConfirm).not.toHaveBeenCalled();
+    // The page closes the confirm as the job starts; the task tray shows
+    // the job's progress and can cancel it.
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).not.toHaveAttribute("aria-busy");
     expect(onClose).not.toHaveBeenCalled();
   });
 

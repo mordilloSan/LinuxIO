@@ -6,9 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Stream } from "@/api";
 import { createBackgroundTaskCache } from "@/tasks/taskCache";
 import {
+  TASK_TYPE_DOCKER_STORAGE,
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_FILE_CHMOD_BATCH,
   TASK_TYPE_FILE_DELETE_BATCH,
+  TASK_TYPE_MEMORY_DRAIN,
+  TASK_TYPE_MEMORY_SWAP_MODE,
   TASK_TYPE_FILE_INDEXER,
   TASK_TYPE_FILE_TRASH_RESTORE,
   TASK_TYPE_PACKAGE_UPDATE,
@@ -242,6 +245,63 @@ describe("useRecoveredTasks package updates", () => {
         id: "docker-update-active",
         label: "Pulling the updated image",
         taskType: TASK_TYPE_DOCKER_UPDATE,
+      }),
+    ]);
+  });
+
+  it("lists a running Docker storage change in the tray with its step", async () => {
+    const { controls, emitTerminalEvent } = renderRecoveredTasks();
+
+    await emitTerminalEvent({
+      created_at: "2026-01-01T00:00:00Z",
+      id: "docker-storage-active",
+      metadata: { label: "Docker storage change" },
+      progress: { message: "Restarting Docker", phase: "running" },
+      state: "running",
+      type: TASK_TYPE_DOCKER_STORAGE,
+      updated_at: "2026-01-01T00:00:01Z",
+    });
+
+    const update = controls.genericTasks.setBackgroundTasks.mock.calls[0]?.[0];
+    if (typeof update !== "function") {
+      throw new Error("expected recovered task state updater");
+    }
+    expect(update([])).toEqual([
+      expect.objectContaining({
+        id: "docker-storage-active",
+        label: "Restarting Docker",
+        taskType: TASK_TYPE_DOCKER_STORAGE,
+      }),
+    ]);
+  });
+
+  // The Memory overflow dialog can be closed while its change runs: the tray
+  // row is then where its step shows and where it can be cancelled.
+  it.each([
+    [TASK_TYPE_MEMORY_SWAP_MODE, "Stopping the swap file"],
+    [TASK_TYPE_MEMORY_DRAIN, "Moving swapped data back into memory"],
+  ])("lists a running %s job in the tray with its step", async (type, step) => {
+    const { controls, emitTerminalEvent } = renderRecoveredTasks();
+
+    await emitTerminalEvent({
+      created_at: "2026-01-01T00:00:00Z",
+      id: "memory-active",
+      metadata: { identity: ["memory"] },
+      progress: { message: step, phase: "running" },
+      state: "running",
+      type,
+      updated_at: "2026-01-01T00:00:01Z",
+    });
+
+    const update = controls.genericTasks.setBackgroundTasks.mock.calls[0]?.[0];
+    if (typeof update !== "function") {
+      throw new Error("expected recovered task state updater");
+    }
+    expect(update([])).toEqual([
+      expect.objectContaining({
+        id: "memory-active",
+        label: step,
+        taskType: type,
       }),
     ]);
   });

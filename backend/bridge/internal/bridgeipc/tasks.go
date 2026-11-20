@@ -1,6 +1,7 @@
 package bridgeipc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"errors"
@@ -181,12 +182,14 @@ type TaskDataAttachRequest struct {
 // terminal. Started may see an already-terminal snapshot (a queued task
 // canceled before it started) and must treat that state as final.
 // CancelRequested is called when Cancel stops a running task, before its
-// context is canceled; never for Interrupt or a queued task.
+// context is canceled; never for Interrupt or a queued task. Checkpoint stores
+// what the task's runner saved with SaveCheckpoint in its record.
 type Recorder interface {
 	Started(task *Task, raw jsontext.Value)
 	Progress(task *Task, p TaskProgress)
 	Finished(task *Task)
 	CancelRequested(task *Task)
+	Checkpoint(task *Task, checkpoint jsontext.Value) error
 }
 
 type TaskService struct {
@@ -235,6 +238,9 @@ type Task struct {
 	cancel           context.CancelFunc
 	// interrupted makes the cancellation end the task interrupted, not canceled.
 	interrupted bool
+	// interruptErr is the error of a task its Resume hook left interrupted;
+	// nil reads "job was interrupted".
+	interruptErr *Error
 	// cancelRequested is set once the owner cancels the running task.
 	cancelRequested bool
 	// publishMu orders the cancel-request snapshot before the terminal event.
@@ -337,10 +343,10 @@ func (r *TaskService) AttachData(ctx context.Context, task *Task, stream net.Con
 	return attacher(ctx, task, stream, request)
 }
 
-// ClaimForOwnerWithIdentity creates a Task or returns the existing Task for an
+// ClaimForOwner creates a Task or returns the existing Task for an
 // identical stable identity. A reused ID with a different route, owner scope,
 // or fingerprint is rejected instead of being treated as a retry.
-func (r *TaskService) ClaimForOwnerWithIdentity(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, identity TaskIdentity, metadata ...*TaskMetadata) (*Task, bool, error) {
+func (r *TaskService) ClaimForOwner(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, identity TaskIdentity, metadata ...*TaskMetadata) (*Task, bool, error) {
 	if taskType == "" {
 		return nil, false, fmt.Errorf("task type cannot be empty")
 	}
@@ -774,14 +780,19 @@ func (j *Task) trimProgressLogLocked() {
 // events for replay, and an unsubscribe function. The replay contains up to
 // DefaultTaskProgressReplayLimit recent progress events.
 func (j *Task) SubscribeWithReplay(buffer int) (<-chan TaskEvent, []TaskEvent, func()) {
-	ch, replay, _, unsubscribe := j.subscribeWithReplayStatus(buffer)
+	ch, replay, _, _, unsubscribe := j.subscribeWithSnapshot(buffer)
 	return ch, replay, unsubscribe
 }
 
-// subscribeWithReplayStatus additionally reports when the bounded live-event
-// channel has overflowed. Watch streams use this to fail explicitly so a
-// cursor-aware client can reconnect instead of silently accepting a gap.
-func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEvent, <-chan struct{}, func()) {
+// subscribeWithSnapshot is SubscribeWithReplay that also reports when the
+// bounded live-event channel has overflowed, which watch streams use to fail
+// explicitly so a cursor-aware client can reconnect instead of silently
+// accepting a gap, and returns the task's snapshot, taken under the
+// lock that registers the subscriber. A terminal snapshot then means every
+// progress event is in the replay, and a running one means the rest arrive
+// live; a snapshot taken after the unlock could be terminal while the live
+// channel still held frames published in between.
+func (j *Task) subscribeWithSnapshot(buffer int) (<-chan TaskEvent, []TaskEvent, <-chan struct{}, TaskSnapshot, func()) {
 	if buffer <= 0 {
 		buffer = 8
 	}
@@ -792,6 +803,7 @@ func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEv
 	j.replaySubscribed = true
 	j.trimProgressLogLocked()
 	j.subscribers[ch] = subscriber
+	snapshot := j.snapshotLocked()
 	j.mu.Unlock()
 
 	unsubscribe := func() {
@@ -802,12 +814,12 @@ func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEv
 		}
 		j.mu.Unlock()
 	}
-	return ch, replay, subscriber.lagged, unsubscribe
+	return ch, replay, subscriber.lagged, snapshot, unsubscribe
 }
 
 func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 	// Every field is set explicitly rather than inherited. A task context is
-	// rooted at context.Background (see ClaimForOwnerWithIdentity), and a queued task is
+	// rooted at context.Background (see ClaimForOwner), and a queued task is
 	// promoted by whichever goroutine finished the task ahead of it, so an
 	// inherited label set would name the wrong session. The runner's own
 	// goroutines pick these up from here.
@@ -823,7 +835,10 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 		// A failed task is logged here and nowhere else: runners return
 		// errors instead of logging them.
 		msg, level := "task failed", failureLevel(err)
-		interrupted := j.Interrupted()
+		// A cancel of its owner meanwhile ends it canceled all the same, and
+		// a stop of its host the shutdown's interruption.
+		notResumed := errors.Is(err, ErrNotResumed) && ctx.Err() == nil && !j.Interrupted()
+		interrupted := j.Interrupted() || notResumed
 		// A stopped handler may report how it stopped, such as a killed
 		// subprocess, instead of the context's error.
 		canceled := errors.Is(err, context.Canceled) || ctx.Err() != nil
@@ -836,6 +851,12 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 		slog.Log(ctx, level, msg, "task_id", j.id, "task_type", j.typ, "user", j.owner.Username, "error", err)
 		if errors.Is(err, context.DeadlineExceeded) && !interrupted {
 			j.markFailed(NewError("operation timed out", 504))
+			return
+		}
+		if notResumed {
+			// Its Resume hook found nothing to follow: it stays interrupted,
+			// and says why.
+			j.markInterrupted(NewError(err.Error(), 409))
 			return
 		}
 		if interrupted || canceled {
@@ -918,13 +939,35 @@ func (j *Task) markCanceled() {
 	j.publishTerminal(event)
 }
 
+// NotResumed reports whether the task's Resume hook found nothing to follow
+// and left it interrupted (ErrNotResumed).
+func (j *Task) NotResumed() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.interruptErr != nil
+}
+
+// markInterrupted ends the task interrupted with err, as a Resume hook that
+// found nothing to follow leaves it.
+func (j *Task) markInterrupted(err *Error) {
+	j.mu.Lock()
+	if j.isTerminalLocked() {
+		j.mu.Unlock()
+		return
+	}
+	j.interrupted, j.interruptErr = true, err
+	event := j.markCanceledLocked(time.Now().UTC())
+	j.mu.Unlock()
+	j.publishTerminal(event)
+}
+
 // markCanceledLocked records cancellation, or the interruption Interrupt
 // asked for, while j.mu is held. The caller is responsible for signaling and
 // broadcasting after releasing the lock.
 func (j *Task) markCanceledLocked(now time.Time) TaskEvent {
 	eventType, state, taskErr := TaskEventCanceled, TaskStateCanceled, NewError("operation aborted", 499)
 	if j.interrupted {
-		eventType, state, taskErr = TaskEventError, TaskStateInterrupted, NewError("job was interrupted", 409)
+		eventType, state, taskErr = TaskEventError, TaskStateInterrupted, cmp.Or(j.interruptErr, NewError("job was interrupted", 409))
 	}
 	j.state = state
 	j.request = nil

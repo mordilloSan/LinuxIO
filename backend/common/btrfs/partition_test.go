@@ -470,6 +470,7 @@ func TestPartitionDiskWritesTableAndWaitsForNode(t *testing.T) {
 	if err = os.WriteFile(device+"1", nil, 0o600); err != nil { // udev's node
 		t.Fatal(err)
 	}
+	fakeSysfs(t, "sdb", size, nil) // no partitions yet
 	oldSize, oldSS, oldReread := blockDeviceSize, sectorSize, rereadPartitions
 	blockDeviceSize = func(string) (uint64, error) { return size, nil }
 	sectorSize = func(string) (uint64, error) { return 512, nil }
@@ -660,21 +661,51 @@ func TestPartitionDiskUndoesWhenTheNodeNeverAppears(t *testing.T) {
 	if err := os.Truncate(device, size); err != nil {
 		t.Fatal(err)
 	}
-	stubDisk(t, size, 512)
+	fakeSysfs(t, "sdb", size, nil) // no partitions yet
+	calls := stubDisk(t, size, 512)
 	oldReread := rereadPartitions
 	rereadPartitions = func(string) error { return nil }
 	t.Cleanup(func() { rereadPartitions = oldReread })
 	var dropped []int
 	stubDelKernelPartition(t, func(_ string, number int) error { dropped = append(dropped, number); return nil })
+	markEdges(t, device, size)
 
 	if _, err := PartitionDisk(noUdev(t), device); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want the node wait's deadline", err)
 	}
-	if !slices.Equal(dropped, []int{1}) {
-		t.Fatalf("dropped %v, want partition 1", dropped)
+	// Both table writes zero the edges through their own handle.
+	if !slices.Equal(dropped, []int{1}) || len(calls.wiped) != 0 {
+		t.Fatalf("dropped %v, wiped %v; want partition 1 dropped and no separate wipe", dropped, calls.wiped)
 	}
+	checkEdgesZeroed(t, device, size)
 	if e := readCopies(t, device, 512, size/512).entries; !bytes.Equal(e, make([]byte, len(e))) {
 		t.Fatal("the table kept the partition")
+	}
+}
+
+// TestPartitionDiskRefusesADiskWithPartitions covers a disk an outside tool
+// partitioned while the pool create waited for its lock: the kernel lists a
+// partition, which may be a member of something, so the table it would
+// replace is left as it is.
+func TestPartitionDiskRefusesADiskWithPartitions(t *testing.T) {
+	const size = 4 << 30
+	device := filepath.Join(t.TempDir(), "sdb")
+	if err := os.WriteFile(device, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(device, size); err != nil {
+		t.Fatal(err)
+	}
+	fakeSysfs(t, "sdb", size, [][2]uint64{{2048, 4095}})
+	calls := stubDisk(t, size, 512)
+	markEdges(t, device, size)
+	beforeHead, beforeTail := diskEdges(t, device, size)
+
+	if _, err := PartitionDisk(context.Background(), device); !errors.Is(err, ErrHasPartitions) {
+		t.Fatalf("err = %v, want ErrHasPartitions", err)
+	}
+	if afterHead, afterTail := diskEdges(t, device, size); !bytes.Equal(beforeHead, afterHead) || !bytes.Equal(beforeTail, afterTail) || len(calls.wiped) != 0 {
+		t.Fatal("the refused partitioning wrote to the disk")
 	}
 }
 
@@ -927,6 +958,16 @@ func newInitDisk(t *testing.T, size uint64, parts [][2]uint64) *initDisk {
 	if err := os.Symlink(image, d.device); err != nil {
 		t.Fatal(err)
 	}
+	// The partitions' nodes, which Initialize reads the signatures of.
+	for i, p := range parts {
+		node := partitionPath(d.device, i+1)
+		if err := os.WriteFile(node, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Truncate(node, int64(p[1]-p[0]+1)*512); err != nil {
+			t.Fatal(err)
+		}
+	}
 	oldReread := rereadPartitions
 	rereadPartitions = func(string) error { d.reread++; return nil }
 	t.Cleanup(func() { rereadPartitions = oldReread })
@@ -941,14 +982,83 @@ func TestInitializeDisk(t *testing.T) {
 		return nil
 	})
 
-	if err := InitializeDisk(context.Background(), d.device); err != nil {
+	markEdges(t, d.device, 700<<20)
+
+	if err := InitializeDisk(context.Background(), d.device, nil); err != nil {
 		t.Fatal(err)
 	}
-	if d.reread != 1 || !slices.Equal(dropped, []int{1, 2}) || !slices.Equal(d.calls.wiped, []string{d.device}) {
+	// The edges are zeroed through the handle that writes the table, not by
+	// a wipe of its own that closes the disk in between.
+	if d.reread != 1 || !slices.Equal(dropped, []int{1, 2}) || len(d.calls.wiped) != 0 {
 		t.Fatalf("reread=%d dropped=%v wiped=%v", d.reread, dropped, d.calls.wiped)
 	}
+	checkEdgesZeroed(t, d.device, 700<<20)
 	if c := readCopies(t, d.device, 512, d.sectors); !bytes.Equal(c.entries, make([]byte, len(c.entries))) {
 		t.Fatal("partitions survived")
+	}
+}
+
+// edgeMarks are offsets inside the 2 MiB a table write zeroes at each end
+// of a disk of size bytes, clear of both GPT copies.
+func edgeMarks(size uint64) []uint64 { return []uint64{1 << 20, size - 1<<20} }
+
+// markEdges writes a signature at each of edgeMarks.
+func markEdges(t *testing.T, device string, size uint64) {
+	t.Helper()
+	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for _, off := range edgeMarks(size) {
+		if _, err = f.WriteAt([]byte("LABELONE"), int64(off)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// checkEdgesZeroed fails unless every mark markEdges wrote is zeros.
+func checkEdgesZeroed(t *testing.T, device string, size uint64) {
+	t.Helper()
+	f, err := os.Open(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for _, off := range edgeMarks(size) {
+		b := make([]byte, 8)
+		if _, err = f.ReadAt(b, int64(off)); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(b, make([]byte, 8)) {
+			t.Fatalf("byte %d of %s was not zeroed", off, device)
+		}
+	}
+}
+
+// TestInitializeDiskChecksSignaturesFirst covers a disk whose partition 2
+// carries an md superblock no inventory has seen: check gets it, read under
+// the exclusive handle before anything changes, and a refusal leaves the
+// disk and the kernel's partitions as they were.
+func TestInitializeDiskChecksSignaturesFirst(t *testing.T) {
+	const size = 700 << 20
+	d := newInitDisk(t, size, [][2]uint64{{2048, 8191}, {528384, 536575}})
+	stubDelKernelPartition(t, func(string, int) error { t.Error("dropped a partition"); return nil })
+	p2 := partitionPath(d.device, 2)
+	uuid := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	writeAt(t, p2, 0x1000, md1Superblock(0x1000, uuid, 1))
+	beforeHead, beforeTail := diskEdges(t, d.device, size)
+	refusal := errors.New("not confirmed")
+	var found []MemberSignature
+
+	err := InitializeDisk(context.Background(), d.device, func(f []MemberSignature) error { found = f; return refusal })
+	want := []MemberSignature{{Device: p2, Kind: "md", UUID: "01020304-0506-0708-090a-0b0c0d0e0f10"}}
+	if !errors.Is(err, refusal) || !slices.Equal(found, want) {
+		t.Fatalf("err = %v, found %+v; want the refusal after %+v", err, found, want)
+	}
+	afterHead, afterTail := diskEdges(t, d.device, size)
+	if !bytes.Equal(beforeHead, afterHead) || !bytes.Equal(beforeTail, afterTail) || d.reread != 0 || len(d.calls.adds) != 0 {
+		t.Fatalf("the refused initialize touched the disk: reread=%d re-added %v", d.reread, d.calls.adds)
 	}
 }
 
@@ -964,7 +1074,7 @@ func TestInitializeDiskBusy(t *testing.T) {
 	})
 	beforeHead, beforeTail := diskEdges(t, d.device, size)
 
-	err := InitializeDisk(context.Background(), d.device)
+	err := InitializeDisk(context.Background(), d.device, nil)
 	// p1 was dropped before p2 refused, so the kernel gets it back.
 	if want := []kernelAdd{{1, p1[0] * 512, (p1[1] - p1[0] + 1) * 512}}; !errors.Is(err, unix.EBUSY) || !slices.Equal(d.calls.adds, want) {
 		t.Fatalf("err=%v re-added %v, want %v", err, d.calls.adds, want)
@@ -980,10 +1090,13 @@ func TestInitializeDiskReaddsWhenTheWriteFails(t *testing.T) {
 	parts := [][2]uint64{{2048, 4095}, {528384, 530431}}
 	d := newInitDisk(t, size, parts)
 	stubDelKernelPartition(t, func(string, int) error { return nil })
-	wipeDeviceEdges = func(string) error { return unix.EIO } // the table write's first step
+	oldWrite := writeTable
+	t.Cleanup(func() { writeTable = oldWrite })
+	writeTable = func(*os.File, gptLayout) error { return unix.EIO }
 	beforeHead, beforeTail := diskEdges(t, d.device, size)
 
-	err := InitializeDisk(context.Background(), d.device)
+	err := InitializeDisk(context.Background(), d.device, nil)
+	writeTable = oldWrite
 	want := []kernelAdd{{1, 2048 * 512, 2048 * 512}, {2, 528384 * 512, 2048 * 512}}
 	if !errors.Is(err, unix.EIO) || !slices.Equal(d.calls.adds, want) || d.reread != 0 {
 		t.Fatalf("err=%v re-added %v reread=%d, want %v", err, d.calls.adds, d.reread, want)
@@ -996,7 +1109,7 @@ func TestInitializeDiskReaddsWhenTheWriteFails(t *testing.T) {
 	// without partitions, as the new table is: nothing is re-added.
 	d = newInitDisk(t, size, parts)
 	rereadPartitions = func(string) error { return unix.EBUSY }
-	if err = InitializeDisk(context.Background(), d.device); !errors.Is(err, unix.EBUSY) || len(d.calls.adds) != 0 {
+	if err = InitializeDisk(context.Background(), d.device, nil); !errors.Is(err, unix.EBUSY) || len(d.calls.adds) != 0 {
 		t.Fatalf("failed re-read: err=%v re-added %v", err, d.calls.adds)
 	}
 	if c := readCopies(t, d.device, 512, d.sectors); !bytes.Equal(c.entries, make([]byte, len(c.entries))) {
@@ -1011,7 +1124,7 @@ func TestTableWritersRefuseAPartition(t *testing.T) {
 	stubDelKernelPartition(t, func(string, int) error { t.Error("dropped a partition"); return nil })
 	part := filepath.Join(t.TempDir(), "sdb1")
 
-	if err := InitializeDisk(context.Background(), part); err == nil || !strings.Contains(err.Error(), "not a whole disk") {
+	if err := InitializeDisk(context.Background(), part, nil); err == nil || !strings.Contains(err.Error(), "not a whole disk") {
 		t.Errorf("initialize: err = %v", err)
 	}
 	if _, err := PartitionDisk(context.Background(), part); err == nil || !strings.Contains(err.Error(), "not a whole disk") {
@@ -1025,7 +1138,7 @@ func TestTableWritersRefuseAPartition(t *testing.T) {
 func TestInitializeDiskRefusesUnder2MiB(t *testing.T) {
 	stubDisk(t, 2<<20-512, 512)
 	stubDelKernelPartition(t, func(string, int) error { t.Error("dropped a partition"); return nil })
-	if err := InitializeDisk(context.Background(), filepath.Join(t.TempDir(), "nvme0n1")); err == nil || !strings.Contains(err.Error(), "too small") {
+	if err := InitializeDisk(context.Background(), filepath.Join(t.TempDir(), "nvme0n1"), nil); err == nil || !strings.Contains(err.Error(), "too small") {
 		t.Fatalf("err = %v", err)
 	}
 }

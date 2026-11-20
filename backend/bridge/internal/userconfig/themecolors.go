@@ -32,7 +32,6 @@ var themeColorDefs = []struct{ Key, Light, Dark string }{
 	{"chartTx", "#82CA9D", "#82CA9D"},
 	{"chartNeutral", "#808080", "#808080"},
 	{"fileBrowserSurface", "#FFFFFF", "#20292F"},
-	{"fileBrowserChrome", "#253137", "#253137"},
 	{"fileBrowserBreadcrumbBackground", "#D0D4D8", "#283136"},
 	{"fileBrowserBreadcrumbText", "#5A5A5A", "#FFFFFF"},
 }

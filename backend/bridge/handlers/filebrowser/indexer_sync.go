@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 // Indexer sync policy: the filesystem change is already done when the indexer

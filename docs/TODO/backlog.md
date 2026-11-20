@@ -4,11 +4,21 @@ Every open item about the backend, the API, jobs, scheduled scripts and
 consistency is here, once. What is built is described in
 [the docs](../README.md), not here.
 
-An item belongs here only if someone could be harmed by it or would notice it.
-LinuxIO is server administration software that other people install, so a
-second local user and a session without sudo count. An observation with no
-consequence does not get an item; if it is likely to be raised again it gets
-one line under [Rejected](#rejected) with its reason.
+An item belongs here only if someone would hit it in normal use or it is a
+safety matter: data loss, privilege, another local user. LinuxIO is server
+administration software that other people install, so a second local user and
+a session without sudo count.
+
+What does not get an item, so that the list stays short enough to work
+through:
+
+- A finding that a few lines fix. It is fixed in the change that found it.
+- A limit that is by design, or an edge case nobody is expected to hit. It is
+  one line under "Known limits" in the doc that covers the feature, and is not
+  repeated here.
+- A change that was proposed and turned down. If it is likely to be proposed
+  again it is one line under [Rejected](#rejected) with its reason.
+- An observation with no consequence. It is written nowhere.
 
 How to use it: take an item, fix it with a test, run the Make target
 `AGENTS.md` asks for, and delete the item. Add a new item in the section it
@@ -25,32 +35,6 @@ The sections are in the order to work them. A number in brackets, such as
 (audit 132), is the item's number in the old backend audit, for looking it up
 in git.
 
-## File browser: root follows links a user planted
-
-When an admin uses the file browser, the work runs as root, and root follows
-a link only in a folder root owns
-([Privilege Pattern](../privilege_pattern.md#root-acting-in-the-session-users-folders)).
-What is left:
-
-- [ ] **Extract opens the archive by path.** `runExtractTask`
-  (`backend/bridge/handlers/filebrowser/archive_operations.go`) and
-  `ExtractArchive` (`services/archive_operations.go`) stat and open the
-  archive through `root.Root`, with or without an owner, so the link rule does
-  not apply to it. A local user who links `backup.zip` in their folder to an
-  archive only root can read gets its content when an admin extracts it
-  there. Reach the archive with `entryFollowingNoUserLinks` and read it
-  through that handle. Reported by the review of 2026-11-13.
-- [ ] **An upload buffer on a filesystem without file handles is matched by
-  inode number alone.** `uploadBufferID`
-  (`backend/bridge/handlers/filebrowser/upload_owner.go`) falls back to
-  device and inode when `name_to_handle_at` returns `EOPNOTSUPP` or
-  `EOVERFLOW`. Where such a filesystem reuses inode numbers, a process that
-  can write the folder can delete the buffer between chunks, create its own
-  file at the name, keep it open and receive the rest of the upload, which
-  root then commits as the target. Either keep the buffer open across chunks
-  instead of reopening it, or refuse to reopen there. Which filesystems users
-  upload to give no handles was not checked. Checked 2026-11-13.
-
 ## Storage safety
 
 Each item here is data-safety work: it starts from what the kernel and
@@ -58,143 +42,39 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
-- [ ] **Membership is checked before the disk lock and not again.** The
-  zeroing before a forced add, an Initialize and a new partition now opens the
-  device exclusively, so a device claimed in the meantime is refused. Left:
-  Format and Delete confirm a member on the inventory read before the lock;
-  `writeTable` reopens the disk without `O_EXCL` to write the GPT after its
-  exclusive wipe; `WipeDevice` and `WipePoolSuperblocks`
-  (`backend/common/btrfs/pool.go`) open without it; and md and LVM membership
-  comes from the udev database, so a signature udev has not probed is not
-  seen. Reported; each window is short.
-- [ ] **A scrub starts over after a power cut.** It is checkpointed only by
-  its `Suspend` hook at an orderly stop
-  (`backend/bridge/handlers/storage/btrfs_device_operations.go`). Checked.
-- [ ] **A scrub might end by itself.** The kernel stops a scrub on any signal
-  to its thread, and nothing in `backend/common/btrfs` retries `EINTR`. An
-  inference; never observed. Needs a test.
-
 ## Visible bugs
 
-- [ ] **A Compose stack saved by a sudo user got a folder owned by root.** The
-  stack folder was root's, mode `0700`, inside that user's home. Not
-  reproduced. Read 2026-11-13: the save is a file browser upload with
-  `owner: "session"`, which hands a new folder to the user only when the
-  folder it is made in already belongs to them (`mkdirAt` in
-  `backend/bridge/handlers/filebrowser/services/handover.go`). A parent that
-  is root's, such as a `~/docker` made earlier without the hand-over, would
-  explain it. If it happens again, check who owns the nearest existing parent.
-- [ ] **Release notes.** The release that ships jobs should state three
-  behaviour changes: a stored Docker `never` no longer silences failures; an
-  interruption by a shutdown is a warning, so "Errors only" no longer emails it
-  unless *Warnings* is ticked for *Email*; and a save from the settings page
-  over an unreadable `notifications.json` drops every schedule's choice and the
-  SMTP password and keeps the old file as `notifications.json.unreadable`
-  ([Alerts](../alerts.md#notification-settings)). Release notes are not kept
-  in the repository, so this cannot be checked here.
-
-- [ ] **"Open the real folder" opens behind a dialog.** After a refusal in
-  the Trash or Permissions dialog the dialog stays open, so the file browser
-  moves to the real folder behind it and the admin has to close the dialog to
-  see it (`TrashDialog.tsx`, the permissions dialog in
-  `frontend/src/routes/_authenticated/filebrowser`). Close the dialog when the
-  action is clicked. Checked.
-- [ ] **A refusal past the fifth failure gets no button.** A batch toast lists
-  the first five failures (`describeBatchFailures` in
-  `frontend/src/tasks/batchFailures.ts`) and the action is found in that text,
-  so a link refusal further down the list offers no "Open the real folder";
-  an upload toast shows only its first failure, with the same limit. Look for
-  the refusal in the whole `failed` list. Checked.
-- [ ] **Toast links are never shown.** Many toasts carry a link in `meta`
-  (`FILES_TOAST_META` "Open files", `useScopedToast`, the `toast` option of
-  `useCallMutation`, task definitions' `route`), but `ToastProvider.tsx`
-  mounts a plain sonner `Toaster` and nothing reads `meta`, so none of those
-  links appears. Render them, or remove `meta` everywhere. Checked
-  2026-11-13.
+- A settings save made while the bridge cannot be reached looks stored.
+  `updateConfig` (`frontend/src/contexts/ConfigProvider.tsx`) writes the
+  patch into the page's copy before `save` finds that nothing can be sent,
+  so the form shows the new value with nothing to save, and the warning
+  toast comes only once. Decide whether a bridge setting should be applied
+  to the page at all in that state, or taken back.
 
 ## Tests that are missing
 
-- [ ] No browser test signs in as a user without sudo. The pages gated for
-  such a session are covered by unit tests only, and the test VM has one
-  account, with sudo.
-- [ ] The relay tests in `backend/bridge/cmd/jobs_relay_test.go` skip when run
-  as root, and a privileged login skipping the host start has no hermetic test
-  (`backend/auth/linuxio-auth-pam_test.c`).
-- [ ] Not run in the test VM (`frontend/src/test/vm/jobs-phase5a.spec.ts`): a
-  real update from a release that has job hosts, more than one waiting job, a
-  user's host as the older host, `tasks.watch`, `tasks.cancel` and
-  `tasks.output` during the wait, and uploads during it.
-- [ ] The "Open the real folder" action was never clicked in a browser: unit
-  tests cover it (`frontend/src/utils/linkRefusal.test.ts` and the tests of
-  the hooks that use it). A browser test needs a link refusal from a root
-  bridge, so it belongs in the test VM.
-- [ ] A relay speed test: a no-op mutation through the relay many times, with
-  a bound on the median. No baseline numbers exist either for call latency,
-  job start, alert listing or schedule status.
-
 ## Needs a real machine or a measurement
 
-- [ ] **Seen once and not explained.** Try each in the test VM once, then fix
-  it or delete the line:
-  - A progress frame published between a stream's subscribe and its first
-    snapshot may be skipped (`backend/bridge/internal/bridgeipc/tasks.go`,
-    `subscribeWithReplayStatus`).
-  - An abort while the client waits for the stream mux after its job started
-    may not reach the server (`frontend/src/api/linuxio-core.ts`).
-  - After a failed first history load, a non-admin's notice observer refetches
-    on focus and ignores the result (`useAwayNotice.ts`).
-  - A session bridge logged `route failed: write frame: i/o deadline reached`
-    while a scheduled script ran.
-  - The journal field `LINUXIO_REASON` held the reason JSON-quoted
-    (`"reboot"`).
-- [ ] **Nothing works below a folder link with an absolute target**
-  (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
-  `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
-  resolves only the last name. Checked in the Go 1.27.4 source; needs a host
-  to reproduce first.
-  - Fix: resolve the parent folders at the points where a path enters, and run
-    `CheckNotProtected` on the result. Large: 37 `fsroot.Open` call sites, and
-    a mistake here lets a path escape.
-- [ ] **Scheduled scripts.** A run that passes its timeout, catching up a
-  missed run (`Persistent=`), journal retention over several days, and a
-  bridge restart during a run. See
-  [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **Subagent sessions: one case no chat has shown.** Whether a
-  subagent Claude Code moves to the background by itself gets its launch
-  note as a report. See
-  [AI Assistant](../AI-assistant.md#subagent-sessions).
-- [ ] **What happens after a route cuts its own connection is not written
-  down.** The old roadmap's rule was: send it once; after reconnect, reboot
-  compares the boot identity, a network change reads back the interface, and
-  power-off reports "acknowledged" or "unknown", never success just because the
-  host went quiet. Whether the frontend does this was not checked. Check it,
-  then describe it in [API Contract](../api-contract.md).
-- [ ] **Hardlink reconcile runs one query per file** in one transaction
-  (audit 57): `reconcileHardlinksAfterReindex` in
-  `backend/indexer/internal/storage/hardlinks.go`. Measure first, then add up
-  the changes per folder. The risk of a wrong fix is silent wrong folder
-  sizes.
-- [ ] **NVIDIA bus id** (audit 124). The unversioned `nvmlDeviceGetPciInfo`
-  may be an older ABI than the struct it fills
-  (`backend/monitoring/internal/collector/gpu/nvml.go`). The struct has the
-  largest layout, so nothing is written out of bounds; what is left is to
-  check on an NVIDIA machine that the bus id reads correctly, or to register
-  `nvmlDeviceGetPciInfo_v3` by name.
+- The automatic btrfs rebuild onto a disk that comes back
+  ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio
+  disks, 7.0, whose serials the rig sets. A SATA or SAS disk pulled and
+  reseated on a real machine (its WWN as udev reads it, `sd` naming while the
+  pool holds the dead disk, a hot-plug that resets the link rather than
+  removing the disk), and a kernel with `btrfs_remove_bdev` (7.1), are not
+  run.
+
+- Docker's wait for published host IPs
+  ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips))
+  has its boot test in the test VM, where a unit adds the late address and a
+  plain bridge holds the other. Not run on a real machine: a Netplan host
+  whose card appears late (turn the setting on, reboot, and confirm the
+  container that publishes on the address starts), and a host whose address
+  a bridge handoff by LinuxIO moved to a bridge (`systemd-analyze blame`
+  must not show `docker.service` waiting 30 s).
 
 ## Later, no plan yet
 
 Do one of these only when something shows it is needed.
-
-- Run a file browser change as the session user when the path is inside
-  folders that user owns, so the user's own folder links work instead of being
-  refused with the folder they point to. The refusal offers to open that
-  folder, so this is a convenience only.
-- Pick up a package update again after the job host dies, by asking
-  PackageKit.
-- Pick up a SMART test again from the drive's own state.
-- More alert sources and other ways to deliver them: see "Not in this slice"
-  in [Alerts](../alerts.md).
-- What jobs do not do: see "Not built" in [Jobs](../jobs.md#not-built).
 
 ## Rejected
 
@@ -202,9 +82,16 @@ Listed once, with the reason, so they are not raised again.
 
 File browser, after the link fix:
 
+- Running a file browser change as the session user when the path is inside
+  folders that user owns, so that the user's own folder links are followed.
+  Decided 2026-11-18: no. The refusal names the folder the link points to
+  and offers to open it, so this is a convenience only, and it would change
+  who a root file operation runs as.
 - A real folder (not a link) moved into the tree while root works on it, or
   put at a name between root's `mkdirat` and `openat`: no link is followed and
-  root still acts at the place that was asked for.
+  root still acts at the place that was asked for. A failed copy or an
+  aborted extract removes such a folder as the one it made only when it was
+  empty when root opened it.
 - Filesystems without `RENAME_NOREPLACE` (NFS, FUSE) fall back to a check and
   a plain rename: a swap there affects only the user's own files.
 - The "Open the real folder" action reads its destination from the wording
@@ -212,6 +99,11 @@ File browser, after the link fix:
   the button and the text disagree. It gains nothing: whoever plants a link
   already chooses where it points, the button only opens a folder, and the
   server checks that read again.
+- "Open the real folder" on an old toast closes the Permissions dialog that
+  is open when it is clicked, also one opened since for other
+  items or with an operation running: the click asks to leave for another
+  folder, the operation is a job that goes on, and telling the dialogs apart
+  would need an identity per dialog opening.
 - The checks before an operation go by path: they decide names and sizes
   only, and the change itself walks again through handles. The same holds for
   an upload's "already exists" and editor version checks: the commit links
@@ -219,12 +111,51 @@ File browser, after the link fix:
 - A trash record written for a disk whose device number changes when it is
   mounted again no longer matches its item: the restore asks first, as for an
   item another program trashed.
+- An upload's commit goes by name right after it checked that the name is
+  still the buffer it holds open (`checkUploadBuffer` in
+  `backend/bridge/handlers/filebrowser/upload_owner.go`), so a swap in between
+  commits the swapper's file and reports success: whoever can swap the name
+  can write the target themselves, and root never writes to that file or
+  changes its owner or mode. Linking from the open file would close it for a
+  new file only; an overwrite has no rename that takes an open file.
+- An upload waiting for its client to reconnect keeps its buffer open for up
+  to five minutes, so the disk it is on cannot be unmounted meanwhile, and a
+  buffer someone deleted fails the upload only at the commit: both end with
+  the upload, and reopening by name is what let another file take its place.
+- An overwriting upload gives the new file the owner and mode of what is at
+  the target's name, also when a user hard-linked another account's setuid
+  file there: that link needs `fs.protected_hardlinks=0`, which no supported
+  distribution ships, and on such a host the link alone already misleads.
 - A cancelled upload whose folder was swapped for a link meanwhile leaves its
   hidden `.…linuxio-upload-….part` buffer behind: removing it by path could
   remove another file, and the leftover sits in the user's own folder.
 - The size estimate of a compress for the session user does not count what a
   link points to, so the progress bar can reach 100% a little early: counting
   it would mean following the link the estimate exists to avoid.
+
+Memory overflow:
+
+- A swap partition, or a swap device `/etc/fstab` does not name, is never
+  stopped or held off. A host with an active swap partition cannot choose
+  compressed memory only, and a device with no fstab entry cannot be drained:
+  only a device matched to an entry has a unit that can be started again, and
+  the feature never takes away swap it cannot bring back.
+- A malformed optional kernel file (a non-numeric sysctl, an `mm_stat` with
+  fewer than three fields) fails the status route instead of reading as zero:
+  a format change in the kernel should surface.
+- `undoZramEnable` reads `/proc/swaps` and then stops the service, so a zram
+  device that appears between the two is stopped without a room check. The
+  window is a few milliseconds and the device would hold almost nothing.
+
+Docker startup:
+
+- Waiting for a network card instead of an IP address before Docker starts.
+  A later address on the same card would need no edit, but the card is picked
+  by name, its name would be a second free-text value in a shell line root
+  runs at boot, and a bridge handoff moves the address off the card, so the
+  handoff would have to rewrite the drop-in inside the network manager's
+  rollback window
+  ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips)).
 
 Without sudo:
 
@@ -237,6 +168,41 @@ Without sudo:
 
 Storage and jobs:
 
+- Leaving a data pool on one disk to systemd's unmount, without
+  `x-systemd.device-bound=false` on its line ([Pools](../btrfs.md#pools)).
+  Decided 2026-11-20: no. With the disk gone, I/O errors on a dead mount are
+  safer than writes that land unnoticed on the system disk, and one rule for
+  every pool keeps the line right when a second disk is added.
+- A signal ending a scrub by itself: since kernel 6.19 a signal pending on
+  the calling thread does end `BTRFS_IOC_SCRUB` with `EINTR`, but
+  `blockingIoctl` (`backend/common/btrfs/ioctl.go`) issues it on a locked
+  thread that blocks every asynchronous signal, and the `signals` step of
+  `TestBtrfsResumeIntegration` scrubs to the end under a storm of them. A
+  freeze does interrupt one, and the scrub then issues its call again; a
+  replace a freeze ended is under "Not built" in
+  [Jobs](../jobs.md#not-built).
+- A scrub continued from its saved progress, a job's or a pool resync's, or
+  issued again after a freeze, has limits that are kept on purpose; "Scrub
+  progress" and "Missing disks" in [Btrfs](../btrfs.md#scrub-progress) give
+  each with its reason. A resync continues only within its episode: after a
+  degraded mount LinuxIO made or saw, or a scrub started between two of its
+  attempts, it starts over. It stays a scheduled run rather than a resumable
+  job, which would need an owner and a timer-started job. The dev
+  extent where a disk stopped is read and counted twice, and a power cut
+  loses up to a minute. `btrfs scrub status` does not show LinuxIO's scrubs.
+  A disk interrupted three times in a row before it moves is aborted. A scrub
+  is refused when a disk cannot be read, or while a record whose last save
+  failed still says "running". A job host that dies without a reboot is not
+  resumed, as for every job ([Jobs](../jobs.md)). No test suspends to RAM:
+  the test VM wakes at once from every suspend after its first, so one was
+  checked by hand on kernel 7.0 (the scrub was interrupted, issued again and
+  finished); a frozen cgroup and a frozen filesystem are tested.
+- After a reboot, power-off or network change the client compares no boot
+  identity and reads no plain network change back
+  ([API Contract](../api-contract.md#routes-that-cut-their-own-connection)):
+  the first needs a new route open before sign-in, and the page instead waits
+  to see the webserver go away and come back; only the bridge handoff, which
+  can lock an admin out, is verified.
 - A D-Bus error can lose one replication run's record when the last job is
   disabled during a send: it needs both at once, and it loses a record, not
   data.
@@ -268,6 +234,23 @@ touching its file:
   in `NetworkInterfaceEditor.tsx`) and the monitoring summary's fallback to a
   mirror of the same stats: dead code, removed when the file is touched.
 
+Assistant activity map:
+
+- With more than eight calls still running past the sixteen rows, the last
+  held row's `+N` counts the rest at any station, not only its own
+  (`fold` in `workmap/workMap.ts`), as lot-map does: the list has no more
+  rows to spend, and the picture shows each station's own `×N`.
+- The agents view names a browser call from a linked cloud session by its
+  real server, `remote-devices`, where the activity map files it under
+  Browser: the view shows what was called, the map where it went.
+- The shell reader (`workmap/shell.ts`) reads a call to a function defined
+  as `f() { … }` as a command of its own, so file work done through one
+  lands on Shell; it does not follow `su` fed a here-document or
+  `su --command=…`, and reads the first alternatives of a `case` pattern
+  with `|` as commands. Each is rare in what agents write, getting them
+  right needs a shell grammar rather than a reader, and the cost is one
+  row at the wrong station.
+
 From the backend audit of October 2026:
 
 - SHA-256 of the bridge binary on every login (audit 48): about 50 ms is not
@@ -281,3 +264,23 @@ From the backend audit of October 2026:
   "feature unavailable" into permission errors.
 - Logging `component`/`subsystem` attributes (audit 102) and `sort.Slice` to
   `slices.Sort*` (audit 108): convert when touching a file.
+
+Sign-in where SELinux is enforcing
+([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)):
+
+- Dropping `pam_selinux.so open` from the PAM file: every session then runs
+  as `unconfined_service_t`, so a user an admin confined to `user_u` or
+  `staff_u` gets an unconfined session.
+- `SELinuxContext=` on `linuxio-auth@.service`: systemd creates the listening
+  socket of `linuxio-auth.socket` in that context, and the policy refuses
+  `init_t` an `unconfined_t` socket, so the auth socket fails as installed
+  and takes the web server with it. It looked fine as a drop-in on a running
+  system.
+
+Docker updates ([Docker Updates](../docker-updates.md#rebuilding-a-built-service)):
+
+- Rebuilding Compose services built on the host in the scheduled pass,
+  unattended: a build puts live an image that has never run, differs from
+  night to night wherever its inputs are not pinned, and competes for memory
+  and disk with the services that are running. A rebuild is a page action an
+  administrator watches.

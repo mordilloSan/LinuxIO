@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -152,7 +154,7 @@ func TestCheckContainerImageUpdatesDetectsAndDeduplicates(t *testing.T) {
 	}
 	now := time.Now()
 
-	statuses, result, err := checkContainerImageUpdates(context.Background(), client, targets, now)
+	statuses, result, err := checkContainerImageUpdates(context.Background(), client, nil, targets, now)
 	if err != nil {
 		t.Fatalf("checkContainerImageUpdates: %v", err)
 	}
@@ -205,7 +207,7 @@ func TestCheckContainerImageUpdatesBoundsParallelRegistryChecksAndPreservesOrder
 	}
 	done := make(chan checkResult, 1)
 	go func() {
-		statuses, _, err := checkContainerImageUpdates(context.Background(), client, targets, time.Now())
+		statuses, _, err := checkContainerImageUpdates(context.Background(), client, nil, targets, time.Now())
 		done <- checkResult{statuses: statuses, err: err}
 	}()
 
@@ -274,7 +276,7 @@ func TestCheckContainerImageUpdatesHandlesImmutableAndFailedChecks(t *testing.T)
 		{ContainerID: "c4", ImageID: "broken-id", ImageRef: "broken:latest"},
 	}
 
-	statuses, result, err := checkContainerImageUpdates(context.Background(), client, targets, time.Now())
+	statuses, result, err := checkContainerImageUpdates(context.Background(), client, nil, targets, time.Now())
 	if err != nil {
 		t.Fatalf("checkContainerImageUpdates: %v", err)
 	}
@@ -416,6 +418,7 @@ func TestCheckContainerImageUpdatesPreservesCancellation(t *testing.T) {
 	statuses, result, err := checkContainerImageUpdates(
 		ctx,
 		client,
+		nil,
 		[]containerImageUpdateTarget{{
 			ContainerID: "c1",
 			ImageID:     "image-id",
@@ -437,6 +440,7 @@ func TestCheckContainerImageUpdatesPreservesCancellationWithoutRegistryWork(t *t
 	statuses, result, err := checkContainerImageUpdates(
 		ctx,
 		&fakeImageUpdateCheckClient{},
+		nil,
 		[]containerImageUpdateTarget{{
 			ContainerID: "immutable",
 			ImageID:     "sha256:local",
@@ -449,5 +453,291 @@ func TestCheckContainerImageUpdatesPreservesCancellationWithoutRegistryWork(t *t
 	}
 	if statuses != nil || result != (DockerUpdateCheckResult{}) {
 		t.Fatalf("result after cancellation: statuses=%+v result=%+v", statuses, result)
+	}
+}
+
+func TestCheckContainerImageUpdatesClassifiesBuiltImages(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	localDigest := digest.FromString("local")
+	client := &fakeImageUpdateCheckClient{
+		images: map[string]client.ImageInspectResult{
+			"built-id":  {InspectResponse: image.InspectResponse{}},
+			"loaded-id": {InspectResponse: image.InspectResponse{}},
+			"pulled-id": {InspectResponse: image.InspectResponse{RepoDigests: []string{"docker.io/library/nginx@" + localDigest.String()}}},
+		},
+		distributions: map[string]client.DistributionInspectResult{
+			"docker.io/library/nginx:latest": distributionInspectResult(localDigest),
+		},
+	}
+	targets := []containerImageUpdateTarget{
+		{ContainerID: "app", ContainerName: "media-app-1", ImageID: "built-id", ImageRef: "media-app"},
+		{ContainerID: "loaded", ContainerName: "loaded", ImageID: "loaded-id", ImageRef: "local:test"},
+		{ContainerID: "web", ContainerName: "web", ImageID: "pulled-id", ImageRef: "nginx:latest"},
+	}
+	var asked [][]string
+	classify := func(_ context.Context, uncheckable []containerImageUpdateTarget) map[string]string {
+		var ids []string
+		for _, target := range uncheckable {
+			ids = append(ids, target.ContainerID)
+		}
+		asked = append(asked, ids)
+		return map[string]string{"app": builtReason("media", "app")}
+	}
+
+	statuses, result, err := checkContainerImageUpdates(context.Background(), client, classify, targets, time.Now())
+	if err != nil {
+		t.Fatalf("checkContainerImageUpdates: %v", err)
+	}
+	// Only the images with no repository digest are classified, in one call.
+	if len(asked) != 1 || strings.Join(asked[0], ",") != "app,loaded" {
+		t.Fatalf("classifier asked about %v, want one call for app and loaded", asked)
+	}
+	if want := (DockerUpdateCheckResult{Built: 1, Checked: 3, Uncheckable: 1}); result != want {
+		t.Fatalf("result = %+v, want %+v (built is counted on its own)", result, want)
+	}
+	if statuses[0].CheckState != DockerUpdateCheckStateBuilt || statuses[0].UpdateAvailable ||
+		statuses[0].CheckReason != `built on this host by Compose service "app" of project "media"; rebuild it once from LinuxIO to be told when its base images have newer versions` {
+		t.Fatalf("built status = %+v", statuses[0])
+	}
+	if statuses[1].CheckState != DockerUpdateCheckStateUncheckable || !strings.Contains(statuses[1].CheckReason, "no repository digest") {
+		t.Fatalf("loaded status = %+v, want it uncheckable as before", statuses[1])
+	}
+	if statuses[2].CheckState != DockerUpdateCheckStateCurrent {
+		t.Fatalf("pulled status = %+v, want current", statuses[2])
+	}
+
+	// A check with nothing uncheckable does not classify.
+	asked = nil
+	if _, _, err := checkContainerImageUpdates(context.Background(), client, classify, targets[2:], time.Now()); err != nil || asked != nil {
+		t.Fatalf("check of a pulled image: error %v, classifier asked about %v", err, asked)
+	}
+}
+
+func TestClassifyComposeBuiltReadsEachProjectOnce(t *testing.T) {
+	dir := t.TempDir()
+	composeFile := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := filepath.Join(dir, "args")
+	script := "#!/bin/sh\necho \"$*\" >> " + args + "\n" +
+		"case \"$*\" in\n" +
+		"*'--project-name broken '*) echo 'yaml: line 3: did not find expected key' >&2; exit 1 ;;\n" +
+		`*) echo '{"services": {"app": {"build": {"context": "."}}, "worker": {"build": {"context": "."}, "image": "media-worker"}, "cache": {"image": "redis:7"}}}' ;;` + "\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	labels := func(project, service string) map[string]string {
+		return map[string]string{
+			"com.docker.compose.project":              project,
+			"com.docker.compose.service":              service,
+			"com.docker.compose.project.config_files": composeFile,
+			"com.docker.compose.project.working_dir":  dir,
+		}
+	}
+	noService := labels("media", "")
+	targets := []containerImageUpdateTarget{
+		{ContainerID: "app", ContainerName: "media-app-1", Labels: labels("media", "app")},
+		{ContainerID: "worker", ContainerName: "media-worker-1", Labels: labels("media", "worker")},
+		{ContainerID: "cache", ContainerName: "media-cache-1", Labels: labels("media", "cache")},
+		{ContainerID: "loaded", ContainerName: "loaded"},
+		{ContainerID: "unnamed", ContainerName: "unnamed", Labels: noService},
+		{ContainerID: "broken", ContainerName: "broken-app-1", Labels: labels("broken", "app")},
+	}
+
+	reasons := classifyComposeBuilt(nil)(t.Context(), targets)
+	want := map[string]string{
+		"app":    builtReason("media", "app"),
+		"worker": builtReason("media", "worker"),
+	}
+	if !maps.Equal(reasons, want) {
+		t.Fatalf("reasons = %v, want %v", reasons, want)
+	}
+	called, err := os.ReadFile(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(called)), "\n")
+	if len(lines) != 2 || !strings.HasSuffix(lines[0], "config --format json app worker cache") ||
+		!strings.Contains(lines[1], "--project-name broken ") {
+		t.Fatalf("docker called with %q, want one config read per project", lines)
+	}
+}
+
+// With the containerd image store a built image has a digest of its own, and
+// the registry refuses to look it up: such a lookup is classified when the
+// image's own labels name the container's Compose project and service, and a
+// throttled one never is.
+func TestCheckContainerImageUpdatesClassifiesRefusedLookups(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	synctest.Test(t, func(t *testing.T) {
+		localDigest := digest.FromString("local")
+		denied := errors.New("Error response from daemon: errors:\ndenied: requested access to the resource is denied\nunauthorized: authentication required")
+		throttled := errors.New("Error response from daemon: toomanyrequests: You have reached your pull rate limit")
+		builtBy := func(service string) map[string]string {
+			return map[string]string{"com.docker.compose.project": "media", "com.docker.compose.service": service}
+		}
+		ownDigest := func(id, name string, labels map[string]string) client.ImageInspectResult {
+			inspect := imageWithLabels(t, id, labels)
+			inspect.RepoDigests = []string{name + "@" + localDigest.String()}
+			return client.ImageInspectResult{InspectResponse: inspect}
+		}
+		client := &fakeImageUpdateCheckClient{
+			images: map[string]client.ImageInspectResult{
+				"app-id":       ownDigest("app-id", "media-app", builtBy("app")),
+				"nobuild-id":   ownDigest("nobuild-id", "media-nobuild", builtBy("nobuild")),
+				"pulled-id":    ownDigest("pulled-id", "ghcr.io/org/app", map[string]string{"org.opencontainers.image.version": "1.2"}),
+				"other-id":     ownDigest("other-id", "media-other", builtBy("elsewhere")),
+				"throttled-id": ownDigest("throttled-id", "media-throttled", builtBy("throttled")),
+			},
+			distributionErrors: map[string]error{
+				"docker.io/library/media-app:latest":       denied,
+				"docker.io/library/media-nobuild:latest":   denied,
+				"ghcr.io/org/app:latest":                   denied,
+				"docker.io/library/media-other:latest":     denied,
+				"docker.io/library/media-throttled:latest": throttled,
+			},
+		}
+		targets := []containerImageUpdateTarget{
+			{ContainerID: "app", ImageID: "app-id", ImageRef: "media-app", Labels: builtBy("app")},
+			{ContainerID: "nobuild", ImageID: "nobuild-id", ImageRef: "media-nobuild", Labels: builtBy("nobuild")},
+			{ContainerID: "pulled", ImageID: "pulled-id", ImageRef: "ghcr.io/org/app", Labels: builtBy("pulled")},
+			{ContainerID: "other", ImageID: "other-id", ImageRef: "media-other", Labels: builtBy("other")},
+			{ContainerID: "throttled", ImageID: "throttled-id", ImageRef: "media-throttled", Labels: builtBy("throttled")},
+		}
+		// Only app has a build section; the others would be built if asked.
+		var asked []string
+		classify := recordingClassifier(&asked, map[string]string{
+			"app":       builtReason("media", "app"),
+			"pulled":    builtReason("media", "pulled"),
+			"other":     builtReason("media", "other"),
+			"throttled": builtReason("media", "throttled"),
+		})
+
+		statuses, result, err := checkContainerImageUpdates(t.Context(), client, classify, targets, time.Now())
+		if err != nil {
+			t.Fatalf("checkContainerImageUpdates: %v", err)
+		}
+		// A pulled image, one built for another service, and a throttled
+		// lookup are never classified.
+		if strings.Join(asked, ",") != "app,nobuild" {
+			t.Fatalf("classifier asked about %v, want the refused lookups of images built for their service", asked)
+		}
+		if statuses[0].CheckState != DockerUpdateCheckStateBuilt || statuses[0].Err != "" || statuses[0].UpdateAvailable {
+			t.Fatalf("refused lookup of a built image = %+v, want built with no error", statuses[0])
+		}
+		for i, want := range []string{"denied", "denied", "denied", "toomanyrequests"} {
+			status := statuses[i+1]
+			if status.CheckState != DockerUpdateCheckStateError || !strings.Contains(status.Err, want) {
+				t.Fatalf("%s = %+v, want the error as before", status.ContainerID, status)
+			}
+		}
+		if want := (DockerUpdateCheckResult{Built: 1, Checked: 5, Errors: 4}); result != want {
+			t.Fatalf("result = %+v, want %+v", result, want)
+		}
+	})
+}
+
+// recordingClassifier answers reasons, and adds the ID of each target it is
+// asked about to asked.
+func recordingClassifier(asked *[]string, reasons map[string]string) builtClassifier {
+	return func(_ context.Context, targets []containerImageUpdateTarget) map[string]string {
+		for _, target := range targets {
+			*asked = append(*asked, target.ContainerID)
+		}
+		return reasons
+	}
+}
+
+func TestRegistryRefusal(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"access denied":      {errors.New("Error response from daemon: errors:\ndenied: requested access to the resource is denied"), true},
+		"no credentials":     {errors.New("unauthorized: authentication required"), true},
+		"typed not found":    {fmt.Errorf("daemon: %w", errdefs.ErrNotFound), true},
+		"unknown manifest":   {errors.New("manifest unknown: manifest unknown"), true},
+		"throttled":          {errors.New("toomanyrequests: retry-after: 1s"), false},
+		"timed out":          {errors.New("dial tcp 3.67.33.93:443: i/o timeout"), false},
+		"no such host":       {errors.New("dial tcp: lookup registry-1.docker.io: no such host"), false},
+		"unreachable":        {errors.New("dial tcp 3.67.33.93:443: connect: network is unreachable"), false},
+		"anything else":      {errors.New("unexpected EOF"), false},
+		"refused connection": {errors.New("dial tcp 3.67.33.93:443: connect: connection refused"), false},
+	} {
+		if got := registryRefusal(tc.err); got != tc.want {
+			t.Errorf("%s: registryRefusal(%q) = %v, want %v", name, tc.err, got, tc.want)
+		}
+	}
+}
+
+// One service no longer in the files fails the read of the whole project:
+// the others are then read one by one, so they are still found built.
+func TestClassifyComposeBuiltReadsServicesAloneWhenTheProjectReadFails(t *testing.T) {
+	dir := t.TempDir()
+	composeFile := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := filepath.Join(dir, "args")
+	script := "#!/bin/sh\necho \"$*\" >> " + args + "\n" +
+		"case \"$*\" in\n" +
+		"*' gone'*) echo 'no such service: gone' >&2; exit 1 ;;\n" +
+		"*' app') echo '{\"services\": {\"app\": {\"build\": {\"context\": \".\"}}}}' ;;\n" +
+		"*' cache') echo '{\"services\": {\"cache\": {\"image\": \"redis:7\"}}}' ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	labels := func(service string) map[string]string {
+		return map[string]string{
+			"com.docker.compose.project":              "media",
+			"com.docker.compose.service":              service,
+			"com.docker.compose.project.config_files": composeFile,
+			"com.docker.compose.project.working_dir":  dir,
+		}
+	}
+	targets := []containerImageUpdateTarget{
+		{ContainerID: "app", ContainerName: "media-app-1", Labels: labels("app")},
+		{ContainerID: "gone", ContainerName: "media-gone-1", Labels: labels("gone")},
+		{ContainerID: "cache", ContainerName: "media-cache-1", Labels: labels("cache")},
+	}
+
+	reasons := classifyComposeBuilt(nil)(t.Context(), targets)
+	if want := map[string]string{"app": builtReason("media", "app")}; !maps.Equal(reasons, want) {
+		t.Fatalf("reasons = %v, want %v", reasons, want)
+	}
+	called, _ := os.ReadFile(args)
+	if lines := strings.Split(strings.TrimSpace(string(called)), "\n"); len(lines) != 4 {
+		t.Fatalf("docker called with %q, want the project read, then each service alone", lines)
+	}
+}
+
+// A service label that starts with a dash would reach docker compose as an
+// option: the container is refused before any Compose command runs.
+func TestComposeTargetRefusesAServiceThatReadsAsAnOption(t *testing.T) {
+	dir := t.TempDir()
+	composeFile := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]string{
+		"com.docker.compose.project":              "media",
+		"com.docker.compose.service":              "--output=/etc/cron.d/x",
+		"com.docker.compose.project.config_files": composeFile,
+		"com.docker.compose.project.working_dir":  dir,
+	}
+	_, _, managed, err := composeTargetForLabels(t.Context(), nil, "media-x-1", labels)
+	if !managed || err == nil || !strings.Contains(err.Error(), "would read as an option") {
+		t.Fatalf("managed = %v, error = %v; want the service refused", managed, err)
+	}
+
+	// The check leaves such a container as it found it and runs nothing.
+	t.Setenv("PATH", dir)
+	if reasons := classifyComposeBuilt(nil)(t.Context(), []containerImageUpdateTarget{{ContainerID: "x", ContainerName: "media-x-1", Labels: labels}}); len(reasons) != 0 {
+		t.Fatalf("reasons = %v, want none", reasons)
 	}
 }

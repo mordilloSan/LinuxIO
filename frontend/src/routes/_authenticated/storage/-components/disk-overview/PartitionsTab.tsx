@@ -25,7 +25,11 @@ import {
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 import { formatFileSize } from "@/utils/formatters";
 
-import { describeMember, memberConfirmations } from "../storageMember";
+import {
+  describeMember,
+  hotSpareReason,
+  memberConfirmations,
+} from "../storageMember";
 import {
   CreatePartitionDialog,
   FormatPartitionDialog,
@@ -240,9 +244,9 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
           return (
             <AppActionIconButton
               ariaLabel="Create partition"
-              disabled={working}
+              disabled={working || original.reason !== null}
               icon="mdi:plus"
-              label="Create partition"
+              label={original.reason ?? "Create partition"}
               onClick={() =>
                 openDialog({
                   kind: "create",
@@ -271,9 +275,9 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
             {mountable && (
               <AppActionIconButton
                 ariaLabel="Mount"
-                disabled={working || Boolean(device.busy)}
+                disabled={working || Boolean(device.busy || device.hotSpareOf)}
                 icon="mdi:folder-open"
-                label={device.busy ?? "Mount"}
+                label={device.busy ?? hotSpareReason(device) ?? "Mount"}
                 onClick={() => openDialog({ kind: "mount", device })}
               />
             )}

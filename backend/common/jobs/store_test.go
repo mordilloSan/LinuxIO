@@ -766,26 +766,6 @@ func TestHistoryOfATarget(t *testing.T) {
 	}
 }
 
-func TestHistoryKeepsARecordWithNoEndTime(t *testing.T) {
-	s := newTestStore(t)
-	now := time.Now().UTC()
-	endedRecord(t, s, 1, now.Add(-time.Hour))
-	old := testRecord(2, "a")
-	old.State, old.StartedAt, old.CreatedAt = StateFailed, now.Add(-time.Minute), now.Add(-2*time.Minute)
-	mustCreate(t, s, old)
-	unstarted := testRecord(3, "a")
-	unstarted.State, unstarted.StartedAt, unstarted.CreatedAt = StateCanceled, time.Time{}, now.Add(-30*time.Minute)
-	mustCreate(t, s, unstarted)
-
-	got, _, err := s.History(t.Context(), HistoryQuery{})
-	if err != nil {
-		t.Fatalf("History: %v", err)
-	}
-	if want := []string{testID(2), testID(3), testID(1)}; !slices.Equal(ids(got), want) {
-		t.Fatalf("History = %v, want %v (a record without an end time sorts by its start, or its creation when it never started)", ids(got), want)
-	}
-}
-
 // A page is cut by time alone, because the cursor of the next page is the end
 // time of the last record returned and selects strictly earlier records. Four
 // records that ended at the same instant therefore cannot be split: the page

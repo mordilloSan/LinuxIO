@@ -6,8 +6,10 @@ the API, jobs, scheduled scripts and consistency.
 Plans for things that are not built yet each have their own document:
 
 - [Frontend test coverage](./e2e-testing.md)
-- [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
+- [Memory overflow: LinuxIO's own swap file](./memory-own-swap-file.md)
 - [Package-managed installation](./packaging.md)
+- [SELinux module in in-app updates](./selinux-module-in-app-update.md)
+- [Watched conditions: checks that raise alerts on a schedule](./watched-conditions.md)
 
 ## Dependency maintenance
 

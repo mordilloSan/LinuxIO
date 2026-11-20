@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -46,6 +47,11 @@ type TaskHistoryEntry struct {
 	Reason string       `json:"reason,omitzero"` // shutdown, reboot or crash for an interrupted job
 	Unit   string       `json:"unit,omitzero"`   // the unit of a scheduled run
 	Output bool         `json:"output,omitzero"` // a saved output exists
+	// Summary is what a scheduled worker said its run did, such as
+	// "1 updated, 1 failed"; Failures is how many of its items failed with an
+	// alert of their own, in a run that still completed.
+	Summary  string `json:"summary,omitzero"`
+	Failures int    `json:"failures,omitzero"`
 }
 
 // TaskHistory is a page of ended jobs, newest first. More says that older
@@ -477,6 +483,11 @@ func WatchTaskStreamWithSnapshot(stream net.Conn, task *Task) error {
 	return watchTaskStream(stream, task, true)
 }
 
+// afterWatchSubscribe lets a test run between a watch's subscribe and its
+// first write. It receives the watched task, so a test acts on its own only;
+// production pays one atomic load.
+var afterWatchSubscribe atomic.Pointer[func(*Task)]
+
 func watchTaskStream(stream net.Conn, task *Task, withSnapshot bool) error {
 	detachCh := make(chan struct{})
 	go monitorTaskClient(stream, task, detachCh)
@@ -485,10 +496,12 @@ func watchTaskStream(stream net.Conn, task *Task, withSnapshot bool) error {
 	// window. Matching the live channel prevents a subscriber that watches
 	// before backlog emission from dropping a burst that would otherwise fit
 	// when it watches afterwards.
-	events, replay, lagged, unsubscribe := task.subscribeWithReplayStatus(DefaultTaskProgressReplayLimit)
+	events, replay, lagged, snapshot, unsubscribe := task.subscribeWithSnapshot(DefaultTaskProgressReplayLimit)
 	defer unsubscribe()
+	if hook := afterWatchSubscribe.Load(); hook != nil {
+		(*hook)(task)
+	}
 
-	snapshot := task.Snapshot()
 	if withSnapshot && !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 		return nil
 	}

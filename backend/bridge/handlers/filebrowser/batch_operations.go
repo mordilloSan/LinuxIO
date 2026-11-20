@@ -12,17 +12,20 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 // FileBatchItemFailure records one item a batch task could not process, so the task
-// continues past it and reports partial success to the caller.
+// continues past it and reports partial success to the caller. Reason is set
+// only for the failures the page offers a way out of (see failureReason).
 type FileBatchItemFailure struct {
-	Path  string `json:"path"`
-	Error string `json:"error"`
+	Path   string                           `json:"path"`
+	Error  string                           `json:"error"`
+	Reason apischema.FileBatchFailureReason `json:"reason,omitzero"`
 }
 
 func batchResult(total, succeeded int, failures []FileBatchItemFailure) FileBatchResult {
@@ -32,10 +35,15 @@ func batchResult(total, succeeded int, failures []FileBatchItemFailure) FileBatc
 	return FileBatchResult{Total: total, Succeeded: succeeded, Failed: failures}
 }
 
-// resolveBatchDestinationDir validates that the batch destination is an existing
-// directory and returns its cleaned absolute path.
-func resolveBatchDestinationDir(root *fsroot.FSRoot, destination string) (string, error) {
-	dir := fsroot.CleanAbsPath(destination)
+// resolveBatchDestinationDir validates that the folder a batch writes into is
+// an existing directory and returns its real path. It is resolved whole, a
+// link at its own name included, for owner, the session user the batch acts
+// for, under the rule linksafe.ResolveFolders gives the folders of a path.
+func resolveBatchDestinationDir(ctx context.Context, root *fsroot.FSRoot, destination string, owner services.Owner) (string, error) {
+	dir, err := linksafe.Resolve(ctx, destination, owner)
+	if err != nil {
+		return "", fsError("stat destination directory", err)
+	}
 	info, err := root.Root.Stat(fsroot.ToRel(dir))
 	if err != nil {
 		return "", fsError("stat destination directory", err)
@@ -47,10 +55,11 @@ func resolveBatchDestinationDir(root *fsroot.FSRoot, destination string) (string
 }
 
 type batchTransferItem struct {
-	source   string
-	dest     string
-	size     computedTransferSize
-	replaced bool
+	requested string // the source as the request named it, cleaned
+	source    string // the source with its folders resolved
+	dest      string
+	size      computedTransferSize
+	replaced  bool
 	// needsSpace is false only for a move within one filesystem, which renames.
 	needsSpace bool
 }
@@ -90,10 +99,13 @@ type batchIndexerUpdate struct {
 
 // planBatchTransfer validates each source, computes its destination directory
 // landing path and size, and sums a grand total for aggregate progress. Invalid
-// items are returned as failures so the task can still process the rest.
-func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string, req apischema.BatchTransferRequest, action string) ([]batchTransferItem, int64, []FileBatchItemFailure) {
+// items are returned as failures so the task can still process the rest. The
+// folders of each source are resolved for owner, the session user the batch
+// acts for (see linksafe.ResolveFolders).
+func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string, req apischema.BatchTransferRequest, action string, owner services.Owner) ([]batchTransferItem, int64, []FileBatchItemFailure) {
 	plan := transferPlan{
 		root:      root,
+		owner:     owner,
 		destDir:   destDir,
 		action:    action,
 		overwrite: req.Overwrite != nil && *req.Overwrite,
@@ -121,6 +133,7 @@ func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string,
 
 type transferPlan struct {
 	root         *fsroot.FSRoot
+	owner        services.Owner
 	destDir      string
 	action       string
 	overwrite    bool
@@ -131,12 +144,16 @@ type transferPlan struct {
 
 // item plans one source; a non-empty failure means the source is skipped.
 func (p *transferPlan) item(ctx context.Context, raw string) (batchTransferItem, string) {
-	src := fsroot.CleanAbsPath(raw)
-	if src == "/" {
+	requested := fsroot.CleanAbsPath(raw)
+	if requested == "/" {
 		return batchTransferItem{}, "cannot transfer root"
 	}
+	src, err := linksafe.ResolveFolders(ctx, requested, p.owner)
+	if err != nil {
+		return batchTransferItem{}, err.Error()
+	}
 	if p.action == "move" {
-		if err := services.CheckNotProtected(p.root, src); err != nil {
+		if err = services.CheckNotProtected(p.root, src); err != nil {
 			return batchTransferItem{}, err.Error()
 		}
 	}
@@ -154,7 +171,7 @@ func (p *transferPlan) item(ctx context.Context, raw string) (batchTransferItem,
 		// Explorer's "name - Copy" does.
 		dest = generateUniquePath(dest, info.IsDir(), p.root)
 	}
-	dest, replaced, failure := p.resolveExisting(dest, src, info.IsDir())
+	dest, replaced, failure := p.resolveExisting(dest, p.keepBoth[requested], info.IsDir())
 	if failure != "" {
 		return batchTransferItem{}, failure
 	}
@@ -169,18 +186,18 @@ func (p *transferPlan) item(ctx context.Context, raw string) (batchTransferItem,
 	if needsSpace {
 		size = computeTransferSize(ctx, src, info)
 	}
-	return batchTransferItem{source: src, dest: dest, size: size, replaced: replaced, needsSpace: needsSpace}, ""
+	return batchTransferItem{requested: requested, source: src, dest: dest, size: size, replaced: replaced, needsSpace: needsSpace}, ""
 }
 
 // resolveExisting applies the user's conflict choice to a destination that is
 // already taken: keep both under a unique name, replace it, or fail the item.
-func (p *transferPlan) resolveExisting(dest, src string, isDir bool) (string, bool, string) {
+func (p *transferPlan) resolveExisting(dest string, keepBoth, isDir bool) (string, bool, string) {
 	destInfo, err := p.root.Root.Lstat(fsroot.ToRel(dest))
 	if err != nil {
 		return dest, false, ""
 	}
 	switch {
-	case p.keepBoth[src]:
+	case keepBoth:
 		return generateUniquePath(dest, isDir, p.root), false, ""
 	case !p.overwrite:
 		return "", false, "destination already exists"
@@ -193,7 +210,9 @@ func (p *transferPlan) resolveExisting(dest, src string, isDir bool) (string, bo
 type batchTransferFunc func(batchTransferItem, *services.OperationCallbacks, bool) error
 type batchTransferReconciler func(context.Context, batchIndexerUpdate) error
 
-func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, action, phase string, transfer batchTransferFunc, reconcile batchTransferReconciler) (FileBatchResult, error) {
+// runBatchTransferTask runs transfer over every source of req, acting for
+// owner, the session user the batch copies or moves for (see actingFor).
+func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, action, phase string, owner services.Owner, transfer batchTransferFunc, reconcile batchTransferReconciler) (FileBatchResult, error) {
 	if len(req.Sources) == 0 {
 		return FileBatchResult{}, fmt.Errorf("%w: no sources provided", bridgeipc.ErrInvalidArgs)
 	}
@@ -210,12 +229,12 @@ func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *user
 		}
 	}()
 
-	destDir, err := resolveBatchDestinationDir(root, req.Destination)
+	destDir, err := resolveBatchDestinationDir(ctx, root, req.Destination, owner)
 	if err != nil {
 		return FileBatchResult{}, err
 	}
 
-	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req, action)
+	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req, action, owner)
 	if spaceErr := services.EnsureFreeSpace(destDir, spaceNeeded(items)); spaceErr != nil {
 		return FileBatchResult{}, bridgeipc.NewError(spaceErr.Error(), 507)
 	}
@@ -263,7 +282,7 @@ func executeBatchTransfer(ctx context.Context, root *fsroot.FSRoot, items []batc
 		}
 		if err != nil {
 			slog.Debug("batch item failed", "action", action, "source", item.source, "destination", item.dest, "error", err)
-			failures = append(failures, FileBatchItemFailure{Path: item.source, Error: err.Error()})
+			failures = append(failures, FileBatchItemFailure{Path: item.requested, Error: err.Error()})
 			continue
 		}
 		succeeded++
@@ -290,8 +309,8 @@ func partialMoveUpdate(root *fsroot.FSRoot, item batchTransferItem) (batchIndexe
 // task, sharing one progress callback so the UI shows one aggregate bar.
 func runCopyBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, session sessionOwner) (FileBatchResult, error) {
 	owner := actingFor(session)
-	return runBatchTransferTask(ctx, task, store, req, "copy", "copying", func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
-		return services.CopyFileWithCallbacks(ctx, item.source, item.dest, overwrite, owner, opts)
+	return runBatchTransferTask(ctx, task, store, req, "copy", "copying", owner, func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
+		return services.CopyFile(ctx, item.source, item.dest, overwrite, owner, opts)
 	}, func(ctx context.Context, update batchIndexerUpdate) error {
 		return addCopiedPathToIndexer(ctx, update.dest, update.info, update.replaced)
 	})
@@ -301,8 +320,8 @@ func runCopyBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 // task, sharing one progress callback for an aggregate bar.
 func runMoveBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, session sessionOwner) (FileBatchResult, error) {
 	owner := actingFor(session)
-	return runBatchTransferTask(ctx, task, store, req, "move", "moving", func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
-		return services.MoveFileWithCallbacks(ctx, item.source, item.dest, overwrite, owner, opts, moveFileOptions(item.size))
+	return runBatchTransferTask(ctx, task, store, req, "move", "moving", owner, func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
+		return services.MoveFile(ctx, item.source, item.dest, overwrite, owner, opts, moveFileOptions(item.size))
 	}, func(ctx context.Context, update batchIndexerUpdate) error {
 		if update.partial {
 			return errors.Join(requestIndexerReindex(ctx, update.source), requestIndexerReindex(ctx, update.dest))
@@ -321,10 +340,11 @@ type deletePlanItem struct {
 	total int64
 }
 
-// planDeleteBatch validates each requested path and resolves how many entries
-// deleting it will remove, summing a grand total for aggregate progress. The
-// grand total is 0 (indeterminate) unless every item's total is known.
-func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanItem, grandTotal int64, failures []FileBatchItemFailure) {
+// planDeleteBatch validates each requested path, its folders resolved for
+// owner (see linksafe.ResolveFolders), and resolves how many entries deleting
+// it will remove, summing a grand total for aggregate progress. The grand
+// total is 0 (indeterminate) unless every item's total is known.
+func planDeleteBatch(ctx context.Context, paths []string, owner services.Owner) (items []deletePlanItem, grandTotal int64, failures []FileBatchItemFailure) {
 	failures = make([]FileBatchItemFailure, 0)
 	root, err := fsroot.Open()
 	if err != nil {
@@ -340,8 +360,12 @@ func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanIte
 		if ctx.Err() != nil {
 			return nil, 0, failures
 		}
-		path := fsroot.CleanAbsPath(raw)
-		if err := services.CheckNotProtected(root, path); err != nil {
+		path, err := linksafe.ResolveFolders(ctx, raw, owner)
+		if err != nil {
+			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error()})
+			continue
+		}
+		if err = services.CheckNotProtected(root, path); err != nil {
 			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error()})
 			continue
 		}
@@ -365,7 +389,7 @@ func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanIte
 }
 
 func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string, owner services.Owner, base, total int64, indeterminate bool, limiter *progressThrottle) (int64, *FileBatchItemFailure, error) {
-	count, err := services.DeleteFilesWithProgress(ctx, path, services.DeleteOptions{
+	count, err := services.DeleteFiles(ctx, path, services.DeleteOptions{
 		Owner: owner,
 		Progress: func(p int64) {
 			cur, pct, ok := limiter.Set(base+p, total)
@@ -404,7 +428,7 @@ func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userco
 	owner := actingFor(session)
 
 	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
-	items, grandTotal, failures := planDeleteBatch(ctx, req.Paths)
+	items, grandTotal, failures := planDeleteBatch(ctx, req.Paths, owner)
 	if ctx.Err() != nil {
 		return FileBatchResult{}, context.Canceled
 	}
@@ -513,14 +537,20 @@ func (r *chmodBatchReporter) phase(phase string) func(processed int64) {
 // each item's entry count times the number of passes (chmod, plus chown when
 // ownership changes). Items whose count fails contribute nothing — they fail
 // again during apply and report no progress, so excluding them keeps the
-// percentage honest. Returns 0 only when no item could be counted.
-func planChmodBatchTotal(ctx context.Context, paths []string, recursive bool, passes int64) int64 {
+// percentage honest. Returns 0 only when no item could be counted. Each path
+// is reached as its change will reach it, for owner.
+func planChmodBatchTotal(ctx context.Context, paths []string, recursive bool, passes int64, owner services.Owner) int64 {
 	var grandTotal int64
 	for _, raw := range paths {
 		if ctx.Err() != nil {
 			return 0
 		}
-		total, err := services.CountEntries(ctx, fsroot.CleanAbsPath(raw), recursive)
+		path, err := linksafe.ResolveFolders(ctx, raw, owner)
+		if err != nil {
+			slog.Debug("failed to resolve chmod path for its count", "path", raw, "error", err)
+			continue
+		}
+		total, err := services.CountEntries(ctx, path, recursive)
 		if err != nil {
 			slog.Debug("failed to count chmod entries", "path", raw, "error", err)
 			continue
@@ -584,10 +614,11 @@ func runChmodBatchTask(ctx context.Context, task *bridgeipc.Task, store *usercon
 	if ownership != nil {
 		passes = 2
 	}
+	linkRule := actingFor(session)
 	reporter := &chmodBatchReporter{
 		task:    task,
 		limiter: newCountThrottle(taskSettingsForTask(ctx, task, store)),
-		total:   planChmodBatchTotal(ctx, paths, recursive, passes),
+		total:   planChmodBatchTotal(ctx, paths, recursive, passes, linkRule),
 	}
 
 	succeeded := 0
@@ -596,12 +627,15 @@ func runChmodBatchTask(ctx context.Context, task *bridgeipc.Task, store *usercon
 		if ctx.Err() != nil {
 			return FileBatchResult{}, context.Canceled
 		}
-		path := fsroot.CleanAbsPath(raw)
-		if err := chmodBatchItem(ctx, path, mode, ownership, recursive, actingFor(session), reporter); err != nil {
+		path, err := linksafe.ResolveFolders(ctx, raw, linkRule)
+		if err == nil {
+			err = chmodBatchItem(ctx, path, mode, ownership, recursive, linkRule, reporter)
+		}
+		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return FileBatchResult{}, context.Canceled
 			}
-			slog.Debug("batch chmod item failed", "path", path, "error", err)
+			slog.Debug("batch chmod item failed", "path", raw, "error", err)
 			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error()})
 			continue
 		}

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
@@ -31,11 +33,10 @@ type hardlinkEntry struct {
 }
 
 type hardlinkReconcileOptions struct {
-	preferred   string
-	knownSize   *int64
-	scanTime    int64
-	subtreeRoot string
-	sameFile    SameFileFunc
+	preferred string
+	knownSize *int64
+	scanTime  int64
+	sameFile  SameFileFunc
 }
 
 type storedEntryAccounting struct {
@@ -115,17 +116,28 @@ func hardlinkGroupsUnderPath(ctx context.Context, db dbExecutor, indexID int64, 
 	return groups, nil
 }
 
+// The two queries below read one hardlink group in path order. Without
+// statistics SQLite would rather walk the whole index in path order than sort
+// a group of a few rows; these run once per group or per added file, so they
+// name the hardlink index.
+const currentHardlinkContributorQuery = `
+	SELECT relative_path
+	FROM entries INDEXED BY idx_entries_hardlinks
+	WHERE index_id = ? AND type != 'directory'
+	  AND device = ? AND inode = ? AND size_contribution != 0
+	ORDER BY relative_path`
+
+const loadHardlinkGroupQuery = `
+	SELECT relative_path, size, size_contribution, last_seen
+	FROM entries INDEXED BY idx_entries_hardlinks
+	WHERE index_id = ? AND type != 'directory' AND device = ? AND inode = ?
+	ORDER BY relative_path`
+
 func currentHardlinkContributor(ctx context.Context, db dbExecutor, indexID int64, identity hardlinkIdentity, sameFile SameFileFunc) (string, error) {
 	if identity.inode == 0 {
 		return "", nil
 	}
-	rows, err := db.QueryContext(ctx, `
-		SELECT relative_path
-		FROM entries
-		WHERE index_id = ? AND type != 'directory'
-		  AND device = ? AND inode = ? AND size_contribution != 0
-		ORDER BY relative_path
-	`, indexID, identity.device, identity.inode)
+	rows, err := db.QueryContext(ctx, currentHardlinkContributorQuery, indexID, identity.device, identity.inode)
 	if err != nil {
 		return "", fmt.Errorf("query current hardlink contributor: %w", err)
 	}
@@ -281,12 +293,7 @@ func reconcileHardlinkGroup(ctx context.Context, db dbExecutor, indexID int64, i
 }
 
 func loadHardlinkGroup(ctx context.Context, db dbExecutor, indexID int64, identity hardlinkIdentity, sameFile SameFileFunc) ([]hardlinkEntry, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT relative_path, size, size_contribution, last_seen
-		FROM entries
-		WHERE index_id = ? AND type != 'directory' AND device = ? AND inode = ?
-		ORDER BY relative_path;
-	`, indexID, identity.device, identity.inode)
+	rows, err := db.QueryContext(ctx, loadHardlinkGroupQuery, indexID, identity.device, identity.inode)
 	if err != nil {
 		return nil, fmt.Errorf("query hardlink group: %w", err)
 	}
@@ -406,19 +413,15 @@ func reconcileAndApplyHardlink(ctx context.Context, db dbExecutor, indexID int64
 	if err != nil {
 		return fmt.Errorf("reconcile hardlink group: %w", err)
 	}
-	if err := applyContributionDeltas(ctx, db, indexID, deltas, opts.subtreeRoot); err != nil {
+	if err := applyContributionDeltas(ctx, db, indexID, deltas); err != nil {
 		return fmt.Errorf("apply hardlink contribution deltas: %w", err)
 	}
 	return nil
 }
 
-func applyContributionDeltas(ctx context.Context, db dbExecutor, indexID int64, deltas []contributionDelta, subtreeRoot string) error {
+func applyContributionDeltas(ctx context.Context, db dbExecutor, indexID int64, deltas []contributionDelta) error {
 	for _, delta := range deltas {
-		stopPath := ""
-		if subtreeRoot != "" && pathInSubtree(delta.path, subtreeRoot) {
-			stopPath = subtreeRoot
-		}
-		if err := updateParentDirectorySizesThrough(ctx, db, indexID, delta.path, delta.delta, stopPath); err != nil {
+		if err := updateParentDirectorySizes(ctx, db, indexID, delta.path, delta.delta); err != nil {
 			return fmt.Errorf("update parent sizes for %q: %w", delta.path, err)
 		}
 	}
@@ -434,7 +437,9 @@ func pathInSubtree(path, root string) bool {
 }
 
 // reconcileHardlinksAfterReindex restores one counted path per hardlink group
-// after a partial reindex and updates the affected directory aggregates.
+// after a partial reindex and updates the affected directory aggregates. The
+// contribution changes of all groups are added up per folder first, so each
+// folder is written once however many of its files changed.
 func reconcileHardlinksAfterReindex(ctx context.Context, db dbExecutor, indexID int64, relativePath string, scanTime int64, snapshot *hardlinkSnapshot, sameFile SameFileFunc) error {
 	groups, err := hardlinkGroupsUnderPath(ctx, db, indexID, relativePath, sameFile)
 	if err != nil {
@@ -447,14 +452,57 @@ func reconcileHardlinksAfterReindex(ctx context.Context, db dbExecutor, indexID 
 			}
 		}
 	}
+	folderDeltas := make(map[string]int64)
 	for identity, preferred := range groups {
-		if err := reconcileAndApplyHardlink(ctx, db, indexID, identity, hardlinkReconcileOptions{
-			preferred:   preferred,
-			scanTime:    scanTime,
-			subtreeRoot: relativePath,
-			sameFile:    sameFile,
-		}); err != nil {
+		deltas, err := reconcileHardlinkGroup(ctx, db, indexID, identity, hardlinkReconcileOptions{
+			preferred: preferred,
+			scanTime:  scanTime,
+			sameFile:  sameFile,
+		})
+		if err != nil {
 			return fmt.Errorf("reconcile hardlink device %d inode %d: %w", identity.device, identity.inode, err)
+		}
+		addFolderDeltas(folderDeltas, deltas, relativePath)
+	}
+	if err := applyFolderDeltas(ctx, db, indexID, folderDeltas); err != nil {
+		return fmt.Errorf("apply hardlink folder size changes: %w", err)
+	}
+	return nil
+}
+
+// addFolderDeltas adds each contribution change to the folders that count it:
+// up to and including subtreeRoot for a path below it, since the caller then
+// moves the folders above by the subtree's total change, and up to "/" for a
+// path outside it.
+func addFolderDeltas(folders map[string]int64, deltas []contributionDelta, subtreeRoot string) {
+	for _, delta := range deltas {
+		stopPath := ""
+		if subtreeRoot != "" && pathInSubtree(delta.path, subtreeRoot) {
+			stopPath = indexerapi.NormalizePath(subtreeRoot)
+		}
+		for folder := parentDirKey(delta.path); ; folder = parentDirKey(folder) {
+			folders[folder] += delta.delta
+			if folder == "/" || folder == stopPath {
+				break
+			}
+		}
+	}
+}
+
+// applyFolderDeltas writes the added-up size change of each folder, one update
+// per folder.
+func applyFolderDeltas(ctx context.Context, db dbExecutor, indexID int64, folders map[string]int64) error {
+	for _, folder := range slices.Sorted(maps.Keys(folders)) {
+		delta := folders[folder]
+		if delta == 0 {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, `
+			UPDATE entries
+			SET size = size + ?
+			WHERE index_id = ? AND relative_path = ? AND type = 'directory';
+		`, delta, indexID, folder); err != nil {
+			return fmt.Errorf("update directory %q: %w", folder, err)
 		}
 	}
 	return nil

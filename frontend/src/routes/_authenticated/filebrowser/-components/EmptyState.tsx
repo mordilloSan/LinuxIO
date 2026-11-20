@@ -1,6 +1,6 @@
 import AppTypography from "@/components/ui/AppTypography";
 
-const EmptyState = () => {
+const EmptyState = ({ message = "This folder is empty." }) => {
   return (
     <AppTypography
       align="center"
@@ -9,7 +9,7 @@ const EmptyState = () => {
       style={{ padding: 32 }}
       variant="h6"
     >
-      This folder is empty.
+      {message}
     </AppTypography>
   );
 };

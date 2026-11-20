@@ -15,7 +15,14 @@ import remarkGfm from "remark-gfm";
 
 import { languageForFence } from "@/components/editor/languageNames";
 import AppButton from "@/components/ui/AppButton";
-import { copyToClipboard } from "@/utils/clipboard";
+import {
+  AppCopyResultIcon,
+  AppCopyResultStatus,
+} from "@/components/ui/AppCopyResult";
+import {
+  COPY_RESULT_LABEL,
+  useCopyResult,
+} from "@/components/ui/useCopyResult";
 
 import type { HighlightSpan } from "./highlight";
 
@@ -41,6 +48,7 @@ export const OpenInTerminalContext = createContext<
 function CodeBlock({ children }: { children?: ReactNode }) {
   const openInTerminal = use(OpenInTerminalContext);
   const preRef = useRef<HTMLPreElement>(null);
+  const { copy, result: copyResult } = useCopyResult();
   const [highlighted, setHighlighted] = useState<{
     spans: HighlightSpan[];
     text: string;
@@ -83,16 +91,19 @@ function CodeBlock({ children }: { children?: ReactNode }) {
         <div className="assistant-code__actions">
           <AppButton
             aria-label="Copy code"
+            className="assistant-code__copy"
             color="inherit"
+            data-state={copyResult ?? undefined}
             onClick={() => {
               const code = preRef.current?.textContent ?? "";
-              copyToClipboard(code.replace(/\n$/, "")).catch(() => {});
+              copy(code.replace(/\n$/, ""));
             }}
             size="small"
-            startIcon={<Icon icon="mdi:content-copy" width={14} />}
+            startIcon={<AppCopyResultIcon result={copyResult} size={14} />}
           >
-            Copy
+            {copyResult ? COPY_RESULT_LABEL[copyResult] : "Copy"}
           </AppButton>
+          <AppCopyResultStatus result={copyResult} />
           {openInTerminal && body && SHELL_FENCES.has(fence) ? (
             <AppButton
               onClick={() => openInTerminal(body)}

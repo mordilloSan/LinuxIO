@@ -226,6 +226,16 @@
   color: var(--app-palette-text-primary);
 }
 
+/* Copy takes the result's colour for a moment (AppButton already eases
+   `color`); the icon and the label change with it, in app-copy-result.css. */
+.assistant-code__copy[data-state="copied"] {
+  color: var(--app-palette-success-main);
+}
+
+.assistant-code__copy[data-state="failed"] {
+  color: var(--app-palette-error-main);
+}
+
 /* The code has room around it and between its lines. */
 .assistant-block .assistant-code pre {
   margin: 0;
@@ -1111,53 +1121,16 @@
   background: var(--app-palette-primary-main);
 }
 
+/* The shared slider with a smaller haloed thumb on an invisible track: the
+   dots behind it are the track. */
 .assistant__effort-range {
+  --app-slider-track-height: 20px;
+  --app-slider-track-color: transparent;
+  --app-slider-thumb-size: 12px;
+  --app-slider-thumb-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--app-palette-primary-main), transparent 75%);
+
   position: relative;
-  width: 100%;
-  height: 20px;
-  margin: 0;
-  background: transparent;
-  cursor: pointer;
-  appearance: none;
-}
-
-.assistant__effort-range:focus-visible {
-  outline: 2px solid var(--app-palette-primary-main);
-  outline-offset: 2px;
-  border-radius: var(--app-radius-pill);
-}
-
-/* Each engine's thumb in its own rule: one unknown pseudo-element in a
-   selector list drops the whole rule. */
-.assistant__effort-range::-webkit-slider-runnable-track {
-  height: 20px;
-  background: transparent;
-}
-
-.assistant__effort-range::-webkit-slider-thumb {
-  width: 12px;
-  height: 12px;
-  margin-top: 4px;
-  border: none;
-  border-radius: 50%;
-  background: var(--app-palette-primary-main);
-  box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--app-palette-primary-main), transparent 75%);
-  appearance: none;
-}
-
-.assistant__effort-range::-moz-range-track {
-  background: transparent;
-}
-
-.assistant__effort-range::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  border: none;
-  border-radius: 50%;
-  background: var(--app-palette-primary-main);
-  box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--app-palette-primary-main), transparent 75%);
 }
 
 .assistant__mode-description {

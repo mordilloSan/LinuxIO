@@ -17,6 +17,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/hostname"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/memory"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages"
@@ -51,6 +52,7 @@ var families = []family{
 	{Routes: config.Routes, Register: config.RegisterHandlers},
 	{Routes: control.Routes, Register: control.RegisterHandlers},
 	{Routes: power.Routes, Register: power.RegisterHandlers},
+	{Routes: memory.Routes, Register: memory.RegisterHandlers},
 	{Routes: systemd.Routes, Register: systemd.RegisterHandlers},
 	{Routes: hostname.Routes, Register: hostname.RegisterHandlers},
 	{Routes: datetime.Routes, Register: datetime.RegisterHandlers},

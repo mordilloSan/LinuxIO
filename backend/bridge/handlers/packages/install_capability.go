@@ -91,8 +91,9 @@ const (
 )
 
 var (
+	capabilitySpecByName        = capabilities.CapabilitySpecByName
 	capabilityDistroFamily      = detectDistroFamily
-	capabilityInstallPackage    = InstallByNameWithProgress
+	capabilityInstallPackage    = InstallByName
 	capabilityEnableService     = systemd.EnableUnit
 	capabilityStartService      = systemd.StartUnit
 	capabilityWaitServiceActive = waitUnitActive
@@ -131,7 +132,7 @@ func runInstallCapabilityTask(ctx context.Context, task *bridgeipc.Task, user se
 }
 
 func installCapability(ctx context.Context, task *bridgeipc.Task, user session.User, name string) (apischema.InstallCapabilityResult, error) {
-	spec, ok := capabilities.CapabilitySpecByName(name)
+	spec, ok := capabilitySpecByName(name)
 	if !ok {
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
 	}
@@ -151,7 +152,7 @@ func installCapability(ctx context.Context, task *bridgeipc.Task, user session.U
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("install %s: %w", spec.LogName, err)
 	}
 
-	optionalPackageWarning, err := installCapabilityDependencies(ctx, task, family, name, spec.LogName, pkg, spec.Install)
+	warning, err := installCapabilityDependencies(ctx, task, family, name, spec.LogName, pkg, spec.Install)
 	if err != nil {
 		return apischema.InstallCapabilityResult{}, err
 	}
@@ -187,15 +188,65 @@ func installCapability(ctx context.Context, task *bridgeipc.Task, user session.U
 	return apischema.InstallCapabilityResult{
 		Available: available,
 		Error:     apischema.Optional(errMsg),
-		Warning:   apischema.Optional(optionalPackageWarning),
+		Warning:   apischema.Optional(warning),
 	}, nil
 }
 
-func installCapabilityDependencies(ctx context.Context, task *bridgeipc.Task, family, name, logName, packageList string, spec *capabilities.InstallSpec) (string, error) {
+// packageHookTimeout bounds the step a package hook runs after the package
+// step, which runs past a cancelled install.
+const packageHookTimeout = 30 * time.Second
+
+// installCapabilityDependencies installs the packages and returns the
+// warnings for the result. Where the package installed is the spec's Debian
+// one, the spec's package hook runs around the package step: it prepares
+// right before it, and its step after it always runs, whatever the package
+// step's outcome, so what the hook holds is let go.
+func installCapabilityDependencies(ctx context.Context, task *bridgeipc.Task, family, name, logName, packageList string, spec *capabilities.InstallSpec) (warning string, err error) {
+	if spec.PackageHookDebian != nil && packageList == spec.PackageDebian {
+		after, hookErr := spec.PackageHookDebian(ctx)
+		if hookErr != nil {
+			return "", fmt.Errorf("prepare the %s install: %w", packageList, hookErr)
+		}
+		if after != nil {
+			// The named results are the package step's outcome here.
+			defer func() { warning, err = finishPackageHook(ctx, task, packageList, after, warning, err) }()
+		}
+	}
 	if err := installCapabilityPackages(ctx, task, name, packageList); err != nil {
 		return "", err
 	}
 	return installOptionalCapabilityPackage(ctx, task, family, logName, spec)
+}
+
+// finishPackageHook runs a package hook's step after the package step, on a
+// context a cancelled install does not reach, and merges its outcome with
+// the package step's: its warning joins the result's, and its error fails
+// the install, beside the package step's error or, when the package went
+// in, saying so. The two errors are joined on one line, since the
+// Capabilities row and the toast show the text.
+func finishPackageHook(ctx context.Context, task *bridgeipc.Task, packageList string, after func(context.Context) (string, error), warning string, installErr error) (string, error) {
+	if installErr == nil {
+		reportProgress(task, stagePostInstall, fmt.Sprintf("Finishing the %s install", packageList), pctPostInstall)
+	}
+	hookCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), packageHookTimeout)
+	defer cancel()
+	hookWarning, hookErr := after(hookCtx)
+	if hookErr != nil && ctx.Err() != nil {
+		// A job whose context was cancelled reports only context.Canceled
+		// (runInstallCapabilityTask), so the text returned here never
+		// reaches the admin: the log keeps it. The error is still returned,
+		// so the install does not go on and the job does not end completed.
+		slog.Warn("package hook failed after a cancelled install", "package", packageList, "error", hookErr)
+	}
+	switch {
+	case installErr != nil && hookErr != nil:
+		return "", fmt.Errorf("%w; %w", installErr, hookErr)
+	case installErr != nil:
+		return "", installErr
+	case hookErr != nil:
+		return "", fmt.Errorf("%s was installed: %w", packageList, hookErr)
+	}
+	return strings.TrimSpace(warning + " " + hookWarning), nil
 }
 
 func installCapabilityPackages(ctx context.Context, task *bridgeipc.Task, capabilityName string, packageList string) error {

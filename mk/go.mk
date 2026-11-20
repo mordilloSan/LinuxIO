@@ -7,13 +7,13 @@ auth_binary := $(bin_dir)/linuxio-auth
 docker_update_binary := $(bin_dir)/linuxio-docker-update
 indexer_binary := $(bin_dir)/linuxio-indexer
 monitoring_binary := $(bin_dir)/linuxio-monitoring
-btrfs_timer_binary := $(bin_dir)/linuxio-btrfs-timer
+worker_binary := $(bin_dir)/linuxio-worker
 claude_relay_binary := $(bin_dir)/linuxio-claude-relay
 
 # The shipped-binary manifest. Every consumer (release workflow, installers'
 # fixture test) reads this list through `make print-binaries`; add a binary
 # here, give it a build target, and add it to build-go-binaries/build-binaries.
-shipped_binaries := linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-btrfs-timer linuxio-claude-relay
+shipped_binaries := linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-worker linuxio-claude-relay
 
 # sha256_of FILE: hex digest of FILE, for use inside a recipe's shell.
 sha256_of = $$($(sha256_cmd) "$(1)" | awk '{ print $$1 }')
@@ -80,7 +80,7 @@ build-backend: $(GO_BUILD_PREREQ) ## Build Go backend binary
 
 # One generic recipe builds the other Go binaries; the target-specific
 # variables below describe each one.
-go_binary_targets := build-bridge build-cli build-docker-update build-btrfs-timer build-claude-relay build-indexer build-monitoring
+go_binary_targets := build-bridge build-cli build-docker-update build-worker build-claude-relay build-indexer build-monitoring
 
 build-bridge: go_binary_label := bridge
 build-bridge: go_binary_package := ./bridge
@@ -100,11 +100,11 @@ build-docker-update: go_binary_output := $(docker_update_binary)
 build-docker-update: go_binary_ldflags := -s -w
 build-docker-update: ## Build the scheduled Docker update worker
 
-build-btrfs-timer: go_binary_label := btrfs timer worker
-build-btrfs-timer: go_binary_package := ./btrfs-timer
-build-btrfs-timer: go_binary_output := $(btrfs_timer_binary)
-build-btrfs-timer: go_binary_ldflags := -s -w
-build-btrfs-timer: ## Build the btrfs snapshot/health timer worker
+build-worker: go_binary_label := worker
+build-worker: go_binary_package := ./worker
+build-worker: go_binary_output := $(worker_binary)
+build-worker: go_binary_ldflags := -s -w
+build-worker: ## Build the worker that systemd starts for timer jobs and hooks
 
 build-claude-relay: go_binary_label := Claude Code pane relay
 build-claude-relay: go_binary_package := ./claude-relay
@@ -117,7 +117,9 @@ build-indexer: go_binary_package := ./indexer
 build-indexer: go_binary_output := $(indexer_binary)
 build-indexer: go_binary_ldflags := $(go_version_ldflags)
 build-indexer: go_binary_extra_env := CGO_ENABLED=1
-build-indexer: go_binary_tags := sqlite_fts5
+# SQLite's FTS5 module, which search needs. test-go passes the same tag.
+indexer_go_tags := sqlite_fts5
+build-indexer: go_binary_tags := $(indexer_go_tags)
 build-indexer: ## Build the filesystem indexer
 
 build-monitoring: go_binary_label := monitoring daemon
@@ -125,9 +127,11 @@ build-monitoring: go_binary_package := ./monitoring
 build-monitoring: go_binary_output := $(monitoring_binary)
 build-monitoring: go_binary_ldflags := $(go_version_ldflags)
 build-monitoring: go_binary_extra_env := CGO_ENABLED=1
-# NVML is compiled only for amd64; other architectures use the stub. Deferred
-# expansion keeps `go env` out of every unrelated make invocation.
-build-monitoring: go_binary_tags = $(if $(filter amd64,$(if $(GOARCH),$(GOARCH),$(GOARCH_HOST))),glibc,)
+# NVML is compiled only for amd64; other architectures use the stub. test-go
+# and golint-only pass the same tag, so they compile what the build ships.
+# Deferred expansion keeps `go env` out of every unrelated make invocation.
+nvml_go_tags = $(if $(filter amd64,$(if $(GOARCH),$(GOARCH),$(GOARCH_HOST))),glibc,)
+build-monitoring: go_binary_tags = $(nvml_go_tags)
 build-monitoring: ## Build the monitoring daemon
 
 $(go_binary_targets): $(GO_BUILD_PREREQ)
@@ -174,7 +178,7 @@ build-go-binaries: $(GO_BUILD_PREREQ) ## Build every Go binary (no C auth helper
 	@BRIDGE_HASH=$(call sha256_of,$(bridge_binary)); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
-	@$(MAKE) --no-print-directory build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer build-claude-relay SKIP_ENSURE_GO=1
+	@$(MAKE) --no-print-directory build-cli build-docker-update build-indexer build-monitoring build-worker build-claude-relay SKIP_ENSURE_GO=1
 
 build-binaries: check-c-build-deps build-go-binaries build-auth ## Build every shipped binary into @BIN@
 

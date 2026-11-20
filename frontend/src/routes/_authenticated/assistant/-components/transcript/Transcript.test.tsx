@@ -160,10 +160,13 @@ describe("Transcript", () => {
   });
 
   describe("turn footer", () => {
-    const turn = (usage: { outputTokens: number } | null): TranscriptBlock => ({
+    const turn = (
+      usage: { outputTokens: number } | null,
+      durationMs = 14_200,
+    ): TranscriptBlock => ({
       kind: "turn",
       id: "t",
-      durationMs: 14_200,
+      durationMs,
       usage: usage && { inputTokens: 12, totalTokens: 0, ...usage },
     });
 
@@ -187,6 +190,22 @@ describe("Transcript", () => {
         />,
       );
       expect(screen.getByText("14 s")).toBeInTheDocument();
+    });
+
+    it.each([
+      [78_400, "1 min 18 s"],
+      [3_599_400, "59 min 59 s"],
+      [4_559_000, "1 h 16 min"],
+    ])("writes a turn of %d ms as %s", (durationMs, text) => {
+      render(
+        <Transcript
+          blocks={[
+            { kind: "agent", id: "1", text: "done" },
+            turn(null, durationMs),
+          ]}
+        />,
+      );
+      expect(screen.getByText(text)).toBeInTheDocument();
     });
   });
 

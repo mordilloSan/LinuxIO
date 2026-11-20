@@ -99,6 +99,8 @@ describe("useConfig", () => {
     });
 
     expect(result.current.requireMountsForFolders).toBe(false);
+    expect(result.current.waitForHostIPs).toBe(false);
+    expect(result.current.hostIPs).toEqual([]);
   });
 
   it("passes direct config value updates to setKey", () => {

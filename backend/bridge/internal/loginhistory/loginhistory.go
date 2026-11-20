@@ -135,7 +135,7 @@ func FetchRecentFailures(ctx context.Context, username string, limit int) ([]Log
 		return nil, ctxErr
 	}
 
-	return parseBtmpFailures(username, data, limit), nil
+	return parseBtmpFailures(username, data, 0, 0, limit), nil
 }
 
 func FetchFailedAttemptBatch(ctx context.Context, username string, sessionStartedAt time.Time) (*FailedAttemptBatch, error) {
@@ -246,7 +246,7 @@ func fetchFailedAttemptEvents(ctx context.Context, boundaryUsername, failedUsern
 		until = sessionStartedAt.Unix() + 1
 	}
 
-	return parseBtmpFailuresBetween(failedUsername, data, since, until, limit), since, until, nil
+	return parseBtmpFailures(failedUsername, data, since, until, limit), since, until, nil
 }
 
 type wtmpdbOutput struct {
@@ -481,11 +481,7 @@ func parseWtmpBootEvents(data []byte, limit int) []bootEvent {
 	return events
 }
 
-func parseBtmpFailures(username string, data []byte, limit int) []Login {
-	return parseBtmpFailuresBetween(username, data, 0, 0, limit)
-}
-
-func parseBtmpFailuresBetween(username string, data []byte, since, until int64, limit int) []Login {
+func parseBtmpFailures(username string, data []byte, since, until int64, limit int) []Login {
 	username = strings.TrimSpace(username)
 
 	recordCount := len(data) / btmpRecordSize

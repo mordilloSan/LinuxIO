@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 const DATA = 0x04;
 const BRIDGE_DATA = 0x81;
@@ -100,6 +100,20 @@ const modelOption = (currentValue: string) => ({
   options: [
     { value: "sonnet", name: "Sonnet" },
     { value: "opus", name: "Opus" },
+  ],
+});
+
+const effortOption = (currentValue: string) => ({
+  id: "effort",
+  name: "Effort",
+  type: "select",
+  category: "thought_level",
+  currentValue,
+  options: [
+    { value: "low", name: "Low" },
+    { value: "medium", name: "Medium" },
+    { value: "high", name: "High" },
+    { value: "max", name: "Max" },
   ],
 });
 
@@ -712,11 +726,12 @@ test("replays a recorded chat with subagents, stops one and loads the chat again
     agentsCard.getByText("Finished · general-purpose · Sonnet 5.5"),
   ).toBeVisible();
 
-  // The map: four subagents, and their calls at Files and Shell.
+  // The map: four subagents and the wakeup the chat scheduled at Agents,
+  // and their calls at Files and Shell.
   await agentsCard.getByRole("button", { name: "All agents" }).click();
   await agentsCard.getByRole("button", { name: /Claude Code/ }).click();
   await expect(
-    page.getByRole("img", { name: /^Activity map\..*Agents 4/ }),
+    page.getByRole("img", { name: /^Activity map\..*Agents 5\b/ }),
   ).toBeVisible();
 
   // Loading the chat again brings all of it back, from the agent's replay.
@@ -746,4 +761,273 @@ test("replays a recorded chat with subagents, stops one and loads the chat again
   await page.getByRole("button", { name: "Reader A" }).first().click();
   expect(await parts()).toEqual(readerA);
   await expect(agentsCard.getByText(/tokens not reported/)).toBeVisible();
+});
+
+type Rgb = [number, number, number];
+
+/** The largest difference of one channel between two colours. */
+const apart = (a: Rgb, b: Rgb) =>
+  Math.max(...a.map((channel, index) => Math.abs(channel - b[index])));
+
+/**
+ * The element as drawn, read back one pixel at a time. Chromium computes no
+ * style for a range input's thumb or track (getComputedStyle with
+ * "::-webkit-slider-thumb" answers with the input's own box), so how they
+ * look is read from a screenshot.
+ */
+async function drawn(page: Page, element: Locator) {
+  const png = await element.screenshot({ animations: "disabled" });
+  const { width, rgb } = await page.evaluate(async (base64) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${base64}`;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(image, 0, 0);
+    const { data } = context.getImageData(0, 0, image.width, image.height);
+    return {
+      width: image.width,
+      rgb: Array.from(data).filter((_, index) => index % 4 !== 3),
+    };
+  }, png.toString("base64"));
+  return (x: number, y: number): Rgb => {
+    const at = (y * width + x) * 3;
+    return [rgb[at], rgb[at + 1], rgb[at + 2]];
+  };
+}
+
+/**
+ * The effort slider's thumb along its middle row: the longest run of the
+ * accent colour, as its first and last pixel, counting the anti-aliased edge
+ * pixels the thumb mostly covers. The dot of the level the thumb stands on
+ * lies under it, and the other dots are too short to be the run.
+ */
+function thumbOf(
+  pixel: (x: number, y: number) => Rgb,
+  width: number,
+  middle: number,
+  accent: Rgb,
+) {
+  let best = { first: 0, last: -1 };
+  let first = -1;
+  for (let x = 0; x <= width; x++) {
+    const inside = x < width && apart(pixel(x, middle), accent) <= 16;
+    if (inside && first < 0) first = x;
+    if (!inside && first >= 0) {
+      if (x - 1 - first > best.last - best.first) best = { first, last: x - 1 };
+      first = -1;
+    }
+  }
+  return best;
+}
+
+test("draws the effort slider from the assistant's slider variables and moves it with the keys", async ({
+  page,
+}) => {
+  const received: AcpMessage[] = [];
+  const settings: Record<string, string> = {
+    model: "sonnet",
+    effort: "medium",
+  };
+  const configOptions = () => [
+    modelOption(settings.model),
+    effortOption(settings.effort),
+  ];
+  await serveAgent(page, (request, { send }) => {
+    received.push(request);
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: { sessionCapabilities: { list: {} } },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessions: [] } });
+        break;
+      case "session/new":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { sessionId: "s1", configOptions: configOptions() },
+        });
+        break;
+      case "session/set_config_option":
+        settings[request.params?.configId ?? ""] = request.params?.value ?? "";
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { configOptions: configOptions() },
+        });
+        break;
+    }
+  });
+  const effortChanges = () =>
+    received
+      .filter(
+        (message) =>
+          message.method === "session/set_config_option" &&
+          message.params?.configId === "effort",
+      )
+      .map((message) => message.params?.value);
+
+  await page.goto("/assistant");
+  await expect(page.getByLabel("Message")).toBeEnabled();
+  // The agent offers effort, so a new chat starts at the Settings default.
+  const chip = page.getByRole("button", { name: /^Model:/ });
+  await expect(chip).toHaveAccessibleName("Model: Opus High");
+  expect(effortChanges()).toEqual(["high"]);
+
+  // Opened from the keyboard, so focus rings are drawn.
+  await chip.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(chip).toBeFocused();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "Model" });
+  await expect(menu.getByRole("menuitem", { name: /Sonnet/ })).toBeFocused();
+  const slider = menu.getByRole("slider", { name: "Effort" });
+  const label = menu.locator(".assistant__effort-label");
+  await expect(slider).toHaveAttribute("aria-valuetext", "High");
+  await expect(label).toHaveText("Effort (High)");
+
+  // assistant.css sets the shared slider's variables on it: a 20px track
+  // with no colour, so the dots behind it are the track, and a 12px thumb
+  // with a 3px halo of the accent.
+  const { accentHex, accent } = await page.evaluate(() => {
+    const accentHex = getComputedStyle(document.documentElement)
+      .getPropertyValue("--app-palette-primary-main")
+      .trim();
+    const probe = document.createElement("span");
+    probe.style.color = accentHex;
+    document.body.append(probe);
+    const accent = getComputedStyle(probe)
+      .color.match(/\d+/g)!
+      .slice(0, 3)
+      .map(Number) as Rgb;
+    probe.remove();
+    return { accentHex, accent };
+  });
+  expect(
+    await slider.evaluate((input) =>
+      Object.fromEntries(
+        [
+          "--app-slider-track-height",
+          "--app-slider-track-color",
+          "--app-slider-thumb-size",
+          "--app-slider-thumb-shadow",
+        ].map((name) => [
+          name,
+          getComputedStyle(input).getPropertyValue(name).trim(),
+        ]),
+      ),
+    ),
+  ).toEqual({
+    "--app-slider-track-height": "20px",
+    "--app-slider-track-color": "transparent",
+    "--app-slider-thumb-size": "12px",
+    "--app-slider-thumb-shadow": `0 0 0 3px color-mix(in srgb, ${accentHex}, transparent 75%)`,
+  });
+
+  // What is drawn follows them, not app-slider.css's own defaults (a 16px
+  // thumb without a halo on a 4px track in the divider colour). The input
+  // lies on a rounded surface whose side padding it leaves bare.
+  const surface = menu.locator(".assistant__effort-slider");
+  const outer = (await surface.boundingBox())!;
+  const box = (await slider.boundingBox())!;
+  const left = Math.round(box.x - outer.x);
+  const right = left + Math.round(box.width);
+  const width = Math.round(outer.width);
+  const middle = Math.floor(outer.height / 2);
+  const dots = await menu
+    .locator(".assistant__effort-dot")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.left + rect.width / 2;
+      }),
+    );
+  // Between the first two dots, where only the track could be drawn.
+  const gap = Math.round((dots[0] + dots[1]) / 2 - outer.x);
+  // Read before the slider has focus, whose ring is drawn in that padding.
+  const bare = (await drawn(page, surface))(Math.floor(left / 2), middle);
+  const expectDrawn = async (level: number) => {
+    const pixel = await drawn(page, surface);
+    // No track: between the dots the input draws nothing on the surface.
+    expect(apart(pixel(gap, middle), bare)).toBeLessThanOrEqual(2);
+    const thumb = thumbOf(pixel, width, middle, accent);
+    // The thumb, 12px across where the travel puts this level.
+    expect(thumb.last - thumb.first + 1).toBeGreaterThanOrEqual(11);
+    expect(thumb.last - thumb.first + 1).toBeLessThanOrEqual(13);
+    const centre = (thumb.first + thumb.last + 1) / 2;
+    const travel = right - left - 12;
+    expect(Math.abs(centre - (left + 6 + (level / 3) * travel))).toBeLessThan(
+      1.5,
+    );
+    // The halo, 3px on each side that lies within the input (it ends at the
+    // input's edge): a quarter of the accent over the surface. Past it, the
+    // bare surface again.
+    const quarter = bare.map((channel, index) =>
+      Math.round(channel * 0.75 + accent[index] * 0.25),
+    ) as Rgb;
+    expect(apart(quarter, bare)).toBeGreaterThan(8);
+    const sides = [
+      { halo: thumb.first - 2, past: thumb.first - 5 },
+      { halo: thumb.last + 2, past: thumb.last + 5 },
+    ].filter(({ past }) => past >= left && past < right);
+    expect(sides.length).toBeGreaterThan(0);
+    for (const { halo, past } of sides) {
+      expect(apart(pixel(halo, middle), quarter)).toBeLessThanOrEqual(3);
+      expect(apart(pixel(past, middle), bare)).toBeLessThanOrEqual(2);
+    }
+  };
+  await expectDrawn(2);
+
+  // Hovering changes nothing: the halo is there at rest.
+  await slider.hover();
+  await expectDrawn(2);
+
+  // The slider is a stop of the menu's arrow keys: from the first item,
+  // ArrowUp wraps round to it. Focused, it keeps its halo and gains the
+  // shared focus ring.
+  await page.keyboard.press("ArrowUp");
+  await expect(slider).toBeFocused();
+  await expect(slider).toHaveCSS("outline-style", "solid");
+  await expect(slider).toHaveCSS("outline-width", "2px");
+  await expect(slider).toHaveCSS("outline-offset", "2px");
+  await expect(slider).toHaveCSS("outline-color", `rgb(${accent.join(", ")})`);
+  await expectDrawn(2);
+
+  // Left, Right, Home and End move the level and send it once the key is up,
+  // and stay on the slider.
+  const press = async (key: string, level: string, sent: string[]) => {
+    await page.keyboard.press(key);
+    await expect(slider).toHaveAttribute("aria-valuetext", level);
+    await expect(label).toHaveText(`Effort (${level})`);
+    await expect.poll(effortChanges).toEqual(sent);
+    await expect(slider).toBeFocused();
+  };
+  await press("ArrowRight", "Max", ["high", "max"]);
+  await press("ArrowLeft", "High", ["high", "max", "high"]);
+  await press("Home", "Low", ["high", "max", "high", "low"]);
+  await expectDrawn(0);
+  await press("End", "Max", ["high", "max", "high", "low", "max"]);
+  await expectDrawn(3);
+
+  // Down and Up leave it for the menu's items, without moving the level.
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: /Sonnet/ })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(slider).toBeFocused();
+  await expect(slider).toHaveAttribute("aria-valuetext", "Max");
+  expect(effortChanges()).toEqual(["high", "max", "high", "low", "max"]);
+  await expect(menu).toBeVisible();
+  await expect(chip).toHaveAccessibleName("Model: Opus Max");
 });

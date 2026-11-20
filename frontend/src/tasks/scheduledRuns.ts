@@ -9,6 +9,7 @@ export const SCHEDULED_SCRIPT = "scheduled.script";
 export const SCHEDULED_BTRFS_SNAPSHOT = "scheduled.btrfs_snapshot";
 export const SCHEDULED_BTRFS_REPLICATE = "scheduled.btrfs_replicate";
 export const SCHEDULED_BTRFS_RESYNC = "scheduled.btrfs_resync";
+export const SCHEDULED_BTRFS_REBUILD = "scheduled.btrfs_rebuild";
 export const SCHEDULED_DOCKER_UPDATE = "scheduled.docker_update";
 // The distribution's automatic system updates (APT, DNF, Mint).
 export const SCHEDULED_SYSTEM_UPDATE = "scheduled.system_update";
@@ -18,6 +19,7 @@ const SCHEDULED_RUN_TYPES = new Set<string>([
   SCHEDULED_BTRFS_SNAPSHOT,
   SCHEDULED_BTRFS_REPLICATE,
   SCHEDULED_BTRFS_RESYNC,
+  SCHEDULED_BTRFS_REBUILD,
   SCHEDULED_DOCKER_UPDATE,
   SCHEDULED_SYSTEM_UPDATE,
 ]);
@@ -40,6 +42,7 @@ export function scheduledRunLink(task: TaskSnapshot): BackgroundTaskLink {
         ? { to: "/services/schedules", search: { schedule: id } }
         : { to: "/services/schedules" };
     case SCHEDULED_BTRFS_RESYNC:
+    case SCHEDULED_BTRFS_REBUILD:
       return id ? { to: "/storage", search: { pool: id } } : { to: "/storage" };
     case SCHEDULED_BTRFS_SNAPSHOT:
       return { to: "/storage/subvolumes", search: { view: "snapshots" } };

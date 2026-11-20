@@ -148,8 +148,8 @@ func stubRollback(t *testing.T, mounts []Mount, fail map[string]error) *rollback
 		return nil
 	})
 	oldRename := renamePath
-	renamePath = func(from, to string) error {
-		s.renames = append(s.renames, []string{from, to})
+	renamePath = func(top, from, to string) error {
+		s.renames = append(s.renames, []string{filepath.Join(top, from), filepath.Join(top, to)})
 		return s.renameErr[len(s.renames)-1]
 	}
 	oldUnmount, oldMount := unmountFS, mountFS

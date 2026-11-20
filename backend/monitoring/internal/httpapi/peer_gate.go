@@ -9,7 +9,7 @@ import (
 // RequireRootPeer serves the control socket: only a root peer may call it.
 func RequireRootPeer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := peercred.RequestUID(r)
+		uid, ok := peercred.UID(r.Context())
 		if !ok || uid != 0 {
 			http.Error(w, "this endpoint requires a root peer", http.StatusForbidden)
 			return

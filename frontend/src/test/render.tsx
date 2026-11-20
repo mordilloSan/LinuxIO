@@ -125,6 +125,8 @@ export function buildTestConfigSnapshots(
     docker: {
       folders: [],
       requireMountsForFolders: false,
+      waitForHostIPs: false,
+      hostIPs: [],
     },
     jobs: {
       archiveCompressionWorkers: 0,

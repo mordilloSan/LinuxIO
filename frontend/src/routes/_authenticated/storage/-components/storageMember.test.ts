@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { StorageBlockDevice } from "@/api";
 
-import { describeMember, poolDeviceChoices } from "./storageMember";
+import {
+  describeMember,
+  hotSpareReason,
+  poolDeviceChoices,
+} from "./storageMember";
 
 const disk = (
   path: string,
@@ -82,5 +86,49 @@ describe("poolDeviceChoices", () => {
     expect(listed(false)).toEqual(members);
     // Force adds the disk with an old filesystem and nothing else.
     expect(listed(true)).toEqual({ ...members, "/dev/sdc": null });
+  });
+
+  it("keeps a pool's hot spare for that pool's replace alone", () => {
+    const spares = [
+      disk("/dev/sdm", { hotSpareOf: { uuid: "p1", label: "tank" } }),
+      disk("/dev/sdn", { hotSpareOf: { uuid: "p2" } }),
+      disk("/dev/sdo1", {
+        type: "part",
+        parents: ["/dev/sdo"],
+        hotSpareOf: { uuid: "p1", label: "tank" },
+      }),
+    ];
+    const reasons = (ownPool?: string) =>
+      Object.fromEntries(
+        poolDeviceChoices(spares, [], true, ownPool).map(
+          ({ device, reason }) => [device.path, reason],
+        ),
+      );
+    expect(reasons()).toEqual({
+      "/dev/sdm": "Hot spare of tank",
+      "/dev/sdn": "Hot spare of p2",
+      "/dev/sdo1": "Hot spare of tank",
+    });
+    // Only the whole disk may replace a member: a partition of it stays
+    // reserved.
+    expect(reasons("p1")).toEqual({
+      "/dev/sdm": null,
+      "/dev/sdn": "Hot spare of p2",
+      "/dev/sdo1": "Hot spare of tank",
+    });
+  });
+});
+
+describe("hotSpareReason", () => {
+  it("names the pool a disk is kept for", () => {
+    expect(hotSpareReason(disk("/dev/sdb"))).toBeNull();
+    expect(
+      hotSpareReason(
+        disk("/dev/sdb", { hotSpareOf: { uuid: "u", label: "tank" } }),
+      ),
+    ).toBe("Hot spare of tank");
+    expect(
+      hotSpareReason(disk("/dev/sdb", { hotSpareOf: { uuid: "u" } })),
+    ).toBe("Hot spare of u");
   });
 });

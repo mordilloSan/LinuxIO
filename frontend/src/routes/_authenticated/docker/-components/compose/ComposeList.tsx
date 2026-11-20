@@ -29,6 +29,8 @@ import {
   getContainerName,
   getContainerServiceName,
   getDedupedPorts,
+  getWaitingUpdate,
+  hasNewerBaseImage,
 } from "@/utils/dockerContainer";
 
 import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
@@ -223,6 +225,9 @@ const ComposeList = ({
         header: "Stack",
         cell: ({ row }) => {
           const project = row.original;
+          // A rebuild waits, not an update, when only built images have a
+          // newer base image.
+          const waiting = getWaitingUpdate(project.containers);
           return (
             <div
               style={{
@@ -245,10 +250,10 @@ const ComposeList = ({
               >
                 {project.name}
               </AppTypography>
-              {project.update_available && (
+              {waiting && (
                 <Chip
                   color="warning"
-                  label="Update"
+                  label={waiting === "rebuild" ? "Rebuild" : "Update"}
                   size="xsmall"
                   variant="soft"
                 />
@@ -260,7 +265,11 @@ const ComposeList = ({
           align: "left",
           getCellRenderKey: (row) => {
             const project = row as ComposeProject;
-            return [project.name, project.icon, project.update_available];
+            return [
+              project.name,
+              project.icon,
+              getWaitingUpdate(project.containers),
+            ];
           },
         },
       },
@@ -486,7 +495,7 @@ const ComposeList = ({
                 {container.updateAvailable && (
                   <Chip
                     color="warning"
-                    label="Update"
+                    label={hasNewerBaseImage(container) ? "Rebuild" : "Update"}
                     size="xsmall"
                     style={{ marginTop: 2 }}
                     variant="soft"
@@ -504,6 +513,7 @@ const ComposeList = ({
               getContainerName(container),
               container.icon,
               container.updateAvailable,
+              container.updateCheckState,
             ];
           },
         },
@@ -649,6 +659,7 @@ const ComposeList = ({
               container.Names.join("\u0000"),
               container.State,
               container.updateAvailable,
+              container.updateCheckState,
               container.url,
             ];
           },

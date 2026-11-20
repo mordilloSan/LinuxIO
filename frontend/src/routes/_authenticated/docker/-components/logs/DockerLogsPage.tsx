@@ -18,6 +18,7 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import Chip from "@/components/ui/AppChip";
+import AppCopyIconButton from "@/components/ui/AppCopyIconButton";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppSelect from "@/components/ui/AppSelect";
@@ -25,7 +26,6 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
-import { copyToClipboard } from "@/utils/clipboard";
 import { getContainerName } from "@/utils/dockerContainer";
 import { logSourceHue } from "@/utils/logHue";
 
@@ -392,12 +392,11 @@ const DockerLogsPage = ({
               </option>
             ))}
           </AppSelect>
-          <AppActionIconButton
+          <AppCopyIconButton
             disabled={visible.length === 0}
-            icon="mdi:content-copy"
+            getText={exportText}
             iconSize={20}
             label="Copy logs"
-            onClick={() => void copyToClipboard(exportText())}
           />
           <AppActionIconButton
             disabled={visible.length === 0}

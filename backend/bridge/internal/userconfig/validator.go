@@ -26,7 +26,6 @@ func parseCoreConfig(raw []byte, base string) (*Settings, error) {
 	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
 		return nil, err
 	}
-	cfg.Jobs.LegacyHeavyArchiveConcurrency = nil
 	if errs := validateSettings(cfg); len(errs) > 0 {
 		err := errors.New(strings.Join(errs, "; "))
 		return nil, err
@@ -178,6 +177,12 @@ func validateSettings(cfg *Settings) []string {
 	}
 	var errs []string
 	if _, err := ParseDockerFolders(cfg.Docker.Folders); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if _, err := ParseDockerHostIPs(cfg.Docker.HostIPs); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := ValidateDockerHostIPWait(cfg.Docker); err != nil {
 		errs = append(errs, err.Error())
 	}
 	if !ValidChunkSizeMB(cfg.AppSettings.ChunkSizeMB) {

@@ -27,6 +27,7 @@ import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
 import DockerDaemonSettingsSection from "./DockerDaemonSettingsSection";
+import DockerHostIPWaitSetting from "./DockerHostIPWaitSetting";
 import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
 
 const normalizePathInput = (value: string): string => {
@@ -94,7 +95,8 @@ const DockerSettingsSection = () => {
   const dockerFolders = dockerSettings.folders;
   const requireMountsForFolders = dockerSettings.requireMountsForFolders;
   const setDockerFolders = useCallback(
-    (folders: string[]) => updateConfig({ docker: { folders } }),
+    (folders: string[], onSaved: () => void) =>
+      updateConfig({ docker: { folders } }, onSaved),
     [updateConfig],
   );
   const setRequireMountsForFolders = useCallback(
@@ -121,9 +123,11 @@ const DockerSettingsSection = () => {
   );
   const {
     draft: folderDraft,
+    draftPatch,
     isDirty,
     patchKey,
     reset,
+    resetSaved,
   } = useSettingsDraft<{ folders: string[] }, object>(
     savedFolders,
     undefined,
@@ -235,9 +239,12 @@ const DockerSettingsSection = () => {
             }
           }
 
-          setDockerFolders(folders);
-          reset();
-          toast.success("Docker folders saved.");
+          // The draft is cleared only once the bridge confirms: a refused
+          // save is read back, and the form then still holds what was typed.
+          setDockerFolders(folders, () => {
+            resetSaved(draftPatch);
+            toast.success("Docker folders saved.");
+          });
         } catch (error: unknown) {
           const message =
             error instanceof Error
@@ -253,8 +260,9 @@ const DockerSettingsSection = () => {
   }, [
     askCreatePrompt,
     createDockerFolder,
+    draftPatch,
     drafts,
-    reset,
+    resetSaved,
     setDockerFolders,
     validateDockerFolder,
   ]);
@@ -332,6 +340,38 @@ const DockerSettingsSection = () => {
           </FrostedCard>
         ))}
 
+        <FrostedCard hoverLift={!isSaving} style={{ padding: 0 }}>
+          <AppButton
+            color="inherit"
+            disabled={isSaving}
+            fullWidth
+            onClick={handleAddFolder}
+            style={{
+              alignItems: "center",
+              borderRadius: "inherit",
+              display: "flex",
+              gap: "var(--app-space-6)",
+              justifyContent: "flex-start",
+              minWidth: 0,
+              opacity: isSaving ? 0.65 : 1,
+              padding: 12,
+              textAlign: "left",
+            }}
+          >
+            <div style={folderIconStyle}>
+              <Icon height={22} icon="mdi:plus" width={22} />
+            </div>
+            <div>
+              <AppTypography fontWeight={600} variant="body2">
+                Add Docker folder
+              </AppTypography>
+              <AppTypography color="text.secondary" variant="caption">
+                Add another directory for compose stacks.
+              </AppTypography>
+            </div>
+          </AppButton>
+        </FrostedCard>
+
         <FrostedCard
           hoverLift
           {...cardBodyToggleProps({
@@ -378,38 +418,6 @@ const DockerSettingsSection = () => {
           />
         </FrostedCard>
 
-        <FrostedCard hoverLift={!isSaving} style={{ padding: 0 }}>
-          <AppButton
-            color="inherit"
-            disabled={isSaving}
-            fullWidth
-            onClick={handleAddFolder}
-            style={{
-              alignItems: "center",
-              borderRadius: "inherit",
-              display: "flex",
-              gap: "var(--app-space-6)",
-              justifyContent: "flex-start",
-              minWidth: 0,
-              opacity: isSaving ? 0.65 : 1,
-              padding: 12,
-              textAlign: "left",
-            }}
-          >
-            <div style={folderIconStyle}>
-              <Icon height={22} icon="mdi:plus" width={22} />
-            </div>
-            <div>
-              <AppTypography fontWeight={600} variant="body2">
-                Add Docker folder
-              </AppTypography>
-              <AppTypography color="text.secondary" variant="caption">
-                Add another directory for compose stacks.
-              </AppTypography>
-            </div>
-          </AppButton>
-        </FrostedCard>
-
         <div
           style={{
             display: "flex",
@@ -429,6 +437,10 @@ const DockerSettingsSection = () => {
             {isSaving ? "Saving..." : "Save"}
           </AppButton>
         </div>
+      </div>
+
+      <div style={{ marginTop: "var(--app-space-6)" }}>
+        <DockerHostIPWaitSetting />
       </div>
 
       <div style={{ marginTop: "var(--app-space-6)" }}>

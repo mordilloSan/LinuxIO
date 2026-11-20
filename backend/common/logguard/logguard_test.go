@@ -9,7 +9,17 @@ import (
 
 func writeSource(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "sample.go")
+	return writeSourceIn(t, "", body)
+}
+
+// writeSourceIn writes sample.go in the folder dir of a temporary tree.
+func writeSourceIn(t *testing.T, dir, body string) string {
+	t.Helper()
+	folder := filepath.Join(t.TempDir(), dir)
+	if err := os.MkdirAll(folder, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(folder, "sample.go")
 	src := "package sample\n\nimport (\n\t\"fmt\"\n\t\"log/slog\"\n)\n\nvar _ = fmt.Sprint\n\n" + body
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
@@ -70,6 +80,55 @@ var msg = "Dynamic"
 	}
 	if len(got) != 0 {
 		t.Fatalf("clean file reported %q", got)
+	}
+}
+
+// A Docker update pass runs from a timer, and the saved output of a run shows
+// messages without their attributes, so its lines about one container end
+// with its name, and keep the attribute.
+func TestMessageStyleLetsADockerUpdateLineNameItsContainer(t *testing.T) {
+	const update = "backend/common/dockerupdate"
+	tests := []struct {
+		name string
+		dir  string
+		call string
+		want string // empty for a clean call
+	}{
+		{"named", update, `slog.Info("updated Compose Docker container "+p, "container", p)`, ""},
+		{"named with slog.String", update, `slog.Warn("failed to record Docker update alert for container "+p, slog.String("container", p), "error", err)`, ""},
+		{"no attribute", update, `slog.Info("updated Compose Docker container "+p, "image", p)`, `"container" attribute`},
+		// The name in the message is the value of the "container" attribute.
+		{"an error appended", update, `slog.Warn("failed to update Docker container "+err.Error(), "container", p)`, `"container" attribute`},
+		{"another variable", update, `slog.Info("updated Compose Docker container "+q, "container", p)`, `"container" attribute`},
+		{"a key variable before it", update, `slog.Info("updated Compose Docker container "+p, key, "container")`, `"container" attribute`},
+		{"after a key variable", update, `slog.Info("updated Compose Docker container "+p, key, q, "container", p)`, ""},
+		{"not a container's name", update, `slog.Info("updated "+p, "container", p)`, "built with +"},
+		{"more after the name", update, `slog.Info("updated Compose Docker container "+p+" now", "container", p)`, "built with +"},
+		{"capital", update, `slog.Info("Updated container "+p, "container", p)`, "capital"},
+		{"another package", "backend/bridge/handlers/docker", `slog.Info("updated Docker container "+p, "container", p)`, "built with +"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeSourceIn(t, tt.dir, "func f(p, q, key string, err error) {\n\t"+tt.call+"\n}\n")
+			got, err := MessageStyle(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.want == "" {
+				if len(got) != 0 {
+					t.Fatalf("got %q, want no violation", got)
+				}
+				return
+			}
+			// The reason, after the position: the temporary path holds the
+			// test's name.
+			if len(got) != 1 {
+				t.Fatalf("got %q, want one violation containing %q", got, tt.want)
+			}
+			if _, reason, _ := strings.Cut(got[0], "sample.go:"); !strings.Contains(reason, tt.want) {
+				t.Fatalf("got %q, want one violation containing %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -143,7 +143,7 @@ func (d *daemon) handleReindex(ctx context.Context, w http.ResponseWriter, r *ht
 			OperationID: operationID,
 			Path:        normalizedPath,
 		})
-		d.reindexPathWithProgress(ctx, operationID, normalizedPath, stream)
+		d.reindexPath(ctx, operationID, normalizedPath, stream)
 	})
 
 	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusRunning, Path: normalizedPath, OperationID: operationID})

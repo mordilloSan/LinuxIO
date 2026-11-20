@@ -12,13 +12,16 @@ import {
   closeStreamMux,
   initStreamMux,
   linuxio,
+  type AppConfig,
   type ContainerInfo,
   type ContainerInspectInfo,
   type DockerNetwork,
 } from "@/api";
+import { bridgeConfigQueryKey } from "@/api/config-query";
 import SortableCard from "@/components/cards/SortableCard";
 import AppButton from "@/components/ui/AppButton";
 import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
+import { ConfigContext } from "@/contexts/ConfigContext";
 import ContainerCard from "@/routes/_authenticated/docker/-components/cards/ContainerCard";
 import ContainerResourceDetails from "@/routes/_authenticated/docker/-components/containers/ContainerResourceDetails";
 
@@ -149,6 +152,27 @@ queryClient.setQueryData(
   linuxio.docker.inspect_container({ containerId: container.Id }).queryKey,
   inspect,
 );
+// The container details read the Docker settings, for the note under the
+// ports on whether Docker waits for a published host address.
+const bridgeConfig: AppConfig = {
+  appSettings: { chunkSizeMB: 1, showHiddenFiles: true },
+  assistant: { agent: "" },
+  docker: {
+    folders: [],
+    hostIPs: [],
+    requireMountsForFolders: false,
+    waitForHostIPs: false,
+  },
+  jobs: {
+    archiveCompressionWorkers: 0,
+    archiveExtractWorkers: 0,
+    notificationMinIntervalMs: 1000,
+    progressMinBytesMB: 16,
+    progressMinIntervalMs: 250,
+  },
+  storageMode: "home",
+};
+queryClient.setQueryData(bridgeConfigQueryKey(auth.user!.id), bridgeConfig);
 queryClient.setQueryData(
   linuxio.terminal.list_shells({ containerId: container.Id }).queryKey,
   ["sh"],
@@ -167,36 +191,43 @@ export default function ContainerActionsPage() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider value={auth}>
-        <main style={{ padding: "var(--app-space-24)" }}>
-          <h1>Container lifecycle fixture</h1>
-          {selected ? (
-            <ContainerResourceDetails
-              container={container}
-              onClose={() => setSelected(false)}
-            />
-          ) : (
-            <>
-              <AppButton onClick={() => setSelected(true)} variant="contained">
-                Open container details
-              </AppButton>
-              <DndContext
-                onDragCancel={() => setDragging(false)}
-                onDragEnd={() => setDragging(false)}
-                onDragStart={() => setDragging(true)}
-                sensors={sensors}
-              >
-                <SortableContext items={[container.Id]}>
-                  <SortableCard editMode={dragging} id={container.Id}>
-                    <ContainerCard
-                      containerId={container.Id}
-                      onSelect={() => setSelected(true)}
-                    />
-                  </SortableCard>
-                </SortableContext>
-              </DndContext>
-            </>
-          )}
-        </main>
+        <ConfigContext
+          value={{ isLoaded: true, setKey: () => {}, updateConfig: () => {} }}
+        >
+          <main style={{ padding: "var(--app-space-24)" }}>
+            <h1>Container lifecycle fixture</h1>
+            {selected ? (
+              <ContainerResourceDetails
+                container={container}
+                onClose={() => setSelected(false)}
+              />
+            ) : (
+              <>
+                <AppButton
+                  onClick={() => setSelected(true)}
+                  variant="contained"
+                >
+                  Open container details
+                </AppButton>
+                <DndContext
+                  onDragCancel={() => setDragging(false)}
+                  onDragEnd={() => setDragging(false)}
+                  onDragStart={() => setDragging(true)}
+                  sensors={sensors}
+                >
+                  <SortableContext items={[container.Id]}>
+                    <SortableCard editMode={dragging} id={container.Id}>
+                      <ContainerCard
+                        containerId={container.Id}
+                        onSelect={() => setSelected(true)}
+                      />
+                    </SortableCard>
+                  </SortableContext>
+                </DndContext>
+              </>
+            )}
+          </main>
+        </ConfigContext>
       </AuthContext.Provider>
     </QueryClientProvider>
   );

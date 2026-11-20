@@ -17,19 +17,20 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | Run mutations that outlive the login | `linuxio-bridge`, as `linuxio-jobs@<uid>.service` | One long-lived job host per uid, as that uid (root for admins), so a change started from the UI does not depend on the login, the browser tab or the bridge staying alive. systemd holds each host's socket and starts the host on a connection. A user's bridge cannot start a system unit, so `linuxio-auth` starts a user's socket once PAM has authenticated them; root starts its own. |
 | Maintain the filesystem index | `linuxio-indexer` | Needs broad read access but a narrow write boundary → isolated, sandboxed, and socket activated. |
 | Sample and store host metrics | `linuxio-monitoring` | Needs **root** for SMART, hwmon, GPU and the Docker socket, and must keep sampling with no session open → one long-running collector, read-only metrics on a world-readable socket, commands behind a root-only one. |
-| Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. |
+| Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. The only program an administrator types, and the only one with commands for people. |
+| Run what systemd starts with a word | `linuxio-worker` | The timer jobs (btrfs snapshots, replication, health, resync, rebuild, the degraded mount at boot) and the unit hooks that record a scheduled run and raise alerts → **root**, started only by systemd, installed for root only. Every private command word lives here, so no other program takes one. |
 
 ## Binaries
 
 | Binary | Lang | Source | Runs as | Lifetime | Role |
 |--------|------|--------|---------|----------|------|
-| `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`); root in the scheduled units' hooks | on-demand | CLI: status, logs, start/stop/restart, verbose, version; records scheduled runs |
+| `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`) | on-demand | CLI: status, logs, start/stop/restart, verbose, version |
 | `linuxio-webserver` | Go | `backend/webserver/` | `DynamicUser` + group `linuxio-bridge-socket` | long-running (socket-activated) | HTTP + WebSocket relay; **yamux client** |
 | `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM authentication, sudoers policy query, fork + supervise bridge |
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged); the job host as its uid | per login session; the job host per uid, started by a connection to its socket, idle exit | **yamux server**; executes reads and relays mutations to the job host; the job host runs mutations as jobs |
-| `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled update run | Docker update worker |
+| `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled update run | Docker updater |
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
-| `linuxio-btrfs-timer` | Go | `backend/btrfs-timer/` | root | oneshot, started by systemd timers, the snapshot pass and the auto-update drop-in | Btrfs timeline/pre-update snapshots, replication and the periodic health check |
+| `linuxio-worker` | Go | `backend/worker/` | root | oneshot, started by systemd timers, the snapshot pass, the unit hooks and the auto-update drop-ins | Btrfs timeline/pre-update snapshots, replication, the periodic health check, the degraded mount at boot, resync and the automatic rebuild; the hooks that record scheduled runs and raise alerts |
 | `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
 | `linuxio-claude-relay` | Go | `backend/claude-relay/` | logged-in user, never root | one per `claude` an Assistant chat starts | Runs the real `claude` for the ACP adapter and carries plugin pane requests to the bridge ([Assistant](./AI-assistant.md#plugin-panes)) |
 
@@ -37,23 +38,54 @@ These binaries install to `/usr/local/bin/`. The CLI is a thin management
 front-end; the remaining processes are independently constrained by their
 responsibilities.
 
+**Who may start each program.** `linuxio` is the only program meant to be
+typed. The installer gives the programs systemd runs as root (`linuxio-worker`,
+`linuxio-docker-update`, `linuxio-auth`, `linuxio-indexer`,
+`linuxio-monitoring`) mode `0700`, so another local user cannot run a private
+word or flag of theirs, and the rest `0755` because they run as someone else:
+`linuxio` as whoever types it, `linuxio-bridge` and `linuxio-claude-relay` as
+the signed-in user, and `linuxio-webserver` as a dynamic user, whose ids
+change and so can own no file. Those three take no command word and do
+nothing by hand: the bridge and the relay stop without the connection their
+parent hands them, and a webserver started by a user has that user's rights
+and cannot open `auth.sock`. None of the programs is setuid.
+
+**Versions.** Because most programs are root only, nothing runs them to ask
+for a version. The installer runs each one as root and records its version
+line in `/usr/share/linuxio/components` (mode `0644`,
+`backend/common/version`); `linuxio version` and the webserver's
+unauthenticated `/api/version` read that file and add their own compiled-in
+version. A build run without the installer has no record and lists the other
+programs as not recorded.
+
+Known limits: a program replaced by hand keeps its recorded version until the
+installer runs again. On an update the installer rewrites the command lines
+in the units and drop-ins LinuxIO itself wrote (`saved_unit_files`); an
+administrator's own unit or override that calls `linuxio alert ...` or starts
+a daemon with `run` is not touched and needs the new command line.
+
 ### Binary invocation map
 
-Only `linuxio` is an operator administration CLI. The other binaries expose
-metadata for diagnostics and narrowly scoped process modes owned by systemd or
-the auth/bridge launch protocol.
+Only `linuxio` is an operator administration CLI, and it holds admin commands
+only. One other program takes a command word, `linuxio-worker`, which systemd
+alone starts; a job on a timer, a hook on a unit and an alert from a drop-in
+all go through it. The remaining binaries take flags, start with no word, and
+expose metadata for diagnostics and process modes owned by systemd or the
+auth/bridge launch protocol. A new root action for a timer or a hook is a
+word of `linuxio-worker`, never a command of `linuxio` and never a word on a
+daemon.
 
 | Binary | Supported interactive surface | Managed or private surface |
 |---|---|---|
-| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
-| `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [-port N] [-verbose]`; used by `linuxio-webserver.service` |
+| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | None: it holds admin commands only |
+| `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | No command word: `[-port N] [-verbose]` starts the server; used by `linuxio-webserver.service` |
 | `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
 | `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only. With no arguments and the `linuxio-jobs` socket from systemd, the job host (`linuxio-jobs@<uid>.service`). |
-| `linuxio-docker-update` | `help`/`-h`/`--help` | `run [--config PATH]` for the managed timer |
+| `linuxio-docker-update` | `help`/`-h`/`--help` | No command word: started with `[--config PATH]` it runs one update pass, for the managed timer. Root only |
 | `linuxio-claude-relay` | None | Claude Code's own arguments, with `LINUXIO_CLAUDE_BIN` naming the real CLI; started only by `claude-agent-acp` in an Assistant chat. Exits 2 without that variable. |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
-| `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [--config PATH] [--verbose]`; used by `linuxio-monitoring.service` |
-| `linuxio-btrfs-timer` | `help`/`-h`/`--help` | `snapshot run [--now RFC3339]`, `snapshot pre-update`, `replicate run [--now RFC3339]`, `health run`; used by the btrfs snapshot, replication and health units and the pre-update hook |
+| `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | No command word: `[--config PATH] [--verbose]` starts the daemon; used by `linuxio-monitoring.service`. Root only |
+| `linuxio-worker` | None: root only | `snapshot [--now RFC3339]`, `snapshot pre-update`, `replicate [--now RFC3339]`, `health`, `degraded`, `resync <uuid>`, `rebuild <uuid>`, used by the btrfs units and the pre-update hook; `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); `alert raise\|resolve\|auto-update\|pending-updates`, the alert hooks ([Alerts](./alerts.md#hook-commands)). `help` prints the list |
 
 User lookup in the job host goes through `os/user`, which
 resolves SSSD/LDAP users only in a cgo build (the default native build); a
@@ -70,7 +102,7 @@ Core units under `linuxio.target`:
 ```
 linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-webserver.socket          TCP :8090 (dual-stack) → activates webserver.service
-│  └─ linuxio-webserver.service      runs `linuxio-webserver run` (DynamicUser, sandboxed)
+│  └─ linuxio-webserver.service      runs `linuxio-webserver` (DynamicUser, sandboxed)
 ├─ linuxio-auth.socket               unix /run/linuxio/auth.sock (Accept=yes) → per-conn instance
 │  └─ linuxio-auth@.service          one instance per connection; root; forks+supervises a bridge
 ├─ linuxio-indexer.socket            unix /run/linuxio/indexer.sock → activates linuxio-indexer.service
@@ -78,8 +110,8 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
 │  └─ linuxio-indexer-index.service asks the daemon for a full index
 ├─ linuxio-btrfs-health.timer       every 10 min; enabled only on hosts with btrfs
-│  └─ linuxio-btrfs-health.service  runs `linuxio-btrfs-timer health run`; root
-├─ linuxio-monitoring.service        runs `linuxio-monitoring run`; root; owns
+│  └─ linuxio-btrfs-health.service  runs `linuxio-worker health`; root
+├─ linuxio-monitoring.service        runs `linuxio-monitoring`; root; owns
 │                                    /run/linuxio/monitoring/{api,control}.sock
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group
 └─ linuxio-issue.service             oneshot: updates the login issue/MOTD
@@ -90,11 +122,17 @@ Outside `linuxio.target`, so restarting LinuxIO never cancels them:
 ```
 linuxio-btrfs-degraded.service       boot oneshot, WantedBy=multi-user.target, enabled only on hosts
                                      with btrfs; mounts fstab pools with a missing disk degraded, and
-                                     pools udev holds back for a device replace target normally
-                                     (`linuxio-btrfs-timer degraded run`)
+                                     pools udev holds back for a device replace target normally;
+                                     has udev evaluate again the disks of a complete fstab pool it
+                                     left unready, and waits for systemd to mount it
+                                     (`linuxio-worker degraded`)
 linuxio-btrfs-resync@<uuid>.service  started by the health check once a returned disk is back;
-                                     runs `linuxio-btrfs-timer resync <uuid>` (scrub, then soft convert);
+                                     runs `linuxio-worker resync <uuid>` (scrub, then soft convert);
                                      its unit file carries the scheduled-run hooks itself
+linuxio-btrfs-rebuild@<uuid>.service started by the health check for a missing member whose own
+                                     disk came back, or whose hot spare is due; runs
+                                     `linuxio-worker rebuild <uuid>` (erase the returned disk, device
+                                     replace, check); carries the scheduled-run hooks itself
 linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned by the uid; started by
                                      linuxio-auth at that user's login and by root for uid 0; a
                                      connection starts the host whenever it is down
@@ -106,8 +144,8 @@ linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned b
 
 Key unit facts (see `packaging/systemd/`):
 
-- **`linuxio-webserver.socket`** — `ListenStream=8090`, `BindIPv6Only=both` (one socket answers both the A and AAAA records Avahi publishes). systemd owns the listening fd; the service inherits it.
-- **`linuxio-webserver.service`** — `ExecStart=/usr/local/bin/linuxio-webserver run`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. `RuntimeDirectory=linuxio/webserver` is an indexer activity marker whose lifetime is owned by systemd; `Wants=linuxio-indexer.service` warms the indexer without making it a prerequisite. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
+- **`linuxio-webserver.socket`** — `ListenStream=8090`, `BindIPv6Only=both` (one socket answers both the A and AAAA records Avahi publishes). systemd owns the listening fd; the service inherits it. `After=linuxio-auth.socket` makes a restart of `linuxio.target` stop this socket before the auth socket and start it after: with no ordering, systemd started `linuxio-auth.socket` in the same window, its `sd-chown` helper (a fork of PID 1) inherited the old :8090 fd and held it a few ms past PID 1's close, and the new bind failed with "Address already in use" (3 of 10 `linuxio restart --full` runs on Ubuntu 24.04, systemd 255; 0 of 50 with the ordering).
+- **`linuxio-webserver.service`** — `ExecStart=/usr/local/bin/linuxio-webserver`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. `RuntimeDirectory=linuxio/webserver` is an indexer activity marker whose lifetime is owned by systemd; `Wants=linuxio-indexer.service` warms the indexer without making it a prerequisite. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
 - **`linuxio-auth.socket`** — `ListenStream=/run/linuxio/auth.sock`, `SocketUser=root`, `SocketGroup=linuxio-bridge-socket`, `SocketMode=0660`, **`Accept=yes`**, `MaxConnections=64`. The group+mode is the access-control boundary: only members of `linuxio-bridge-socket` (i.e. the webserver) may connect. Each accepted connection stays open as the bridge's transport until the session ends (sign-out, or the webserver's 60 min idle or 12 h absolute expiry), so `MaxConnections` caps live sessions host-wide, including those of browsers closed without signing out; concurrent login attempts are capped separately by the webserver (`maxConcurrentLogins`, 8).
 - **`linuxio-auth@.service`** — template; one instance per accepted connection, with the connected socket as `StandardInput=socket`. `User=root`. It declares no `TasksMax` or `MemoryMax`: a login is not capped (see below). The bridge inherits its rlimits (`LimitNOFILE=2048`, `LimitCORE=0`).
 - **`linuxio-indexer.socket` / `linuxio-indexer.service`** — the `root:root`,
@@ -131,7 +169,7 @@ Key unit facts (see `packaging/systemd/`):
   [monitoring daemon guide](./monitoring.md).
 - **`linuxio-bridge-socket-user.service`** — `Type=oneshot`, `DynamicUser=yes`, `User=linuxio-bridge-socket`, `Before=linuxio-auth.socket`. Its only job is to make the `linuxio-bridge-socket` user/group exist *before* the auth socket is created with that group ownership.
 - **`linuxio-jobs@.socket`** — template, instance = uid. `ListenStream=/run/linuxio/jobs/%i.sock`, `SocketUser=%i`, `SocketMode=0600`, `Accept=no`, `FileDescriptorName=linuxio-jobs`, deliberately not `PartOf=linuxio.target`. systemd holds the socket and starts the host on a connection that finds it down: after an idle exit, a crash, an OOM kill of the host process, or an update that replaced its binary. A connection that arrives while the host is exiting waits in the socket's queue and starts the next host. A host that cannot start closes the connections that were waiting, so the clients' backoff paces the next attempt instead of systemd's start limit failing the socket.
-- **`linuxio-jobs@.service`** — template, instance = uid. `Type=notify` (READY once it serves, STOPPING on idle exit), `User=%i`, `ExecStart=/usr/local/bin/linuxio-bridge` with no arguments: the binary is the job host when systemd passes it the socket named `linuxio-jobs`, and refuses to run by hand without it. `Wants=` and `After=` its socket. `StateDirectory=linuxio/jobs/%i` and `RuntimeDirectory=linuxio/jobs/%i`, both `0700` and owned by the uid, hold the job store and live progress; `RuntimeDirectoryPreserve=yes`. `TimeoutStopSec=2min`, `KillMode=mixed`, `NoNewPrivileges=yes`, `TasksMax=8192` (room for 256 jobs each waiting on a subprocess tree) and `MemoryMax=2G` with `OOMPolicy=continue`, so an OOM kill of one job's subprocess fails that job instead of stopping the host. Ordered after local filesystems and `linuxio-btrfs-degraded.service`, and deliberately not `PartOf=linuxio.target`, so updates and `linuxio restart --full` never stop a running job. `WantedBy=multi-user.target`, enabled for uid 0 only, so the root host starts at boot. At every start a host marks the jobs its uid's last host left running as interrupted, `reboot` when that host ran in an earlier boot and `crash` otherwise; the root host then resumes the resumable jobs the last shutdown or a power loss interrupted (reason `shutdown` or `reboot`, no `cancel_requested`, an executor from an earlier boot; any other interrupted record loses `Resumable`) and alerts on the others. A host touches only its own uid's store. It accepts a connection only from its own uid (`SO_PEERCRED`) and a hello of its protocol number, stays up while a bridge is connected or a job runs, exits after 60 s with neither, and refuses new jobs above 256 running.
+- **`linuxio-jobs@.service`** — template, instance = uid. `Type=notify` (READY once it serves, STOPPING on idle exit), `User=%i`, `ExecStart=/usr/local/bin/linuxio-bridge` with no arguments: the binary is the job host when systemd passes it the socket named `linuxio-jobs`, and refuses to run by hand without it. `Wants=` and `After=` its socket. `StateDirectory=linuxio/jobs/%i` and `RuntimeDirectory=linuxio/jobs/%i`, both `0700` and owned by the uid, hold the job store and live progress; `RuntimeDirectoryPreserve=yes`. `TimeoutStopSec=2min`, `KillMode=mixed`, `NoNewPrivileges=yes`, `TasksMax=8192` (room for 256 jobs each waiting on a subprocess tree) and `MemoryMax=2G` with `OOMPolicy=continue`, so an OOM kill of one job's subprocess fails that job instead of stopping the host. Ordered after local filesystems and `linuxio-btrfs-degraded.service`, and deliberately not `PartOf=linuxio.target`, so updates and `linuxio restart --full` never stop a running job. `WantedBy=multi-user.target`, enabled for uid 0 only, so the root host starts at boot. At every start a host marks the jobs its uid's last host left running as interrupted, `reboot` when that host ran in an earlier boot and `crash` otherwise; the root host then resumes the resumable jobs the last shutdown or a power loss interrupted (reason `shutdown` or `reboot`, no `cancel_requested`, an executor from an earlier boot), picks up, before it serves, those of a route that resumes after a crash or a stop by hand in this boot (`packages.update` after a crash, `storage.run_smart_test` after either), starts the resumes after a reboot once it serves (any other interrupted record loses `Resumable`), and alerts on the others. A host touches only its own uid's store. It accepts a connection only from its own uid (`SO_PEERCRED`) and a hello of its protocol number, stays up while a bridge is connected or a job runs, exits after 60 s with neither, and refuses new jobs above 256 running.
 - **Who starts a host** — a connection to its socket. `linuxio-auth` runs `systemctl start --no-block linuxio-jobs@<uid>.socket` as root once PAM has authenticated an unprivileged login, before the PAM session opens and the bridge spawns, so `pam_selinux` cannot hand systemctl the user's context; a failure is logged as a warning and the login proceeds. A privileged bridge starts uid 0's socket itself. A socket stays until reboot, so a user's socket exists only after that user authenticated through LinuxIO, or when root starts it, and only that user can connect to it.
 - **tmpfiles** — `/var/lib/linuxio/jobs` and `/run/linuxio/jobs` are `0755 root:root`, so each host's `0700` uid directory below them is reachable.
 
@@ -152,13 +190,14 @@ The units systemd timers start record each run in a job store of their own
 scripts (`linuxio-schedule-<id>.service`), btrfs snapshots
 (`linuxio-btrfs-snapshot.service`), btrfs replication
 (`linuxio-btrfs-replicate.service`, which the snapshot pass starts), pool resyncs
-(`linuxio-btrfs-resync@<uuid>.service`) and Docker updates
+(`linuxio-btrfs-resync@<uuid>.service`), pool rebuilds
+(`linuxio-btrfs-rebuild@<uuid>.service`) and Docker updates
 (`linuxio-docker-update.service`). Two hooks do it:
 
 ```ini
 [Service]
-ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n
-ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
+ExecStartPre=-+/usr/local/bin/linuxio-worker scheduled-run begin --unit %n
+ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n
 ```
 
 - **Where they are.** Never in a rendered unit: `schedules.run_now` refuses a
@@ -176,8 +215,8 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   one of those services at most, and systemd ignores a drop-in of a unit that
   does not exist. Then it reloads systemd. The uninstaller removes the
   drop-in from the update services by its name, with the alert drop-in the
-  bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` carries the two lines
-  itself. A drop-in alone loads no unit: until a snapshot rule, a replication
+  bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` and
+  `linuxio-btrfs-rebuild@.service` carry the two lines themselves. A drop-in alone loads no unit: until a snapshot rule, a replication
   job or the Docker update settings are saved, that unit stays `not-found`.
   Schedules saved before an update record their runs after it without being
   saved again, and so does the replication unit an upgraded install's first
@@ -220,10 +259,12 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   run's `<id>.json` and `<id>.log` (`0600`). An output longer than 10 MiB keeps
   its first and last 5 MiB with one line between saying how many bytes were
   left out. Each unit keeps its newest 50 ended runs and none older than 30
-  days, and a run's output goes with its record. The btrfs timer program and
-  the Docker update runner write their run's progress to
+  days, and a run's output goes with its record. The worker and
+  the Docker updater write their run's progress to
   `/run/linuxio/jobs/scheduled/<id>.progress`, finding the run through
-  `$INVOCATION_ID`.
+  `$INVOCATION_ID`. Both also write a summary of what the run did into the
+  record's `result` before they exit, which the end hook keeps
+  ([Jobs](./jobs.md#scheduled-runs)).
 - **Liveness.** The root job host lists the running scheduled runs for
   `tasks.list` and `tasks.events` ([API Contract](./api-contract.md#scheduled-runs)).
   At its start and at every listing it marks a `running` record `interrupted`:
@@ -250,7 +291,7 @@ linuxio.target → pulls in the webserver, auth, and indexer sockets
 multi-user.target → also pulls in, outside linuxio.target:
   linuxio-jobs@0.socket, then linuxio-jobs@0.service after the btrfs degraded mount:
     1. marks the root host's `running` job records interrupted: reboot, or crash for a host of this boot
-    2. resumes the resumable root jobs the last shutdown or power loss interrupted (once; every other interrupted record loses `Resumable`)
+    2. resumes the resumable root jobs the last shutdown or power loss interrupted (once; every other interrupted record loses `Resumable`; a host started again in the same boot picks up instead, before it serves, the jobs of a route that resumes after a crash or a stop, `packages.update` after a crash and `storage.run_smart_test` after either)
     3. raises an alert for each other root job it marked, then exits once idle for 60 s
   A user's host marks their records the same way when the first connection after their login starts it.
 ```
@@ -349,8 +390,9 @@ verified and before it replaces any of them. Each of its lines adds one
 regular expression with the value 0 ("do not restart") to needrestart's
 `$nrconf{override_rc}` and keeps the distribution's entries:
 `linuxio-jobs@<uid>.service`, the timer-run units `linuxio-schedule-*`,
-`linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`
-and `linuxio-docker-update`, and the updater's `linuxio-updater-*` unit.
+`linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`,
+`linuxio-btrfs-rebuild@*` and `linuxio-docker-update`, and the updater's
+`linuxio-updater-*` unit.
 needrestart then lists them under "Service restarts being deferred" instead of
 restarting them. The daemons the installer restarts itself (`linuxio-webserver`,
 `linuxio-monitoring`, `linuxio-indexer`, `linuxio-auth`) are not listed, and
@@ -421,19 +463,199 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 | `make build-backend` | `linuxio-webserver` | Go; embeds version + **bridge SHA-256** |
 | `make build-bridge` | `linuxio-bridge` | Go |
 | `make build-auth` | `linuxio-auth` | C; hardened flags (RELRO, PIE, FORTIFY, stack-clash, LTO), links `libpam` + `libsystemd` |
-| `make build-docker-update` | `linuxio-docker-update` | Go; scheduled Docker update worker |
+| `make build-docker-update` | `linuxio-docker-update` | Go; scheduled Docker updater |
 | `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled |
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
-| `make build-btrfs-timer` | `linuxio-btrfs-timer` | Go; btrfs snapshot and health timer worker |
+| `make build-worker` | `linuxio-worker` | Go; the timer jobs and unit hooks systemd starts with a word |
 
 `make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and installer tests read. Only `common/version.Version` is stamped into the binaries that report a version. Install via `make localinstall`, which runs `packaging/scripts/localinstall.sh` (a wrapper for `install-linuxio-binaries.sh --local --build-dir build/`):
 
 - binaries → `/usr/local/bin/`
 - units → `/etc/systemd/system/linuxio*`
 - tmpfiles → `/usr/lib/tmpfiles.d/linuxio.conf`
-- PAM stack → `/etc/pam.d/linuxio`
+- PAM stack → `/etc/pam.d/linuxio`, from `packaging/etc/pam.d/linuxio` on the Debian family and from `packaging/etc/pam.d/linuxio.rhel` on the RHEL family, which has `password-auth` and `postlogin` where Debian has the `common-*` files, and `/etc/locale.conf` for `/etc/default/locale`. The installer tells the families apart with `install-dependencies.sh`'s `detect_distro` and `is_fedora`, of which it carries a copy, and installs the file through a staged copy (`atomic_replace_file`, 0644 root:root), so a download cut half-way leaves the installed file as it was. The installer fixtures keep the copy identical and check that the RHEL file is the Debian one line for line and in the same order, with `common-auth` mapped to `substack password-auth` and `include postlogin`, `common-account` and `common-password` to `password-auth`, `common-session-noninteractive` to `password-auth` and `postlogin`, and `/etc/default/locale` to `/etc/locale.conf`. Order matters on RHEL: a `sufficient` line in `password-auth` ends the stack where it is included, so LinuxIO's own lines stay above each include.
 - config → `/etc/linuxio/`
 - needrestart override → `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart` exists (see the **needrestart.** paragraph in "Login and jobs — the bridge connects to its job host")
+- SELinux module `linuxio` → the policy store, with `semodule -i` and a relabel of `/usr/local/bin/linuxio-auth`, on the RHEL family only (see [SELinux](#selinux))
+
+## SELinux
+
+On the RHEL family SELinux enforces by default, and without a policy of its
+own nobody could sign in: systemd ran `/usr/local/bin/linuxio-auth` (`bin_t`)
+as `unconfined_service_t`, the domain of a service the policy knows nothing
+about; PAM authenticated, `pam_selinux.so open` set the context the user's
+programs start in, `unconfined_u:unconfined_r:unconfined_t:s0`, and the
+policy refused the exec of the bridge in it (`avc: denied { transition }`
+from `unconfined_service_t` to `unconfined_t`). Only a login program's domain
+(`sshd_t`, `cockpit_session_t`) may make that switch. So LinuxIO ships an
+SELinux policy module, `linuxio` (`packaging/selinux/linuxio.cil`), as Cockpit
+does for `cockpit-session`.
+
+- **`linuxio_auth_exec_t`** is the type of `/usr/local/bin/linuxio-auth`, and
+  **`linuxio_auth_t`** the domain systemd enters when it runs that file.
+- **`linuxio_auth_t` is a `daemon`.** systemd creates the listening socket of
+  `linuxio-auth.socket` in the domain of the program the service runs, and
+  the policy lets `init_t` create sockets of daemons only: without the
+  attribute the socket fails to listen ("Permission denied").
+- **It is as unconfined as `unconfined_service_t`**, whose attributes it
+  carries, and a `daemon` with the type transition every daemon domain has:
+  `linuxio-auth` runs as root and was unconfined before; the module does not
+  set out to confine it.
+- **One permission more:** to start the bridge as `unconfined_t`. Measured
+  on Fedora 45 with setools, attributes expanded and conditional rules taken
+  with the booleans as set: the only permissions `linuxio_auth_t` has that
+  `unconfined_service_t` lacks are `entrypoint` on its own file and that
+  transition. It lacks about a thousand (type, class) pairs of
+  `unconfined_service_t`'s (the X server, PostgreSQL, `nscd` and `passwd`
+  classes, `execmem`, `execstack`, and transitions to `chronyc_t`,
+  `passwd_t`, `rpm_script_t` and `svirt_t`). What other domains may do to it
+  and not to `unconfined_service_t`, through `daemon` and the type
+  transition: `nscd_t` reads its `/proc` entries; the `initrc_domain`
+  members (`initrc_t`, `cluster_t`, `condor_startd_t`, `glusterd_t`,
+  `kdumpctl_t`, `openshift_initrc_t`) enter it when they run `linuxio-auth`;
+  user domains get the labelled-networking `recvfrom` on its UDP sockets.
+  `staff_t` has no `connectto` on `unconfined_service_t` sockets, the job
+  hosts' included.
+- **A constraint keeps confined users out.** No line of the distribution's
+  login contexts (`/etc/selinux/targeted/contexts/default_contexts` and
+  `contexts/users/*`) names `linuxio_auth_t`, so `pam_selinux` falls back to
+  `failsafe_context`, `unconfined_r:unconfined_t`, with the user's SELinux
+  user. `staff_u` may take that role, so without more a `staff_u` user would
+  get an unconfined bridge. The constraint allows the switch out of
+  `linuxio_auth_t` only into the SELinux user `unconfined_u` (or the same
+  user, as for programs `linuxio-auth` runs before the session).
+- **The SSH banner.** The module also gives `/run/linuxio/issue`, which
+  `/etc/motd.d/linuxio` links to, the type of `/run/motd.d`,
+  `motd_var_run_t`: in its folder's type, `var_run_t`, `pam_motd` in `sshd`
+  may not read it, and the banner never showed on Fedora. `update-issue`
+  relabels the file after each write.
+
+What runs where, seen on Fedora 45 with SELinux enforcing after a fresh
+install and a reboot:
+
+| Process or file | Context |
+|---|---|
+| The listening socket of `linuxio-auth.socket`, the connections it accepts, `linuxio-auth` | `system_u:system_r:linuxio_auth_t:s0` |
+| The bridge of a sudo user (uid 0) and of a user without sudo | `unconfined_u:unconfined_r:unconfined_t:s0` |
+| Job hosts, web server, monitoring, indexer | `system_u:system_r:unconfined_service_t:s0`, as without the module |
+| `/usr/local/bin/linuxio-auth` | `linuxio_auth_exec_t` |
+| `/run/linuxio/issue` | `motd_var_run_t` |
+
+Who gets in:
+
+| User mapped to | Result |
+|---|---|
+| `unconfined_u` (the default mapping) | Signs in |
+| `staff_u` | Refused when the bridge starts, by the constraint (`avc: denied { transition }` to `staff_u:unconfined_r:unconfined_t`); the login answers 500 `bridge_error`, and the page says it could not start the session bridge |
+| `user_u` | Refused when the session opens: `pam_selinux` reports "Unable to get valid context", `user_u` having no `unconfined_r`; the same answer |
+| Any, with a wrong password or listed in `/etc/linuxio/disallowed-users` | Refused by PAM (401), as without the module |
+
+**Why hand-written CIL.** Compiling a `.te` module on the host at install
+time needs `selinux-policy-devel` and what it pulls in (3 MiB to download,
+26 MiB installed). The CIL converted from such a module is 259 lines
+nobody reviews. Neither can carry the constraint: `checkmodule` refuses
+`constrain` in a module, and CIL takes it. The hand-written file is about 70
+lines and needs no build step and nothing beyond `semodule` and
+`restorecon`, which a host with an SELinux policy has. Only the banner's file
+context is in an `optional` block, so a policy that lacks one of the other
+names it uses refuses the whole module.
+
+**Why confined users are refused, not given a confined session.** A session
+in the user's own domain (`user_t`, `staff_t`) was tried. It needs lines added
+by hand to the distribution's login-context files, which an update of the
+policy package may replace (`default_contexts` is replaced, `users/*` are
+kept), and a permission for user domains to use `linuxio-auth`'s sockets.
+Even then it is half broken: `user_t` may not connect to
+`/run/linuxio/jobs/<uid>.sock` or to the monitoring socket, so there are no
+jobs, no changes and no monitoring, and a listing of a folder holding a file
+the domain may not stat (`/etc/audit`) fails whole. And a job host, which
+systemd starts, runs as `unconfined_service_t` whoever it works for, so
+opening its socket to a confined user would run that user's jobs unconfined.
+
+**Install and uninstall.** `install_selinux_module` in
+`install-linuxio-binaries.sh` runs on the RHEL family only, at the top level
+of `main`:
+
+1. **Right after the binaries**, also with `--skip-binaries`, and before any
+   later step that can end the install. The installer replaces a binary
+   through a new file, which is `bin_t` again, and every sign-in is refused
+   until it is relabelled. A binary that fails inside `install_binaries`
+   still ends the install first, and a `linuxio-auth` it already replaced
+   stays `bin_t` until the next install.
+2. **The module**, where `semodule -l` lists the modules of a policy store.
+   It is fetched from main like the other packaging assets and loaded as
+   root with no checksum, so `selinux_module_valid` first checks it has the
+   shipped form: every line is one the module uses, about LinuxIO's own types
+   and paths only (rules from `linuxio_auth_t`, the two file contexts, the
+   constraint as shipped). A store that already holds the same file
+   (`semodule -E linuxio`, compared with the fetched one) is not loaded
+   again, since a load takes about 5 s; and where `/etc/selinux` is not
+   writable (the in-app updater's sandbox) a new or changed module is not
+   tried, and the notice names the root command that loads it.
+3. **Then `restorecon /usr/local/bin/linuxio-auth`**, whenever `restorecon`
+   exists, whatever happened to the module: the file context lives in the
+   module, and a binary just replaced needs it. When SELinux is on and
+   `semodule` cannot read the store (another program holding its lock), the
+   module is left as it is with a notice, and the relabel still runs.
+4. **All before the systemd steps and the restart**, which recreates the
+   auth socket in `linuxio_auth_t`. On a running host the next sign-in uses
+   the domain at once; the listening socket keeps its old type until the
+   socket unit restarts, which does not stop sign-in.
+
+A module that does not load, or is not of the shipped form, is reported, and
+the install goes on: a module loaded before stays, and without one sign-in is
+refused where SELinux enforces, as before. On a host with SELinux disabled
+`semodule` works on the store and `restorecon` does nothing; switching
+SELinux on asks for a relabel, which gives the binary its type. The Debian
+family is left alone: `unconfined_service_t` is a name of Fedora's policy.
+The banner's file context sits in an optional block, so a policy without
+`motd_var_run_t` loads the rest and only the banner keeps `var_run_t`.
+`uninstall.sh` removes the module after the binaries: removed while
+`linuxio-auth` is still there, it would leave that file `unlabeled_t`, which
+systemd cannot run (status `203/EXEC`).
+
+**Turned down, likely to be proposed again** (one line each under Rejected
+in the [backlog](./TODO/backlog.md#rejected)): dropping `pam_selinux.so open`
+from the PAM file works, but every session then runs as
+`unconfined_service_t`, a confined user's too. `SELinuxContext=` on
+`linuxio-auth@.service` worked as a drop-in on a running system and fails as
+installed: systemd creates the listening socket in that context, and the
+policy refuses `init_t` an `unconfined_t` socket.
+
+### Known limits
+
+- A user mapped to a confined SELinux user (`user_u`, `staff_u`) cannot sign
+  in, so a host that confines every login has no LinuxIO sign-in, and the
+  page shows only the general "could not start the session bridge" message.
+- Job hosts, the web server, monitoring and the indexer stay
+  `unconfined_service_t`.
+- The bridge's level is `s0` where an SSH login has `s0-s0:c0.c1023`:
+  `pam_selinux` takes it from `failsafe_context`.
+- A user SELinux refuses (`user_u` when the session opens, `staff_u` when
+  the bridge starts) still has their `linuxio-jobs@<uid>.socket` started:
+  `linuxio-auth` starts it before the session opens.
+- The file context names `/usr/local/bin`, the installer's `BIN_DIR`.
+- A policy that lacks a name the module uses (a strict or MLS policy, or one
+  with `unconfined` removed) does not load it, and sign-in is refused there
+  as before.
+- An in-app update cannot load a module that is new or changed: its sandbox
+  (`ProtectSystem=full`) has `/etc/selinux` read-only, and adding that folder
+  to its `ReadWritePaths` makes the policy refuse `init_t` the bind mount
+  (`mounton` on `selinux_config_t`), so the updater's unit fails to start
+  (status 226). The binary is still relabelled and the module loaded before
+  stays. So a host updated in-app while SELinux was permissive or disabled
+  gets no module, a later tightening of the module reaches a host only
+  through an install from a shell, and a binary that needs a rule the old
+  module lacks is refused sign-in until then.
+- A Debian-family host with SELinux enforcing is not handled: no module is
+  installed there.
+- The banner's label was checked on Fedora 45 only; a policy whose
+  file-context substitutions map `/run` to `/var/run` may not match
+  `/run/linuxio/issue`, and the banner then stays unreadable to `sshd`.
+- Checked on Fedora 45 only. That RHEL, CentOS Stream, Rocky Linux and
+  AlmaLinux have every name the module uses is expected, not seen; an update
+  of the policy package to a newer version was not seen either (a reinstall
+  of the same version kept the module and the labels).
 
 ## Managing the Stack (`linuxio` CLI)
 
@@ -444,7 +666,7 @@ linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
 linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring (SIGHUP reload; open sessions switch at next login); persists across restarts
-linuxio version [--self]    # versions of CLI + each installed component
+linuxio version [--self]    # version of the CLI + of each program as the installer recorded it
 ```
 
 The Services page warns before it cuts LinuxIO off. Stop, Restart, Disable and
@@ -475,7 +697,9 @@ host's running jobs `interrupted`. The next connection to its socket starts it
 again, within 1–30 s while a bridge is connected, so stop
 `linuxio-jobs@<uid>.socket` too, or mask the service, to keep one down.
 
-`restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/services.go`). `--full` restarts the whole `linuxio.target`.
+`restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/services.go`). `--full` restarts the whole `linuxio.target` and waits for `linuxio-webserver.socket` to listen again (`awaitWebSocket`). The `After=linuxio-auth.socket` ordering keeps LinuxIO's own helper off the old listener, but a helper any other unit forks in that window, such as a user's job host socket at a login, can still hold it for a moment, and the bind then fails with "Address already in use". systemd ends that start with the socket's result `resources` (the errno reaches only the journal), so on that result the CLI starts the socket again, up to three times half a second apart, and reports the result if the last start fails too; any other result is reported at once. Starting the socket again also starts `linuxio-indexer.socket`, which it wants and whose start failed with it, and `linuxio-webserver.service` starts on the next connection, as at boot.
+
+Known limits: a listener held for longer than the retries (about two seconds in all), or another program listening on :8090, still fails `restart --full`; `linuxio start` binds the socket once the port is free. The result `resources` also covers the socket's other failures to open its listener, such as running out of file descriptors, and those get the same three retries.
 
 Journald, panic and `SIGQUIT` tracebacks, profiling builds, and core-dump limits
 follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
@@ -489,13 +713,16 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, only where `/etc/needrestart` exists |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
 | Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout); `packaging/scripts/localinstall.sh` is a wrapper for it |
+| SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → the policy store, loaded by `install_selinux_module` in the install script and removed by `packaging/scripts/uninstall.sh`; `packaging/scripts/update-issue` relabels the banner |
 | CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
+| Worker (timer jobs and unit hooks) | `backend/worker/` (`main.go` dispatch; `snapshot.go`, `replicate.go`, `health.go`, `degraded.go`; `scheduled_run.go`, `alert.go`) |
+| Program modes, recorded versions, saved-unit rewrite | `binary_mode`, `write_components_file` and `rewrite_saved_unit_commands` in `packaging/scripts/install-linuxio-binaries.sh`; `backend/common/version/components.go` |
 | Shared socket-activation adopt | `backend/common/socketactivation`, `backend/webserver/cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Job host, client and their commands | `backend/bridge/internal/jobshost`, `backend/bridge/internal/jobsclient`, `backend/bridge/cmd/jobs_host.go` and `jobs_relay.go` (bridge → host relay) |
 | Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress in `/run/linuxio/jobs/<uid>/`, the host socket at `/run/linuxio/jobs/<uid>.sock` |
-| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the four LinuxIO units and the four distribution update services) and `linuxio-btrfs-resync@.service`; command `backend/cli/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
+| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the four LinuxIO units and the four distribution update services), `linuxio-btrfs-resync@.service` and `linuxio-btrfs-rebuild@.service`; command `backend/worker/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |

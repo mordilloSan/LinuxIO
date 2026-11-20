@@ -168,6 +168,25 @@ describe("PartitionsTab", () => {
     );
   });
 
+  it("keeps a pool's hot spare empty: no Create partition, no Initialize", async () => {
+    const u = user();
+    const spare = sda({ hotSpareOf: { uuid: "u1", label: "tank" } });
+    mocks.topology.mockResolvedValue(topology([spare]));
+    render(<PartitionsTab driveName="sda" />, options);
+
+    const create = await screen.findByRole("button", {
+      name: "Create partition",
+    });
+    expect(create).toBeDisabled();
+    await u.hover(create.parentElement!);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Hot spare of tank",
+    );
+    expect(
+      screen.getByRole("button", { name: "Initialize disk" }),
+    ).toBeDisabled();
+  });
+
   it("explains an fstab entry and a pool member the same way", async () => {
     const u = user();
     mocks.topology.mockResolvedValue(

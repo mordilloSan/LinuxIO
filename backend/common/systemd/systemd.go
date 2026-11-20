@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
@@ -73,15 +74,31 @@ func ResetFailedUnit(ctx context.Context, name string) error {
 	return nil
 }
 
+// ErrNoUnitFile is GetUnitFileState's error for a unit that no unit file
+// defines, as one whose package is not installed.
+var ErrNoUnitFile = errors.New("no unit file")
+
 func GetUnitFileState(ctx context.Context, name string) (string, error) {
 	if err := requireUnitName(name); err != nil {
 		return "", err
 	}
 	var state string
 	if err := managerIface.CallStore(ctx, "GetUnitFileState", dbusclient.CallPolicy{}, []any{name}, &state); err != nil {
+		if noUnitFile(err) {
+			// Both stay in the chain: callers that match the bus error by
+			// name (btrfsTimerEnabled) keep working beside errors.Is.
+			return "", fmt.Errorf("get unit file state %s: %w: %w", name, ErrNoUnitFile, err)
+		}
 		return "", fmt.Errorf("get unit file state %s: %w", name, err)
 	}
 	return state, nil
+}
+
+// noUnitFile reports whether err is the manager's answer for a unit no unit
+// file defines: the bus error systemd maps ENOENT to.
+func noUnitFile(err error) bool {
+	var busErr godbus.Error
+	return errors.As(err, &busErr) && busErr.Name == "org.freedesktop.DBus.Error.FileNotFound"
 }
 
 func DaemonReload(ctx context.Context) error {
@@ -190,6 +207,152 @@ func UnitRunsInvocation(ctx context.Context, unit, invocationID string) (bool, e
 		return false, err
 	}
 	return runs, nil
+}
+
+// UnitState is a unit as the manager knows it.
+type UnitState struct {
+	LoadState   string
+	ActiveState string
+	// SourcePath is the file a generator made the unit from, such as
+	// /etc/fstab for the mount units of systemd-fstab-generator.
+	SourcePath string
+}
+
+// GetUnitStates reads each of names, loading a unit the manager has not
+// loaded, as one it collected after it stopped: a unit no file defines then
+// reads LoadState "not-found". A name the manager refuses as no valid unit
+// name, such as one longer than it allows, is left out.
+func GetUnitStates(ctx context.Context, names []string) (map[string]UnitState, error) {
+	units := map[string]UnitState{}
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		for _, name := range names {
+			path, err := UnitObjectPath(session, name)
+			if invalidArgs(err) {
+				slog.Debug("systemd refused a unit name", "unit", name, "error", err)
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("load unit %s: %w", name, err)
+			}
+			obj := session.ObjectAt(path)
+			var u UnitState
+			for prop, dst := range map[string]*string{"LoadState": &u.LoadState, "ActiveState": &u.ActiveState, "SourcePath": &u.SourcePath} {
+				if *dst, err = dbusclient.GetProperty[string](session, obj, dbusclient.SystemdUnitIface, prop); err != nil {
+					return fmt.Errorf("get %s of %s: %w", prop, name, err)
+				}
+			}
+			units[name] = u
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return units, nil
+}
+
+// UnitStopPropagatedFrom returns the units whose stop the manager propagates
+// to unit name (StopPropagatedFrom=, since systemd 249), as the device of a
+// mount made from /etc/fstab. A manager without the property is an error.
+func UnitStopPropagatedFrom(ctx context.Context, name string) ([]string, error) {
+	var units []string
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		path, err := UnitObjectPath(session, name)
+		if err != nil {
+			return fmt.Errorf("load unit %s: %w", name, err)
+		}
+		units, err = dbusclient.GetProperty[[]string](session, session.ObjectAt(path), dbusclient.SystemdUnitIface, "StopPropagatedFrom")
+		if err != nil {
+			return fmt.Errorf("get StopPropagatedFrom of %s: %w", name, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return units, nil
+}
+
+// ManagerVersion returns systemd's version as the manager reports it, such
+// as 259 for "259.9-0ubuntu0.1".
+func ManagerVersion(ctx context.Context) (int, error) {
+	var version int
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		text, err := dbusclient.GetProperty[string](session, session.ObjectAt(dbusclient.ObjectPath(dbusclient.SystemdPath)), dbusclient.SystemdManagerIface, "Version")
+		if err != nil {
+			return fmt.Errorf("get systemd's version: %w", err)
+		}
+		digits := text
+		if i := strings.IndexFunc(text, func(r rune) bool { return r < '0' || r > '9' }); i >= 0 {
+			digits = text[:i]
+		}
+		if version, err = strconv.Atoi(digits); err != nil {
+			return fmt.Errorf("systemd reports version %q", text)
+		}
+		return nil
+	})
+	return version, err
+}
+
+// invalidArgs reports whether err is the manager's answer for a unit name it
+// does not accept (manager_load_unit_prepare).
+func invalidArgs(err error) bool {
+	var busErr godbus.Error
+	return errors.As(err, &busErr) && busErr.Name == "org.freedesktop.DBus.Error.InvalidArgs"
+}
+
+// SocketState is a socket unit as the manager reports it.
+type SocketState struct {
+	// JobPending is true while a job is queued or running for the socket;
+	// ActiveState and Result are not read then.
+	JobPending  bool
+	ActiveState string
+	// Result is how the socket's last run ended, such as "success", or
+	// "resources" when it could not open or watch its listening sockets (a
+	// bind that found its address in use). It holds until the next start.
+	Result string
+}
+
+// GetSocketState reads a loaded socket unit's job, ActiveState and Result.
+func GetSocketState(ctx context.Context, name string) (SocketState, error) {
+	if err := requireUnitName(name); err != nil {
+		return SocketState{}, err
+	}
+	var state SocketState
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		var path dbusclient.ObjectPath
+		if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{name}, &path); err != nil {
+			return fmt.Errorf("get unit %s: %w", name, err)
+		}
+		obj := session.ObjectAt(path)
+		job, err := dbusclient.GetProperty[[]any](session, obj, dbusclient.SystemdUnitIface, "Job")
+		if err != nil {
+			return fmt.Errorf("get job %s: %w", name, err)
+		}
+		var jobID uint32
+		ok := false
+		if len(job) == 2 {
+			jobID, ok = job[0].(uint32)
+		}
+		if !ok {
+			return fmt.Errorf("job of %s is %v, want an id and a path", name, job)
+		}
+		if jobID != 0 {
+			state.JobPending = true
+			return nil
+		}
+		if state.ActiveState, err = dbusclient.GetProperty[string](session, obj, dbusclient.SystemdUnitIface, "ActiveState"); err != nil {
+			return fmt.Errorf("get active state %s: %w", name, err)
+		}
+		if state.Result, err = dbusclient.GetProperty[string](session, obj, dbusclient.SystemdSocketIface, "Result"); err != nil {
+			return fmt.Errorf("get result %s: %w", name, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return SocketState{}, err
+	}
+	return state, nil
 }
 
 // noSuchUnit reports whether err is the manager's answer for a unit that is

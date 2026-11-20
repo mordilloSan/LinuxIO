@@ -24,6 +24,7 @@ import {
   formatContainerUptime,
   getContainerDisplayState,
   getContainerName,
+  hasRegistryUpdate,
 } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formatters";
 
@@ -32,6 +33,7 @@ import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvide
 import ContainerActions from "./ContainerActions";
 import {
   formatStackSummary,
+  getStackUpdateLabel,
   summarizeStack,
   type ContainerStackHeaderRow,
 } from "./containerStacks";
@@ -95,6 +97,7 @@ export function StackHeaderCell({
   onToggleStack,
 }: StackHeaderCellProps) {
   const summary = summarizeStack(header.containers);
+  const updateLabel = getStackUpdateLabel(summary);
 
   return (
     <div className="app-dt__cell container-table__stack-group-cell" role="cell">
@@ -127,10 +130,10 @@ export function StackHeaderCell({
         {formatStackSummary(summary)}
       </AppTypography>
       {/* Expanded stacks show this per row; folded ones surface it here. */}
-      {header.collapsed && summary.updateAvailable && (
-        <AppTooltip arrow title="Update available">
+      {header.collapsed && updateLabel && (
+        <AppTooltip arrow title={updateLabel}>
           <span
-            aria-label="Update available"
+            aria-label={updateLabel}
             role="img"
             style={{
               alignItems: "center",
@@ -214,6 +217,8 @@ export const UpdateCell = memo(function UpdateCell({
         const errors = result?.errors ?? 0;
         const updates = result?.updates ?? 0;
         const uncheckable = result?.uncheckable ?? 0;
+        const built = result?.built ?? 0;
+        const rebuilds = result?.rebuilds ?? 0;
         if (errors > 0) {
           toast.warning(
             `Failed to check updates for ${name}: ${errors} error(s)`,
@@ -222,6 +227,16 @@ export const UpdateCell = memo(function UpdateCell({
         }
         if (uncheckable > 0) {
           toast.warning(`Cannot check updates for ${name}`);
+          return;
+        }
+        if (rebuilds > 0) {
+          toast.info(
+            `A base image of ${name} has a newer version. Use Rebuild and update.`,
+          );
+          return;
+        }
+        if (built > 0) {
+          toast.info(`Container ${name} runs an image built on this server`);
           return;
         }
         toast.success(
@@ -239,8 +254,9 @@ export const UpdateCell = memo(function UpdateCell({
 
   // An actionable row gets the chip instead of a dot: it is both the amber
   // state and the way to apply the update, and re-checking a container that
-  // already has one pending buys nothing.
-  if (updateAvailable === true) {
+  // already has one pending buys nothing. A built image's newer base is no
+  // registry update: its label says so, and its actions offer the rebuild.
+  if (hasRegistryUpdate({ updateAvailable, updateCheckState })) {
     // Applying an update is admin-only.
     if (state !== "running" || !canUpdate) {
       return (
@@ -678,6 +694,7 @@ interface ActionsCellProps {
   onOpenTerminal: (containerId: string, containerName: string) => void;
   pending?: boolean;
   state: string;
+  updateCheckState?: ContainerInfo["updateCheckState"];
   url?: string;
 }
 
@@ -690,12 +707,19 @@ export const ActionsCell = memo(function ActionsCell({
   onOpenTerminal,
   pending = false,
   state,
+  updateCheckState,
   url,
 }: ActionsCellProps) {
   return (
     <ContainerActions
       actionPending={pending}
-      container={{ Id: containerId, Labels: labels, State: state, url }}
+      container={{
+        Id: containerId,
+        Labels: labels,
+        State: state,
+        updateCheckState,
+        url,
+      }}
       mode={compact ? "menu" : "icons"}
       name={name}
       onOpenLogs={() => onOpenLogs(containerId, name)}

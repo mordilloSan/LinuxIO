@@ -2,11 +2,41 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HeaderActionsProps } from "@/components/ui/HeaderActions";
-import { render as renderWithApp, screen } from "@/test/render";
+import { dragMadeHere } from "@/test/fileBrowserDrag";
+import { fireEvent, render as renderWithApp, screen } from "@/test/render";
 
+import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
+import { setInternalDrag } from "../-internalDrag";
+import CardSizeSlider from "./CardSizeSlider";
 import FileBrowserHeader from "./FileBrowserHeader";
 
 const headerActionsRender = vi.hoisted(() => vi.fn());
+const navigate = vi.hoisted(() => vi.fn());
+const mocks = vi.hoisted(() => ({ toastError: vi.fn() }));
+
+vi.mock("sonner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("sonner")>()),
+  toast: { error: mocks.toastError },
+}));
+
+// Items dragged from a folder: by this page's own drag, or from another
+// server's tab, which has a token of its own.
+const carrying = (paths: string[], origin?: string) => {
+  const payload = origin
+    ? { origin, paths, token: "f".repeat(32) }
+    : dragMadeHere((started) => setInternalDrag(started, paths));
+  return {
+    dropEffect: "none",
+    getData: (type: string) =>
+      type === INTERNAL_DRAG_TYPE ? JSON.stringify(payload) : "",
+    types: [INTERNAL_DRAG_TYPE],
+  };
+};
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => navigate,
+}));
 
 // Search and indexing are for a session with sudo; see the test without it.
 const render: typeof renderWithApp = (ui, options) =>
@@ -112,6 +142,48 @@ describe("FileBrowserHeader", () => {
       screen.getByRole("button", { name: "Index filesystem" }),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
+  });
+
+  it("opens the Trash as a place, and moves items dropped on it there", async () => {
+    const onTrashItems = vi.fn().mockResolvedValue(undefined);
+    const { user } = render(
+      <FileBrowserHeader
+        {...defaultProps}
+        onTrashItems={onTrashItems}
+        showQuickSave={false}
+      />,
+    );
+    const trash = screen.getByRole("button", { name: "Trash" });
+
+    await user.click(trash);
+    expect(navigate).toHaveBeenCalledWith({ search: { trash: true }, to: "." });
+
+    const dataTransfer = carrying(["/srv/a.txt"]);
+    fireEvent.dragOver(trash, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("move");
+    fireEvent.drop(trash, { dataTransfer });
+    expect(onTrashItems).toHaveBeenCalledWith(["/srv/a.txt"]);
+  });
+
+  it("refuses items dragged onto the Trash button from another server's tab", () => {
+    const onTrashItems = vi.fn().mockResolvedValue(undefined);
+    render(
+      <FileBrowserHeader
+        {...defaultProps}
+        onTrashItems={onTrashItems}
+        showQuickSave={false}
+      />,
+    );
+    const other = "https://backup.example:8090";
+
+    fireEvent.drop(screen.getByRole("button", { name: "Trash" }), {
+      dataTransfer: carrying(["/srv/a.txt"], other),
+    });
+
+    expect(onTrashItems).not.toHaveBeenCalled();
+    expect(mocks.toastError).toHaveBeenCalledWith("Cannot drop 1 item here", {
+      description: `It comes from ${other}, another server. Drop it in a tab of that server.`,
+    });
   });
 
   it("offers neither search nor indexing to a session without sudo", () => {
@@ -222,12 +294,14 @@ describe("FileBrowserHeader", () => {
     );
 
     // Mirrors .tab-selector in tab-selector.css — the search must sit at the
-    // same screen-centered spot here as on tab routes. Read from the inline
-    // style: the computed value has clamp() resolved to a pixel width.
+    // same screen-centered spot here as on tab routes, until the actions
+    // need more than their side: then their column grows instead of running
+    // under the search. Read from the inline style: the computed value has
+    // clamp() resolved to a pixel width.
     const header = container.querySelector<HTMLElement>(".file-browser-header");
     expect(header).toHaveStyle({ display: "grid" });
     expect(header?.style.gridTemplateColumns).toBe(
-      "minmax(0px, 1fr) clamp(140px, 40vw, 400px) minmax(0px, 1fr)",
+      "minmax(0px, 1fr) clamp(140px, 40vw, 400px) minmax(max-content, 1fr)",
     );
     expect(
       screen.getByRole("textbox", { name: "Search files and folders..." }),
@@ -236,6 +310,52 @@ describe("FileBrowserHeader", () => {
       "aria-pressed",
       "false",
     );
+  });
+
+  it("puts the card-size slider it is given before the view button", () => {
+    render(
+      <FileBrowserHeader
+        {...defaultProps}
+        cardSizeSlider={<CardSizeSlider onChange={vi.fn()} value={4} />}
+        showQuickSave={false}
+        viewMode="card"
+      />,
+    );
+
+    const slider = screen.getByRole("slider", { name: "Card size" });
+    expect(slider).toHaveValue("4");
+    expect(
+      slider.compareDocumentPosition(
+        screen.getByRole("button", { name: "Switch to list view" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("puts the card-size slider in the mobile actions menu", async () => {
+    mockMobileViewport();
+    const onChange = vi.fn();
+    const { user } = render(
+      <FileBrowserHeader
+        {...defaultProps}
+        cardSizeSlider={<CardSizeSlider onChange={onChange} value={4} />}
+        showQuickSave={false}
+        viewMode="card"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    const slider = screen.getByRole("slider", { name: "Card size" });
+    expect(document.querySelector(".app-mobile-actions-menu")).toContainElement(
+      slider,
+    );
+    fireEvent.change(slider, { target: { value: "5" } });
+    expect(onChange).toHaveBeenCalledWith(5);
+    // A step leaves the menu open, unlike the view button.
+    expect(screen.getByRole("menu")).toBeVisible();
+    // The menu leaves the slider's own keys to it: Home is not a jump to the
+    // menu's first stop.
+    expect(fireEvent.keyDown(slider, { key: "Home" })).toBe(true);
+    expect(fireEvent.keyDown(slider, { key: "ArrowRight" })).toBe(true);
   });
 
   it("opens and focuses search from the mobile actions menu", async () => {

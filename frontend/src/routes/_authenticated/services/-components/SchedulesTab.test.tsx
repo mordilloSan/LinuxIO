@@ -422,7 +422,6 @@ describe("SchedulesTab interactions", () => {
     await user.click(
       screen.getByRole("button", { name: "Browse working directory" }),
     );
-    await user.click(screen.getByRole("button", { name: "Expand /" }));
     await user.click(await screen.findByText("backups"));
     expect(screen.getByLabelText("Working directory")).toHaveValue("/backups/");
     await user.click(screen.getByRole("button", { name: "Save" }));

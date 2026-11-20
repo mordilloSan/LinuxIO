@@ -68,18 +68,6 @@ func TestCoreExplicitFalseAndZeroSurviveValidatedRoundTrip(t *testing.T) {
 	require.Zero(t, reloaded.Jobs.ProgressMinBytesMB)
 }
 
-func TestParseCoreConfigAcceptsRemovedHeavyArchiveConcurrency(t *testing.T) {
-	base := t.TempDir()
-	cfg, err := parseCoreConfig([]byte("jobs:\n  heavyArchiveConcurrency: 4\n  progressMinBytesMB: 3\n"), base)
-	require.NoError(t, err)
-	require.Equal(t, 3, cfg.Jobs.ProgressMinBytesMB)
-	require.Nil(t, cfg.Jobs.LegacyHeavyArchiveConcurrency)
-
-	out, err := yaml.Marshal(cfg)
-	require.NoError(t, err)
-	require.NotContains(t, string(out), "heavyArchiveConcurrency")
-}
-
 func TestInitializeCreatesMissingFilesIndependently(t *testing.T) {
 	base := t.TempDir()
 	cfgPath := filepath.Join(base, cfgFileName)
@@ -344,6 +332,76 @@ func TestValidateConfigDockerFoldersIsStructuralOnly(t *testing.T) {
 		cfg.Docker.Folders = folders
 		require.NotEmpty(t, validateSettings(cfg), folders)
 	}
+}
+
+func TestDockerHostIPWaitSurvivesAWriteAndRead(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, cfgFileName)
+	cfg := defaultSettings(base)
+	cfg.Docker.WaitForHostIPs = true
+	cfg.Docker.HostIPs = []string{"192.168.1.66", "2001:db8::66"}
+	require.NoError(t, writeCoreConfig(path, *cfg))
+
+	loaded, err := readCoreLatest(path, base)
+	require.NoError(t, err)
+	require.True(t, loaded.Docker.WaitForHostIPs)
+	require.Equal(t, []string{"192.168.1.66", "2001:db8::66"}, loaded.Docker.HostIPs)
+
+	// Off keeps the list.
+	cfg.Docker.WaitForHostIPs = false
+	require.NoError(t, writeCoreConfig(path, *cfg))
+	loaded, err = readCoreLatest(path, base)
+	require.NoError(t, err)
+	require.False(t, loaded.Docker.WaitForHostIPs)
+	require.Equal(t, []string{"192.168.1.66", "2001:db8::66"}, loaded.Docker.HostIPs)
+}
+
+// A config written before the host IP wait existed has neither field.
+func TestCoreConfigWithoutDockerHostIPWaitLoadsOffAndEmpty(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, cfgFileName)
+	raw := []byte("docker:\n  folders: [" + filepath.Join(base, "docker") + "]\n  requireMountsForFolders: true\n")
+	require.NoError(t, os.WriteFile(path, raw, filePerm))
+
+	loaded, err := readCoreLatest(path, base)
+	require.NoError(t, err)
+	require.True(t, loaded.Docker.RequireMountsForFolders)
+	require.False(t, loaded.Docker.WaitForHostIPs)
+	require.Empty(t, loaded.Docker.HostIPs)
+	persisted, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, raw, persisted)
+}
+
+func TestCoreConfigRefusesAnInvalidDockerHostIPWait(t *testing.T) {
+	for name, docker := range map[string]string{
+		"on with no address":  "waitForHostIPs: true",
+		"on with empty list":  "waitForHostIPs: true\n  hostIPs: []",
+		"loopback":            "hostIPs: [127.0.0.1]",
+		"not an address":      "hostIPs: ['1.2.3.4; reboot']",
+		"duplicate addresses": "hostIPs: [10.0.0.2, 10.0.0.2]",
+	} {
+		t.Run(name, func(t *testing.T) {
+			base := t.TempDir()
+			path := filepath.Join(base, cfgFileName)
+			raw := []byte("docker:\n  folders: [" + filepath.Join(base, "docker") + "]\n  " + docker + "\n")
+			require.NoError(t, os.WriteFile(path, raw, filePerm))
+
+			_, err := readCoreLatest(path, base)
+			require.Error(t, err)
+			rewritten, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, raw, rewritten)
+		})
+	}
+}
+
+func TestCloneSettingsCopiesDockerHostIPs(t *testing.T) {
+	cfg := defaultSettings(t.TempDir())
+	cfg.Docker.HostIPs = []string{"192.168.1.66"}
+	clone := cloneSettings(cfg)
+	clone.Docker.HostIPs[0] = "10.0.0.2"
+	require.Equal(t, []string{"192.168.1.66"}, cfg.Docker.HostIPs)
 }
 
 // nonDefaultUI changes every UIPreferences field from its default.

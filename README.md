@@ -62,7 +62,10 @@ Linux I/O combines workflows usually split across multiple tools:
 
 ## Installation
 
-LinuxIO supports Linux kernels 5.9+.
+LinuxIO supports Linux kernels 5.9+ on the two distribution families its
+installer knows: Debian (Ubuntu, Debian, Linux Mint, Pop!_OS) and RHEL (Fedora,
+RHEL, CentOS Stream, Rocky Linux, AlmaLinux). RHEL 8 and its rebuilds are not
+supported: their kernel is 4.18.
 
 ### Quick install (recommended)
 
@@ -106,8 +109,9 @@ certificate is reused across restarts, reboots, and updates until it enters its
 
 The installer places nine binaries in `/usr/local/bin`: `linuxio`,
 `linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
-`linuxio-indexer`, `linuxio-monitoring`, `linuxio-btrfs-timer`, and
-`linuxio-claude-relay`. From a
+`linuxio-indexer`, `linuxio-monitoring`, `linuxio-worker`, and
+`linuxio-claude-relay`. Only `linuxio` is a command to type; the programs
+systemd runs as root are installed so only root can start them. From a
 checkout, `make localinstall` runs the same installer with `--local` against the
 binaries in `build/`.
 

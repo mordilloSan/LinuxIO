@@ -68,10 +68,11 @@ func stubReplication(t *testing.T, local []subvolumeRow, target []string) *replS
 		s.order = append(s.order, joined)
 		return "", nil
 	}
-	sendStream = func(snap, parent string, w *os.File) error {
+	sendStream = func(top, snap, parent string, w *os.File) error {
+		snap = filepath.Join(top, snap)
 		args := []string{"btrfs", "send", snap}
 		if parent != "" {
-			args = []string{"btrfs", "send", "-p", parent, snap}
+			args = []string{"btrfs", "send", "-p", filepath.Join(top, parent), snap}
 		}
 		s.calls = append(s.calls, args)
 		_, err := io.WriteString(w, replPayload)
@@ -366,7 +367,7 @@ func TestReplicateRejectsNonSubvolumeTarget(t *testing.T) {
 func TestReplicateFailureRemovesPartialCopy(t *testing.T) {
 	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
 	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, nil)
-	sendStream = func(_, _ string, w *os.File) error {
+	sendStream = func(_, _, _ string, w *os.File) error {
 		_, _ = io.WriteString(w, replPayload)
 		return errors.New("send went wrong")
 	}

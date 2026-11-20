@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -142,12 +142,93 @@ describe("BtrfsSubvolumesCard", () => {
     expect(mocks.subvolumes).toHaveBeenCalledWith({ uuid: "uuid-1" });
   });
 
-  it("creates a subvolume from the dialog", async () => {
+  it("creates a subvolume in a folder, starting at the pool's mount", async () => {
     const user = userEvent.setup();
     render(<BtrfsSubvolumesCard filesystem={pool} />);
     await screen.findByText("data");
 
     await user.click(screen.getByRole("button", { name: "Create subvolume" }));
+    const folder = screen.getByRole("textbox", { name: "Folder" });
+    expect(folder).toHaveValue("/mnt/pool");
+    await user.clear(folder);
+    await user.type(folder, "/mnt/pool/data");
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "photos");
+    expect(screen.getByText("Creates /mnt/pool/data/photos")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(route("btrfs_subvolume_create_in")).toHaveBeenCalledWith(
+      { uuid: "uuid-1", folder: "/mnt/pool/data", name: "photos" },
+      expect.anything(),
+    );
+  });
+
+  it("names what is wrong with a name before anything is sent", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
+    await screen.findByText("data");
+
+    await user.click(screen.getByRole("button", { name: "Create subvolume" }));
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "my photos");
+
+    expect(screen.getByText("No spaces or commas")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+  });
+
+  it("puts the real folder in the field when the picked one is a refused link", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
+    await screen.findByText("data");
+
+    await user.click(screen.getByRole("button", { name: "Create subvolume" }));
+    const folder = screen.getByRole("textbox", { name: "Folder" });
+    await user.clear(folder);
+    await user.type(folder, "/home/a/docs/2026");
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "photos");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    const [, options] = route("btrfs_subvolume_create_in").mock.calls[0];
+    act(() => {
+      options.onError(
+        new Error(
+          "open folder /home/a/docs: forbidden: /home/a/docs is a link to /mnt/pool/docs. Open that folder to make this change",
+        ),
+      );
+    });
+
+    // The link was on the way to the picked folder: what is below it is kept.
+    expect(folder).toHaveValue("/mnt/pool/docs/2026");
+    expect(
+      screen.getByText(/\/home\/a\/docs is a link, so this is now the folder/),
+    ).toBeVisible();
+  });
+
+  it("refuses a folder of the pool with a space in its name before sending", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
+    await screen.findByText("data");
+
+    await user.click(screen.getByRole("button", { name: "Create subvolume" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Folder" }),
+      "/My Documents",
+    );
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "photos");
+
+    expect(screen.getByText(/space or a comma/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+  });
+
+  it("creates a subvolume at a path typed from the top level", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
+    await screen.findByText("data");
+
+    await user.click(screen.getByRole("button", { name: "Create subvolume" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Type a path inside the pool instead",
+      }),
+    );
     await user.type(
       screen.getByRole("textbox", { name: "Subvolume path" }),
       "data/photos",

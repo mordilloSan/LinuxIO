@@ -78,6 +78,11 @@
   line-height: 1.45;
 }
 
+.capability-manager__link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .capability-manager__dependency {
   flex: 0 0 auto;
   max-width: 42%;

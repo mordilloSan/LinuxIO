@@ -194,7 +194,7 @@ func TestCreateVMReportsProgress(t *testing.T) {
 	})
 
 	var phases []string
-	_, err := CreateVMWithProgress(context.Background(), apischema.VMCreateRequest{
+	_, err := CreateVM(context.Background(), apischema.VMCreateRequest{
 		Name:              "progress",
 		VCPUs:             2,
 		MemoryMB:          2048,
@@ -208,7 +208,7 @@ func TestCreateVMReportsProgress(t *testing.T) {
 		phases = append(phases, progress.Phase)
 	})
 	if err != nil {
-		t.Fatalf("CreateVMWithProgress: %v", err)
+		t.Fatalf("CreateVM: %v", err)
 	}
 	for _, want := range []string{"validating", "preflight", "storage", "download", "seed", "define", "start", "complete"} {
 		if !slices.Contains(phases, want) {

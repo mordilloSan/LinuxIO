@@ -1,4 +1,4 @@
-import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useState } from "react";
 
@@ -21,7 +21,6 @@ import VMActions, { type VMActionHandlers } from "./VMActions";
 import VMCard from "./VMCard";
 import VMListTable from "./VMListTable";
 import { VM_TOAST, normalizeVMDeleteResult } from "./vmShared";
-import { VMPreflightCard } from "./VMTabs";
 
 // noVNC only loads once a console is opened, like the docker TerminalDialog.
 const ConsoleDialog = lazy(() => import("./ConsoleDialog"));
@@ -43,13 +42,11 @@ const VMMachinesLayout = () => {
   const [viewMode, setViewMode] = useViewMode("vm.machines");
   const toast = useScopedToast(VM_TOAST);
   const navigate = vmMachinesRouteApi.useNavigate();
-  // Both entries were already warmed by the /vm route loader; these observers
-  // reuse them rather than issuing new requests.
-  const [{ data: vms }, { data: preflight }] = useSuspenseQueries({
-    queries: [
-      { ...linuxio.virt.list, refetchOnMount: false },
-      { ...linuxio.virt.preflight({}), refetchOnMount: false },
-    ],
+  // Already warmed by the /vm route loader; this observer reuses the entry
+  // rather than issuing a new request.
+  const { data: vms } = useSuspenseQuery({
+    ...linuxio.virt.list,
+    refetchOnMount: false,
   });
   // Undefined whenever the index child is active, i.e. no machine selected.
   const detailParams = useParams({
@@ -230,7 +227,6 @@ const VMMachinesLayout = () => {
           minHeight: 0,
         }}
       >
-        <VMPreflightCard preflight={preflight} />
         {content}
       </div>
 

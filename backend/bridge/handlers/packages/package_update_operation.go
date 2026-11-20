@@ -2,6 +2,9 @@ package packages
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -17,7 +20,14 @@ func packageUpdateBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.MutationTask("packages.update", runPackageUpdateTask, apischema.Privileged(), apischema.Progress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
-		}), apischema.Exclusive()),
+		}), apischema.Exclusive()).Resumable(apischema.ResumeHooks[apischema.PackageUpdateRequest, PackageUpdateResult]{
+			Suspend: suspendPackageUpdate,
+			Resume:  resumePackageUpdate,
+			// PackageKit runs a transaction on when the job host dies, not
+			// across a reboot, after which the job stays interrupted. A stop
+			// by hand may be meant to halt the batch, so it is not picked up.
+			At: bridgeipc.ResumeAfterCrash,
+		}),
 	)
 }
 
@@ -202,7 +212,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apische
 		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "message", Status: "btrfs pre-update snapshot failed: " + msg})
 	}
 
-	if err := updatePackagesWithProgress(ctx, req.PackageIDs, report); err != nil {
+	if err := updatePackages(ctx, req.PackageIDs, report); err != nil {
 		if ctx.Err() != nil {
 			return PackageUpdateResult{}, context.Canceled
 		}
@@ -213,20 +223,47 @@ func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apische
 	return result, nil
 }
 
-func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
+// packageCheckpoint is where a package update job stands: the package it is
+// at, the PackageKit transaction updating it, and how the packages before it
+// went. The job saves it in its record before it asks PackageKit to update
+// each package, so a job host that starts after this one died picks the job up
+// from PackageKit instead of updating that package again.
+type packageCheckpoint struct {
+	Index       int      `json:"index"`
+	Transaction string   `json:"transaction"`
+	Updated     int      `json:"updated"`
+	Failures    []string `json:"failures,omitzero"`
+}
+
+// saveCheckpoint is a test seam.
+var saveCheckpoint = bridgeipc.SaveCheckpoint
+
+// packageBatch updates a job's packages, each in a transaction of its own,
+// and counts how they went.
+type packageBatch struct {
+	ids      []string
+	report   pkgUpdateReporter
+	updated  int
+	failures []string
+	// first is the first package's failure, which a batch of one returns as it is.
+	first error
+}
+
+func updatePackages(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
+	batch := &packageBatch{ids: packageIDs, report: report}
 	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
-		return updatePackageBatch(session, packageIDs, report)
+		return batch.run(session, 0)
 	})
 }
 
-func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, report pkgUpdateReporter) error {
-	failures := make([]string, 0)
-	var firstFailure error
-	updated := 0
-	for index, packageID := range packageIDs {
-		if err := session.Context().Err(); err != nil {
+// run updates the packages from index from on, then returns how the batch went.
+func (b *packageBatch) run(session pkgkit.ClientSession, from int) error {
+	ctx := session.Context()
+	for index := from; index < len(b.ids); index++ {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
+		packageID := b.ids[index]
 
 		// PackageKit can list updates that cannot be committed together (for
 		// example while an APT phased update is still deferred). Keep one
@@ -238,57 +275,76 @@ func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, repor
 			// longer usable, so there is no meaningful next package to try.
 			return err
 		}
+		// Saved before the update starts: a pick-up must find the transaction
+		// that may be updating this package, never an earlier one.
+		if err = saveCheckpoint(ctx, b.checkpoint(index, trans.Path())); err != nil {
+			pkgkit.LogClose(ctx, trans)
+			return fmt.Errorf("save where the package update stands: %w", err)
+		}
 
-		reportPkgUpdateProgress(report, &PkgUpdateProgress{
+		reportPkgUpdateProgress(b.report, &PkgUpdateProgress{
 			Type:       "status",
 			PackageID:  packageID,
-			Status:     fmt.Sprintf("Updating package %d of %d", index+1, len(packageIDs)),
-			Percentage: new(uint32(uint64(index) * 100 / uint64(len(packageIDs)))),
+			Status:     fmt.Sprintf("Updating package %d of %d", index+1, len(b.ids)),
+			Percentage: new(uint32(uint64(index) * 100 / uint64(len(b.ids)))),
 		})
 
-		err = updateOnePackageWithProgress(session.Context(), trans, packageID, index, len(packageIDs), report)
-		pkgkit.LogClose(session.Context(), trans)
-		if err == nil {
-			updated++
-			slog.Debug("package updated", "package_id", packageID)
-			continue
+		err = updateOnePackage(ctx, trans, packageID, index, len(b.ids), b.report)
+		pkgkit.LogClose(ctx, trans)
+		if err != nil && ctx.Err() != nil {
+			return ctx.Err()
 		}
-		if session.Context().Err() != nil {
-			return session.Context().Err()
-		}
-
-		failures = append(failures, fmt.Sprintf("%s: %v", packageID, err))
-		if firstFailure == nil {
-			firstFailure = err
-		}
-		reportPkgUpdateProgress(report, &PkgUpdateProgress{
-			Type:       "message",
-			PackageID:  packageID,
-			Status:     "Failed, continuing",
-			Message:    fmt.Sprintf("Failed to update %s: %v. Continuing with remaining updates.", packageID, err),
-			Percentage: new(uint32(uint64(index+1) * 100 / uint64(len(packageIDs)))),
-		})
+		b.done(index, err)
 	}
+	return b.outcome()
+}
 
-	if updated > 0 {
-		slog.Info("packages updated", "count", updated, "failed", len(failures))
+func (b *packageBatch) checkpoint(index int, transaction dbusclient.ObjectPath) packageCheckpoint {
+	return packageCheckpoint{Index: index, Transaction: string(transaction), Updated: b.updated, Failures: b.failures}
+}
+
+// done counts how the update of package index went: err is its failure.
+func (b *packageBatch) done(index int, err error) {
+	packageID := b.ids[index]
+	if err == nil {
+		b.updated++
+		slog.Debug("package updated", "package_id", packageID)
+		return
 	}
-	if len(failures) == 0 {
+	b.failures = append(b.failures, fmt.Sprintf("%s: %v", packageID, err))
+	if b.first == nil {
+		b.first = err
+	}
+	reportPkgUpdateProgress(b.report, &PkgUpdateProgress{
+		Type:       "message",
+		PackageID:  packageID,
+		Status:     "Failed, continuing",
+		Message:    fmt.Sprintf("Failed to update %s: %v. Continuing with remaining updates.", packageID, err),
+		Percentage: new(uint32(uint64(index+1) * 100 / uint64(len(b.ids)))),
+	})
+}
+
+// outcome is how the whole batch went.
+func (b *packageBatch) outcome() error {
+	if b.updated > 0 {
+		slog.Info("packages updated", "count", b.updated, "failed", len(b.failures))
+	}
+	if len(b.failures) == 0 {
 		return nil
 	}
-	if len(packageIDs) == 1 {
-		return firstFailure
+	if len(b.ids) == 1 && b.first != nil {
+		return b.first
 	}
 	return fmt.Errorf(
 		"updated %d of %d packages; %d failed: %s",
-		updated,
-		len(packageIDs),
-		len(failures),
-		strings.Join(failures, "; "),
+		b.updated,
+		len(b.ids),
+		len(b.failures),
+		strings.Join(b.failures, "; "),
 	)
 }
 
-func updateOnePackageWithProgress(
+func updateOnePackage(
 	ctx context.Context,
 	trans *pkgkit.Transaction,
 	packageID string,
@@ -296,6 +352,7 @@ func updateOnePackageWithProgress(
 	total int,
 	report pkgUpdateReporter,
 ) error {
+	defer cancelIfCanceled(ctx, trans)
 	// Flag 0 = no special flags (install normally).
 	slog.Debug("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_id", packageID)
 	termLog := openAptTermLog()
@@ -303,10 +360,170 @@ func updateOnePackageWithProgress(
 	if err := trans.Call("UpdatePackages", uint64(0), []string{packageID}); err != nil {
 		return err
 	}
+	return awaitTransaction(ctx, trans, termLog, scalePackageProgress(report, index, total))
+}
 
+// awaitTransaction relays a package's transaction until it ends and returns
+// its failure.
+func awaitTransaction(ctx context.Context, trans *pkgkit.Transaction, termLog *aptTermLog, report pkgUpdateReporter) error {
 	waitCtx, cancel := context.WithTimeout(ctx, packageKitTransactionTimeout)
 	defer cancel()
-	return awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, scalePackageProgress(report, index, total))
+	return awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, report)
+}
+
+// cancelIfCanceled asks PackageKit to cancel the job's transaction trans when
+// the job's owner canceled the job. When its host stops the job instead, the
+// transaction runs on, for the next host to pick the job up.
+func cancelIfCanceled(ctx context.Context, trans *pkgkit.Transaction) {
+	if ctx.Err() == nil || hostStopping(ctx) {
+		return
+	}
+	cancelCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), transactionCancelTimeout)
+	defer stop()
+	err := trans.Cancel(cancelCtx)
+	switch {
+	case errors.Is(err, pkgkit.ErrCannotCancel):
+		slog.Debug("package update transaction not canceled", "transaction", trans.Path(), "error", err)
+	case err != nil:
+		slog.Warn("package update transaction not canceled", "transaction", trans.Path(), "error", err)
+	}
+}
+
+// transactionCancelTimeout bounds PackageKit's answer to a Cancel.
+const transactionCancelTimeout = 10 * time.Second
+
+// hostStopping reports whether the job host is stopping the job in ctx,
+// rather than its owner canceling it.
+func hostStopping(ctx context.Context) bool {
+	task, ok := bridgeipc.TaskFromContext(ctx)
+	return ok && task.Interrupted()
+}
+
+// suspendPackageUpdate keeps the checkpoint the job saved as it went: the
+// context cancel that follows stops following the transaction, which
+// PackageKit runs on.
+func suspendPackageUpdate(context.Context, apischema.PackageUpdateRequest, jsontext.Value) (jsontext.Value, error) {
+	return nil, nil
+}
+
+// resumePackageUpdate picks a package update up again at the root host's next
+// start after its host crashed in this boot.
+func resumePackageUpdate(ctx context.Context, req apischema.PackageUpdateRequest, checkpoint jsontext.Value) (PackageUpdateResult, error) {
+	task, _ := bridgeipc.TaskFromContext(ctx) // Resume always runs as a task
+	if err := pickUpPackageUpdate(ctx, req.PackageIDs, checkpoint, taskPkgUpdateReporter(task)); err != nil {
+		if ctx.Err() != nil {
+			return PackageUpdateResult{}, context.Canceled
+		}
+		return PackageUpdateResult{}, err
+	}
+	return PackageUpdateResult{Updated: len(req.PackageIDs)}, nil
+}
+
+// historyLookback is how many of PackageKit's newest history entries a
+// pick-up reads to find its transaction.
+const historyLookback = 200
+
+// pickUpPackageUpdate continues the batch of packageIDs from checkpoint.
+// PackageKit runs a transaction to its end whoever follows it, so the job
+// follows the transaction it was in, or reads how it ended from PackageKit's
+// history, and then updates the packages it had not reached. It never asks
+// PackageKit to update a package again: when PackageKit cannot say what
+// became of the transaction, it returns bridgeipc.ErrNotResumed and the job
+// stays interrupted.
+func pickUpPackageUpdate(ctx context.Context, packageIDs []string, checkpoint jsontext.Value, report pkgUpdateReporter) error {
+	cp, err := decodePackageCheckpoint(checkpoint, len(packageIDs))
+	if err != nil {
+		return err
+	}
+	batch := &packageBatch{ids: packageIDs, report: report, updated: cp.Updated, failures: cp.Failures}
+	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
+		reportPkgUpdateProgress(report, &PkgUpdateProgress{
+			Type:       "status",
+			PackageID:  packageIDs[cp.Index],
+			Status:     fmt.Sprintf("Updating package %d of %d", cp.Index+1, len(packageIDs)),
+			Percentage: new(uint32(uint64(cp.Index) * 100 / uint64(len(packageIDs)))),
+		})
+		failure, err := transactionOutcome(session, cp, len(packageIDs), report)
+		if errors.Is(err, bridgeipc.ErrNotResumed) {
+			return fmt.Errorf("%w; it was updating %s, %d of the %d packages before it were updated and %d were not reached",
+				err, packageIDs[cp.Index], cp.Updated, cp.Index, len(packageIDs)-cp.Index-1)
+		}
+		if err != nil {
+			return err
+		}
+		slog.Debug("picked up package update", "transaction", cp.Transaction, "package_id", packageIDs[cp.Index], "updated", failure == nil)
+		batch.done(cp.Index, failure)
+		return batch.run(session, cp.Index+1)
+	})
+}
+
+func decodePackageCheckpoint(raw jsontext.Value, packages int) (packageCheckpoint, error) {
+	if len(raw) == 0 {
+		return packageCheckpoint{}, fmt.Errorf("%w: its job host stopped before PackageKit was asked to update a package", bridgeipc.ErrNotResumed)
+	}
+	var cp packageCheckpoint
+	if err := json.Unmarshal(raw, &cp); err != nil {
+		return packageCheckpoint{}, fmt.Errorf("%w: its checkpoint is unreadable: %v", bridgeipc.ErrNotResumed, err)
+	}
+	if cp.Index < 0 || cp.Index >= packages || !dbusclient.ObjectPath(cp.Transaction).IsValid() {
+		return packageCheckpoint{}, fmt.Errorf("%w: its checkpoint names no transaction of its packages", bridgeipc.ErrNotResumed)
+	}
+	return cp, nil
+}
+
+// transactionOutcome is how the transaction of cp ended for its package:
+// failure is nil for a package updated. It follows the transaction while
+// PackageKit runs it, and otherwise reads PackageKit's history. err is
+// bridgeipc.ErrNotResumed when PackageKit cannot account for it.
+func transactionOutcome(session pkgkit.ClientSession, cp packageCheckpoint, total int, report pkgUpdateReporter) (failure, err error) {
+	ctx := session.Context()
+	path := dbusclient.ObjectPath(cp.Transaction)
+	// Watched before asking, so an end between the two is not missed.
+	trans, err := session.WatchTransaction(path, 100)
+	if err != nil {
+		return nil, err
+	}
+	defer pkgkit.LogClose(ctx, trans)
+	running, err := session.TransactionRunning(path)
+	if err != nil {
+		return nil, err
+	}
+	if running {
+		role, roleErr := trans.Role()
+		switch {
+		case roleErr != nil:
+			// It ended and PackageKit dropped it between the two calls: its
+			// history tells.
+			slog.Debug("PackageKit transaction gone before its role was read", "transaction", path, "error", roleErr)
+		case role != pkgkit.RoleUpdatePackages:
+			return nil, fmt.Errorf("%w: PackageKit transaction %s is not a package update", bridgeipc.ErrNotResumed, path)
+		default:
+			defer cancelIfCanceled(ctx, trans)
+			termLog := openAptTermLog()
+			defer termLog.Close()
+			failure := awaitTransaction(ctx, trans, termLog, scalePackageProgress(report, cp.Index, total))
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return failure, nil
+		}
+	}
+	old, found, err := session.FindOldTransaction(path, historyLookback)
+	switch {
+	case err != nil:
+		return nil, err
+	case !found || old.Role != pkgkit.RoleUpdatePackages:
+		// The job creates the transaction, saves it, then asks for the
+		// update: a host that died in between leaves one PackageKit never ran.
+		return nil, fmt.Errorf("%w: PackageKit neither runs nor recorded its transaction %s, which its job host may have stopped before using", bridgeipc.ErrNotResumed, path)
+	case old.Succeeded:
+		return nil, nil
+	case old.Duration == 0:
+		return nil, fmt.Errorf("%w: PackageKit recorded no end of transaction %s", bridgeipc.ErrNotResumed, path)
+	default:
+		// PackageKit's history keeps no error text.
+		return fmt.Errorf("PackageKit recorded transaction %s as failed", path), nil
+	}
 }
 
 func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpdateReporter {
@@ -383,6 +600,15 @@ func consumePackageUpdateSignal(
 	}
 	if sig.Name == pkgkit.TransactionIface+".Finished" && *transactionErr != nil {
 		return true, *transactionErr
+	}
+	// Any exit but success is a package not updated: a follow that began
+	// between ErrorCode and Finished, as a pick-up can, sees only the exit,
+	// and PackageKit ends some transactions (key or EULA required, skipped)
+	// with no ErrorCode.
+	if sig.Name == pkgkit.TransactionIface+".Finished" && len(sig.Body) > 0 {
+		if exit, _ := sig.Body[0].(uint32); exit > pkgkit.ExitSuccess {
+			return true, fmt.Errorf("PackageKit transaction ended with exit %d", exit)
+		}
 	}
 	return handlePackageUpdateSignal(report, sig, pkgkit.TransactionIface, lastWorkStatus)
 }

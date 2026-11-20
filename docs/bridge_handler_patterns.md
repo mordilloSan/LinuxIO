@@ -86,14 +86,35 @@ func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpd
     if err := dockerupdate.ValidateTarget(req.ContainerID); err != nil {
         return apischema.DockerContainerUpdateResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
     }
+    run := updateContainer
+    if req.Rebuild {
+        run = rebuildContainer
+    }
     // A job queues behind another update: lock wait 0 waits until ctx ends.
-    result, err := updateContainer(ctx, req.ContainerID, 0, func(phase, message string) {
-        bridgeipc.ReportProgress(ctx, apischema.DockerContainerUpdateProgress{Phase: phase, Message: message}.ProgressEnvelope())
+    result, err := run(ctx, req.ContainerID, 0, func(phase, message string) {
+        progress := apischema.DockerContainerUpdateProgress{Phase: phase, Message: message}.ProgressEnvelope()
+        if phase != dockerupdate.ProgressPhaseBuildOutput {
+            bridgeipc.ReportProgress(ctx, progress)
+            return
+        }
+        // A build's output goes to the page that follows the job, as Compose
+        // output does: not stored as the job's progress, recorded or sent to
+        // every session.
+        if task, ok := bridgeipc.TaskFromContext(ctx); ok {
+            task.ReportTransientProgress(progress)
+        }
     })
+    if errors.Is(err, dockerupdate.ErrNotRebuildable) {
+        return apischema.DockerContainerUpdateResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrConflict, err)
+    }
     if err != nil {
         return apischema.DockerContainerUpdateResult{}, err
     }
-    if result.Updated {
+    switch {
+    case result.Updated && req.Rebuild:
+        slog.Info("rebuilt Docker container", "component", "docker", "subsystem", "update",
+            "container", result.ContainerName, "old_image", result.PreviousImageID, "new_image", result.NewImageID)
+    case result.Updated:
         slog.Info("updated Docker container", "component", "docker", "subsystem", "update",
             "container", result.ContainerName, "old_image", result.PreviousImageID, "new_image", result.NewImageID)
     }
@@ -114,6 +135,18 @@ func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpd
   the next boot, and only after a shutdown or power loss. Never let a
   cancel-on-context path destroy what `Suspend` kept (a balance pause, for
   example).
+- A route whose work runs on outside the job host when the host dies (a
+  PackageKit transaction) adds `At: bridgeipc.ResumeAfterCrash`, so the next
+  root host in the same boot picks the job up after a crash, and
+  `ResumeAfterStop` too unless a stop of the host by hand may be meant to
+  halt the job (`bridgeipc.ResumeInBoot` is both). A crash runs no `Suspend`, so the
+  handler saves what identifies that work with `bridgeipc.SaveCheckpoint`
+  before it starts the work. `Resume` follows the work or reads how it ended
+  from its source, never starts it again, and returns
+  `bridgeipc.ErrNotResumed` with the reason when the source cannot tell. A
+  cancel that `task.Interrupted()` reports as the host stopping leaves the work
+  running; any other cancel stops it (`packages.update`,
+  `storage.run_smart_test`).
 - Report progress with `bridgeipc.ReportProgress(ctx, detail.ProgressEnvelope())`.
   Outside a job it does nothing, so the same function can serve a Call.
 - Name the target with a method on the request type, not in the declaration
@@ -167,7 +200,7 @@ func(context.Context) ([]gopsnet.InterfaceStat, error)
 
 ## Logging
 
-Request lifecycle logging is centralized in `backend/bridge/internal/bridgeipc`. The router logs the route, mode, user, outcome, duration, and error at debug level.
+Request lifecycle logging is centralized in `backend/bridge/internal/bridgeipc`. `Router.Dispatch` logs one line per route with the route, user, duration and error: `route completed` at Debug, `route canceled` (the error is `context.Canceled`) at Info, and `route failed` at Warn for a 4xx and at Error otherwise.
 
 Handler adapters do not log. Route operation functions do not emit `"... requested"` logs either; they validate typed request fields and call domain functions.
 
@@ -211,8 +244,8 @@ this section states them in words:
   `bridge/handlers/register.go`. Families never import the registry.
 - **Families do not import each other**, except for the edges listed with a
   reason in `allowedHandlerEdges` (capability probes, the indexer and
-  monitoring clients, logind logoff on account deletion, the Docker
-  mount-ordering drop-in). A new edge needs a one-line reason there; code two
+  monitoring clients, logind logoff on account deletion, the Docker startup
+  drop-ins that `config.set` rewrites). A new edge needs a one-line reason there; code two
   families need is a library instead.
 - **`common` never imports a process tree.** `backend/common/*` imports only
   other `common` packages.
@@ -221,7 +254,7 @@ this section states them in words:
   `monitoring` keep their internals private; the bridge reaches them only
   through `indexer/api` and `monitoring/api`.
 - **Worker binaries import only `common`.** This covers `cli`, `docker-update`,
-  `btrfs-timer` and `claude-relay`.
+  `worker` and `claude-relay`.
 
 Where a shared library goes depends on who needs it:
 

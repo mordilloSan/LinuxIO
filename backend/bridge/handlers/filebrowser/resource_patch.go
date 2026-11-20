@@ -11,9 +11,10 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 // resourcePatchRequest never overwrites: the request contract carries no
@@ -46,23 +47,30 @@ func parseResourcePatchRequest(req apischema.ActionSourceDestinationRequest) (re
 	}, nil
 }
 
-func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resourcePatchRequest, error) {
-	dstClean := strings.TrimRight(req.dst, "/")
-	parentDir := filepath.Dir(dstClean)
-	if _, err := root.Root.Stat(fsroot.ToRel(parentDir)); err != nil {
+// prepareResourcePatch resolves the folders of both paths for owner, the
+// session user the rename acts for (see linksafe.ResolveFolders), and checks
+// them where they really are.
+func prepareResourcePatch(ctx context.Context, root *fsroot.FSRoot, req resourcePatchRequest, owner services.Owner) (resourcePatchRequest, error) {
+	realDest, err := linksafe.ResolveFolders(ctx, strings.TrimRight(req.dst, "/"), owner)
+	if err != nil {
+		return req, fsError("stat parent directory", err)
+	}
+	if _, err = root.Root.Stat(fsroot.ToRel(filepath.Dir(realDest))); err != nil {
 		return req, fsError("stat parent directory", err)
 	}
 
-	req.realDest = filepath.Join(parentDir, filepath.Base(dstClean))
+	req.realDest = realDest
 	if strings.HasSuffix(req.dst, "/") && !strings.HasSuffix(req.realDest, "/") {
 		req.realDest += "/"
 	}
-	req.realSrc = fsroot.CleanAbsPath(req.src)
-
-	if _, err := root.Root.Lstat(fsroot.ToRel(req.realSrc)); err != nil {
+	if req.realSrc, err = linksafe.ResolveFolders(ctx, req.src, owner); err != nil {
 		return req, fsError("stat source", err)
 	}
-	if err := services.CheckNotProtected(root, req.realSrc); err != nil {
+
+	if _, err = root.Root.Lstat(fsroot.ToRel(req.realSrc)); err != nil {
+		return req, fsError("stat source", err)
+	}
+	if err = services.CheckNotProtected(root, req.realSrc); err != nil {
 		return req, fmt.Errorf("%w: %w", bridgeipc.ErrForbidden, err)
 	}
 	return req, validatePatchDestination(root, req)
@@ -87,14 +95,14 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest) err
 func executeResourcePatch(ctx context.Context, req resourcePatchRequest, owner services.Owner, opts *services.OperationCallbacks, size computedTransferSize) error {
 	switch req.action {
 	case "rename", "move":
-		return services.MoveFileWithCallbacks(ctx, req.realSrc, req.realDest, false, owner, opts, moveFileOptions(size))
+		return services.MoveFile(ctx, req.realSrc, req.realDest, false, owner, opts, moveFileOptions(size))
 	default:
 		return fmt.Errorf("%w: unsupported action: %s", bridgeipc.ErrInvalidArgs, req.action)
 	}
 }
 
-// resourcePatchWithProgress performs patch operations with progress feedback.
-func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task, session sessionOwner) (apischema.MessageResponse, error) {
+// resourcePatch performs patch operations with progress feedback.
+func resourcePatch(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task, session sessionOwner) (apischema.MessageResponse, error) {
 	patchReq, err := parseResourcePatchRequest(req)
 	if err != nil {
 		return apischema.MessageResponse{}, err
@@ -106,7 +114,8 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 	}
 	defer root.Close()
 
-	patchReq, err = prepareResourcePatch(root, patchReq)
+	owner := actingFor(session)
+	patchReq, err = prepareResourcePatch(ctx, root, patchReq, owner)
 	if err != nil {
 		return apischema.MessageResponse{}, err
 	}
@@ -135,7 +144,7 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 	})
 
 	opts := newTaskPhaseCallbacks(ctx, task, nil, size.estimate(), "moving")
-	if err := executeResourcePatch(ctx, patchReq, actingFor(session), opts, size); err != nil {
+	if err := executeResourcePatch(ctx, patchReq, owner, opts, size); err != nil {
 		return apischema.MessageResponse{}, fsError(patchReq.action, err)
 	}
 
@@ -145,34 +154,15 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 }
 
 // generateUniquePath generates a unique path by appending a suffix like " (copy)" or " (copy 2)"
+// (see services.CopyName), falling back to a timestamp after 999 tries.
 func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
-
-	// For files, split name and extension
-	var name, ext string
-	if !isDir {
-		ext = filepath.Ext(base)
-		name = strings.TrimSuffix(base, ext)
-	} else {
-		name = base
-	}
-
-	// Try "name (copy).ext" first
-	newPath := filepath.Join(dir, name+" (copy)"+ext)
-	if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); errors.Is(err, fs.ErrNotExist) {
-		return newPath
-	}
-
-	// Try "name (copy 2).ext", "name (copy 3).ext", etc.
-	for i := 2; i < 1000; i++ {
-		newPath = filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, i, ext))
+	for n := int64(1); n < 1000; n++ {
+		newPath := filepath.Join(dir, services.CopyName(base, isDir, n))
 		if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); errors.Is(err, fs.ErrNotExist) {
 			return newPath
 		}
 	}
-
-	// Fallback to timestamp-based name
-	timestamp := time.Now().Unix()
-	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, timestamp, ext))
+	return filepath.Join(dir, services.CopyName(base, isDir, time.Now().Unix()))
 }

@@ -115,6 +115,7 @@ const filesystem = (deviceCount: number): BtrfsFilesystem => ({
   },
   degraded: false,
   lowMetadataSpace: false,
+  autoRebuild: true,
 });
 
 const blockDevice = (
@@ -683,6 +684,226 @@ describe("BtrfsDevicesCard actions", () => {
     expect(mocks.mutations["storage.btrfs_device_grow"]).toHaveBeenCalledWith({
       uuid: "uuid-1",
       deviceId: 2,
+    });
+  });
+});
+
+describe("BtrfsDevicesCard hot spare", () => {
+  // A pool whose profiles keep a second copy, of two 100 GiB members.
+  const mirrored = (spare?: BtrfsFilesystem["spare"]): BtrfsFilesystem => ({
+    ...filesystem(2),
+    allocation: [
+      { kind: "data", profile: "raid1", totalBytes: GiB, usedBytes: GiB },
+      { kind: "metadata", profile: "raid1", totalBytes: GiB, usedBytes: GiB },
+    ],
+    spare,
+  });
+  const spare = (
+    state: NonNullable<BtrfsFilesystem["spare"]>["state"],
+    reason?: string,
+  ): BtrfsFilesystem["spare"] => ({
+    device: state === "absent" ? "" : "/dev/sdv",
+    delayMinutes: 10,
+    disk: { serial: "WD-SPARE1", sizeBytes: 200 * GiB },
+    reason,
+    state,
+  });
+
+  it("sets an empty disk no smaller than the pool's disks as the hot spare", async () => {
+    const user = userEvent.setup();
+    mocks.topology.mockResolvedValue(
+      topology([
+        blockDevice({}),
+        blockDevice({ path: "/dev/sdv", name: "sdv", sizeBytes: 200 * GiB }),
+        blockDevice({
+          path: "/dev/sdu",
+          name: "sdu",
+          sizeBytes: 200 * GiB,
+          hotSpareOf: { uuid: "uuid-9", label: "backup" },
+        }),
+      ]),
+    );
+    render(<BtrfsDevicesCard filesystem={mirrored()} />);
+
+    expect(screen.getByText("No hot spare")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Set hot spare" }));
+    const dialog = await screen.findByRole("dialog", { name: "Set hot spare" });
+    expect(dialog).toHaveTextContent(
+      "When a disk of data has been missing for the delay below, LinuxIO replaces it with the hot spare; until then the spare stays empty and nothing else can use it.",
+    );
+    await user.click(within(dialog).getByRole("combobox", { name: "Disk" }));
+    expect(
+      await screen.findByRole("option", {
+        name: "/dev/sdx · 50 GB · Spare · Smaller than a disk of this pool",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(
+      screen.getByRole("option", {
+        name: "/dev/sdu · 200 GB · Spare · Hot spare of backup",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
+    await user.click(
+      screen.getByRole("option", { name: "/dev/sdv · 200 GB · Spare" }),
+    );
+    const delay = within(dialog).getByRole("spinbutton", {
+      name: "Delay (minutes)",
+    });
+    expect(delay).toHaveValue(10);
+    await user.clear(delay);
+    await user.type(delay, "5");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Set hot spare" }),
+    );
+
+    expect(route("btrfs_spare_set")).toHaveBeenCalledWith(
+      { uuid: "uuid-1", device: "/dev/sdv", delayMinutes: 5 },
+      expect.anything(),
+    );
+  });
+
+  it("says why a pool that keeps one copy cannot have a hot spare", () => {
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    expect(
+      screen.getByText(
+        "A hot spare needs raid1, raid1c3, raid1c4 or raid10: a single pool cannot run with a disk missing.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Set hot spare" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the spare's state and why it cannot serve", () => {
+    render(
+      <BtrfsDevicesCard
+        filesystem={mirrored(
+          spare(
+            "absent",
+            "no connected disk has its WWN, serial number and size",
+          ),
+        )}
+      />,
+    );
+
+    expect(screen.getByText("Missing")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No connected disk has its WWN, serial number and size.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Serial WD-SPARE1 · 200 GB/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Set hot spare" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("changes the delay and removes the hot spare", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsDevicesCard filesystem={mirrored(spare("ready"))} />);
+
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Replaces a disk missing for 10 minutes/),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change delay" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Hot spare delay",
+    });
+    const delay = within(dialog).getByRole("spinbutton", {
+      name: "Delay (minutes)",
+    });
+    await user.clear(delay);
+    await user.type(delay, "30");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(route("btrfs_spare_delay")).toHaveBeenCalledWith(
+      { uuid: "uuid-1", delayMinutes: 30 },
+      expect.anything(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remove hot spare" }));
+    const confirm = await screen.findByRole("dialog", {
+      name: "Remove hot spare",
+    });
+    expect(confirm).toHaveTextContent(
+      "Remove /dev/sdv as the hot spare of data? The disk is free again, and a missing disk is no longer replaced by itself.",
+    );
+    await user.click(within(confirm).getByRole("button", { name: "Remove" }));
+    expect(route("btrfs_spare_clear")).toHaveBeenCalledWith(
+      { uuid: "uuid-1" },
+      expect.anything(),
+    );
+  });
+
+  it("shows and sets the automatic rebuild, saying what it does and when", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <BtrfsDevicesCard filesystem={mirrored(spare("ready"))} />,
+    );
+    const toggle = screen.getByRole("checkbox", {
+      name: "Rebuild automatically onto a disk that returns",
+    });
+    expect(toggle).toBeChecked();
+    expect(
+      screen.getByText(
+        "When a disk of data goes missing and comes back, LinuxIO erases it and rebuilds the pool onto it once two health checks in a row (about 10 minutes) have seen it back; a disk that stays missing for 10 minutes is replaced with the hot spare.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(toggle);
+    expect(route("btrfs_auto_rebuild")).toHaveBeenCalledWith({
+      uuid: "uuid-1",
+      enabled: false,
+    });
+
+    rerender(
+      <BtrfsDevicesCard filesystem={{ ...mirrored(), autoRebuild: false }} />,
+    );
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Rebuild automatically onto a disk that returns",
+      }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByText(
+        "A disk of data that comes back is taken back only when the pool is mounted again, and nothing replaces a missing disk by itself.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the pool's own spare as a replacement, never as a disk to add", async () => {
+    const user = userEvent.setup();
+    mocks.topology.mockResolvedValue(
+      topology([
+        blockDevice({
+          path: "/dev/sdv",
+          name: "sdv",
+          sizeBytes: 200 * GiB,
+          hotSpareOf: { uuid: "uuid-1", label: "data" },
+        }),
+      ]),
+    );
+    render(<BtrfsDevicesCard filesystem={mirrored(spare("ready"))} />);
+
+    await user.click(screen.getByRole("button", { name: "Add device" }));
+    let dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("combobox", { name: "Device" }));
+    expect(
+      await screen.findByRole("option", {
+        name: "/dev/sdv · 200 GB · Spare · Hot spare of data",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
+    await user.keyboard("{Escape}");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    const row = (await screen.findAllByRole("row"))[1];
+    await user.click(within(row).getByRole("button", { name: "Replace" }));
+    dialog = await screen.findByRole("dialog");
+    await pick(user, dialog, "New device", "/dev/sdv · 200 GB · Spare");
+    await user.click(within(dialog).getByRole("button", { name: "Replace" }));
+    expect(mocks.submit).toHaveBeenCalledWith("btrfs_device_replace", {
+      uuid: "uuid-1",
+      deviceId: 1,
+      newDevice: "/dev/sdv",
     });
   });
 });

@@ -44,7 +44,7 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 		t.Fatalf("timer file did not render schedule:\n%s", timer)
 	}
 	unit := readTestFile(t, store.unitPath)
-	if !strings.Contains(unit, "ExecStart=/usr/local/bin/linuxio-docker-update run --config "+ConfigPath) {
+	if !strings.Contains(unit, "ExecStart=/usr/local/bin/linuxio-docker-update --config "+ConfigPath) {
 		t.Fatalf("unit file does not invoke the LinuxIO runner directly:\n%s", unit)
 	}
 	if strings.Contains(unit, "/bin/sh") {
@@ -222,13 +222,13 @@ func readTestFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-func TestRenderDockerUpdateUnitDerivesFromWorkerUnit(t *testing.T) {
+func TestRenderDockerUpdateUnitDerivesFromUpdaterUnit(t *testing.T) {
 	unit := string(renderDockerUpdateUnit())
 	for _, want := range []string{
 		"After=docker.service network-online.target\n",
 		"Requires=docker.service\n",
 		"Wants=network-online.target\n",
-		"ExecStart=" + RunnerPath + " run --config " + ConfigPath + "\n",
+		"ExecStart=" + RunnerPath + " --config " + ConfigPath + "\n",
 		"NoNewPrivileges=true\n",
 		"PrivateTmp=true\n",
 		"ProtectHome=read-only\n",
@@ -238,6 +238,16 @@ func TestRenderDockerUpdateUnitDerivesFromWorkerUnit(t *testing.T) {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit file is missing %q:\n%s", want, unit)
 		}
+	}
+	// A stop signals the program alone, which cancels its work but lets a
+	// rollback in progress finish before systemd kills what is left.
+	for _, want := range []string{"KillMode=mixed\n", "TimeoutStopSec=250\n"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("unit file is missing %q:\n%s", want, unit)
+		}
+	}
+	if dockerUpdateStopTimeout <= composeRollbackTimeout+composeTagTimeout {
+		t.Errorf("stop timeout %v leaves no room for a rollback of %v", dockerUpdateStopTimeout, composeRollbackTimeout)
 	}
 	// The scheduled run hooks live in the packaged drop-in
 	// (linuxio-run-record.conf), never in the rendered unit.

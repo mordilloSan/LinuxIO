@@ -16,7 +16,24 @@ vi.mock("@tanstack/react-virtual", async () =>
 
 const media = vi.hoisted(() => ({ compact: false }));
 
+const FAILED_SCAN = {
+  built: 0,
+  checked: 1,
+  errors: 1,
+  rebuilds: 0,
+  uncheckable: 0,
+  updates: 0,
+};
+
 const updateCheckMocks = vi.hoisted(() => ({
+  result: null as {
+    built: number;
+    checked: number;
+    errors: number;
+    rebuilds: number;
+    uncheckable: number;
+    updates: number;
+  } | null,
   useCallMutation: vi.fn(),
 }));
 
@@ -30,13 +47,7 @@ vi.mock("@/api", async (importOriginal) => {
       if (endpoint.route === "docker.check_container_update") {
         return {
           isPending: false,
-          mutate: () =>
-            config.success?.({
-              checked: 1,
-              errors: 1,
-              uncheckable: 0,
-              updates: 0,
-            }),
+          mutate: () => config.success?.(updateCheckMocks.result),
         };
       }
       return actual.useCallMutation(endpoint as never, config);
@@ -53,11 +64,12 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  updateCheckMocks.result = FAILED_SCAN;
 });
 
 vi.mock("@/components/docker/DockerIcon", () => ({
@@ -188,6 +200,182 @@ describe("ContainerTable mutation feedback", () => {
     });
     expect(rescan).toHaveTextContent("Cannot check");
     expect(rescan).not.toHaveTextContent("Up to date");
+  });
+
+  it("shows an image built on the host and offers its rebuild from the row", async () => {
+    media.compact = false;
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
+    const { user } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerTable
+          containers={[
+            container("app-id", "app", "running", {
+              updateAvailable: false,
+              updateCheckedAt: Date.now(),
+              updateCheckReason:
+                'built on this host by Compose service "app" of project "media"',
+              updateCheckState: "built",
+            }),
+          ]}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
+
+    const row = within(rowNamed("app"));
+    const rescan = row.getByRole("button", { name: "Re-scan app for updates" });
+    expect(rescan).toHaveTextContent("Built here");
+    expect(rescan).not.toHaveTextContent("Up to date");
+
+    await user.click(row.getByRole("button", { name: "Actions for app" }));
+    await user.click(
+      screen.getByRole("menuitem", { name: "Rebuild and update" }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      "docker",
+      "update_container",
+      { containerId: "app-id", rebuild: true },
+      expect.anything(),
+    );
+  });
+
+  it("says a re-scanned image is built on this server, not up to date", async () => {
+    media.compact = false;
+    updateCheckMocks.result = {
+      built: 1,
+      checked: 1,
+      errors: 0,
+      rebuilds: 0,
+      uncheckable: 0,
+      updates: 0,
+    };
+    const { user } = renderTable([
+      container("app-id", "app", "running", {
+        updateAvailable: false,
+        updateCheckedAt: Date.now(),
+        updateCheckState: "built",
+      }),
+    ]);
+
+    await user.click(
+      within(rowNamed("app")).getByRole("button", {
+        name: "Re-scan app for updates",
+      }),
+    );
+
+    const { toast } = await import("sonner");
+    expect(toast.info).toHaveBeenCalledWith(
+      "Container app runs an image built on this server",
+      expect.anything(),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  // A base image of a built image has a newer version: the row says a
+  // rebuild is waiting and offers the rebuild, never a plain update.
+  it("shows a newer base image of a built image as a rebuild, not an update", async () => {
+    media.compact = false;
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
+    const { user } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerTable
+          containers={[
+            container("app-id", "app", "running", {
+              updateAvailable: true,
+              updateCheckedAt: Date.now(),
+              updateCheckReason:
+                "base image docker.io/library/alpine:3.20 has a newer version on its registry",
+              updateCheckState: "built",
+            }),
+          ]}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
+
+    const row = within(rowNamed("app"));
+    expect(
+      row.getByRole("button", { name: "Re-scan app for updates" }),
+    ).toHaveTextContent("Rebuild available");
+    expect(row.queryByRole("button", { name: "Update" })).toBeNull();
+
+    await user.click(row.getByRole("button", { name: "Actions for app" }));
+    expect(screen.queryByRole("menuitem", { name: "Update" })).toBeNull();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Rebuild and update" }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      "docker",
+      "update_container",
+      { containerId: "app-id", rebuild: true },
+      expect.anything(),
+    );
+  });
+
+  it("says a re-scan found a newer base image of a built image", async () => {
+    media.compact = false;
+    updateCheckMocks.result = {
+      built: 1,
+      checked: 1,
+      errors: 0,
+      rebuilds: 1,
+      uncheckable: 0,
+      updates: 1,
+    };
+    const { user } = renderTable([
+      container("app-id", "app", "running", {
+        updateAvailable: true,
+        updateCheckedAt: Date.now(),
+        updateCheckState: "built",
+      }),
+    ]);
+
+    await user.click(
+      within(rowNamed("app")).getByRole("button", {
+        name: "Re-scan app for updates",
+      }),
+    );
+
+    const { toast } = await import("sonner");
+    expect(toast.info).toHaveBeenCalledWith(
+      "A base image of app has a newer version. Use Rebuild and update.",
+      expect.anything(),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("flags a folded stack whose built member waits for a rebuild", async () => {
+    media.compact = false;
+    const { user } = render(
+      <StatefulStackTable
+        containers={[
+          container("media-web-id", "media-web", "running", {
+            Labels: { "com.docker.compose.project": "media" },
+            updateAvailable: true,
+            updateCheckState: "built",
+          }),
+          composeContainer("media-db-id", "media-db", "media"),
+        ]}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse stack media" }),
+    );
+
+    const header = screen
+      .getByRole("button", { name: "Expand stack media" })
+      .closest('[role="row"]') as HTMLElement;
+    expect(
+      within(header).getByRole("img", { name: "Rebuild available" }),
+    ).toBeInTheDocument();
+    expect(
+      within(header).queryByRole("img", { name: "Update available" }),
+    ).toBeNull();
   });
 
   it.each([true, false])(

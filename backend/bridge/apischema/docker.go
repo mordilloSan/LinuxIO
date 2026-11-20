@@ -26,6 +26,7 @@ const (
 	DockerUpdateCheckStateCurrent     = dockerupdate.DockerUpdateCheckStateCurrent
 	DockerUpdateCheckStateAvailable   = dockerupdate.DockerUpdateCheckStateAvailable
 	DockerUpdateCheckStateUncheckable = dockerupdate.DockerUpdateCheckStateUncheckable
+	DockerUpdateCheckStateBuilt       = dockerupdate.DockerUpdateCheckStateBuilt
 	DockerUpdateCheckStateError       = dockerupdate.DockerUpdateCheckStateError
 )
 
@@ -390,6 +391,18 @@ type ValidateComposeResponse struct {
 type DockerSettings struct {
 	Folders                 []string `json:"folders"`
 	RequireMountsForFolders bool     `json:"requireMountsForFolders"`
+	WaitForHostIPs          bool     `json:"waitForHostIPs"`
+	HostIPs                 []string `json:"hostIPs"`
+}
+
+// DockerHostIPs is what the "Wait for published host IPs" setting suggests
+// and checks its list against. Both lists hold addresses in the canonical
+// form the config stores, so they compare as plain strings.
+type DockerHostIPs struct {
+	// Published are the host addresses containers publish ports on.
+	Published []string `json:"published"`
+	// Assigned are the addresses the host's interfaces hold now.
+	Assigned []string `json:"assigned"`
 }
 
 type ContainerIDRequest struct {

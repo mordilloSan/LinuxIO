@@ -5,6 +5,7 @@ import type { ContainerInfo } from "@/api";
 import {
   buildContainerTableRows,
   getStackDisplayState,
+  getStackUpdateLabel,
   groupContainersByStack,
   isStackHeaderRow,
   resolveStackDrag,
@@ -121,6 +122,31 @@ describe("stack summaries", () => {
       container("b", "s", { updateAvailable: true }),
     ]);
     expect(summary.updateAvailable).toBe(true);
+    expect(getStackUpdateLabel(summary)).toBe("Update available");
+  });
+
+  it("tells a rebuild of a built member from a registry update", () => {
+    const rebuild = container("b", "s", {
+      updateAvailable: true,
+      updateCheckState: "built",
+    });
+    const summary = summarizeStack([container("a", "s"), rebuild]);
+    expect(summary).toMatchObject({
+      rebuildAvailable: true,
+      updateAvailable: false,
+    });
+    expect(getStackUpdateLabel(summary)).toBe("Rebuild available");
+    expect(
+      getStackUpdateLabel(
+        summarizeStack([
+          rebuild,
+          container("c", "s", { updateAvailable: true }),
+        ]),
+      ),
+    ).toBe("Update available");
+    expect(getStackUpdateLabel(summarizeStack([container("a", "s")]))).toBe(
+      undefined,
+    );
   });
 });
 

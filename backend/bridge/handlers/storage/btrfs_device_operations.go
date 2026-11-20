@@ -41,6 +41,7 @@ var (
 	btrfsMarkResyncCanceled   = markScheduledRunCanceled
 	btrfsWithdrawResyncCancel = withdrawScheduledRunCancel
 	btrfsScrubFrom            = btrfs.ScrubFrom
+	btrfsResumeScrub          = btrfs.ResumeScrub
 	btrfsResumeReplace        = btrfs.ResumeReplace
 	btrfsCancelReplace        = btrfs.CancelReplace
 	btrfsRemoveDevice         = btrfs.RemoveDevice
@@ -70,13 +71,21 @@ func btrfsDeviceBindings() apischema.BindingSet {
 }
 
 // ensureBtrfsDeviceFree refuses a device that is not free to join a btrfs
-// filesystem; force only allows erasing an old filesystem left on it.
-func ensureBtrfsDeviceFree(ctx context.Context, device string, force bool) error {
+// filesystem; force only allows erasing an old filesystem left on it. The
+// hot spare of pool spareOf, if not empty, may be taken: a replace in that
+// pool may use its own spare.
+func ensureBtrfsDeviceFree(ctx context.Context, device string, force bool, spareOf string) error {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return err
 	}
-	return checkBtrfsDeviceFree(inv, device, force)
+	if spareOf != "" {
+		inv.releaseSpare(spareOf)
+	}
+	if err = checkBtrfsDeviceFree(inv, device, force); err != nil {
+		return err
+	}
+	return signatureFree(device)
 }
 
 // checkBtrfsDeviceFree refuses what deviceInUse refuses and a device with
@@ -149,8 +158,10 @@ func resumeBtrfsRemove(ctx context.Context, req apischema.BtrfsDeviceRequest, _ 
 }
 
 func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsDeviceReplaceRequest) (btrfs.BtrfsFilesystem, error) {
-	// The kernel copies onto the target without checking it, so it must be blank.
-	if err := ensureBtrfsDeviceFree(ctx, req.NewDevice, false); err != nil {
+	// The kernel copies onto the target without checking it, so it must be
+	// blank. The pool's own hot spare may be the target: it stays reserved
+	// while the replace runs, and is no longer the spare once installed.
+	if err := ensureBtrfsDeviceFree(ctx, req.NewDevice, false, req.UUID); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
 	slog.Debug("replacing btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
@@ -162,6 +173,7 @@ func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req ap
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("replace btrfs device %d of %s with %s: %w", req.DeviceID, req.UUID, req.NewDevice, err)
 	}
+	dropTakenSpare(ctx, req.UUID, req.DeviceID, fs)
 	fs = growReplaced(ctx, req.UUID, req.DeviceID, fs)
 	slog.Info("replaced btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
 	return fs, nil
@@ -225,6 +237,7 @@ func resumeBtrfsReplace(ctx context.Context, req apischema.BtrfsDeviceReplaceReq
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
+	dropTakenSpare(ctx, req.UUID, req.DeviceID, fs)
 	fs = growReplaced(ctx, req.UUID, req.DeviceID, fs)
 	slog.Info("replaced btrfs device", "uuid", req.UUID, "device", req.DeviceID, "resumed", true)
 	return fs, nil
@@ -290,7 +303,9 @@ func resumeBtrfsBalance(ctx context.Context, req apischema.BtrfsBalanceRequest, 
 func runBtrfsScrubTask(ctx context.Context, task *bridgeipc.Task, req apischema.UUIDRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Debug("scrubbing btrfs filesystem", "uuid", req.UUID)
 	task.ReportProgress(BtrfsOpProgress{Op: "scrub", Message: "Scrub started"})
-	status, err := scrubBtrfs(ctx, task, req.UUID, nil)
+	status, err := scrubBtrfs(task, req.UUID, func(run string, report func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		return btrfsScrubFrom(ctx, req.UUID, run, report)
+	})
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
@@ -298,13 +313,23 @@ func runBtrfsScrubTask(ctx context.Context, task *bridgeipc.Task, req apischema.
 	return btrfsFindFilesystem(ctx, req.UUID)
 }
 
-// scrubBtrfs scrubs from starts (nil: every device from 0) and fails unless
-// the scrub finished. A scrub canceled while ctx is live was canceled by the
-// scrub cancel route or by Suspend, so the job ends canceled or interrupted.
-func scrubBtrfs(ctx context.Context, task *bridgeipc.Task, uuid string, starts map[int]uint64) (btrfs.BtrfsScrubStatus, error) {
+// scrubFunc runs or resumes a scrub as job run.
+type scrubFunc func(run string, report func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error)
+
+// scrubBtrfs runs scrub as the task's job and fails unless the scrub
+// finished. A scrub canceled while the job's context is live was canceled by
+// the scrub cancel route or by Suspend, so the job ends canceled or
+// interrupted.
+func scrubBtrfs(task *bridgeipc.Task, uuid string, scrub scrubFunc) (btrfs.BtrfsScrubStatus, error) {
+	run := ""
+	if task != nil { // a hook driven outside a task
+		run = task.ID()
+	}
 	report := progressReporter(task, "scrub", "Scrubbing")
-	status, err := btrfsScrubFrom(ctx, uuid, starts, func(s btrfs.BtrfsScrubStatus) { report(s.Percent) })
+	status, err := scrub(run, func(s btrfs.BtrfsScrubStatus) { report(s.Percent) })
 	switch {
+	case errors.Is(err, btrfs.ErrScrubRunning):
+		return status, fmt.Errorf("%w: scrub btrfs filesystem %s: %w", bridgeipc.ErrConflict, uuid, err)
 	case err != nil:
 		return status, fmt.Errorf("scrub btrfs filesystem %s (status %q): %w", uuid, status.Status, err)
 	case status.Status == "canceled":
@@ -353,8 +378,9 @@ func suspendBtrfsScrub(ctx context.Context, req apischema.UUIDRequest, _ jsontex
 	return jsontext.Value(checkpoint), err
 }
 
-// resumeBtrfsScrub scrubs what Suspend recorded as left, from each device's
-// offset, or the whole pool without a checkpoint.
+// resumeBtrfsScrub continues the scrub from the progress the job saved in
+// the scrub record, after a power cut too; without it from what Suspend
+// recorded as left, or the whole pool without a checkpoint.
 func resumeBtrfsScrub(ctx context.Context, req apischema.UUIDRequest, checkpoint jsontext.Value) (btrfs.BtrfsFilesystem, error) {
 	starts, err := scrubStarts(checkpoint)
 	if err != nil {
@@ -362,7 +388,9 @@ func resumeBtrfsScrub(ctx context.Context, req apischema.UUIDRequest, checkpoint
 	}
 	slog.Debug("resuming btrfs scrub", "uuid", req.UUID, "starts", starts)
 	task, _ := bridgeipc.TaskFromContext(ctx) // Resume always runs as a task
-	status, err := scrubBtrfs(ctx, task, req.UUID, starts)
+	status, err := scrubBtrfs(task, req.UUID, func(run string, report func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		return btrfsResumeScrub(ctx, req.UUID, run, starts, report)
+	})
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
@@ -380,7 +408,7 @@ func profileOrKeep(p *string) string {
 
 // AddBtrfsDevice adds a free device to a filesystem.
 func AddBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (btrfs.BtrfsFilesystem, error) {
-	if err := ensureBtrfsDeviceFree(ctx, req.Device, req.Force); err != nil {
+	if err := ensureBtrfsDeviceFree(ctx, req.Device, req.Force, ""); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
 	if err := btrfs.AddDevice(ctx, req.UUID, req.Device, req.Force); err != nil {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
+import * as core from "@/api/linuxio-core";
 import { render, screen } from "@/test/render";
 
 import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
@@ -65,6 +66,7 @@ describe("ContainerCard", () => {
       memory_limit_bytes: 128 * 1024 * 1024,
     };
     container.updateAvailable = true;
+    container.updateCheckState = undefined;
   });
 
   it("shows the update-available indicator in compact view", () => {
@@ -106,6 +108,38 @@ describe("ContainerCard", () => {
     );
 
     expect(screen.getByRole("menuitem", { name: "Update" })).toBeEnabled();
+  });
+
+  // A base image of a built image has a newer version: the badge offers the
+  // rebuild, never a plain update.
+  it("offers the rebuild from the badge of a built image with a newer base", async () => {
+    container.updateCheckState = "built";
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
+    const { user } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerCard containerId={container.Id} selected={false} />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Update available for example" }),
+    ).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Rebuild available for example" }),
+    );
+    expect(screen.queryByRole("menuitem", { name: "Update" })).toBeNull();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Rebuild and update" }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      "docker",
+      "update_container",
+      { containerId: container.Id, rebuild: true },
+      expect.anything(),
+    );
   });
 
   it("shows the update-available badge read-only without sudo", () => {

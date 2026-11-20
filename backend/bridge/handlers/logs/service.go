@@ -11,6 +11,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -22,7 +23,7 @@ func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime
 	defer cleanup()
 	serviceName, invocationID, lines, err := parseServiceLogsRequest(req)
 	if err != nil {
-		return writeLogError(stream, err)
+		return streamrelay.WriteError(stream, 0, err)
 	}
 	slog.Debug("starting service log channel",
 		"component", "logs",
@@ -33,7 +34,7 @@ func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime
 
 	err = followJournal(ctx, stream, serviceJournalArgs(serviceName, invocationID, lines), func(line string) string { return line })
 	if err != nil && !errors.Is(err, errJournalFollowEnded) {
-		return writeLogErrorUnlessCanceled(ctx, stream, err)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, err)
 	}
 	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
 }

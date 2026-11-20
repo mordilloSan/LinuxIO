@@ -11,6 +11,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
 import { getComposeStatusColor } from "@/constants/statusColors";
 import { CARD_PADDING_SM } from "@/theme/constants";
+import { getWaitingUpdate } from "@/utils/dockerContainer";
 
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
@@ -79,14 +80,16 @@ function areComposeStackCardPropsEqual(
   const nextProject = next.project;
   if (previousProject === nextProject) return true;
 
-  // Containers are intentionally excluded. Their status details feed the
-  // expanded table, while this card only renders the project summary below.
-  // The delete flow reads the compared name/config/location fields.
+  // Containers are intentionally excluded but for what waits on them. Their
+  // status details feed the expanded table, while this card only renders the
+  // project summary below. The delete flow reads the compared
+  // name/config/location fields.
   return (
     previousProject.icon === nextProject.icon &&
     previousProject.name === nextProject.name &&
     previousProject.status === nextProject.status &&
-    previousProject.update_available === nextProject.update_available &&
+    getWaitingUpdate(previousProject.containers) ===
+      getWaitingUpdate(nextProject.containers) &&
     previousProject.working_dir === nextProject.working_dir &&
     areStringArraysEqual(
       previousProject.config_files,
@@ -118,6 +121,9 @@ const ComposeStackCard = ({
   const totalServices = Object.keys(project.services).length;
   const isRunning =
     project.status === "running" || project.status === "partial";
+  // A rebuild waits, not an update, when only built images have a newer base
+  // image.
+  const waiting = getWaitingUpdate(project.containers);
   const summary = (
     <>
       <div
@@ -151,10 +157,12 @@ const ComposeStackCard = ({
             {totalContainers} container{totalContainers !== 1 ? "s" : ""}
           </AppTypography>
         )}
-        {project.update_available && (
+        {waiting && (
           <Chip
             color="warning"
-            label="Update available"
+            label={
+              waiting === "rebuild" ? "Rebuild available" : "Update available"
+            }
             size="xsmall"
             variant="soft"
           />

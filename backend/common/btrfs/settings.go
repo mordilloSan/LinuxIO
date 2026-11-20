@@ -127,14 +127,15 @@ func SetQgroupLimit(ctx context.Context, uuid, path string, max *uint64) (BtrfsS
 	if err := ValidateSubvolumePath(path); err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if _, err := requireSubvolume(ctx, uuid, path); err != nil {
+	sv, err := requireSubvolume(ctx, uuid, path)
+	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
 	top, err := TopLevel(ctx, uuid)
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if err := subvolOps.limit(filepath.Join(top, path), max); err != nil {
+	if err := subvolOps.limit(top, sv.ID, max); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("set size limit on %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)
@@ -199,7 +200,7 @@ func SetSubvolumeCompression(ctx context.Context, uuid, path, algorithm string) 
 	if algorithm == "none" {
 		value = ""
 	}
-	if err := subvolOps.compression(filepath.Join(top, path), value); err != nil {
+	if err := subvolOps.compression(top, path, value); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("set compression on %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)

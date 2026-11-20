@@ -99,3 +99,21 @@
     transition: none;
   }
 }
+
+/* A rebuild's build output, under its building row in the update dialog: one
+   block that scrolls and follows the newest line, rather than a row per line.
+   It lines up with the rows' text, past the 24px icon column and its gap. */
+.docker-update-build-log {
+  box-sizing: border-box;
+  max-height: 220px;
+  margin-left: 34px;
+  overflow-y: auto;
+  padding: var(--app-space-4) var(--app-space-8);
+  border-radius: var(--app-radius-md);
+  background-color: var(--app-code-block-background);
+  color: var(--app-code-block-color);
+  font-family: var(--app-font-mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -14,7 +14,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { CARD_PADDING_LG } from "@/theme/constants";
-import { getContainerDisplayState } from "@/utils/dockerContainer";
+import {
+  getContainerDisplayState,
+  hasNewerBaseImage,
+} from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formatters";
 
 import ContainerActions from "../containers/ContainerActions";
@@ -83,8 +86,12 @@ const ContainerCardBody = ({
   const [updateMenuAnchor, setUpdateMenuAnchor] = useState<HTMLElement | null>(
     null,
   );
-  const { canUpdate, isUpdating, startUpdate, updating } =
+  const { canUpdate, isUpdating, startRebuild, startUpdate, updating } =
     useDockerUpdateOperation();
+  // A base image of an image this host builds has a newer version: the
+  // badge offers the rebuild, never a plain update.
+  const rebuild = hasNewerBaseImage(container);
+  const updateLabel = rebuild ? "Rebuild available" : "Update available";
 
   // derived
   const name = useMemo(
@@ -269,9 +276,9 @@ const ContainerCardBody = ({
                 }}
               >
                 {container.updateAvailable && (
-                  <AppTooltip arrow title="Update available">
+                  <AppTooltip arrow title={updateLabel}>
                     <span
-                      aria-label="Update available"
+                      aria-label={updateLabel}
                       role="img"
                       style={{
                         alignItems: "center",
@@ -376,18 +383,18 @@ const ContainerCardBody = ({
                     (container.State === "running" && canUpdate ? (
                       <>
                         <AppActionIconButton
-                          ariaLabel={`Update available for ${name}`}
+                          ariaLabel={`${updateLabel} for ${name}`}
                           color="var(--app-palette-warning-main)"
                           icon="mdi:alert"
                           iconSize={16}
-                          label="Update available"
+                          label={updateLabel}
                           onClick={(event) =>
                             setUpdateMenuAnchor(event.currentTarget)
                           }
                         />
                         <AppMenu
                           anchorEl={updateMenuAnchor}
-                          ariaLabel={`Update ${name}`}
+                          ariaLabel={`${rebuild ? "Rebuild" : "Update"} ${name}`}
                           onClose={() => setUpdateMenuAnchor(null)}
                           open={Boolean(updateMenuAnchor)}
                         >
@@ -397,20 +404,29 @@ const ContainerCardBody = ({
                             }
                             onClick={() => {
                               setUpdateMenuAnchor(null);
-                              startUpdate(container.Id, name);
+                              if (rebuild) {
+                                startRebuild(container.Id, name);
+                              } else {
+                                startUpdate(container.Id, name);
+                              }
                             }}
                             startAdornment={
-                              <Icon icon="mdi:update" width={18} />
+                              <Icon
+                                icon={
+                                  rebuild ? "mdi:hammer-wrench" : "mdi:update"
+                                }
+                                width={18}
+                              />
                             }
                           >
-                            Update
+                            {rebuild ? "Rebuild and update" : "Update"}
                           </AppMenuItem>
                         </AppMenu>
                       </>
                     ) : (
-                      <AppTooltip arrow title="Update available">
+                      <AppTooltip arrow title={updateLabel}>
                         <span
-                          aria-label="Update available"
+                          aria-label={updateLabel}
                           role="img"
                           style={{
                             alignItems: "center",

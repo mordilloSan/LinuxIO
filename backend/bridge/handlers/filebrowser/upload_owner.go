@@ -1,20 +1,19 @@
 package filebrowser
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 // A root bridge keeps what it creates root-owned (backend audit item 110). An
@@ -37,6 +36,7 @@ const (
 var (
 	errUploadBufferReplaced = errors.New("upload buffer was replaced")
 	errUploadFolderReplaced = errors.New("upload folder was replaced")
+	errUploadEnded          = errors.New("upload has ended")
 )
 
 // uploadNewOwner returns whom the entries an upload creates are handed to.
@@ -64,16 +64,12 @@ func (o sessionOwner) asOwner() services.Owner {
 }
 
 // actingFor is whom a bridge acts for when it changes the session user's
-// files: that user on a root bridge, which then never follows a link that
-// user could have planted on the way (see services.OpenNearestDirNoUserLinks);
-// nobody on a bridge that is not root, which already acts as that user, and
-// nobody for a root session, whose user is no less trusted than the bridge
-// and would otherwise be refused system links such as /bin -> usr/bin.
+// files (see linksafe.ActingFor).
 func actingFor(session sessionOwner) services.Owner {
-	if os.Geteuid() != 0 || session.uid == 0 {
+	if !session.set {
 		return services.Owner{}
 	}
-	return session.asOwner()
+	return linksafe.ActingFor(session.uid, session.gid)
 }
 
 // handsOverIn reports whether an entry created in a folder goes to owner
@@ -94,11 +90,11 @@ func isSetgid(folder os.FileInfo) bool {
 // that already exist are only opened. A root bridge reaches that folder for
 // linkRule, the session user it acts for (see actingFor), whether or not the
 // upload sets an owner, without following a link that user could have
-// planted (see services.OpenNearestDirNoUserLinks), so its save cannot be
+// planted (see linksafe.OpenNearestDirNoUserLinks), so its save cannot be
 // sent elsewhere. New folders go to owner, which is set only when the upload
 // asked for it.
 func openUploadDir(root *fsroot.FSRoot, dirRel string, linkRule services.Owner, owner sessionOwner) (*os.File, error) {
-	dir, missing, err := services.OpenNearestDirNoUserLinks(root, dirRel, linkRule)
+	dir, missing, err := linksafe.OpenNearestDirNoUserLinks(root, dirRel, linkRule)
 	if err != nil {
 		return nil, err
 	}
@@ -111,61 +107,49 @@ func handOver(f *os.File, owner sessionOwner, mode os.FileMode, inSetgidFolder b
 	return services.HandOver(f, owner.asOwner(), mode, inSetgidFolder)
 }
 
-// uploadBufferID is what a reopened buffer must match. Device and inode alone
-// do not identify it: ext4 gives a deleted file's inode number to the next
-// file created, so a buffer deleted and recreated by a process that can write
-// the folder would match. The kernel file handle also carries the inode's
-// generation, which a reused number does not keep. A filesystem that cannot
-// encode handles (handle nil) is matched on device and inode only.
-type uploadBufferID struct {
-	info       os.FileInfo
-	handleType int32
-	handle     []byte
-}
-
-func uploadBufferIDOf(f *os.File) (uploadBufferID, error) {
-	info, err := f.Stat()
-	if err != nil {
-		return uploadBufferID{}, err
-	}
-	id := uploadBufferID{info: info}
-	handle, _, err := unix.NameToHandleAt(int(f.Fd()), "", unix.AT_EMPTY_PATH)
-	switch {
-	case err == nil:
-		id.handleType, id.handle = handle.Type(), handle.Bytes()
-	case !errors.Is(err, unix.EOPNOTSUPP) && !errors.Is(err, unix.EOVERFLOW):
-		return uploadBufferID{}, &fs.PathError{Op: "name_to_handle_at", Path: f.Name(), Err: err}
-	}
-	return id, nil
-}
-
-func (id uploadBufferID) is(other uploadBufferID) bool {
-	return os.SameFile(id.info, other.info) && id.handleType == other.handleType && bytes.Equal(id.handle, other.handle)
-}
-
 // createUploadBuffer creates the buffer exclusively in dir, so a name planted
-// there beforehand, a symlink included, is refused rather than reused. It
-// returns the new file's identity for openUploadBuffer to check against.
-func createUploadBuffer(dir *os.File, name string) (uploadBufferID, error) {
+// there beforehand, a symlink included, is refused rather than reused, and
+// returns it open. The upload holds it open until it commits or ends and
+// writes every chunk through it, across reconnects of the data stream, so a
+// file that a process able to write the folder puts at the buffer's name
+// never receives a byte: reopening by name would have to tell the two apart,
+// and ext4 gives a deleted file's inode number to the next file created.
+func createUploadBuffer(dir *os.File, name string) (*os.File, error) {
 	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, uint32(privateUploadMode)) // owner-only until commit sets the target mode
 	if err != nil {
-		return uploadBufferID{}, &fs.PathError{Op: "create", Path: name, Err: err}
+		return nil, &fs.PathError{Op: "create", Path: name, Err: err}
 	}
-	file := os.NewFile(uintptr(fd), name)
-	id, err := uploadBufferIDOf(file)
-	if closeErr := file.Close(); err == nil {
-		err = closeErr
+	return os.NewFile(uintptr(fd), name), nil
+}
+
+// checkUploadBuffer refuses a commit unless name in dir is still buffer, the
+// file the upload created and wrote, which it still holds open. An open
+// file's inode is not freed, so its number is not given to another file
+// while the upload holds it. It is checked before the buffer is handed over,
+// so a refused buffer is still the bridge's and private, and again right
+// before the commit, which goes by name as rename has no form that takes an
+// open file.
+func checkUploadBuffer(dir *os.File, name string, buffer *os.File) error {
+	var held, named unix.Stat_t
+	if err := unix.Fstat(int(buffer.Fd()), &held); err != nil {
+		return &fs.PathError{Op: "fstat", Path: buffer.Name(), Err: err}
 	}
-	return id, err
+	if err := unix.Fstatat(int(dir.Fd()), name, &named, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return &fs.PathError{Op: "fstatat", Path: name, Err: err}
+	}
+	if held.Dev != named.Dev || held.Ino != named.Ino {
+		return errUploadBufferReplaced
+	}
+	return nil
 }
 
 // openUploadFolder opens dirRel, the folder an upload's buffer and target
-// share. A non-nil want is the folder prepare used: any other folder now at
-// that path, such as one swapped for a symlink, is refused.
+// share, only while it is still want, the folder prepare used: any other
+// folder now at that path, such as one swapped for a symlink, is refused.
 func openUploadFolder(root *fsroot.FSRoot, dirRel string, want os.FileInfo) (*os.File, error) {
 	dir, err := root.Root.OpenFile(dirRel, os.O_RDONLY|syscall.O_DIRECTORY, 0)
-	if err != nil || want == nil {
-		return dir, err
+	if err != nil {
+		return nil, err
 	}
 	info, err := dir.Stat()
 	if err == nil && !os.SameFile(info, want) {
@@ -176,32 +160,6 @@ func openUploadFolder(root *fsroot.FSRoot, dirRel string, want os.FileInfo) (*os
 		return nil, err
 	}
 	return dir, nil
-}
-
-// openUploadBuffer reopens the buffer createUploadBuffer made, without
-// following a symlink at its name and only if it is still that same file, so
-// a buffer swapped by a process that can write the folder is refused instead
-// of written to or handed over.
-func openUploadBuffer(root *fsroot.FSRoot, tempRel string, created uploadBufferID) (*os.File, error) {
-	dir, err := openUploadFolder(root, filepath.Dir(tempRel), nil)
-	if err != nil {
-		return nil, err
-	}
-	defer dir.Close()
-	fd, err := unix.Openat(int(dir.Fd()), filepath.Base(tempRel), unix.O_RDWR|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, &fs.PathError{Op: "open", Path: tempRel, Err: err}
-	}
-	file := os.NewFile(uintptr(fd), tempRel)
-	id, err := uploadBufferIDOf(file)
-	if err == nil && !id.is(created) {
-		err = errUploadBufferReplaced
-	}
-	if err != nil {
-		_ = file.Close()
-		return nil, err
-	}
-	return file, nil
 }
 
 // settleUploadBuffer gives the still-open buffer its final owner and mode

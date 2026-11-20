@@ -109,7 +109,10 @@ func (b *IfupdownBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *IfupdownBackend) SetIPv4DHCP(ctx context.Context) error {
+func (b *IfupdownBackend) SetIPv4DHCP(ctx context.Context, dns, search []string) error {
+	if len(dns) > 0 || len(search) > 0 {
+		return unsupportedDNS(b, "DNS alongside DHCP")
+	}
 	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV4(b.iface)
 		block.Method = "dhcp"
@@ -118,7 +121,10 @@ func (b *IfupdownBackend) SetIPv4DHCP(ctx context.Context) error {
 	})
 }
 
-func (b *IfupdownBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
+func (b *IfupdownBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns, search []string) error {
+	if len(search) > 0 {
+		return unsupportedDNS(b, "DNS search domains")
+	}
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}

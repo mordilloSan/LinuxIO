@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
+import { INTERNAL_DRAG_TYPE, TRASH_DRAG_TYPE } from "../-dragTypes";
 import type { DroppedEntry } from "../-fileUpload";
 import type { FileResource } from "../-types";
 import type { ResolveCollisionsFn } from "./useFileConflicts";
@@ -28,6 +28,8 @@ vi.mock("sonner", () => ({
 }));
 
 const { useFileDragAndDrop } = await import("./useFileDragAndDrop");
+const { setTrashDrag } = await import("../-internalDrag");
+const { dragMadeHere } = await import("@/test/fileBrowserDrag");
 const { act, renderHook } = await import("@/test/render");
 
 const directory: FileResource = {
@@ -91,6 +93,70 @@ describe("useFileDragAndDrop", () => {
 
     act(() => result.current.handleDragOver(event));
     expect(event.dataTransfer.dropEffect).toBe("copy");
+  });
+
+  // Items dragged out of the Trash by this page's own drag, or from another
+  // server's tab, which has a token of its own.
+  const trashDrop = (origin?: string) => {
+    const onRestoreItems = vi.fn();
+    const startUpload = vi.fn();
+    const items = [
+      { name: "report.pdf", path: "/home/a/.local/share/Trash/files/r.pdf" },
+    ];
+    const { result } = renderHook(() =>
+      useFileDragAndDrop({
+        normalizedPath: "/srv/target",
+        onRestoreItems,
+        onUploadComplete: vi.fn(),
+        resolveCollisions: passthroughCollisions(),
+        resource: directory,
+        startUpload,
+      }),
+    );
+    const payload = origin
+      ? { items, origin, token: "f".repeat(32) }
+      : dragMadeHere((started) => setTrashDrag(started, items));
+    const event = dragEvent({
+      dataTransfer: {
+        dropEffect: "none",
+        getData: (type: string) =>
+          type === TRASH_DRAG_TYPE ? JSON.stringify(payload) : "",
+        types: [TRASH_DRAG_TYPE],
+      },
+    });
+    return { event, items, onRestoreItems, result, startUpload };
+  };
+
+  it("restores items dragged out of the Trash into the folder shown", async () => {
+    const { event, items, onRestoreItems, result, startUpload } = trashDrop();
+
+    act(() => result.current.handleDragOver(event));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.dataTransfer.dropEffect).toBe("move");
+    // Not an upload: the upload overlay stays hidden.
+    expect(result.current.isDragOver).toBe(false);
+
+    const extractCalls = droppedEntriesMocks.extract.mock.calls.length;
+    await act(async () => {
+      await result.current.handleDrop(event);
+    });
+    expect(onRestoreItems).toHaveBeenCalledWith(items, "/srv/target");
+    expect(droppedEntriesMocks.extract).toHaveBeenCalledTimes(extractCalls);
+    expect(startUpload).not.toHaveBeenCalled();
+  });
+
+  it("refuses items dragged out of another server's Trash", async () => {
+    const other = "https://backup.example:8090";
+    const { event, onRestoreItems, result, startUpload } = trashDrop(other);
+
+    await act(async () => {
+      await result.current.handleDrop(event);
+    });
+    expect(onRestoreItems).not.toHaveBeenCalled();
+    expect(startUpload).not.toHaveBeenCalled();
+    expect(toastMocks.error).toHaveBeenCalledWith("Cannot drop 1 item here", {
+      description: `It comes from ${other}, another server. Drop it in a tab of that server.`,
+    });
   });
 
   it("ignores drag events while editing or outside directories", () => {

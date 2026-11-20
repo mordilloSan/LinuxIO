@@ -397,11 +397,14 @@ function AgentBlock({ text }: { text: string }) {
   );
 }
 
+/** 14 s, 1 min 18 s, and from an hour on 1 h 16 min. */
 const duration = (ms: number) => {
   const seconds = Math.max(1, Math.round(ms / 1000));
-  return seconds < 60
-    ? `${seconds} s`
-    : `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 3600)
+    return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  const minutes = Math.round(ms / 60_000);
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 };
 
 /**

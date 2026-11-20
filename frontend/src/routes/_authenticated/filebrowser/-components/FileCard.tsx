@@ -1,5 +1,6 @@
 import {
   memo,
+  use,
   useCallback,
   useEffect,
   useMemo,
@@ -17,14 +18,21 @@ import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formatters";
 
+import { CARD_BORDER, CardIconSizeContext } from "../-cardSize";
 import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 import {
   getFileEntryBackground,
   getSubtleDividerColor,
 } from "./fileBrowserSurfaces";
 import FileIcon from "./FileIcon";
+import type { ItemPosition } from "./VirtualDirectoryItems";
 
 interface FileCardProps {
+  /**
+   * A line under the name, as the folder a search result sits in: the
+   * Trash's cards say where an item came from.
+   */
+  caption?: string;
   directorySizeError?: Error | null;
   directorySizeLoading?: boolean;
   directorySizeUnavailable?: boolean;
@@ -49,6 +57,11 @@ interface FileCardProps {
   onDrop?: (event: DragEvent) => void;
   path?: string;
   renameProgressPct?: number;
+  /**
+   * Makes the card an option of a listbox, as the Trash's cards are: it says
+   * whether it is selected and where it stands in the whole list.
+   */
+  option?: ItemPosition;
   selected?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   size?: number;
@@ -57,6 +70,8 @@ interface FileCardProps {
 
 const FileCard = memo<FileCardProps>(
   ({
+    caption,
+    option,
     name,
     path,
     size,
@@ -87,6 +102,8 @@ const FileCard = memo<FileCardProps>(
   }) => {
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
+    // The card list's size step: the icon sets the card's height.
+    const iconSize = use(CardIconSizeContext);
 
     // Reset the draft to the current name when entering rename mode — the
     // render-time adjustment pattern (react.dev "adjusting state when a prop
@@ -206,8 +223,16 @@ const FileCard = memo<FileCardProps>(
     // Use CSS classes for hover - no React state updates during hover
     const className = `file-card hover-lift${disableHover ? " hover-lift--disabled" : ""}${isDropTarget ? " drop-target" : ""}`;
 
+    // The folder a search result sits in, or the caller's caption.
+    const location =
+      caption ??
+      (showFullPath && path ? path.replace(/\/[^/]*$/, "") || "/" : undefined);
+
     return (
       <div
+        aria-posinset={option?.posInSet}
+        aria-selected={option ? selected : undefined}
+        aria-setsize={option?.setSize}
         className={className}
         data-file-card="true"
         data-file-path={path}
@@ -219,17 +244,17 @@ const FileCard = memo<FileCardProps>(
         onDragOver={onDragOver}
         onDragStart={onDragStart}
         onDrop={onDrop}
+        role={option ? "option" : undefined}
         style={{
           display: "flex",
           alignItems: "center",
           gap: "var(--app-space-6)",
           padding: CARD_PADDING_SM,
-          border: "3px solid",
+          border: `${CARD_BORDER}px solid`,
           borderColor: borderColor,
           borderRadius: 20,
           backgroundColor: baseBg,
           cursor: "pointer",
-          minHeight: "60px",
           userSelect: "none",
           opacity: isCut ? 0.5 : 1,
         }}
@@ -240,6 +265,7 @@ const FileCard = memo<FileCardProps>(
           hidden={hidden}
           isDirectory={isDirectory}
           isSymlink={isSymlink}
+          size={iconSize}
         />
         <div
           style={{
@@ -308,26 +334,21 @@ const FileCard = memo<FileCardProps>(
             </AppTypography>
           )}
 
-          {/* Directory path and type badge for search results */}
-          {showFullPath && (
-            <>
-              {path && (
-                <AppTypography
-                  component="div"
-                  color="text.secondary"
-                  noWrap
-                  style={{
-                    opacity: 0.7,
-                    lineHeight: 1.2,
-                    marginTop: "2px",
-                  }}
-                  title={path}
-                  variant="caption"
-                >
-                  {path.replace(/\/[^/]*$/, "") || "/"}
-                </AppTypography>
-              )}
-            </>
+          {location !== undefined && (
+            <AppTypography
+              component="div"
+              color="text.secondary"
+              noWrap
+              style={{
+                opacity: 0.7,
+                lineHeight: 1.2,
+                marginTop: "2px",
+              }}
+              title={caption ?? path}
+              variant="caption"
+            >
+              {location}
+            </AppTypography>
           )}
 
           {/* Size line (middle) */}

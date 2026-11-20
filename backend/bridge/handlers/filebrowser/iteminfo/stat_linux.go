@@ -11,7 +11,7 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 // CollectStatInfo gathers extended Linux-specific file metadata including owner, group, and permissions.

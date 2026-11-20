@@ -147,8 +147,9 @@ test.describe("virtual file browser geometry", () => {
             ?.getBoundingClientRect().height ?? 0,
         rowHeight: row.getBoundingClientRect().height,
       }));
-    expect(geometry.cardHeight).toBeCloseTo(92, 0);
-    expect(geometry.rowHeight).toBeCloseTo(104, 0);
+    // The default size step: an 80px icon in a 102px card, 12px between rows.
+    expect(geometry.cardHeight).toBeCloseTo(102, 0);
+    expect(geometry.rowHeight).toBeCloseTo(114, 0);
   });
 
   test("preserves folder and file sections in the lazy row layout", async ({

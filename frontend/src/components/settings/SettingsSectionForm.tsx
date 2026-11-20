@@ -55,6 +55,13 @@ export function useSettingsDraft<TDraft extends object, TErrors extends object>(
     setRestartRequired(false);
   };
 
+  /**
+   * Clears the draft once the save of `sent`, the `draftPatch` it was made
+   * from, is confirmed. A draft edited since then is kept.
+   */
+  const resetSaved = (sent: Partial<TDraft>) =>
+    setDraftPatch((current) => (current === sent ? {} : current));
+
   return {
     draft,
     draftPatch,
@@ -66,6 +73,7 @@ export function useSettingsDraft<TDraft extends object, TErrors extends object>(
     isDirty,
     patchKey,
     reset,
+    resetSaved,
   };
 }
 

@@ -5,7 +5,7 @@ import { act, renderHook } from "@/test/render";
 
 import type { DroppedEntry } from "../-fileUpload";
 import { useFileBrowserUploadActions } from "./useFileBrowserUploadActions";
-import type { UploadSlice } from "./useFileUpload";
+import { type UploadSlice, useFileUpload } from "./useFileUpload";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
@@ -34,17 +34,18 @@ function uploadSlice(overrides: Partial<UploadSlice> = {}): UploadSlice {
     actions: {
       clearEntries: vi.fn(),
       closeDialog: vi.fn(),
+      closeDialogFor: vi.fn(),
       mergeEntries: vi.fn(),
       openDialog: vi.fn(),
       setOwnUploads: vi.fn(),
-      setProcessing: vi.fn(),
+      setStatus: vi.fn(),
     },
     fileInputRef: inputRef(),
     folderInputRef: inputRef(),
-    isUploadProcessing: false,
     ownUploads: false,
     uploadDialogOpen: false,
     uploadEntries: [],
+    uploadStatus: "idle",
     uploadSummary: { files: 0, folders: 0 },
     ...overrides,
   };
@@ -146,9 +147,9 @@ describe("useFileBrowserUploadActions", () => {
     );
   });
 
-  it("does not close or clear the dialog while an upload is processing", () => {
+  it("does not close or clear the dialog while it checks the destination", () => {
     const { result, params } = setup({
-      upload: uploadSlice({ isUploadProcessing: true }),
+      upload: uploadSlice({ uploadStatus: "checking" }),
     });
 
     act(() => result.current.handleCloseUploadDialog());
@@ -158,9 +159,21 @@ describe("useFileBrowserUploadActions", () => {
     expect(params.upload.actions.clearEntries).not.toHaveBeenCalled();
   });
 
+  it("closes the dialog while the upload runs but keeps its entries", () => {
+    const { result, params } = setup({
+      upload: uploadSlice({ uploadStatus: "uploading" }),
+    });
+
+    act(() => result.current.handleClearUploadSelection());
+    act(() => result.current.handleCloseUploadDialog());
+
+    expect(params.upload.actions.clearEntries).not.toHaveBeenCalled();
+    expect(params.upload.actions.closeDialog).toHaveBeenCalledTimes(1);
+  });
+
   it("closes and clears the dialog when idle", () => {
     const { result, params } = setup({
-      upload: uploadSlice({ isUploadProcessing: false }),
+      upload: uploadSlice({ uploadStatus: "idle" }),
     });
 
     act(() => result.current.handleCloseUploadDialog());
@@ -189,9 +202,10 @@ describe("useFileBrowserUploadActions", () => {
       failures: [],
       uploaded: 2,
     });
+    const uploadEntries = [entry];
     const { result, params } = setup({
       startUpload,
-      upload: uploadSlice({ uploadEntries: [entry] }),
+      upload: uploadSlice({ uploadEntries }),
     });
 
     await act(async () => {
@@ -222,12 +236,115 @@ describe("useFileBrowserUploadActions", () => {
       undefined,
     );
     expect(params.invalidateListing).toHaveBeenCalledTimes(1);
-    expect(params.upload.actions.closeDialog).toHaveBeenCalledTimes(1);
-    expect(params.upload.actions.setProcessing).toHaveBeenNthCalledWith(
-      1,
-      true,
+    // Closed by the request that started the upload, not whatever is open.
+    expect(params.upload.actions.closeDialogFor).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(params.upload.actions.closeDialogFor).mock.calls[0][0],
+    ).toBe(uploadEntries);
+    expect(params.upload.actions.closeDialog).not.toHaveBeenCalled();
+    expect(vi.mocked(params.upload.actions.setStatus).mock.calls).toEqual([
+      [uploadEntries, "checking"],
+      [uploadEntries, "uploading"],
+      [uploadEntries, "idle"],
+    ]);
+  });
+
+  it("holds the dialog through the conflict prompt and frees it once bytes move", async () => {
+    let resolvePrompt!: (resolution: unknown) => void;
+    const resolveCollisions = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    ) as unknown as Params["resolveCollisions"];
+    const startUpload = vi.fn().mockResolvedValue({
+      failures: [],
+      uploaded: 1,
+    });
+    const { result, params } = setup({
+      resolveCollisions,
+      startUpload,
+      upload: uploadSlice({ uploadEntries: [entry] }),
+    });
+    const setStatus = vi.mocked(params.upload.actions.setStatus);
+
+    let started!: Promise<void> | undefined;
+    act(() => {
+      started = result.current.handleStartUpload();
+    });
+    expect(setStatus).toHaveBeenLastCalledWith([entry], "checking");
+    expect(startUpload).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolvePrompt({ kept: [entry], keepBoth: [], overwrite: false });
+      await started;
+    });
+
+    // The dialog can be closed from the moment the upload starts.
+    const uploadingCall = setStatus.mock.calls.findIndex(
+      ([, status]) => status === "uploading",
     );
-    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
+    expect(setStatus.mock.invocationCallOrder[uploadingCall]).toBeLessThan(
+      startUpload.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("leaves an upload dialog opened again while the upload ran open", async () => {
+    let finishUpload!: (result: {
+      failures: never[];
+      uploaded: number;
+    }) => void;
+    const startUpload = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    const { result } = renderHook(() => {
+      const upload = useFileUpload();
+      const actions = useFileBrowserUploadActions({
+        invalidateListing: vi.fn(),
+        normalizedPath: "/srv/data",
+        onContextMenuClose: vi.fn(),
+        resolveCollisions: vi.fn(async (items: unknown[]) => ({
+          kept: items,
+          keepBoth: [],
+          overwrite: false,
+        })) as unknown as Params["resolveCollisions"],
+        startUpload: startUpload as unknown as Params["startUpload"],
+        upload,
+      });
+      return { actions, upload };
+    });
+
+    act(() => result.current.actions.handleUpload());
+    act(() => result.current.upload.actions.mergeEntries([entry]));
+    let started!: Promise<void> | undefined;
+    await act(async () => {
+      started = result.current.actions.handleStartUpload();
+    });
+    expect(startUpload).toHaveBeenCalledTimes(1);
+    expect(result.current.upload.uploadStatus).toBe("uploading");
+
+    // Closed while the upload runs, then opened again with other files.
+    act(() => result.current.actions.handleCloseUploadDialog());
+    expect(result.current.upload.uploadDialogOpen).toBe(false);
+    act(() => result.current.actions.handleUpload());
+    const other: DroppedEntry = {
+      file: new File(["y"], "b.txt"),
+      isDirectory: false,
+      relativePath: "b.txt",
+    };
+    act(() => result.current.upload.actions.mergeEntries([other]));
+
+    await act(async () => {
+      finishUpload({ failures: [], uploaded: 1 });
+      await started;
+    });
+
+    expect(result.current.upload.uploadDialogOpen).toBe(true);
+    expect(result.current.upload.uploadEntries).toEqual([other]);
+    expect(result.current.upload.uploadStatus).toBe("idle");
   });
 
   it("keeps the dialog open when the conflict prompt is cancelled", async () => {
@@ -246,8 +363,11 @@ describe("useFileBrowserUploadActions", () => {
     });
 
     expect(startUpload).not.toHaveBeenCalled();
-    expect(params.upload.actions.closeDialog).not.toHaveBeenCalled();
-    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
+    expect(params.upload.actions.closeDialogFor).not.toHaveBeenCalled();
+    expect(params.upload.actions.setStatus).toHaveBeenLastCalledWith(
+      [entry],
+      "idle",
+    );
   });
 
   it("sends only kept items with overwrite when the user resolves conflicts", async () => {
@@ -329,10 +449,13 @@ describe("useFileBrowserUploadActions", () => {
       "All items skipped",
       expect.anything(),
     );
-    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
+    expect(params.upload.actions.setStatus).toHaveBeenLastCalledWith(
+      [entry],
+      "idle",
+    );
   });
 
-  it("reports a failed upload and always clears the processing flag", async () => {
+  it("reports a failed upload and always frees the dialog", async () => {
     const startUpload = vi.fn().mockRejectedValue(new Error("network down"));
     const { result, params } = setup({
       startUpload,
@@ -347,6 +470,10 @@ describe("useFileBrowserUploadActions", () => {
       "Upload failed",
       expect.anything(),
     );
-    expect(params.upload.actions.setProcessing).toHaveBeenLastCalledWith(false);
+    expect(params.upload.actions.closeDialogFor).not.toHaveBeenCalled();
+    expect(params.upload.actions.setStatus).toHaveBeenLastCalledWith(
+      [entry],
+      "idle",
+    );
   });
 });

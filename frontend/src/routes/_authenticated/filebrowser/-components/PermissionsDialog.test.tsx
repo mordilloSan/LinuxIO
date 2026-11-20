@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen } from "@/test/render";
+import { fireEvent, render, screen } from "@/test/render";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -66,7 +66,7 @@ describe("PermissionsDialog", () => {
     expect(ownerRead).not.toBeChecked();
   });
 
-  it("shows Task progress and keeps pending permissions mounted", async () => {
+  it("hands the settings to the page on Apply and shows no progress of its own", async () => {
     const onClose = vi.fn();
     const onConfirm = vi.fn();
     const { user } = render(
@@ -74,24 +74,67 @@ describe("PermissionsDialog", () => {
         currentMode="0755"
         group="root"
         isDirectory
-        isPending
         onClose={onClose}
         onConfirm={onConfirm}
         open
         owner="root"
         pathLabel="/srv/data"
-        progress={{ phase: "chmod" }}
         selectionCount={1}
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("chmod");
-    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Owner read" })).toBeDisabled();
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "Apply recursively to all files and subdirectories",
+      }),
+    );
+    // The page closes the dialog as the change starts; the task tray shows
+    // its progress and can cancel it.
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onConfirm).toHaveBeenCalledWith("755", true, "root", "root");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).not.toHaveAttribute("aria-busy");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
     await user.keyboard("{Escape}");
-    expect(onClose).not.toHaveBeenCalled();
-    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(2);
+    const backdrop = document.querySelector(".app-dialog__backdrop");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop as Element);
+    expect(onClose).toHaveBeenCalledTimes(3);
+  });
+
+  it("opens with the settings it is given, as Try again does", () => {
+    render(
+      <PermissionsDialog
+        currentMode="700"
+        group="staff"
+        isDirectory
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        open
+        owner="alice"
+        pathLabel="2 items"
+        recursive
+        selectionCount={2}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Owner write" })).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Group read" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Apply recursively to all files and subdirectories",
+      }),
+    ).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Owner" })).toHaveValue(
+      "alice",
+    );
+    expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue(
+      "staff",
+    );
   });
 });

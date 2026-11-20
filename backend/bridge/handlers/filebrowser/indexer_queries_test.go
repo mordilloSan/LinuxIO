@@ -13,10 +13,11 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 func TestSearchResultFromIndexerExposesEditorEligibility(t *testing.T) {
-	got := searchResultFromIndexer(indexerSearchResult{
+	got := searchResultFromIndexer(indexerapi.EntryResult{
 		Path: "/plain",
 		Type: "file",
 	})
@@ -26,7 +27,7 @@ func TestSearchResultFromIndexerExposesEditorEligibility(t *testing.T) {
 }
 
 func TestSubfoldersFromIndexerUsesCanonicalSizeAndIgnoresBytes(t *testing.T) {
-	upstream := []indexerSubfolder{{Path: "/data/cache", Name: "cache"}}
+	upstream := []indexerapi.SubfolderResult{{Path: "/data/cache", Name: "cache"}}
 	got := subfoldersFromIndexer(upstream)
 	if len(got) != 1 {
 		t.Fatalf("subfolder count = %d, want 1", len(got))
@@ -52,7 +53,7 @@ func TestSubfoldersFromIndexerReturnsNonNilEmptySlice(t *testing.T) {
 
 func TestSearchResultFromIndexerPreservesCanonicalFields(t *testing.T) {
 	modified := time.Date(2026, time.July, 30, 12, 0, 0, 0, time.UTC)
-	upstream := indexerSearchResult{
+	upstream := indexerapi.EntryResult{
 		Path: "/data/report.txt", Name: "report.txt", Type: "file",
 		Size: 42, Inode: 99, ModTime: modified,
 	}
@@ -75,7 +76,7 @@ func TestSearchResultFromIndexerPreservesCanonicalFields(t *testing.T) {
 }
 
 func TestSearchResultFromIndexerRecognizesDirectory(t *testing.T) {
-	got := searchResultFromIndexer(indexerSearchResult{Path: "/data", Type: "folder"})
+	got := searchResultFromIndexer(indexerapi.EntryResult{Path: "/data", Type: "folder"})
 	if !got.IsDir || got.IsRegularFile || got.CanOpenAsText != nil {
 		t.Fatalf("directory result = %#v", got)
 	}

@@ -2,15 +2,19 @@ package docker
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 
@@ -164,6 +168,28 @@ func TestCreateConfiguredContainerPullsOnlyWhenImageIsMissing(t *testing.T) {
 	}
 }
 
+// A container created and started on the Containers page is ready once it
+// runs, as before the settle time of an update: one-shot work that exits
+// within seconds is not removed for it.
+func TestCreateConfiguredContainerTakesNoSettleTime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		fake := newStandaloneUpdateFake()
+		started := readyContainer("replacement", "sha256:new")
+		started.State.Health = nil
+		started.State.StartedAt = time.Now().Format(time.RFC3339Nano)
+		fake.inspectResults["replacement"] = started
+		configuration := testContainerConfiguration()
+		options, err := containerCreateOptions(configuration)
+		if err != nil {
+			t.Fatalf("containerCreateOptions: %v", err)
+		}
+		began := time.Now()
+		if _, err := createConfiguredContainer(t.Context(), fake, apischema.ContainerCreateRequest{Configuration: configuration, Start: true}, options); err != nil || time.Since(began) != 0 {
+			t.Fatalf("created after %v, %v; want ready on the first read", time.Since(began), err)
+		}
+	})
+}
+
 func TestEditConfiguredContainerUsesRollbackTransactionAndNewName(t *testing.T) {
 	fake := newStandaloneUpdateFake()
 	before := standaloneTestInspect()
@@ -202,6 +228,37 @@ func TestEditConfiguredContainerUsesRollbackTransactionAndNewName(t *testing.T) 
 	}
 	if _, err := os.Stat(journalPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("journal remains after edit: %v", err)
+	}
+}
+
+// An edit recreates the container from the copy of its configuration, which
+// holds its image's values merged with its own: the values the old image set
+// are dropped, so the image the edit names applies its own.
+func TestEditConfiguredContainerDropsWhatTheOldImageSet(t *testing.T) {
+	fake := newStandaloneUpdateFake()
+	before := standaloneTestInspect()
+	before.Config.Env = []string{"PATH=/old/bin", "TOKEN=x"}
+	before.Config.Cmd = []string{"serve"}
+	fake.inspectResults[before.ID] = before
+	data, err := json.Marshal(map[string]any{"Id": before.Image, "Config": map[string]any{"Env": []string{"PATH=/old/bin"}, "Cmd": []string{"serve"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oldImage image.InspectResponse
+	if err := json.Unmarshal(data, &oldImage); err != nil {
+		t.Fatal(err)
+	}
+	fake.images = map[string]image.InspectResponse{before.Image: oldImage}
+	configuration := testContainerConfiguration()
+	configuration.Environment = []apischema.ContainerEnvironmentVariable{{Name: "PATH", Value: "/old/bin"}, {Name: "TOKEN", Value: "x"}}
+	configuration.Command = []string{"serve"}
+
+	if _, err := editConfiguredContainer(t.Context(), fake, apischema.ContainerEditRequest{ContainerID: before.ID, Configuration: configuration}, dockerupdate.NewJournal(filepath.Join(t.TempDir(), "transaction.json"))); err != nil {
+		t.Fatalf("editConfiguredContainer: %v", err)
+	}
+	created := fake.createOptions[0].Config
+	if !slices.Equal(created.Env, []string{"TOKEN=x"}) || created.Cmd != nil {
+		t.Fatalf("created env %v, cmd %v; want only the container's own TOKEN and no command", created.Env, created.Cmd)
 	}
 }
 

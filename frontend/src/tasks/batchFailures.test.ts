@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { batchFailures, describeBatchFailures } from "./batchFailures";
+import {
+  batchFailureOpts,
+  batchFailures,
+  describeBatchFailures,
+} from "./batchFailures";
 
 describe("batchFailures", () => {
   it("returns the failed items or an empty list for results without any", () => {
@@ -25,5 +29,19 @@ describe("batchFailures", () => {
       ...failed.slice(0, 5).map((f, i) => `file-${i}.txt: ${f.error}`),
       "and 2 more",
     ]);
+  });
+
+  it("hands every failure's line over beside the shortened description", () => {
+    const failed = Array.from({ length: 7 }, (_, i) => ({
+      error: `error ${i}`,
+      path: `/srv/file-${i}.txt`,
+    }));
+
+    const opts = batchFailureOpts(failed);
+    expect(opts.failures).toEqual(
+      failed.map((f, i) => `file-${i}.txt: ${f.error}`),
+    );
+
+    expect(opts.description).toBe(describeBatchFailures(failed));
   });
 });

@@ -29,11 +29,11 @@ Selected rows are tinted, not checkboxed. `selectedRowId` names the open or
 focused row, which paints `--app-dt-selected-bg` — the theme's `primary.main`
 at 10% (15% in dark). The page owns the selection state.
 
-The tint is applied as the row's *own* surface rather than an overlay, so zebra
-striping stays legible underneath it and hover brightens the tinted surface
-instead of replacing it — a selected row still responds to the pointer and still
-reads as selected. That derivation is shared with `.app-table-row` and
-`.file-row`, so every row in the app responds alike.
+The tint is applied as the row's *own* surface rather than an overlay, and hover
+brightens the tinted surface instead of replacing it — a selected row still
+responds to the pointer and still reads as selected. `.file-row` derives its
+hover the same way. An unselected table row brightens the stripe colour
+whether it is striped or not, so every row under the pointer lights up alike.
 
 A checkbox column is not the way to do this. It costs a column of width on every
 row, and its cell has to close over the selection — which makes the column defs
@@ -154,3 +154,11 @@ children; leaving, blurring or unmounting cancels its timer and listeners.
    and `onClearSelection` so Escape can clear it.
 5. Define the columns outside the render path, or memoize them, and pass
    per-row state through context.
+
+## Known limits
+
+- Tooltip deferral follows the virtualizer's `isScrolling`. A script that sets
+  `scrollTop` gets its scroll event a frame later; when the virtualizer's
+  150 ms idle reset runs in between, it reads the new offset and TanStack
+  Virtual then drops the event as a repeat, so that jump renders as idle,
+  with tooltips. `general-logs-scroll.spec.ts` sends the event with its write.

@@ -5,15 +5,19 @@ import (
 	"errors"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 func runIndexerTask(ctx context.Context, task *bridgeipc.Task, req apischema.OptionalPathRequest) (indexer.IndexerResult, error) {
 	path := "/"
 	if req.Path != nil && *req.Path != "" {
-		path = fsroot.CleanAbsPath(*req.Path)
+		resolved, err := indexedPath(ctx, fsroot.CleanAbsPath(*req.Path))
+		if err != nil {
+			return indexer.IndexerResult{}, err
+		}
+		path = resolved
 	}
 	return runIndexerOperation(ctx, task, path, false)
 }

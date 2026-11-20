@@ -1,9 +1,11 @@
 package packages
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"slices"
@@ -11,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -18,7 +21,7 @@ import (
 
 func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -310,7 +313,7 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 	}
 
 	registry := bridgeipc.NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -402,6 +405,266 @@ func specOptionalRHELWarning(t *testing.T, name string) string {
 		t.Fatalf("capability %q has no install specification", name)
 	}
 	return spec.Install.OptionalPackageRHELFailureWarning
+}
+
+// hookRun records what an install with a fake zram package hook did.
+type hookRun struct {
+	order []string
+	// afterCtxErr is the context error the step after the package saw.
+	afterCtxErr error
+	// onAfter runs in the step after the package, as a cancel that lands
+	// while it runs.
+	onAfter func()
+}
+
+// captureLogs sends the default logger's lines, Debug ones included, to a
+// buffer for the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &logs
+}
+
+// withZramHook installs zram on family through fakes: the registry's zram
+// spec with its hook replaced by one whose step after the package returns
+// afterWarning and afterErr, and a package step that returns packageErr.
+func withZramHook(t *testing.T, family string, packageStep func(ctx context.Context) error, afterWarning string, afterErr error) *hookRun {
+	t.Helper()
+	originalFamily := capabilityDistroFamily
+	originalPackage := capabilityInstallPackage
+	originalDetect := capabilityDetectWithRetry
+	originalSpec := capabilitySpecByName
+	t.Cleanup(func() {
+		capabilityDistroFamily = originalFamily
+		capabilityInstallPackage = originalPackage
+		capabilityDetectWithRetry = originalDetect
+		capabilitySpecByName = originalSpec
+	})
+	run := &hookRun{}
+	capabilitySpecByName = func(name string) (capabilities.CapabilitySpec, bool) {
+		spec, ok := originalSpec(name)
+		install := *spec.Install
+		install.PackageHookDebian = func(context.Context) (func(context.Context) (string, error), error) {
+			run.order = append(run.order, "hook:before")
+			return func(ctx context.Context) (string, error) {
+				run.order = append(run.order, "hook:after")
+				run.afterCtxErr = ctx.Err()
+				if run.onAfter != nil {
+					run.onAfter()
+				}
+				return afterWarning, afterErr
+			}, nil
+		}
+		spec.Install = &install
+		return spec, ok
+	}
+	capabilityDistroFamily = func() string { return family }
+	capabilityInstallPackage = func(ctx context.Context, name string, _ pkgUpdateReporter) error {
+		run.order = append(run.order, "package:"+name)
+		if packageStep != nil {
+			return packageStep(ctx)
+		}
+		return nil
+	}
+	capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+		run.order = append(run.order, "detect:"+spec.Name)
+		return true, ""
+	}
+	return run
+}
+
+// zram's package hook runs around the package step only where zram-tools is
+// the package installed: it reads the host before the package and acts
+// after it, before the capability is detected again, and its warning is the
+// result's. Fedora's and RHEL's zram-generator starts nothing as it
+// installs, so their install runs no hook.
+func TestInstallCapabilityRunsThePackageHookOnDebianOnly(t *testing.T) {
+	if spec, ok := capabilities.CapabilitySpecByName("zram"); !ok || spec.Install == nil || spec.Install.PackageHookDebian == nil {
+		t.Fatal("zram's install has no Debian package hook")
+	}
+
+	tests := []struct {
+		family      string
+		wantOrder   []string
+		wantWarning string
+	}{
+		{family: "debian", wantOrder: []string{"hook:before", "package:zram-tools", "hook:after", "detect:zram"}, wantWarning: "zram was left on"},
+		{family: "rhel", wantOrder: []string{"package:zram-generator", "detect:zram"}},
+		{family: "fedora", wantOrder: []string{"package:zram-generator", "detect:zram"}},
+	}
+	for _, test := range tests {
+		t.Run(test.family, func(t *testing.T) {
+			run := withZramHook(t, test.family, nil, "zram was left on", nil)
+
+			result, err := installCapability(context.Background(), nil, session.User{}, "zram")
+			if err != nil {
+				t.Fatalf("installCapability: %v", err)
+			}
+			if !slices.Equal(run.order, test.wantOrder) {
+				t.Fatalf("operation order = %v, want %v", run.order, test.wantOrder)
+			}
+			if got := result.Warning; (got == nil) != (test.wantWarning == "") || (got != nil && *got != test.wantWarning) {
+				t.Fatalf("result.Warning = %v, want %q", got, test.wantWarning)
+			}
+		})
+	}
+}
+
+// A hook step that fails after the package is in fails the install, saying
+// the package was installed.
+func TestInstallCapabilityFailsWhenThePackageHookFails(t *testing.T) {
+	withZramHook(t, "debian", nil, "", errors.New("disable failed"))
+
+	_, err := installCapability(context.Background(), nil, session.User{}, "zram")
+	if err == nil || !strings.Contains(err.Error(), "zram-tools was installed") || !strings.Contains(err.Error(), "disable failed") {
+		t.Fatalf("err = %v, want the hook's error after the package was installed", err)
+	}
+}
+
+// The step after the package always runs, so what the hook holds is let go:
+// after a package step that failed, whose error is the install's, joined
+// with the hook's on one line, since the Capabilities row and the toast show
+// it as text.
+func TestInstallCapabilityRunsThePackageHookAfterAFailedPackageStep(t *testing.T) {
+	packageErr := errors.New("dpkg failed")
+	hookErr := errors.New("reload failed")
+	run := withZramHook(t, "debian", func(context.Context) error { return packageErr }, "", hookErr)
+
+	_, err := installCapability(context.Background(), nil, session.User{}, "zram")
+	if !errors.Is(err, packageErr) || !errors.Is(err, hookErr) {
+		t.Fatalf("err = %v, want the package's error and the hook's", err)
+	}
+	if strings.Contains(err.Error(), "\n") {
+		t.Fatalf("err = %q, want one line", err)
+	}
+	if want := []string{"hook:before", "package:zram-tools", "hook:after"}; !slices.Equal(run.order, want) {
+		t.Fatalf("operation order = %v, want %v", run.order, want)
+	}
+}
+
+// A cancelled install still runs the step after the package, on a context
+// the cancel does not reach, and ends cancelled. A cancelled job reports
+// only that it was cancelled, so the step's error is logged.
+func TestInstallCapabilityRunsThePackageHookAfterACancel(t *testing.T) {
+	logs := captureLogs(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	run := withZramHook(t, "debian", func(ctx context.Context) error {
+		cancel()
+		return ctx.Err()
+	}, "", errors.New("reload failed"))
+
+	_, err := runInstallCapabilityTask(ctx, nil, session.User{}, apischema.CapabilityRequest{Capability: "zram"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want canceled", err)
+	}
+	if want := []string{"hook:before", "package:zram-tools", "hook:after"}; !slices.Equal(run.order, want) {
+		t.Fatalf("operation order = %v, want %v", run.order, want)
+	}
+	if run.afterCtxErr != nil {
+		t.Fatalf("the step after the package ran on a done context: %v", run.afterCtxErr)
+	}
+	if !strings.Contains(logs.String(), "package hook failed after a cancelled install") || !strings.Contains(logs.String(), "reload failed") {
+		t.Fatalf("logs = %q, want the hook's error recorded", logs.String())
+	}
+}
+
+// A cancel while PackageKit installs zram-tools runs the step after the
+// package only once PackageKit's transaction has ended, so the hold and the
+// lock it releases outlive the package's scripts.
+func TestInstallCapabilityRunsThePackageHookAfterTheCancelledTransactionEnds(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setResolvable("zram-tools", fakeResolvable{id: hungPackageID})
+	service.setInstallHang(hungPackageID)
+	run := withZramHook(t, "debian", func(ctx context.Context) error {
+		return InstallByName(ctx, "zram-tools", nil)
+	}, "", nil)
+	afterRan := make(chan struct{})
+	run.onAfter = func() { close(afterRan) }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := runInstallCapabilityTask(ctx, nil, session.User{}, apischema.CapabilityRequest{Capability: "zram"})
+		done <- err
+	}()
+	var tx *fakeTransaction
+	select {
+	case tx = <-service.installStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("PackageKit was not asked to install zram-tools")
+	}
+
+	cancel()
+	waitCancelCall(t, service)
+	select {
+	case <-afterRan:
+		t.Fatal("the step after the package ran while PackageKit's transaction still ran")
+	case <-time.After(200 * time.Millisecond):
+	}
+	tx.emit("Finished", uint32(1), uint32(0))
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("install = %v, want canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the install did not return")
+	}
+	if want := []string{"hook:before", "package:zram-tools", "hook:after"}; !slices.Equal(run.order, want) {
+		t.Fatalf("operation order = %v, want %v", run.order, want)
+	}
+}
+
+// A cancel that lands while the step after a successful package step runs,
+// and a step that fails, does not let the install go on to end completed:
+// the job ends cancelled, and the step's failure is recorded in the log.
+func TestInstallCapabilityDoesNotCompleteWhenThePackageHookFailsDuringACancel(t *testing.T) {
+	logs := captureLogs(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	run := withZramHook(t, "debian", nil, "", errors.New("disable unit files zramswap.service: timed out; zramswap.service starts zram at the next boot"))
+	run.onAfter = cancel
+
+	result, err := runInstallCapabilityTask(ctx, nil, session.User{}, apischema.CapabilityRequest{Capability: "zram"})
+	if err == nil {
+		t.Fatalf("the install completed with %+v, want it to end cancelled", result)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want canceled", err)
+	}
+	if want := []string{"hook:before", "package:zram-tools", "hook:after"}; !slices.Equal(run.order, want) {
+		t.Fatalf("operation order = %v, want %v: the install went on", run.order, want)
+	}
+	if !strings.Contains(logs.String(), "package hook failed after a cancelled install") || !strings.Contains(logs.String(), "starts zram at the next boot") {
+		t.Fatalf("logs = %q, want the hook's error recorded", logs.String())
+	}
+}
+
+// A hook that fails before the package step stops the install there.
+func TestInstallCapabilityStopsWhenThePackageHookCannotPrepare(t *testing.T) {
+	run := withZramHook(t, "debian", nil, "", nil)
+	hooked := capabilitySpecByName
+	capabilitySpecByName = func(name string) (capabilities.CapabilitySpec, bool) {
+		spec, ok := hooked(name)
+		spec.Install.PackageHookDebian = func(context.Context) (func(context.Context) (string, error), error) {
+			run.order = append(run.order, "hook:before")
+			return nil, errors.New("bus closed")
+		}
+		return spec, ok
+	}
+
+	_, err := installCapability(context.Background(), nil, session.User{}, "zram")
+	if err == nil || !strings.Contains(err.Error(), "prepare the zram-tools install") || !strings.Contains(err.Error(), "bus closed") {
+		t.Fatalf("err = %v, want the hook's error before the package", err)
+	}
+	if want := []string{"hook:before"}; !slices.Equal(run.order, want) {
+		t.Fatalf("operation order = %v, want %v", run.order, want)
+	}
 }
 
 func TestInstallCapabilityRunsSensorsDetectBeforeRedetection(t *testing.T) {

@@ -8,14 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 const MaxTextFileBytes int64 = 1_000_000
@@ -23,7 +25,46 @@ const MaxTextFileBytes int64 = 1_000_000
 var (
 	ErrEditorFileNotEligible = errors.New("file is not eligible for text editing")
 	ErrEditorFileContainsNUL = errors.New("file contains a NUL byte")
+	// ErrNotRegularFile is what OpenRegularForRead answers for anything but a
+	// regular file.
+	ErrNotRegularFile = errors.New("not a regular file")
 )
+
+// OpenRegularForRead opens the regular file at path for a read: the download,
+// the editor and an archive the user's own programs would read. path is
+// reached as a read reaches it, every link followed (see
+// linksafe.OpenEntryFollowing), and its last name is opened as an O_PATH
+// handle without following a link. Only when fstat on that handle says it is a
+// regular file is the file reopened through the handle, by /proc/self/fd, for
+// reading without blocking or taking a terminal. So a FIFO, socket or device
+// is never opened for reading, whatever is put at the name in between: what
+// is judged is what is opened. Anything else comes back as ErrNotRegularFile,
+// with what fstat said of it.
+func OpenRegularForRead(ctx context.Context, path string) (*os.File, os.FileInfo, error) {
+	dir, name, err := linksafe.OpenEntryFollowing(ctx, path, Owner{})
+	if err != nil {
+		return nil, nil, err
+	}
+	defer dir.Close()
+	return openRegularAt(entry{dir: dir, name: name, path: filepath.Join(dir.Name(), name)})
+}
+
+// openRegularAt is OpenRegularForRead for e, in its open folder.
+func openRegularAt(e entry) (*os.File, os.FileInfo, error) {
+	handle, info, err := e.openPath()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer handle.Close()
+	if !info.Mode().IsRegular() {
+		return nil, info, fmt.Errorf("%s: %w", e.path, ErrNotRegularFile)
+	}
+	fd, err := unix.Open(procPath(handle), unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOCTTY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, nil, &fs.PathError{Op: "open", Path: e.path, Err: err}
+	}
+	return os.NewFile(uintptr(fd), e.path), info, nil
+}
 
 // EditorFileInfo is the result of the text-read API.
 type EditorFileInfo struct {
@@ -33,8 +74,11 @@ type EditorFileInfo struct {
 }
 
 // ReadEditorFile resolves and opens only the requested target. It does not
-// enumerate the target's parent directory.
-func ReadEditorFile(ctx context.Context, path string) (EditorFileInfo, error) {
+// enumerate the target's parent directory. linkRule is the session user a
+// save would act for (see linksafe.ActingFor): the read follows every link,
+// a save on a root bridge only the ones that user cannot have planted, so a
+// file the save could not reach is not offered for saving.
+func ReadEditorFile(ctx context.Context, path string, linkRule Owner) (EditorFileInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return EditorFileInfo{}, err
 	}
@@ -43,7 +87,17 @@ func ReadEditorFile(ctx context.Context, path string) (EditorFileInfo, error) {
 		return EditorFileInfo{}, err
 	}
 	defer root.Close()
-	return readEditorFile(ctx, root, path)
+	result, err := readEditorFile(ctx, root, path)
+	if err != nil || !result.CanSave || !linkRule.Set {
+		return result, err
+	}
+	if _, err = linksafe.Resolve(ctx, path, linkRule); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return result, ctxErr
+		}
+		result.CanSave = false
+	}
+	return result, nil
 }
 
 func readEditorFile(ctx context.Context, root *fsroot.FSRoot, path string) (EditorFileInfo, error) {
@@ -56,7 +110,7 @@ func readEditorFile(ctx context.Context, root *fsroot.FSRoot, path string) (Edit
 		return result, ErrEditorFileNotEligible
 	}
 
-	file, openedInfo, err := openEditorTarget(ctx, root, cleanPath)
+	file, openedInfo, err := openEditorTarget(ctx, cleanPath)
 	if err != nil {
 		return result, err
 	}
@@ -108,24 +162,20 @@ func editorTargetInfo(ctx context.Context, root *fsroot.FSRoot, path string) (st
 	return cleanPath, info, nil
 }
 
-func openEditorTarget(ctx context.Context, root *fsroot.FSRoot, path string) (*os.File, os.FileInfo, error) {
+// openEditorTarget opens the file at path for the editor through
+// OpenRegularForRead, so what is not a regular file is refused unopened.
+func openEditorTarget(ctx context.Context, path string) (*os.File, os.FileInfo, error) {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, nil, ctxErr
 	}
-	file, err := root.Root.OpenFile(fsroot.ToRel(path), os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	file, info, err := OpenRegularForRead(ctx, path)
+	if errors.Is(err, ErrNotRegularFile) {
+		return nil, nil, ErrEditorFileNotEligible
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("open editor file: %w", err)
 	}
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		file.Close()
-		return nil, nil, ctxErr
-	}
-	info, err := file.Stat()
-	if err != nil {
-		file.Close()
-		return nil, nil, fmt.Errorf("stat editor file: %w", err)
-	}
-	if !info.Mode().IsRegular() || info.Size() >= MaxTextFileBytes {
+	if info.Size() >= MaxTextFileBytes {
 		file.Close()
 		return nil, nil, ErrEditorFileNotEligible
 	}

@@ -79,6 +79,7 @@ const filesystem = (
   scrub: {} as BtrfsFilesystem["scrub"],
   degraded: false,
   lowMetadataSpace: false,
+  autoRebuild: true,
 });
 
 const data = filesystem("uuid-data", "data", "/mnt/data");

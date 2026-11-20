@@ -181,10 +181,16 @@ test("floats a plugin pane beside a chat that stays centred", async ({
   const area = await page.locator(".assistant__body").boundingBox();
   const composer = await page.locator(".assistant__composer").boundingBox();
   expect(Math.abs(centre(composer) - centre(area))).toBeLessThan(2);
+  // The card floats in the left margin, where the tabs are. It is visible
+  // from the first frame of its slide out of the tab (from scale 0.96), so
+  // it is measured once the slide is over.
+  await card.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((slide) => slide.finished));
+  });
   const cardBox = await card.boundingBox();
-  expect(cardBox!.x).toBeGreaterThan(composer!.x + composer!.width);
+  expect(cardBox!.x + cardBox!.width).toBeLessThan(composer!.x);
 
-  // Dragging the left edge to the left widens the card, and it stays that
+  // Dragging the right edge to the right widens the card, and it stays that
   // wide after a reload.
   const edge = card.getByRole("separator", { name: "Resize Work map" });
   const edgeBox = await edge.boundingBox();
@@ -193,7 +199,7 @@ test("floats a plugin pane beside a chat that stays centred", async ({
   await page.mouse.move(grabX, grabY);
   await page.mouse.down();
   // Not so wide that the margin can no longer hold it beside the tabs.
-  await page.mouse.move(grabX - 60, grabY, { steps: 6 });
+  await page.mouse.move(grabX + 60, grabY, { steps: 6 });
   await page.mouse.up();
   await expect
     .poll(async () => (await card.boundingBox())!.width)
@@ -224,17 +230,14 @@ test("floats a plugin pane beside a chat that stays centred", async ({
   await expect(chats.getByText("Full health check")).toBeVisible();
   await expect(chats.getByRole("heading", { name: "Earlier" })).toBeVisible();
   await expect(card).toBeHidden();
-  // Once it has slid out of its tab it floats beside the chat, left of the
+  // Once it has slid out of its tab it floats beside the chat, right of the
   // tabs.
   const tabBox = await chatsTab.boundingBox();
   await expect
-    .poll(async () => {
-      const box = await chats.boundingBox();
-      return box!.x + box!.width;
-    })
-    .toBeLessThanOrEqual(tabBox!.x);
+    .poll(async () => (await chats.boundingBox())!.x)
+    .toBeGreaterThanOrEqual(tabBox!.x + tabBox!.width);
   const chatsBox = await chats.boundingBox();
-  expect(chatsBox!.x).toBeGreaterThan(composer!.x + composer!.width);
+  expect(chatsBox!.x + chatsBox!.width).toBeLessThan(composer!.x);
   await chats.getByRole("button", { name: "Close Chats" }).click();
   await expect(chats).toBeHidden();
   await expect(chatsTab).toBeFocused();

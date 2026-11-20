@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -41,6 +41,31 @@ describe("MarkdownBlock", () => {
     expect(writeText).toHaveBeenCalledWith("ls -la");
   });
 
+  it("says Copied once the clipboard has the code, then goes back to Copy", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<MarkdownBlock text={"```sh\nls -la\n```"} />);
+      const button = screen.getByRole("button", { name: "Copy code" });
+      expect(button).toHaveTextContent("Copy");
+      expect(button).not.toHaveAttribute("data-state");
+
+      await user.click(button);
+      await waitFor(() => expect(button).toHaveTextContent("Copied"));
+      expect(button).toHaveAttribute("data-state", "copied");
+      expect(screen.getByRole("status")).toHaveTextContent("Copied");
+
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(button).toHaveTextContent(/^Copy$/);
+      expect(button).not.toHaveAttribute("data-state");
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not render raw HTML", () => {
     const { container } = render(
       <MarkdownBlock text="<img src=x onerror=alert(1)>" />,
@@ -59,17 +84,22 @@ describe("MarkdownBlock", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
-  it("does not throw when the Clipboard API is unavailable", async () => {
-    const user = userEvent.setup();
+  it("says the copy failed when the Clipboard API is unavailable", async () => {
+    render(<MarkdownBlock text={"```\nx\n```"} />);
+    // Removed after render: render sets userEvent up, which puts a clipboard
+    // stub on the window.
     const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     Object.defineProperty(navigator, "clipboard", {
       value: undefined,
       configurable: true,
     });
     try {
-      render(<MarkdownBlock text={"```\nx\n```"} />);
-      await user.click(screen.getByRole("button", { name: "Copy code" }));
-      expect(screen.getByRole("button", { name: "Copy code" })).toBeEnabled();
+      const button = screen.getByRole("button", { name: "Copy code" });
+      fireEvent.click(button);
+      await waitFor(() => expect(button).toHaveTextContent("Copy failed"));
+      expect(button).toHaveAttribute("data-state", "failed");
+      expect(button).toBeEnabled();
+      expect(screen.getByRole("status")).toHaveTextContent("Copy failed");
     } finally {
       if (original) Object.defineProperty(navigator, "clipboard", original);
       else delete (navigator as { clipboard?: unknown }).clipboard;

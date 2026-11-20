@@ -73,10 +73,13 @@ func monitorReadOwnedStream(stream net.Conn, cancel context.CancelFunc, cancelOn
 }
 
 func cancelForClientEnd(stream net.Conn, cancel context.CancelFunc, interruptWrite bool) {
+	// Cancel first: the writer the deadline wakes must find the context
+	// already canceled, or its handler takes the deadline error for a failure
+	// instead of the client leaving.
+	cancel()
 	if interruptWrite {
 		// A server-producing Channel may be blocked by backpressure on its
 		// write side. Wake that write so cancellation cannot leak the producer.
 		_ = stream.SetWriteDeadline(time.Now())
 	}
-	cancel()
 }

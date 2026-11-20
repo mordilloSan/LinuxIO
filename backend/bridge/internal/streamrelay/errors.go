@@ -24,11 +24,13 @@ func Canceled(ctx context.Context, err error) bool {
 }
 
 // WriteErrorUnlessCanceled is WriteError, except that a stream the client
-// already abandoned is just closed: the route ended normally, so nothing is
-// returned for the router to log.
+// already abandoned is just closed, best effort: the route ended normally, so
+// nothing is returned for the router to log, not even a close frame that
+// cannot be written because the client is gone.
 func WriteErrorUnlessCanceled(ctx context.Context, w io.Writer, streamID uint32, err error) error {
 	if Canceled(ctx, err) {
-		return ipc.WriteStreamClose(w, streamID)
+		_ = ipc.WriteStreamClose(w, streamID)
+		return nil
 	}
 	return WriteError(w, streamID, err)
 }

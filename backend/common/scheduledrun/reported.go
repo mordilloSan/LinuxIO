@@ -2,46 +2,36 @@ package scheduledrun
 
 import "errors"
 
-// The exit statuses a worker unit (snapshots, resync, Docker updates) tells
-// its end hook the outcome of a failed run with. Any other failure exits 1,
-// and the hook raises the unit's run alert.
-const (
-	// ExitReported: nothing is left to report, since each failure raised its
-	// own alert, for a rule, a job, a pool or a container. The hook raises no
-	// run alert and clears a standing one.
-	ExitReported = 3
-	// ExitSkipped: the run did no work, since other work held it off. The
-	// hook leaves the run alert as it is.
-	ExitSkipped = 4
-)
+// ExitSkipped is the exit status of a worker (snapshots, replication,
+// resync, Docker updates) whose run did no work, since other work held it
+// off, and whose summary, which normally says so, could not be stored. The
+// end hook then leaves the run alert as it is. Every other run exits with 0,
+// or with 1 (see Conclude).
+const ExitSkipped = 4
 
 type reportedError struct{ error }
 
 func (e reportedError) Unwrap() error { return e.error }
 
-type skippedError struct{ error }
-
-func (e skippedError) Unwrap() error { return e.error }
-
-// Skipped marks err as the reason a run did no work at all. A nil err stays
-// nil.
-func Skipped(err error) error {
-	if err == nil {
+// Unreported is what err holds besides the failures marked Reported: nil when
+// every failure in it was reported. Joins are taken apart at every depth, so
+// a pass that joins the joined failures of its steps keeps only the
+// unreported ones.
+func Unreported(err error) error {
+	if err == nil || AllReported(err) {
 		return nil
 	}
-	return skippedError{err}
-}
-
-// ExitStatus is the exit status of a worker whose run failed with err.
-func ExitStatus(err error) int {
-	var skipped skippedError
-	switch {
-	case errors.As(err, &skipped):
-		return ExitSkipped
-	case AllReported(err):
-		return ExitReported
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return err
 	}
-	return 1
+	var rest []error
+	for _, e := range joined.Unwrap() {
+		if unreported := Unreported(e); unreported != nil {
+			rest = append(rest, unreported)
+		}
+	}
+	return errors.Join(rest...)
 }
 
 // Reported marks err as a failure its worker raised an alert for. A nil err

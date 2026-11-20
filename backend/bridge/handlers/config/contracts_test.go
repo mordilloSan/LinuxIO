@@ -16,6 +16,8 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 		Docker: userconfig.Docker{
 			Folders:                 []userconfig.AbsolutePath{"/srv/docker", "/mnt/apps"},
 			RequireMountsForFolders: true,
+			WaitForHostIPs:          true,
+			HostIPs:                 []string{"192.168.1.66", "2001:db8::66"},
 		},
 		Jobs: userconfig.PersistedJobSettings{
 			ProgressMinIntervalMs:     100,
@@ -67,6 +69,15 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 	}
 	if got := decodeConfigJSON(t, uiConfigToAPI(ui)); !reflect.DeepEqual(got, wantUI) {
 		t.Fatalf("converted UI config JSON differs:\n got: %#v\nwant: %#v", got, wantUI)
+	}
+}
+
+// The page reads docker.hostIPs as a list, so a config that never stored one
+// still sends an array.
+func TestAppConfigToAPISendsAnEmptyHostIPList(t *testing.T) {
+	got := appConfigToAPI(userconfig.Settings{}, userconfig.StorageModeHome).Docker
+	if got.WaitForHostIPs || got.HostIPs == nil || len(got.HostIPs) != 0 {
+		t.Fatalf("docker = %#v, want the wait off and a non-nil empty hostIPs", got)
 	}
 }
 

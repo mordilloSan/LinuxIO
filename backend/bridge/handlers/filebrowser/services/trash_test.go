@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 func TestMoveToTrash(t *testing.T) {
@@ -114,7 +116,7 @@ func TestListRestoreAndPurgeTrash(t *testing.T) {
 
 	// Restore recreates the missing parent folder and drops the info file.
 	require.NoError(t, os.RemoveAll(docs))
-	restored, err := RestoreFromTrash(t.Context(), byName["report.txt"].Path, home, testTrashUID, testTrashUID, false, nil)
+	restored, err := RestoreFromTrash(t.Context(), byName["report.txt"].Path, home, testTrashUID, testTrashUID, false, RestoreOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, report, restored)
 	content, err := os.ReadFile(report)
@@ -126,7 +128,7 @@ func TestListRestoreAndPurgeTrash(t *testing.T) {
 	_, err = MoveToTrash(t.Context(), createTestFile(t, docs, "other.txt", []byte("x")), home, testTrashUID, testTrashUID, false)
 	require.NoError(t, err)
 	createTestFile(t, docs, "other.txt", []byte("newer"))
-	_, err = RestoreFromTrash(t.Context(), filepath.Join(home, ".local/share/Trash/files/other.txt"), home, testTrashUID, testTrashUID, false, nil)
+	_, err = RestoreFromTrash(t.Context(), filepath.Join(home, ".local/share/Trash/files/other.txt"), home, testTrashUID, testTrashUID, false, RestoreOptions{})
 	require.ErrorContains(t, err, "already exists")
 
 	removed, err := PurgeFromTrash(t.Context(), byName["photos"].Path, home, testTrashUID, nil)
@@ -145,7 +147,7 @@ func TestTrashRefusesPathsOutsideTheTrash(t *testing.T) {
 	home := t.TempDir()
 	outside := createTestFile(t, home, "keep.txt", []byte("keep"))
 
-	_, err := RestoreFromTrash(t.Context(), outside, home, testTrashUID, testTrashUID, false, nil)
+	_, err := RestoreFromTrash(t.Context(), outside, home, testTrashUID, testTrashUID, false, RestoreOptions{})
 	require.ErrorContains(t, err, "not in the trash")
 	_, err = PurgeFromTrash(t.Context(), outside, home, testTrashUID, nil)
 	require.ErrorContains(t, err, "not in the trash")
@@ -256,7 +258,7 @@ func TestRestoreHandsNewParentsToTheSessionUser(t *testing.T) {
 	createTestFile(t, createTestDir(t, trash, "files"), "notes.txt", []byte("notes"))
 	writeTestTrashInfo(t, trash, "notes.txt", notes)
 
-	restored, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, os.Getuid(), os.Getgid(), true, nil)
+	restored, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, os.Getuid(), os.Getgid(), true, RestoreOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, notes, restored)
 	requireMode(t, filepath.Join(home, "a"), 0o755)
@@ -282,25 +284,26 @@ func openTestDir(t *testing.T, path string) *os.File {
 func TestRestoreIntoSystemFolderPutsAReplacedItemBack(t *testing.T) {
 	trashFiles, system := t.TempDir(), t.TempDir()
 	files, dir := openTestDir(t, trashFiles), openTestDir(t, system)
+	systemEntry := entry{dir: dir, name: "app.conf", path: filepath.Join(system, "app.conf")}
 	session := Owner{UID: uint32(os.Getuid()) + 1, GID: uint32(os.Getgid()) + 1, Set: true}
 	createTestFile(t, trashFiles, "app.conf", []byte("swapped"))
 	var checked unix.Stat_t
 	require.NoError(t, unix.Lstat(createTestFile(t, t.TempDir(), "app.conf", []byte("checked")), &checked))
 
-	err := restoreIntoSystemFolder(files, "app.conf", checked, dir, "app.conf", session)
+	err := restoreIntoSystemFolder(t.Context(), files, "app.conf", checked, systemEntry, session, false)
 	require.ErrorIs(t, err, errTrashItemReplaced)
 	requireEntries(t, trashFiles, "app.conf")
 	requireEmptyDir(t, system)
 
 	require.NoError(t, unix.Lstat(filepath.Join(trashFiles, "app.conf"), &checked))
 	taken := createTestFile(t, system, "app.conf", []byte("taken"))
-	err = restoreIntoSystemFolder(files, "app.conf", checked, dir, "app.conf", session)
+	err = restoreIntoSystemFolder(t.Context(), files, "app.conf", checked, systemEntry, session, false)
 	require.ErrorIs(t, err, unix.EEXIST)
 	requireEntries(t, trashFiles, "app.conf")
 	require.NoError(t, os.Remove(taken))
 	requireEmptyDir(t, system)
 
-	require.NoError(t, restoreIntoSystemFolder(files, "app.conf", checked, dir, "app.conf", session))
+	require.NoError(t, restoreIntoSystemFolder(t.Context(), files, "app.conf", checked, systemEntry, session, false))
 	content, err := os.ReadFile(filepath.Join(system, "app.conf"))
 	require.NoError(t, err)
 	assert.Equal(t, "swapped", string(content))
@@ -361,7 +364,7 @@ func TestRestoreNeverFollowsASymlinkedTrashFolderAsRoot(t *testing.T) {
 		plantTrashLink(t, victim, filepath.Join(trash, "files"))
 		writeTestTrashInfo(t, trash, "secret", filepath.Join(home, "secret"))
 
-		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "secret"), home, rootTestUID, rootTestGID, true, nil)
+		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "secret"), home, rootTestUID, rootTestGID, true, RestoreOptions{})
 		require.Error(t, err)
 		assert.FileExists(t, secret)
 		assert.NoFileExists(t, filepath.Join(home, "secret"))
@@ -374,7 +377,7 @@ func TestRestoreNeverFollowsASymlinkedTrashFolderAsRoot(t *testing.T) {
 		plantTrashLink(t, victim, filepath.Join(trash, "info"))
 		writeTestTrashInfo(t, trash, "notes.txt", filepath.Join(home, "notes.txt"))
 
-		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, rootTestUID, rootTestGID, true, nil)
+		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, rootTestUID, rootTestGID, true, RestoreOptions{})
 		require.Error(t, err)
 		assert.FileExists(t, filepath.Join(victim, "notes.txt.trashinfo"))
 		assert.FileExists(t, filepath.Join(trash, "files", "notes.txt"))
@@ -456,7 +459,7 @@ func TestRestoreNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
 	plantTrashLink(t, f.victim, f.docs)
 
 	for _, item := range []string{trashed, trashedNested} {
-		_, err = RestoreFromTrash(t.Context(), item, f.home, os.Getuid(), os.Getgid(), true, nil)
+		_, err = RestoreFromTrash(t.Context(), item, f.home, os.Getuid(), os.Getgid(), true, RestoreOptions{})
 		require.ErrorIs(t, err, bridgeipc.ErrForbidden, item)
 		f.requireVictimUntouched(t)
 		assert.FileExists(t, item)
@@ -496,7 +499,7 @@ func TestUnprivilegedTrashFollowsTheUsersOwnLinks(t *testing.T) {
 	items, err := ListTrash(t.Context(), home, testTrashUID)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	restored, err := RestoreFromTrash(t.Context(), items[0].Path, home, testTrashUID, testTrashUID, false, nil)
+	restored, err := RestoreFromTrash(t.Context(), items[0].Path, home, testTrashUID, testTrashUID, false, RestoreOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, notes, restored)
 }
@@ -573,7 +576,7 @@ func TestRestoreIntoSystemFolderNeverStrandsAUserFileAsRoot(t *testing.T) {
 	require.NoError(t, err)
 	defer stage.Close()
 	createTestFile(t, filesPath, "app.conf", []byte("blocks the put-back"))
-	err = placeStaged(stage, files, "app.conf", checked, dir, "app.conf", session)
+	err = placeStaged(t.Context(), stage, files, "app.conf", checked, entry{dir: dir, name: "app.conf", path: filepath.Join(system, "app.conf")}, session, false)
 
 	require.ErrorIs(t, err, errTrashItemReplaced)
 	requireEmptyDir(t, system)
@@ -610,4 +613,198 @@ func TestOpenFreshStageRefusesASwappedFolder(t *testing.T) {
 	content, err := os.ReadFile(kept)
 	require.NoError(t, err)
 	assert.Equal(t, "root", string(content))
+}
+
+// A trashed folder is sized when its properties open: what it holds below
+// it, through handles, never what a link inside it points at.
+func TestTrashedFolderSize(t *testing.T) {
+	home := t.TempDir()
+	victim := t.TempDir()
+	createTestFile(t, victim, "big.bin", make([]byte, 4096))
+	photos := createTestDir(t, home, "photos")
+	createTestFile(t, photos, "a.jpg", []byte("jpeg"))
+	trip := createTestDir(t, photos, "2026")
+	createTestFile(t, trip, "b.jpg", []byte("jpeg!"))
+	plantTrashLink(t, victim, filepath.Join(trip, "elsewhere"))
+	_, err := MoveToTrash(t.Context(), photos, home, testTrashUID, testTrashUID, false)
+	require.NoError(t, err)
+	report := createTestFile(t, home, "report.txt", []byte("report"))
+	_, err = MoveToTrash(t.Context(), report, home, testTrashUID, testTrashUID, false)
+	require.NoError(t, err)
+	files := filepath.Join(home, ".local/share/Trash/files")
+
+	size, err := TrashedFolderSize(t.Context(), filepath.Join(files, "photos"), home, testTrashUID)
+	require.NoError(t, err)
+	// Size on disk, as the folder listing gives it: the folders' own blocks
+	// as well, the trashed folder's included.
+	trashed := filepath.Join(files, "photos")
+	onDisk := sizeOnDisk(t, trashed) + sizeOnDisk(t, filepath.Join(trashed, "2026")) + sizeOnDisk(t, filepath.Join(trashed, "a.jpg")) + sizeOnDisk(t, filepath.Join(trashed, "2026", "b.jpg")) + sizeOnDisk(t, filepath.Join(trashed, "2026", "elsewhere"))
+	assert.Equal(t, FolderSize{Size: onDisk, Files: 3, Folders: 1}, size, "two files and a link, in a folder")
+
+	_, err = TrashedFolderSize(t.Context(), filepath.Join(files, "report.txt"), home, testTrashUID)
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs, "a file is listed with its size")
+	_, err = TrashedFolderSize(t.Context(), filepath.Join(files, "gone"), home, testTrashUID)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	// Only an item of the session user's own trash is sized.
+	_, err = TrashedFolderSize(t.Context(), victim, home, testTrashUID)
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
+	_, err = TrashedFolderSize(t.Context(), filepath.Join(files, "photos", "2026"), home, testTrashUID)
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs, "not an item of the trash itself")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = TrashedFolderSize(ctx, filepath.Join(files, "photos"), home, testTrashUID)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// The walk stays on the mount the trashed folder is on: a folder of another
+// mount below it, a mount point or a bind mount, counts as a folder and is
+// not entered. It goes by the mount, not the device, since every btrfs
+// subvolume has a device number of its own and a nested one is part of the
+// folder.
+func TestSizeWalkStaysOnOneMount(t *testing.T) {
+	top := t.TempDir()
+	inner := createTestDir(t, top, "inner")
+	createTestFile(t, inner, "a.bin", make([]byte, 10))
+	createTestFile(t, top, "b.bin", make([]byte, 5))
+	dir := openTestDir(t, top)
+	mount, err := mountOf(dir)
+	require.NoError(t, err)
+
+	same := sizeWalk{ctx: t.Context(), mount: mount, oneMount: true}
+	require.NoError(t, same.addChildren(dir, "."))
+	assert.Equal(t, int64(15), same.total)
+	assert.Equal(t, int64(2), same.files)
+	assert.Equal(t, int64(1), same.folders)
+
+	// As if top were on another mount than the walk started on.
+	other := sizeWalk{ctx: t.Context(), mount: mount + 1, oneMount: true}
+	require.NoError(t, other.addChildren(dir, "."))
+	assert.Zero(t, other.total)
+	assert.Zero(t, other.files)
+}
+
+// On a root bridge a trashed folder is reached as a purge reaches it, so a
+// symlinked files folder does not have root measure another folder.
+func TestTrashedFolderSizeNeverFollowsASymlinkedTrashFolderAsRoot(t *testing.T) {
+	home := rootSessionHome(t)
+	victim := t.TempDir()
+	createTestFile(t, createTestDir(t, victim, "secret"), "key", []byte("secret"))
+	trash := filepath.Join(home, ".local/share/Trash")
+	createTestDir(t, trash, "info")
+	plantTrashLink(t, victim, filepath.Join(trash, "files"))
+
+	_, err := TrashedFolderSize(t.Context(), filepath.Join(trash, "files", "secret"), home, rootTestUID)
+	// Refused under the link rule, with the error purge and restore give.
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	require.ErrorIs(t, err, unix.ENOTDIR)
+}
+
+// A link where a folder of the trash goes is a refusal under the link rule:
+// opened without following it, the kernel answers ENOTDIR, so the link is
+// recognised by what is at the name, and the error purge and restore give
+// for it gets the status of a refusal.
+func TestTrashFolderLinkIsRefused(t *testing.T) {
+	trash := t.TempDir()
+	plantTrashLink(t, t.TempDir(), filepath.Join(trash, "files"))
+	dir := openTestDir(t, trash)
+
+	_, err := openTrashDirAt(dir, "files")
+	require.ErrorIs(t, err, unix.ENOTDIR, "the kernel's own answer is kept")
+	require.ErrorIs(t, refusedTrashLink(err), bridgeipc.ErrForbidden)
+
+	// Anything else that fails to open is not a refusal.
+	_, err = openTrashDirAt(dir, "missing")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NotErrorIs(t, refusedTrashLink(err), bridgeipc.ErrForbidden)
+}
+
+// A trashed folder that cannot be opened or listed has no size to give, so
+// it is an error rather than 0 B; a folder inside it that cannot be read is
+// skipped and counts as a folder.
+func TestTrashedFolderSizeOfAFolderItCannotRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any folder")
+	}
+	home := t.TempDir()
+	locked := createTestDir(t, home, "locked")
+	createTestFile(t, locked, "a.txt", []byte("a"))
+	open := createTestDir(t, home, "open")
+	createTestFile(t, open, "b.txt", []byte("b"))
+	createTestFile(t, createTestDir(t, open, "inner"), "c.txt", []byte("c"))
+	for _, folder := range []string{locked, open} {
+		_, err := MoveToTrash(t.Context(), folder, home, testTrashUID, testTrashUID, false)
+		require.NoError(t, err)
+	}
+	files := filepath.Join(home, ".local/share/Trash/files")
+	for _, folder := range []string{filepath.Join(files, "locked"), filepath.Join(files, "open", "inner")} {
+		require.NoError(t, os.Chmod(folder, 0))
+		t.Cleanup(func() { _ = os.Chmod(folder, 0o700) })
+	}
+
+	_, err := TrashedFolderSize(t.Context(), filepath.Join(files, "locked"), home, testTrashUID)
+	require.ErrorIs(t, err, fs.ErrPermission)
+
+	size, err := TrashedFolderSize(t.Context(), filepath.Join(files, "open"), home, testTrashUID)
+	require.NoError(t, err)
+	// The folder listed counts its own blocks (none on tmpfs and btrfs, a
+	// block or more on ext4 and xfs); the one it cannot open counts none.
+	listed := sizeOnDisk(t, filepath.Join(files, "open")) + sizeOnDisk(t, filepath.Join(files, "open", "b.txt"))
+	assert.Equal(t, FolderSize{Size: listed, Files: 1, Folders: 1}, size)
+}
+
+// sizeOnDisk is what path takes on disk, as `du` counts it.
+func sizeOnDisk(t *testing.T, path string) int64 {
+	t.Helper()
+	var st unix.Stat_t
+	require.NoError(t, unix.Lstat(path, &st))
+	return st.Blocks * 512
+}
+
+// A trashed folder is sized on disk, as the indexer sizes the folders of the
+// listing: a sparse file counts the blocks it takes and a file with two links
+// counts once. The archive estimate keeps the apparent size, which is what
+// the archive holds.
+func TestSizeWalkMeasuresSizeOnDisk(t *testing.T) {
+	top := t.TempDir()
+	sparse := filepath.Join(top, "sparse.img")
+	require.NoError(t, os.WriteFile(sparse, nil, 0o600))
+	require.NoError(t, os.Truncate(sparse, 1<<20))
+	data := createTestFile(t, top, "data.bin", make([]byte, 8192))
+	require.NoError(t, os.Link(data, filepath.Join(top, "data-link.bin")))
+	empty := createTestDir(t, top, "empty")
+	dir := openTestDir(t, top)
+	mount, err := mountOf(dir)
+	require.NoError(t, err)
+
+	usage := sizeWalk{ctx: t.Context(), mount: mount, oneMount: true, diskUsage: true}
+	require.NoError(t, usage.addChildren(dir, "."))
+	// A folder takes blocks of its own, as the indexer counts them: on tmpfs
+	// and btrfs none, on ext4 and xfs a block or more.
+	assert.Equal(t, sizeOnDisk(t, top)+sizeOnDisk(t, empty)+sizeOnDisk(t, sparse)+sizeOnDisk(t, data), usage.total, "the folders, the linked file once, the sparse file by its blocks")
+	assert.Equal(t, int64(3), usage.files, "every link is a file")
+	assert.Equal(t, int64(1), usage.folders)
+
+	apparent := sizeWalk{ctx: t.Context()}
+	require.NoError(t, apparent.addChildren(dir, "."))
+	assert.Equal(t, int64(1<<20+2*8192), apparent.total)
+}
+
+// A bind mount inside a trashed folder is another mount: the walk counts it
+// as a folder and does not enter it, so nothing mounted there is measured.
+func TestTrashedFolderSizeDoesNotEnterABindMountAsRoot(t *testing.T) {
+	home := rootSessionHome(t)
+	trash := filepath.Join(home, ".local/share/Trash")
+	createTestDir(t, trash, "info")
+	photos := createTestDir(t, createTestDir(t, trash, "files"), "photos")
+	createTestFile(t, photos, "a.jpg", []byte("jpeg"))
+	mnt := createTestDir(t, photos, "mnt")
+	elsewhere := t.TempDir()
+	createTestFile(t, elsewhere, "big.bin", make([]byte, 1<<20))
+	require.NoError(t, unix.Mount(elsewhere, mnt, "", unix.MS_BIND, ""))
+	t.Cleanup(func() { _ = unix.Unmount(mnt, unix.MNT_DETACH) })
+
+	size, err := TrashedFolderSize(t.Context(), photos, home, rootTestUID)
+	require.NoError(t, err)
+	assert.Equal(t, FolderSize{Size: sizeOnDisk(t, filepath.Join(photos, "a.jpg")), Files: 1, Folders: 1}, size, "the bind mount is a folder, not entered")
 }

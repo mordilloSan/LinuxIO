@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BtrfsRollbackResult, BtrfsSnapshot, BtrfsSubvolume } from "@/api";
+import { LinuxIOError } from "@/api/errors";
 import { render } from "@/test/render";
 
 import BtrfsSnapshotsCard from "./BtrfsSnapshotsCard";
@@ -12,9 +13,14 @@ vi.mock("@tanstack/react-virtual", async () =>
 );
 
 const mocks = vi.hoisted(() => ({
+  configs: {} as Record<
+    string,
+    { error?: (error: unknown) => void } | undefined
+  >,
   mutations: {} as Record<string, ReturnType<typeof vi.fn> | undefined>,
   navigate: vi.fn(),
   rollbackResult: undefined as unknown,
+  settlePowerAction: vi.fn(),
   snapshots: vi.fn(),
   submit: vi.fn(),
   subvolumes: vi.fn(),
@@ -43,6 +49,7 @@ vi.mock("@/api", async (importOriginal) => {
   });
   // Rollback is a job; the rest answer from the call mock.
   const useMutation = (endpoint: { route: string }, config: never) => {
+    mocks.configs[endpoint.route] = config;
     const call = useCallMutation(endpoint);
     if (endpoint.route !== "storage.btrfs_snapshot_rollback") return call;
     return {
@@ -133,6 +140,8 @@ const route = (name: string) => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.mutations = {};
+  mocks.configs = {};
+  mocks.triggerReboot.mockReturnValue(mocks.settlePowerAction);
   mocks.rollbackResult = { rebootRequired: false, remounted: true };
   mocks.submit.mockResolvedValue({ id: "task-1" });
   mocks.snapshots.mockResolvedValue([manual, timeline, dataSnapshot]);
@@ -311,5 +320,24 @@ describe("BtrfsSnapshotsCard", () => {
     );
     expect(mocks.triggerReboot).toHaveBeenCalled();
     expect(mocks.mutations["control.reboot"]).toHaveBeenCalled();
+  });
+
+  it("hands a refused reboot to the power overlay", async () => {
+    const user = userEvent.setup();
+    mocks.rollbackResult = { remounted: false, rebootRequired: true };
+    render(<BtrfsSnapshotsCard uuid="uuid-1" />);
+
+    await user.click(
+      within((await rows())[0]).getByRole("button", { name: "Restore" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+    await user.click(
+      await within(dialog).findByRole("button", { name: "Reboot now" }),
+    );
+
+    const refusal = new LinuxIOError("access denied", 403);
+    mocks.configs["control.reboot"]?.error?.(refusal);
+    expect(mocks.settlePowerAction).toHaveBeenCalledWith(refusal);
   });
 });

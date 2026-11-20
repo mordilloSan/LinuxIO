@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -17,7 +18,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 var (
@@ -33,7 +35,7 @@ func relPath(p string) string {
 // session user's files, in folders a process of that user can rearrange while
 // the operation runs. So every operation here starts from handles on the
 // folders its paths sit in, opened without following a link that user could
-// have planted (see openDirNoUserLinks), and reaches everything below them one
+// have planted (see linksafe.OpenDirNoUserLinks), and reaches everything below them one
 // name at a time without following a symlink: a folder swapped for a link
 // meanwhile fails the operation instead of sending it into the link's target.
 
@@ -106,13 +108,13 @@ func procPath(f *os.File) string {
 	return "/proc/self/fd/" + strconv.Itoa(int(f.Fd()))
 }
 
-// CopyFileWithCallbacks copies a file or directory with progress callbacks.
+// CopyFile copies a file or directory with progress callbacks.
 // With overwrite an existing destination file is replaced and an existing
 // destination directory is merged, entry by entry. owner is the session user
 // a root bridge copies for (see transferPaths); unset, the paths' folders are
 // opened as they resolve. Cancellation comes through opts; ctx outlives it
 // only to clean up a failed transfer.
-func CopyFileWithCallbacks(ctx context.Context, source, dest string, overwrite bool, owner Owner, opts *OperationCallbacks) error {
+func CopyFile(ctx context.Context, source, dest string, overwrite bool, owner Owner, opts *OperationCallbacks) error {
 	source = fsroot.CleanAbsPath(source)
 	dest = fsroot.CleanAbsPath(dest)
 
@@ -142,7 +144,7 @@ func CopyFileWithCallbacks(ctx context.Context, source, dest string, overwrite b
 }
 
 // transferPaths copies or moves src onto dst through handles on the folders
-// they sit in, opened for owner as openDirNoUserLinks opens them. A move
+// they sit in, opened for owner as linksafe.OpenDirNoUserLinks opens them. A move
 // judges its source with checkNotProtectedAt on the folder it then leaves.
 func transferPaths(root *fsroot.FSRoot, src, dst string, overwrite bool, owner Owner, opts *OperationCallbacks, state *copyState, moveOpts MoveFileOptions) error {
 	from, err := openEntry(root, src, owner)
@@ -177,6 +179,9 @@ type copyState struct {
 	// folder that is one of them, moved under the source meanwhile, is refused
 	// rather than copied into itself without end.
 	written map[linkKey]bool
+	// made holds the folders the transfer created, the only ones a failed
+	// transfer removes.
+	made map[linkKey]bool
 	// move removes each source entry as soon as its copy is complete, so a
 	// transfer that stops halfway leaves every entry in exactly one place.
 	move bool
@@ -190,17 +195,21 @@ type copyState struct {
 }
 
 func newCopyState(ctx context.Context, move bool) *copyState {
-	return &copyState{links: map[linkKey]string{}, written: map[linkKey]bool{}, move: move, cleanup: context.WithoutCancel(ctx)}
+	return &copyState{links: map[linkKey]string{}, written: map[linkKey]bool{}, made: map[linkKey]bool{}, move: move, cleanup: context.WithoutCancel(ctx)}
 }
 
-// enter records dst, a folder the transfer writes into, and refuses src, the
-// folder it reads next, when the transfer writes into that one too.
-func (s *copyState) enter(src, dst *os.File, srcPath string) error {
+// enter records dst, a folder the transfer writes into and, with made, has
+// just created, and refuses src, the folder it reads next, when the transfer
+// writes into that one too.
+func (s *copyState) enter(src, dst *os.File, srcPath string, made bool) error {
 	dstKey, err := fileKey(dst)
 	if err != nil {
 		return err
 	}
 	s.written[dstKey] = true
+	if made {
+		s.made[dstKey] = true
+	}
 	srcKey, err := fileKey(src)
 	if err != nil {
 		return err
@@ -211,6 +220,13 @@ func (s *copyState) enter(src, dst *os.File, srcPath string) error {
 	return nil
 }
 
+// isEmptyDir reports whether the open folder dir, not yet read, holds
+// nothing.
+func isEmptyDir(dir *os.File) bool {
+	names, err := dir.Readdirnames(1)
+	return len(names) == 0 && errors.Is(err, io.EOF)
+}
+
 // linkTo makes dst a hard link to existing, a file the transfer wrote
 // earlier, reached from the destination's folder one name at a time.
 func (s *copyState) linkTo(existing string, dst entry) error {
@@ -218,7 +234,7 @@ func (s *copyState) linkTo(existing string, dst entry) error {
 	if err != nil {
 		return err
 	}
-	dir, err := openDirAt(s.dstBase, ".")
+	dir, err := linksafe.OpenDirAt(s.dstBase, ".")
 	if err != nil {
 		return err
 	}
@@ -226,7 +242,7 @@ func (s *copyState) linkTo(existing string, dst entry) error {
 		if name == "." {
 			continue
 		}
-		next, err := openDirAt(dir, name)
+		next, err := linksafe.OpenDirAt(dir, name)
 		_ = dir.Close()
 		if err != nil {
 			return err
@@ -272,13 +288,11 @@ func transferEntry(src, dst entry, info os.FileInfo, overwrite bool, opts *Opera
 		return mergeDirectory(src, dst, overwrite, opts, state)
 	}
 
-	finish, err := prepareDestination(state.cleanup, dst, exists, !state.move)
+	finish, err := prepareDestination(state, dst, exists)
 	if err != nil {
 		return err
 	}
-	err = placeEntry(src, dst, info, opts, state, moveOpts)
-	finish(err)
-	return err
+	return finish(placeEntry(src, dst, info, opts, state, moveOpts))
 }
 
 // placeEntry puts src at a dst that does not exist. A move renames when the
@@ -290,7 +304,7 @@ func placeEntry(src, dst entry, info os.FileInfo, opts *OperationCallbacks, stat
 			return err
 		}
 	}
-	return copyEntryWithCallbacks(src, dst, info, opts, state)
+	return copyEntry(src, dst, info, opts, state)
 }
 
 // mergeDirectory transfers the children of src into the existing directory
@@ -307,7 +321,7 @@ func mergeDirectory(src, dst entry, overwrite bool, opts *OperationCallbacks, st
 		return err
 	}
 	defer dstDir.Close()
-	if err = state.enter(srcDir, dstDir, src.path); err != nil {
+	if err = state.enter(srcDir, dstDir, src.path, false); err != nil {
 		return err
 	}
 	err = forEachChild(srcDir, src.path, func(name string, info os.FileInfo) error {
@@ -356,11 +370,11 @@ const preservedModeBits = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeS
 // inside directories, as rsync does, instead of failing the whole transfer.
 const specialFileTypes = os.ModeNamedPipe | os.ModeSocket | os.ModeDevice | os.ModeCharDevice
 
-// copyEntryWithCallbacks copies source to a dest that does not exist yet and,
+// copyEntry copies source to a dest that does not exist yet and,
 // for a move, removes the source once the copy is complete. That removal is a
 // plain unlink or rmdir: a directory still holding a skipped or newly added
 // entry stays behind with an error instead of being deleted unseen.
-func copyEntryWithCallbacks(src, dst entry, info os.FileInfo, opts *OperationCallbacks, state *copyState) error {
+func copyEntry(src, dst entry, info os.FileInfo, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
@@ -371,9 +385,9 @@ func copyEntryWithCallbacks(src, dst entry, info os.FileInfo, opts *OperationCal
 	case mode&os.ModeSymlink != 0:
 		err = copySymlink(src, dst)
 	case info.IsDir():
-		err = copyDirectoryWithCallbacks(src, dst, opts, state)
+		err = copyDirectory(src, dst, opts, state)
 	case mode.IsRegular():
-		err = copySingleFileWithCallbacks(src, dst, opts, state)
+		err = copySingleFile(src, dst, opts, state)
 	default:
 		return fmt.Errorf("cannot copy non-regular file %q with mode %s", src.path, mode.Type())
 	}
@@ -434,10 +448,10 @@ func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) er
 	return nil
 }
 
-// copySingleFileWithCallbacks copies the regular file src to dst with
+// copySingleFile copies the regular file src to dst with
 // progress callbacks. The owner, mode and times copied are those of the file
 // opened, not of what was listed earlier under its name.
-func copySingleFileWithCallbacks(src, dst entry, opts *OperationCallbacks, state *copyState) error {
+func copySingleFile(src, dst entry, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
@@ -503,9 +517,9 @@ func openRegular(e entry) (*os.File, os.FileInfo, error) {
 	return f, info, nil
 }
 
-// copyDirectoryWithCallbacks copies the directory tree src to a dst that does
+// copyDirectory copies the directory tree src to a dst that does
 // not exist yet.
-func copyDirectoryWithCallbacks(src, dst entry, opts *OperationCallbacks, state *copyState) error {
+func copyDirectory(src, dst entry, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
@@ -523,15 +537,20 @@ func copyDirectoryWithCallbacks(src, dst entry, opts *OperationCallbacks, state 
 	}
 	dstDir, err := dst.openDir()
 	if err != nil {
+		// Nothing is in it yet, and rmdir takes an empty folder only.
+		_ = unix.Unlinkat(int(dst.dir.Fd()), dst.name, unix.AT_REMOVEDIR)
 		return err
 	}
 	defer dstDir.Close()
-	if err = state.enter(srcDir, dstDir, src.path); err != nil {
+	// mkdirat returns no handle, so the folder opened is the one made only
+	// as far as it is still empty: a folder with content, renamed onto the
+	// name in between, is written into but never removed as the copy's own.
+	if err = state.enter(srcDir, dstDir, src.path, isEmptyDir(dstDir)); err != nil {
 		return err
 	}
 
 	err = forEachChild(srcDir, src.path, func(name string, info os.FileInfo) error {
-		return copyEntryWithCallbacks(src.child(srcDir, name), dst.child(dstDir, name), info, opts, state)
+		return copyEntry(src.child(srcDir, name), dst.child(dstDir, name), info, opts, state)
 	})
 	if err != nil {
 		return err
@@ -696,13 +715,13 @@ type MoveFileOptions struct {
 	HasKnownSize bool
 }
 
-// MoveFileWithCallbacks moves src to dst with progress callbacks. It renames
+// MoveFile moves src to dst with progress callbacks. It renames
 // when src and dst are on one filesystem and otherwise copies each entry and
 // removes its source right after. With overwrite an existing destination file
 // is replaced and an existing destination directory is merged. owner is the
 // session user a root bridge moves for (see transferPaths). Cancellation
 // comes through opts; ctx outlives it only to clean up a failed transfer.
-func MoveFileWithCallbacks(ctx context.Context, src, dst string, overwrite bool, owner Owner, opts *OperationCallbacks, moveOpts MoveFileOptions) error {
+func MoveFile(ctx context.Context, src, dst string, overwrite bool, owner Owner, opts *OperationCallbacks, moveOpts MoveFileOptions) error {
 	src = fsroot.CleanAbsPath(src)
 	dst = fsroot.CleanAbsPath(dst)
 
@@ -807,7 +826,7 @@ type DeleteOptions struct {
 	Progress func(processed int64)
 	// Owner is the session user a root bridge deletes for. The item's folder
 	// is then reached without following a link that user could have planted
-	// (see openDirNoUserLinks). Unset, the path is opened as it resolves.
+	// (see linksafe.OpenDirNoUserLinks). Unset, the path is opened as it resolves.
 	Owner Owner
 }
 
@@ -844,11 +863,11 @@ func TopLevelEntryCountWithin(absPath string, maxEntries int) (bool, error) {
 	return len(entries) <= maxEntries, nil
 }
 
-// DeleteFilesWithProgress removes a file or directory while reporting
+// DeleteFiles removes a file or directory while reporting
 // item-count progress. The item's folder is resolved once and the item is then
 // judged and removed through handles (see removeAllAt), so a folder swapped
 // for a link during the delete cannot send it elsewhere.
-func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
+func DeleteFiles(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
 	absPath = fsroot.CleanAbsPath(absPath)
 	if absPath == "/" {
 		return 0, fmt.Errorf("cannot delete root")
@@ -859,7 +878,7 @@ func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOpt
 	}
 	defer root.Close()
 
-	dir, err := openDirNoUserLinks(root, filepath.Dir(absPath), opts.Owner)
+	dir, err := linksafe.OpenDirNoUserLinks(root, filepath.Dir(absPath), opts.Owner)
 	if err != nil {
 		return 0, err
 	}
@@ -913,13 +932,7 @@ func nonPrintableRuneRatio(content string) float64 {
 func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, owner Owner, cb func(processed int64)) error {
 	path = fsroot.CleanAbsPath(path)
 
-	root, err := fsroot.Open()
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-
-	at, err := entryFollowingNoUserLinks(root, path, owner)
+	at, err := entryFollowingNoUserLinks(ctx, path, owner)
 	if err != nil {
 		return fmt.Errorf("failed to stat path: %w", err)
 	}
@@ -957,7 +970,7 @@ func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, re
 
 // ChangeOwnershipCtx changes ownership and reports processed entries when
 // requested. A symlink is changed itself, never followed; on a root bridge
-// acting for owner path's folder is reached as openDirNoUserLinks reaches it,
+// acting for owner path's folder is reached as linksafe.OpenDirNoUserLinks reaches it,
 // and the entries below a folder are changed through handles (see changeTree).
 func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, owner Owner, cb func(processed int64)) error {
 	path = fsroot.CleanAbsPath(path)
@@ -1128,6 +1141,24 @@ func countRecursiveEntries(ctx context.Context, root *fsroot.FSRoot, path string
 	return total, err
 }
 
+// CopyName is the n-th name "keep both" tries for an item named base whose
+// name is taken: "name (copy).ext" for 1, then "name (copy n).ext". A
+// folder's name has no extension to keep apart, and neither has a name that
+// is all extension (".bashrc").
+func CopyName(base string, isDir bool, n int64) string {
+	name, ext := base, ""
+	if !isDir {
+		if ext = filepath.Ext(base); ext == base {
+			ext = ""
+		}
+		name = strings.TrimSuffix(base, ext)
+	}
+	if n == 1 {
+		return name + " (copy)" + ext
+	}
+	return fmt.Sprintf("%s (copy %d)%s", name, n, ext)
+}
+
 // validateMoveDestination validates that a move operation is safe
 func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	// Clean and normalize paths
@@ -1171,13 +1202,21 @@ func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 // prepareDestination clears the way for a transfer onto dst. An existing dst
 // is moved aside, in its own folder, rather than deleted: the returned finish
 // removes it after a successful transfer and puts it back after a failed one,
-// so a transfer that dies halfway never loses what it was replacing. With
-// removePartial, finish also drops whatever a failed transfer left at a
-// previously empty dst, so a half-written tree never sits there under its
-// final name; a move keeps it, since the entries already inside were removed
-// from the source. Both removals go through removeAllAt, never by path, with
-// ctx, which a cancelled transfer must not have cancelled.
-func prepareDestination(ctx context.Context, dst entry, exists, removePartial bool) (func(error), error) {
+// so a transfer that dies halfway never loses what it was replacing. After a
+// failed copy, finish also drops what the copy left at a previously empty
+// dst, so a half-written tree never sits there under its final name; a move
+// keeps it, since the entries already inside were removed from the source.
+//
+// Both names sit in a folder the session user may write, so neither removal
+// empties whatever folder holds the name by then (see removeAllAtIf): the
+// entry set aside is never a folder, since a folder is merged into and not
+// replaced, so no folder is emptied under its name, and at dst only a folder
+// the transfer made is (state.made). They run with state.cleanup, which a
+// cancelled transfer has not cancelled.
+//
+// finish returns the transfer's error, with where the replaced entry is when
+// it could not be put back.
+func prepareDestination(state *copyState, dst entry, exists bool) (func(error) error, error) {
 	aside := ""
 	if exists {
 		aside = fmt.Sprintf("%s.linuxio-replaced-%d", dst.name, time.Now().UnixNano())
@@ -1185,34 +1224,50 @@ func prepareDestination(ctx context.Context, dst entry, exists, removePartial bo
 			return nil, err
 		}
 	}
-	return func(transferErr error) {
+	return func(transferErr error) error {
 		if transferErr == nil {
-			removeAside(ctx, dst, aside)
+			removeAside(state.cleanup, dst, aside)
+			return nil
+		}
+		if aside != "" || !state.move {
+			clearFailedDestination(state, dst, transferErr)
+		}
+		if aside == "" {
+			return transferErr
+		}
+		if err := renameNoReplace(dst.dir, aside, dst.dir, dst.name); err != nil {
+			// Logged as well as told: a cancelled transfer reports only
+			// that it was cancelled. The transfer's error stays the only
+			// one wrapped, so the status still says how the transfer failed.
+			slog.Error("failed to restore replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", filepath.Join(filepath.Dir(dst.path), aside), "destination", dst.path, "error", err)
+			return fmt.Errorf("%w; what it was replacing could not be put back and is kept as %q", transferErr, aside)
+		}
+		return transferErr
+	}, nil
+}
+
+// clearFailedDestination removes what a failed transfer left at dst: a
+// folder only when the transfer made it, and nothing when the transfer
+// failed because the name was already taken and a file holds it, which is
+// then another writer's and not a partial copy.
+func clearFailedDestination(state *copyState, dst entry, transferErr error) {
+	if errors.Is(transferErr, fs.ErrExist) {
+		if info, err := dst.lstat(); err == nil && !info.IsDir() {
 			return
 		}
-		if aside != "" || removePartial {
-			if err := removeAllAt(ctx, dst.dir, dst.name, func() {}); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				slog.Warn("failed to clear partial destination", "component", "filebrowser", "subsystem", "file_operations", "path", dst.path, "error", err)
-			}
-		}
-		restoreAside(dst, aside)
-	}, nil
+	}
+	made := func(key linkKey) bool { return state.made[key] }
+	if err := removeAllAtIf(state.cleanup, dst.dir, dst.name, made, func() {}); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		slog.Warn("failed to clear partial destination", "component", "filebrowser", "subsystem", "file_operations", "path", dst.path, "error", err)
+	}
 }
 
 func removeAside(ctx context.Context, dst entry, aside string) {
 	if aside == "" {
 		return
 	}
-	if err := removeAllAt(ctx, dst.dir, aside, func() {}); err != nil {
+	noFolder := func(linkKey) bool { return false }
+	if err := removeAllAtIf(ctx, dst.dir, aside, noFolder, func() {}); err != nil {
 		slog.Warn("failed to remove replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", filepath.Join(filepath.Dir(dst.path), aside), "error", err)
-	}
-}
-
-func restoreAside(dst entry, aside string) {
-	if aside == "" {
-		return
-	}
-	if err := renameNoReplace(dst.dir, aside, dst.dir, dst.name); err != nil {
-		slog.Error("failed to restore replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", filepath.Join(filepath.Dir(dst.path), aside), "destination", dst.path, "error", err)
 	}
 }

@@ -11,10 +11,14 @@ vi.mock("sonner", () => ({
 }));
 
 const { LinuxIOError } = await import("@/api");
+const { registerToastLinkRouter } = await import("@/api/toast-meta");
 const {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
+  TASK_TYPE_DOCKER_STORAGE,
   TASK_TYPE_FILE_DELETE_BATCH,
+  TASK_TYPE_MEMORY_DRAIN,
+  TASK_TYPE_MEMORY_SWAP_MODE,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_STORAGE_BTRFS_BALANCE,
   TASK_TYPE_STORAGE_BTRFS_SCRUB,
@@ -36,6 +40,20 @@ const deps = {
   refreshCapabilities: vi.fn(async () => undefined),
 };
 
+let releaseLinkRouter = () => {};
+
+/** Puts the user on pathname as far as toast links can tell. */
+function onPage(pathname: string) {
+  const link = { navigate: vi.fn(), pathname: () => pathname };
+  releaseLinkRouter = registerToastLinkRouter(link);
+  return link;
+}
+
+function clickAction(opts: unknown) {
+  const { action } = opts as { action: { onClick: (event: unknown) => void } };
+  action.onClick({});
+}
+
 function task(
   id: string,
   type: string,
@@ -55,6 +73,7 @@ const canceled = {
 
 describe("terminalTaskFeedback", () => {
   afterEach(() => {
+    releaseLinkRouter();
     resetTerminalTaskFeedback();
     vi.clearAllMocks();
   });
@@ -145,7 +164,11 @@ describe("terminalTaskFeedback", () => {
   });
 
   it("records Docker update completion and failure feedback", () => {
-    const route = { label: "Open Docker", to: "/docker" };
+    const link = onPage("/");
+    const docker = {
+      action: { label: "Open Docker", onClick: expect.any(Function) },
+      duration: 10_000,
+    };
     emitTerminalTaskFeedback(
       task("docker-updated", TASK_TYPE_DOCKER_UPDATE),
       {
@@ -154,9 +177,7 @@ describe("terminalTaskFeedback", () => {
       },
       deps,
     );
-    expect(toastMocks.success).toHaveBeenCalledWith("homepage updated", {
-      meta: route,
-    });
+    expect(toastMocks.success).toHaveBeenCalledWith("homepage updated", docker);
 
     emitTerminalTaskFeedback(
       task("docker-current", TASK_TYPE_DOCKER_UPDATE),
@@ -168,7 +189,7 @@ describe("terminalTaskFeedback", () => {
     );
     expect(toastMocks.success).toHaveBeenCalledWith(
       "pihole is already up to date",
-      { meta: route },
+      docker,
     );
 
     emitTerminalTaskFeedback(
@@ -176,15 +197,66 @@ describe("terminalTaskFeedback", () => {
       failed("registry unavailable"),
       deps,
     );
-    expect(toastMocks.error).toHaveBeenCalledWith("registry unavailable", {
-      meta: route,
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "registry unavailable",
+      docker,
+    );
+
+    clickAction(toastMocks.error.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/docker" }),
+    );
+  });
+
+  it("offers no page link to a user already on that page", () => {
+    onPage("/docker/containers");
+
+    emitTerminalTaskFeedback(
+      task("docker-here", TASK_TYPE_DOCKER_UPDATE),
+      {
+        kind: "completed",
+        result: { containerName: "homepage", updated: true },
+      },
+      deps,
+    );
+
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "homepage updated",
+      undefined,
+    );
+  });
+
+  it("links a zram install to the Memory overflow dialog", () => {
+    const link = onPage("/settings");
+
+    emitTerminalTaskFeedback(
+      task("cap-zram", TASK_TYPE_SYSTEM_INSTALL_CAPABILITY, {
+        capability: "zram",
+      }),
+      { kind: "completed", result: { available: true } },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith("zram installed", {
+      action: { label: "Open Memory overflow", onClick: expect.any(Function) },
+      duration: 10_000,
     });
+    clickAction(toastMocks.success.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: { dialog: "memory-overflow" },
+        to: "/",
+      }),
+    );
   });
 
   it("reports capability installs on every terminal state, cancel included", () => {
+    const link = onPage("/");
     const capability = (id: string) =>
       task(id, TASK_TYPE_SYSTEM_INSTALL_CAPABILITY, { capability: "libvirt" });
-    const route = { label: "Open VMs", to: "/vm" };
+    const vms = {
+      action: { label: "Open VMs", onClick: expect.any(Function) },
+      duration: 10_000,
+    };
 
     emitTerminalTaskFeedback(
       capability("cap-ok"),
@@ -194,7 +266,11 @@ describe("terminalTaskFeedback", () => {
     expect(deps.refreshCapabilities).toHaveBeenCalledOnce();
     expect(toastMocks.success).toHaveBeenCalledWith(
       "Virtual machines installed",
-      { meta: route },
+      vms,
+    );
+    clickAction(toastMocks.success.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/vm" }),
     );
 
     emitTerminalTaskFeedback(
@@ -211,8 +287,8 @@ describe("terminalTaskFeedback", () => {
     expect(toastMocks.warning).toHaveBeenCalledWith(
       "Virtual machines installed with warning",
       {
+        ...vms,
         description: "nss-mdns was not available; EPEL may be required",
-        meta: route,
       },
     );
 
@@ -223,21 +299,32 @@ describe("terminalTaskFeedback", () => {
     );
     expect(toastMocks.warning).toHaveBeenCalledWith(
       "Virtual machines installed but is still unavailable: no kvm",
-      { meta: route },
+      vms,
     );
 
     emitTerminalTaskFeedback(capability("cap-failed"), failed(""), deps);
     expect(toastMocks.error).toHaveBeenCalledWith(
       "Failed to install Virtual machines",
-      { meta: route },
+      vms,
     );
 
     // An install canceled elsewhere still stopped midway — deliberately an
     // error toast, unlike package updates.
     emitTerminalTaskFeedback(capability("cap-canceled"), canceled, deps);
-    expect(toastMocks.error).toHaveBeenCalledWith("operation aborted", {
-      meta: route,
-    });
+    expect(toastMocks.error).toHaveBeenCalledWith("operation aborted", vms);
+  });
+
+  it("re-detects capabilities after an install that failed or was canceled", () => {
+    // The package may be in even so, as when a step after the package
+    // step failed, so the Capabilities row must not keep the old state.
+    const capability = (id: string) =>
+      task(id, TASK_TYPE_SYSTEM_INSTALL_CAPABILITY, { capability: "zram" });
+
+    emitTerminalTaskFeedback(capability("cap-failed"), failed(""), deps);
+    expect(deps.refreshCapabilities).toHaveBeenCalledOnce();
+
+    emitTerminalTaskFeedback(capability("cap-canceled"), canceled, deps);
+    expect(deps.refreshCapabilities).toHaveBeenCalledTimes(2);
   });
 
   it("keeps SMART tests silent — the owning page fires its own toast", () => {
@@ -361,5 +448,118 @@ describe("terminalTaskFeedback", () => {
       terminalSnapshotOutcome({ ...base, state: "completed", result: 1 }),
     ).toEqual({ kind: "completed", result: 1 });
     expect(terminalSnapshotOutcome({ ...base, state: "running" })).toBeNull();
+  });
+
+  it("reports a memory mode change nobody follows, with what it left", () => {
+    onPage("/docker");
+    const status = { left: [], mode: "zram" };
+    emitTerminalTaskFeedback(
+      task("m1", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      { kind: "completed", result: status },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Memory overflow setting applied",
+      expect.anything(),
+    );
+
+    emitTerminalTaskFeedback(
+      task("m2", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      {
+        kind: "completed",
+        result: {
+          left: [{ reason: "not_enough_memory", what: "swap_file" }],
+          mode: "mixed",
+        },
+      },
+      deps,
+    );
+    expect(toastMocks.warning).toHaveBeenCalledWith(
+      "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
+      expect.anything(),
+    );
+
+    emitTerminalTaskFeedback(
+      task("m3", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      failed("another memory change is running"),
+      deps,
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "another memory change is running",
+      expect.anything(),
+    );
+  });
+
+  it("stays silent for a memory change a dialog follows", () => {
+    markTerminalFeedbackEmitted("m4");
+    emitTerminalTaskFeedback(
+      task("m4", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      { kind: "completed", result: { left: [], mode: "zram" } },
+      deps,
+    );
+    expect(toastMocks.success).not.toHaveBeenCalled();
+  });
+
+  it("reports a drain nobody follows", () => {
+    const link = onPage("/docker");
+    emitTerminalTaskFeedback(
+      task("d1", TASK_TYPE_MEMORY_DRAIN),
+      { kind: "completed", result: {} },
+      deps,
+    );
+    // The toast opens the Memory overflow dialog, by its URL.
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Parked data brought back to memory",
+      {
+        action: {
+          label: "Open Memory overflow",
+          onClick: expect.any(Function),
+        },
+        duration: 10_000,
+      },
+    );
+    clickAction(toastMocks.success.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: { dialog: "memory-overflow" },
+        to: "/",
+      }),
+    );
+    emitTerminalTaskFeedback(
+      task("d2", TASK_TYPE_MEMORY_DRAIN),
+      failed("not enough free memory"),
+      deps,
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "not enough free memory",
+      expect.anything(),
+    );
+  });
+
+  it("reports a Docker storage change nobody follows, and stays silent for one a section follows", () => {
+    onPage("/docker");
+    emitTerminalTaskFeedback(
+      task("s1", TASK_TYPE_DOCKER_STORAGE),
+      { kind: "completed", result: {} },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Docker restarted on the new storage. Deploy your stacks again.",
+    );
+    emitTerminalTaskFeedback(
+      task("s2", TASK_TYPE_DOCKER_STORAGE),
+      failed("docker did not start"),
+      deps,
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith("docker did not start");
+
+    toastMocks.success.mockClear();
+    markTerminalFeedbackEmitted("s3");
+    emitTerminalTaskFeedback(
+      task("s3", TASK_TYPE_DOCKER_STORAGE),
+      { kind: "completed", result: {} },
+      deps,
+    );
+    expect(toastMocks.success).not.toHaveBeenCalled();
   });
 });

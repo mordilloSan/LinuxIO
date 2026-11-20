@@ -35,6 +35,7 @@ const (
 	superTotalBytes = 112
 	superNumDevices = 136
 	superDevID      = 201 // dev_item.devid
+	superDevUUID    = 267 // dev_item.uuid
 	superLabel      = 299
 )
 
@@ -78,9 +79,12 @@ func RegisterDevice(device string) error {
 
 // Superblock is the part of a device's primary btrfs superblock LinuxIO reads.
 type Superblock struct {
-	UUID       string
-	Label      string
-	DevID      uint64
+	UUID  string
+	Label string
+	DevID uint64
+	// DevUUID is the device's own UUID (dev_item.uuid), which DEV_INFO
+	// reports for the member the device is.
+	DevUUID    string
 	NumDevices uint64
 	TotalBytes uint64
 	// Generation is the last transaction written to this device; every
@@ -125,6 +129,7 @@ func parseSuperblock(b []byte) (Superblock, error) {
 		UUID:       formatUUID(b[superFSID : superFSID+16]),
 		Label:      label,
 		DevID:      binary.LittleEndian.Uint64(b[superDevID:]),
+		DevUUID:    formatUUID(b[superDevUUID : superDevUUID+16]),
 		NumDevices: binary.LittleEndian.Uint64(b[superNumDevices:]),
 		TotalBytes: binary.LittleEndian.Uint64(b[superTotalBytes:]),
 		Generation: binary.LittleEndian.Uint64(b[superGeneration:]),
@@ -158,10 +163,13 @@ func ValidateLabel(label string) error {
 // CreatePool formats devices as one btrfs filesystem with the given data
 // and metadata profiles, registers them with the kernel and returns the new
 // filesystem's UUID. Callers check that the devices are free; force
-// overwrites foreign signatures. progress, if not nil, follows the trim
-// before mkfs (see trim). Once mkfs.btrfs ran, an error comes with the UUID
-// too, so the caller can wipe what it wrote (see WipePoolSuperblocks).
-func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool, progress func(pct float64)) (string, error) {
+// overwrites foreign signatures. check, if not nil, runs right before each
+// device's trim and, since mkfs.btrfs starts only after the last trim, for
+// every device again right before it; its error stops the create there.
+// progress, if not nil, follows the trim before mkfs (see trim). Once
+// mkfs.btrfs ran, an error comes with the UUID too, so the caller can wipe
+// what it wrote (see WipePoolSuperblocks).
+func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool, check func(device string) error, progress func(pct float64)) (string, error) {
 	if err := ValidateLabel(label); err != nil {
 		return "", err
 	}
@@ -171,8 +179,16 @@ func CreatePool(ctx context.Context, label, data, meta string, devices []string,
 	if err := ValidateProfiles(&data, &meta, len(devices)); err != nil {
 		return "", err
 	}
-	if err := trim(ctx, devices, progress); err != nil {
+	if err := trim(ctx, devices, check, progress); err != nil {
 		return "", err
+	}
+	for _, d := range devices {
+		if check == nil {
+			break
+		}
+		if err := check(d); err != nil {
+			return "", err
+		}
 	}
 	uuid := newUUID()
 	args := []string{"-L", label, "-U", uuid, "-d", data, "-m", meta, "-K"}
@@ -213,21 +229,73 @@ func MountPool(ctx context.Context, device, mountpoint string, options []string,
 }
 
 // MountOfflinePool registers the present devices of pool with the kernel and
-// mounts it at mountpoint with options.
+// mounts it at mountpoint with options. It registers nothing, with
+// ErrUnclearDisks, when no disk is present or it cannot tell that each
+// device is a disk of the pool (unclearDisks), reading each device's md and
+// LVM signature through an exclusive open, which also refuses a device
+// something claims. That open refuses the disks of a pool already mounted
+// too, so a further mount of a pool goes through MountPool. A leg something
+// else registered before is forgotten first: the kernel keeps one device
+// for each devid (volumes.c device_list_add), and with its array not
+// registered the mount would open the leg.
+//
+// With an automatic rebuild of the pool on record and not verified, the
+// disk it wrote is erased first (eraseUnverifiedTarget), and the mount is
+// degraded when that disk had become a member; once mounted, the replace
+// the kernel suspended or continued is canceled (settleUnverifiedRebuild).
+// It erases a disk that became a member only when every other member is
+// present and none is older, and leaves it otherwise; when a disk of the
+// rebuild cannot be told, or its target is the only device present,
+// nothing is erased or mounted (ErrUnclearDisks, with a way out).
 func MountOfflinePool(ctx context.Context, pool BtrfsOfflinePool, mountpoint string, options []string, degraded bool) error {
+	if len(pool.Devices) == 0 {
+		return fmt.Errorf("%w: no disk of the pool is present", ErrUnclearDisks)
+	}
+	reason, err := unclearDisks(pool, memberSignature)
+	if err != nil {
+		return err
+	}
+	if reason != "" {
+		return fmt.Errorf("%w: %s", ErrUnclearDisks, reason)
+	}
+	missing := missingDisks(pool)
+	erased, plan, err := eraseUnverifiedTarget(ctx, pool)
+	if err != nil {
+		return err
+	}
+	if plan.reason != "" {
+		return fmt.Errorf("%w: %s. %s", ErrUnclearDisks, plan.reason, plan.wayOut)
+	}
+	pool = erased
+	degraded = degraded || missingDisks(pool) > missing
+	for _, l := range pool.legs {
+		// ENOENT: the kernel never registered it. A path is never empty
+		// here; an empty one would forget every unmounted btrfs device.
+		if err := controlIoctl(iocForgetDev, l.device); err != nil && !errors.Is(err, unix.ENOENT) {
+			return fmt.Errorf("forget %s: %w", l.device, err)
+		}
+	}
 	for _, d := range pool.Devices {
 		if err := RegisterDevice(d); err != nil {
 			return err
 		}
 	}
-	return MountPool(ctx, pool.Devices[0], mountpoint, options, degraded)
+	if err := MountPool(ctx, pool.Devices[0], mountpoint, options, degraded); err != nil {
+		return err
+	}
+	settleUnverifiedRebuild(ctx, pool.UUID, mountpoint)
+	return nil
 }
 
 // WipeDevice zeroes the primary superblock magic of an unmounted btrfs
 // device, so it no longer probes as btrfs, and unregisters it from the
-// kernel. A device without the magic is refused untouched.
+// kernel. A device without the magic is refused untouched, and so, with
+// EBUSY, is one still mounted, here or in another mount namespace, or
+// claimed since the caller looked: the open is exclusive, which a mounted
+// btrfs refuses (it holds its devices) and a merely registered one does not
+// (btrfs_scan_one_device in fs/btrfs/volumes.c opens without a holder).
 func WipeDevice(device string) error {
-	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	f, err := openExclusive(device, os.O_RDWR)
 	if err != nil {
 		return err
 	}
@@ -267,13 +335,26 @@ func superblockOffsets(size uint64) []int64 {
 // WipePoolSuperblocks undoes a pool create on device: it zeroes the magic of
 // every superblock copy whose fsid is uuid, real or the temporary one a
 // failed mkfs.btrfs leaves, then unregisters the device. Copies of any other
-// filesystem are left alone. It reports whether it wiped any.
+// filesystem are left alone. It reports whether it wiped any. Like
+// WipeDevice it opens device exclusively, so a device that is mounted or was
+// claimed since the create is refused with EBUSY and left as it is.
 func WipePoolSuperblocks(device, uuid string) (bool, error) {
-	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	f, err := openExclusive(device, os.O_RDWR)
 	if err != nil {
 		return false, err
 	}
 	defer f.Close()
+	return wipePoolSuperblocksOf(f, device, uuid)
+}
+
+// wipePoolSuperblocksOf is WipePoolSuperblocks through f, device opened
+// exclusively for writing by the caller, which may check what the device
+// carries first through the same open.
+func wipePoolSuperblocksOf(f *os.File, device, uuid string) (bool, error) {
+	if device == "" {
+		// The forget below would drop every unmounted btrfs device.
+		return false, errors.New("no device to erase")
+	}
 	size, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return false, fmt.Errorf("size of %s: %w", device, err)
@@ -323,11 +404,31 @@ type BtrfsOfflinePool struct {
 	// devids and generations hold each of Devices' superblock devid and
 	// generation.
 	devids, generations []uint64
+	// legs are the devices that show the pool's superblock as part of
+	// another device (see partOfAnother), which are none of its disks.
+	legs []poolLeg
 }
+
+// poolLeg is a device that shows a pool's superblock, carrying devid, as
+// part of another device: a leg of an md array with its metadata at the end,
+// a path of a multipath disk or an image of an LVM mirror. Why says what
+// makes it one, such as "is held by /dev/md127".
+type poolLeg struct {
+	device string
+	devid  uint64
+	why    string
+}
+
+// ErrUnclearDisks refuses to register the devices of a pool when LinuxIO
+// cannot tell that each is a disk of the pool (see unclearDisks).
+var ErrUnclearDisks = errors.New("LinuxIO cannot tell which devices are the pool's disks")
 
 // FindOfflinePools reads the superblocks of candidates and groups the
 // devices of every filesystem that is not mounted, in first-seen order. A
-// candidate that cannot be read is logged and skipped.
+// device that shows the superblock as part of another device is kept apart
+// from the disks (partOfAnother), and a pool that shows only on such devices
+// is returned without disks. A candidate that cannot be read is logged and
+// skipped.
 func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflinePool, error) {
 	mounts, err := listMounts(ctx)
 	if err != nil {
@@ -355,11 +456,22 @@ func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflineP
 		if !ok {
 			i = len(pools)
 			byUUID[sb.UUID] = i
-			pools = append(pools, BtrfsOfflinePool{UUID: sb.UUID, Label: sb.Label, NumDevices: int(sb.NumDevices), TotalBytes: sb.TotalBytes})
+			pools = append(pools, BtrfsOfflinePool{UUID: sb.UUID})
 		}
-		pools[i].Devices = append(pools[i].Devices, device)
-		pools[i].devids = append(pools[i].devids, sb.DevID)
-		pools[i].generations = append(pools[i].generations, sb.Generation)
+		p := &pools[i]
+		why := partOfAnother(device)
+		// The label and size are a disk's: a leg is read through its own
+		// page cache, which the array's writes bypass.
+		if !ok || (why == "" && len(p.Devices) == 0) {
+			p.Label, p.NumDevices, p.TotalBytes = sb.Label, int(sb.NumDevices), sb.TotalBytes
+		}
+		if why != "" {
+			p.legs = append(p.legs, poolLeg{device, sb.DevID, why})
+			continue
+		}
+		p.Devices = append(p.Devices, device)
+		p.devids = append(p.devids, sb.DevID)
+		p.generations = append(p.generations, sb.Generation)
 	}
 	for i := range pools {
 		pools[i].Missing = missingDisks(pools[i])

@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 func TestGenerateUniquePathSkipsDanglingSymlink(t *testing.T) {
@@ -49,7 +50,7 @@ func TestPrepareResourcePatchRefusesSystemFolders(t *testing.T) {
 	}
 	defer root.Close()
 
-	_, err = prepareResourcePatch(root, resourcePatchRequest{action: "rename", src: "/etc", dst: "/etc-renamed"})
+	_, err = prepareResourcePatch(t.Context(), root, resourcePatchRequest{action: "rename", src: "/etc", dst: "/etc-renamed"}, services.Owner{})
 	if err == nil || !strings.Contains(err.Error(), "system folder") {
 		t.Fatalf("renaming /etc: err = %v, want system folder", err)
 	}

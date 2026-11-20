@@ -48,6 +48,7 @@ import {
 } from "./storageGraph";
 import type { DriveInfo } from "./types";
 import { getHealthColor, getTemperature, getTemperatureColor } from "./utils";
+
 import "./storage-pools.css";
 
 /** Horizontal room between columns, where the edges run. */

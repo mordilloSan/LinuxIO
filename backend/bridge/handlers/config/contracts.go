@@ -14,6 +14,7 @@ func appConfigToAPI(value userconfig.Settings, storageMode userconfig.StorageMod
 		},
 		Docker: apischema.DockerSettings{
 			Folders: absolutePathsToStrings(value.Docker.Folders), RequireMountsForFolders: value.Docker.RequireMountsForFolders,
+			WaitForHostIPs: value.Docker.WaitForHostIPs, HostIPs: append([]string{}, value.Docker.HostIPs...),
 		},
 		Jobs: apischema.JobSettings{
 			ProgressMinIntervalMs: value.Jobs.ProgressMinIntervalMs, NotificationMinIntervalMs: value.Jobs.NotificationMinIntervalMs,

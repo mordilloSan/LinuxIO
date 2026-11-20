@@ -394,6 +394,11 @@ func (f *fakeRecorder) CancelRequested(task *Task) {
 	f.add(recordedCall{kind: kind, state: task.Snapshot().State})
 }
 
+func (f *fakeRecorder) Checkpoint(task *Task, checkpoint jsontext.Value) error {
+	f.add(recordedCall{kind: "checkpoint", state: task.Snapshot().State, raw: string(checkpoint)})
+	return nil
+}
+
 func (f *fakeRecorder) snapshot() []recordedCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()

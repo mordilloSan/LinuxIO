@@ -1,6 +1,6 @@
 // Package scheduledrun records the runs of work that systemd timers start:
-// user scripts, btrfs snapshots and replication, pool resyncs, Docker updates
-// and the distribution's automatic system updates. A hook on each unit calls
+// user scripts, btrfs snapshots and replication, pool resyncs and rebuilds,
+// Docker updates and the distribution's automatic system updates. A hook on each unit calls
 // Begin when a run starts and End when it stops.
 package scheduledrun
 
@@ -22,6 +22,7 @@ const (
 	RouteSnapshot     = "scheduled.btrfs_snapshot"
 	RouteReplicate    = "scheduled.btrfs_replicate"
 	RouteResync       = "scheduled.btrfs_resync"
+	RouteRebuild      = "scheduled.btrfs_rebuild"
 	RouteDockerUpdate = "scheduled.docker_update"
 	RouteSystemUpdate = "scheduled.system_update"
 	// AlertSource is the source of the alerts a failed run raises.
@@ -36,6 +37,7 @@ const (
 	snapshotUnit       = "linuxio-btrfs-snapshot.service"
 	replicateUnit      = "linuxio-btrfs-replicate.service"
 	resyncUnitPrefix   = "linuxio-btrfs-resync@"
+	rebuildUnitPrefix  = "linuxio-btrfs-rebuild@"
 	dockerUpdateUnit   = "linuxio-docker-update.service"
 	unitSuffix         = ".service"
 	scriptFallback     = "Scheduled task"
@@ -88,6 +90,9 @@ func KindOf(unit, scheduleDir string) (Kind, bool) {
 	}
 	if uuid, ok := instanceOf(unit, resyncUnitPrefix); ok {
 		return Kind{Route: RouteResync, Label: "Pool resync", Instance: uuid, Link: "/storage?pool=" + uuid}, true
+	}
+	if uuid, ok := instanceOf(unit, rebuildUnitPrefix); ok {
+		return Kind{Route: RouteRebuild, Label: "Pool rebuild", Instance: uuid, Link: "/storage?pool=" + uuid}, true
 	}
 	return Kind{}, false
 }
@@ -152,10 +157,11 @@ func scriptLabel(scheduleDir, id string) string {
 	return scriptFallback
 }
 
-// worker reports whether the unit runs one of LinuxIO's workers (snapshots,
-// replication, resync, Docker updates), whose failed run the end hook reports with a run
-// alert unless the worker reported everything itself. A script has its own
+// worker reports whether the unit runs LinuxIO's own timer work, in
+// linuxio-worker or the Docker updater (snapshots, replication, resync,
+// rebuild, Docker updates), whose failed run the end hook reports with a run alert
+// unless the program reported everything itself. A script has its own
 // alerts, and a system update its provider's.
 func (k Kind) worker() bool {
-	return k.Route == RouteSnapshot || k.Route == RouteReplicate || k.Route == RouteResync || k.Route == RouteDockerUpdate
+	return k.Route == RouteSnapshot || k.Route == RouteReplicate || k.Route == RouteResync || k.Route == RouteRebuild || k.Route == RouteDockerUpdate
 }

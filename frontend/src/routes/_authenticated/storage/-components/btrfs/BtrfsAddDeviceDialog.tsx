@@ -24,6 +24,8 @@ interface BtrfsAddDeviceDialogProps {
   label: string;
   onClose: () => void;
   onConfirm: (device: string, force: boolean) => void;
+  /** The pool whose own hot spare may be picked: a replace in that pool. */
+  ownPool?: string;
   title: string;
   /** Lets the user pick devices that already carry an old filesystem. */
   withForce?: boolean;
@@ -37,6 +39,7 @@ const BtrfsAddDeviceDialog = ({
   label,
   onClose,
   onConfirm,
+  ownPool,
   title,
   withForce = false,
 }: BtrfsAddDeviceDialogProps) => {
@@ -44,12 +47,13 @@ const BtrfsAddDeviceDialog = ({
   const [device, setDevice] = useState("");
   const [force, setForce] = useState(false);
 
-  // A device of another pool, array or volume group is listed disabled with
-  // its reason, force or not.
+  // A device of another pool, array or volume group, or a pool's hot spare,
+  // is listed disabled with its reason, force or not.
   const choices = poolDeviceChoices(
     data?.devices ?? [],
     filesystemDevices,
     force,
+    ownPool,
   );
   const free = choices.filter(({ reason }) => reason === null);
   const selected = free.some((entry) => entry.device.path === device)

@@ -62,12 +62,14 @@ const filesystem: BtrfsFilesystem = {
   },
   degraded: true,
   lowMetadataSpace: false,
+  autoRebuild: true,
 };
 
 const healthy = {
   ...filesystem,
   degraded: false,
   lowMetadataSpace: false,
+  autoRebuild: true,
   devices: [filesystem.devices[0]],
 };
 
@@ -140,6 +142,217 @@ describe("BtrfsHealthBanner", () => {
     ).toBeInTheDocument();
   });
 
+  it("says a disk dropped out, ahead of the errors its failed writes count", async () => {
+    const user = userEvent.setup();
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...filesystem,
+          autoRebuild: false,
+          devices: [
+            filesystem.devices[0],
+            {
+              ...filesystem.devices[1],
+              path: "/dev/sdb",
+              droppedOut: true,
+              errors: { ...noErrors, write: 40, flush: 3 },
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("Disk dropped out")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /\/dev\/sdb dropped out of data while it was mounted.*takes the disk back only when it is mounted again/,
+      ),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Replace missing disk" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Replace missing disk" }),
+    ).toBeInTheDocument();
+  });
+
+  it("tells a rebuild that runs, failed or was refused ahead of the missing disk", () => {
+    const dropped = {
+      ...filesystem,
+      devices: [
+        filesystem.devices[0],
+        { ...filesystem.devices[1], path: "/dev/sdb", droppedOut: true },
+      ],
+    };
+    const { rerender } = render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...dropped,
+          rebuild: {
+            state: "running",
+            deviceId: 2,
+            device: "/dev/sdf",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Rebuilding")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "LinuxIO is rebuilding device 2 of data onto /dev/sdf, the disk that came back, from the pool's other disks. The pool stays mounted; once the copy is checked, LinuxIO resyncs the pool.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Replace missing disk" }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...dropped,
+          rebuild: {
+            state: "running",
+            deviceId: 2,
+            device: "/dev/sdv",
+            spare: true,
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(/onto \/dev\/sdv, the hot spare,/),
+    ).toBeInTheDocument();
+
+    rerender(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...dropped,
+          rebuild: {
+            state: "failed",
+            deviceId: 2,
+            device: "/dev/sdf",
+            reason: "the pool went read-only",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Rebuild failed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The automatic rebuild of device 2 onto /dev/sdf failed: the pool went read-only. LinuxIO does not try that disk again by itself; replace the disk.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Replace missing disk" }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...dropped,
+          rebuild: {
+            state: "refused",
+            reason: "/dev/sdf is not the disk that was device 2",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Not rebuilt automatically")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "/dev/sdf is not the disk that was device 2. Replace the missing disk.",
+      ),
+    ).toBeInTheDocument();
+
+    rerender(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...dropped,
+          rebuild: { state: "waiting", deviceId: 2, device: "/dev/sdf" },
+        }}
+      />,
+    );
+    expect(screen.getByText("Disk back")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "/dev/sdf is back as device 2 of data. LinuxIO erases it and rebuilds the pool onto it once the next health check, within 10 minutes, sees it too.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("gives a refusal's own advice in place of the replace it warns against", () => {
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...filesystem,
+          degraded: true,
+          rebuild: {
+            state: "refused",
+            reason:
+              "device 2 holds data single chunks, which keep one copy, so their only copy is on its disk",
+            advice:
+              "Reconnect that disk and mount the pool again so btrfs takes it back, or copy the data off the pool.",
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Device 2 holds data single chunks, which keep one copy, so their only copy is on its disk. Reconnect that disk and mount the pool again so btrfs takes it back, or copy the data off the pool.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Replace the missing disk/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Replace missing disk" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says a rebuild on record waits, not that it copies", () => {
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...filesystem,
+          degraded: true,
+          rebuild: {
+            state: "waiting",
+            deviceId: 2,
+            device: "/dev/sdf",
+            reason:
+              "the rebuild of device 2 was cut and starts again once /dev/sdf, its disk, is connected",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Rebuild waits")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The rebuild of device 2 was cut and starts again once /dev/sdf, its disk, is connected. Nothing is copied meanwhile.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Rebuilding")).not.toBeInTheDocument();
+  });
+
+  it("says LinuxIO rebuilds onto a disk that dropped out once it is back", () => {
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...filesystem,
+          autoRebuild: true,
+          devices: [
+            filesystem.devices[0],
+            { ...filesystem.devices[1], path: "/dev/sdb", droppedOut: true },
+          ],
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /\/dev\/sdb dropped out of data while it was mounted, and the pool runs on its other disks\. Reconnect the disk: LinuxIO rebuilds the pool onto it once two health checks in a row have seen it back\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("reports uncorrectable scrub errors ahead of a healthy state", () => {
     render(
       <BtrfsHealthBanner
@@ -199,6 +412,23 @@ describe("BtrfsDevicesCard", () => {
     expect(screen.getByText("Missing")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("60 GB used · 40 GB free")).toBeInTheDocument();
+  });
+
+  it("marks a disk that dropped out of the mounted pool as such", () => {
+    render(
+      <BtrfsDevicesCard
+        filesystem={{
+          ...filesystem,
+          devices: [
+            filesystem.devices[0],
+            { ...filesystem.devices[1], path: "/dev/sdb", droppedOut: true },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("/dev/sdb")).toBeInTheDocument();
+    expect(screen.getByText("Dropped out")).toBeInTheDocument();
+    expect(screen.queryByText("Missing")).not.toBeInTheDocument();
   });
 
   it("keeps the last present device", () => {

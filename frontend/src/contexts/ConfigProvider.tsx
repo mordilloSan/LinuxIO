@@ -217,6 +217,9 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     invalidates: [],
   });
   const saveTailRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSavesRef = useRef(0);
+  // Stores whose cache holds a value the bridge refused to save.
+  const refusedRef = useRef({ bridge: false, ui: false });
   const activeQueueRef = useRef(true);
   const configUserId = cacheUserId(user);
   const bridgeKey = useMemo(
@@ -242,27 +245,93 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
   const enqueueSave = useCallback(
     (operation: SaveOperation) => {
+      // The cache already shows a refused value; read the refused stores back
+      // so the page shows what the bridge holds. A store stays marked while
+      // another save is queued, and is read back again after that save.
+      const reloadRefused = async () => {
+        const refused = refusedRef.current;
+        if (!activeQueueRef.current || (!refused.bridge && !refused.ui)) {
+          return;
+        }
+        const results = await Promise.allSettled([
+          refused.bridge
+            ? queryClient
+                .query({
+                  ...linuxio.config.get,
+                  queryKey: bridgeKey,
+                  staleTime: CACHE_TTL_MS.NONE,
+                })
+                .then(() => {
+                  if (pendingSavesRef.current === 0) refused.bridge = false;
+                })
+            : undefined,
+          refused.ui
+            ? queryClient
+                .query({
+                  ...linuxio.config.get_ui,
+                  queryKey: uiKey,
+                  staleTime: CACHE_TTL_MS.NONE,
+                })
+                .then(() => {
+                  if (pendingSavesRef.current === 0) refused.ui = false;
+                })
+            : undefined,
+        ]);
+        for (const result of results) {
+          if (result.status !== "rejected") continue;
+          const error = result.reason;
+          const code = error instanceof LinuxIOError ? error.code : 500;
+          if (code === 401 || code === 403) {
+            sessionExpired();
+            return;
+          }
+          // Otherwise the store stays marked and the next save reads it back.
+        }
+      };
+
+      pendingSavesRef.current += 1;
       saveTailRef.current = saveTailRef.current
         .then(async () => {
           if (!activeQueueRef.current) return;
-          const results = await Promise.allSettled([
+          const [bridgeResult, uiResult] = await Promise.allSettled([
             operation.bridge
               ? setConfigRemote(operation.bridge)
               : Promise.resolve(),
             operation.ui ? setUIRemote(operation.ui) : Promise.resolve(),
           ]);
-          if (operation.ui && results[1].status === "fulfilled") {
+          if (operation.ui && uiResult.status === "fulfilled") {
             announceUIConfigSaved();
           }
           if (!activeQueueRef.current) return;
-          if (results.some((result) => result.status === "rejected")) return;
+          if (bridgeResult.status === "rejected") {
+            refusedRef.current.bridge = true;
+          }
+          if (uiResult.status === "rejected") refusedRef.current.ui = true;
+          if (
+            bridgeResult.status === "rejected" ||
+            uiResult.status === "rejected"
+          ) {
+            return;
+          }
           operation.onSaved?.();
         })
         // Mutation hooks report the individual failure. Keep the queue alive
         // so a later user change can still be sent.
+        .catch(() => undefined)
+        .then(async () => {
+          pendingSavesRef.current -= 1;
+          if (pendingSavesRef.current === 0) await reloadRefused();
+        })
         .catch(() => undefined);
     },
-    [setConfigRemote, setUIRemote],
+    [
+      setConfigRemote,
+      setUIRemote,
+      queryClient,
+      bridgeKey,
+      uiKey,
+      sessionExpired,
+    ],
   );
 
   useEffect(() => {
@@ -401,13 +470,9 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
         queryClient.setQueryData(uiKey, nextUI);
       }
 
-      if (
-        hasValues(pickImportantAppSettings(patch.appSettings ?? {})) ||
-        patch.assistant !== undefined ||
-        patch.docker !== undefined ||
-        patch.jobs !== undefined ||
-        patch.dismissals !== undefined
-      ) {
+      if (hasImportantPatch(patch)) {
+        // A read-back answering after this change would overwrite it.
+        void queryClient.cancelQueries({ exact: true, queryKey: bridgeKey });
         queryClient.setQueryData(bridgeKey, mergeBridgeConfig(bridge, patch));
       }
       return { ui: nextUI };

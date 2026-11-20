@@ -846,7 +846,7 @@ func resolving(h *fakeHooks) *[]string {
 }
 
 // A worker (snapshots, resync, Docker updates) raises an alert for each rule,
-// job, pool or container that fails and then exits with ExitReported. A run
+// job, pool or container that fails and still completes. A run
 // that failed in any other way, such as a worker that could not read its
 // configuration, reach Docker or stay within its memory, reports here
 // instead, once per unit.
@@ -883,52 +883,49 @@ func TestFailedWorkerRunRaisesTheRunAlert(t *testing.T) {
 	}
 }
 
-// The btrfs health check finds the pool of a resync run alert from the key
-// the end hook raised, and no other run or job alert names a pool.
-func TestResyncRunAlertPoolReadsTheKeyTheEndHookRaises(t *testing.T) {
+// The btrfs health check finds the pool of a resync or rebuild run alert
+// from the key the end hook raised, and no other run or job alert names a
+// pool.
+func TestPoolRunAlertPoolReadsTheKeyTheEndHookRaises(t *testing.T) {
 	const pool = "0a1b2c3d-1111-2222-3333-444455556666"
-	const unit = "linuxio-btrfs-resync@" + pool + ".service"
-	h := newHooks(t)
-	mustBegin(t, h, unit, testInvocation)
-	if err := h.End(t.Context(), unit, testInvocation, Result{"exit-code", "exited", "1"}); err != nil {
-		t.Fatal(err)
+	for _, unit := range []string{"linuxio-btrfs-resync@" + pool + ".service", "linuxio-btrfs-rebuild@" + pool + ".service"} {
+		h := newHooks(t)
+		mustBegin(t, h, unit, testInvocation)
+		if err := h.End(t.Context(), unit, testInvocation, Result{"exit-code", "exited", "1"}); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.alerts) != 1 || h.alerts[0].Source != AlertSource {
+			t.Fatalf("%s: alerts = %+v, want the run alert", unit, h.alerts)
+		}
+		if got, ok := PoolRunAlertPool(h.alerts[0].Key); !ok || got != pool {
+			t.Errorf("PoolRunAlertPool(%q) = %q, %v; want %q", h.alerts[0].Key, got, ok, pool)
+		}
 	}
-	if len(h.alerts) != 1 || h.alerts[0].Source != AlertSource {
-		t.Fatalf("alerts = %+v, want the run alert", h.alerts)
-	}
-	if got, ok := ResyncRunAlertPool(h.alerts[0].Key); !ok || got != pool {
-		t.Errorf("ResyncRunAlertPool(%q) = %q, %v; want %q", h.alerts[0].Key, got, ok, pool)
-	}
-	for _, key := range []string{"run-docker-update", "run-btrfs-snapshot", "run-btrfs-resync", "run-btrfs-resync-", "run-btrfs-resync-not-a-uuid", testRunID, FinishedAlertKey(pool)} {
-		if got, ok := ResyncRunAlertPool(key); ok {
-			t.Errorf("ResyncRunAlertPool(%q) = %q; want no pool", key, got)
+	for _, key := range []string{"run-docker-update", "run-btrfs-snapshot", "run-btrfs-resync", "run-btrfs-resync-", "run-btrfs-resync-not-a-uuid", "run-btrfs-rebuild-", testRunID, FinishedAlertKey(pool)} {
+		if got, ok := PoolRunAlertPool(key); ok {
+			t.Errorf("PoolRunAlertPool(%q) = %q; want no pool", key, got)
 		}
 	}
 }
 
-// A run that completed, and one whose worker reported every failure itself,
-// raise nothing and clear the run alert of an earlier run.
-func TestWorkerRunWithNothingLeftToReportClearsTheRunAlert(t *testing.T) {
+// A run that completed raises nothing and clears the run alert of an earlier
+// run. A worker whose items failed with alerts of their own completes too.
+func TestCompletedWorkerRunClearsTheRunAlert(t *testing.T) {
 	const unit = "linuxio-docker-update.service"
-	for name, result := range map[string]Result{
-		"completed":            {"success", "exited", "0"},
-		"failed, all reported": {"exit-code", "exited", strconv.Itoa(ExitReported)},
-	} {
-		h := newHooks(t)
-		resolved := resolving(h)
-		mustBegin(t, h, unit, testInvocation)
-		if err := h.End(t.Context(), unit, testInvocation, result); err != nil {
-			t.Fatal(err)
-		}
-		if len(h.alerts) != 0 || len(*resolved) != 1 || (*resolved)[0] != "jobs/run-docker-update" {
-			t.Errorf("%s: alerts = %+v, resolved = %v; want only the run alert resolved", name, h.alerts, *resolved)
-		}
-	}
-	// A script that exits with the same status is a failed script.
 	h := newHooks(t)
 	resolved := resolving(h)
+	mustBegin(t, h, unit, testInvocation)
+	if err := h.End(t.Context(), unit, testInvocation, Result{"success", "exited", "0"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.alerts) != 0 || len(*resolved) != 1 || (*resolved)[0] != "jobs/run-docker-update" {
+		t.Errorf("alerts = %+v, resolved = %v; want only the run alert resolved", h.alerts, *resolved)
+	}
+	// A script that exits with any status but 0 is a failed script.
+	h = newHooks(t)
+	resolved = resolving(h)
 	mustBegin(t, h, testUnit, testInvocation)
-	if err := h.End(t.Context(), testUnit, testInvocation, Result{"exit-code", "exited", strconv.Itoa(ExitReported)}); err != nil {
+	if err := h.End(t.Context(), testUnit, testInvocation, Result{"exit-code", "exited", "3"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.alerts) != 1 || h.alerts[0].Key != testRunID || len(*resolved) != 0 {
@@ -991,7 +988,7 @@ func TestSystemUpdateRunIsRecordedAndAFailureAlwaysReported(t *testing.T) {
 		"completed":                          {Result{"success", "exited", "0"}, jobs.StateCompleted, false, nil},
 		"failed, the provider's hook is in":  {Result{"exit-code", "exited", "100"}, jobs.StateFailed, true, nil},
 		"failed, no provider's hook":         {Result{"exit-code", "exited", "100"}, jobs.StateFailed, false, []alerts.Observation{failure}},
-		"failed with a worker's exit status": {Result{"exit-code", "exited", strconv.Itoa(ExitReported)}, jobs.StateFailed, false, []alerts.Observation{failure}},
+		"failed with a worker's exit status": {Result{"exit-code", "exited", strconv.Itoa(ExitSkipped)}, jobs.StateFailed, false, []alerts.Observation{failure}},
 	} {
 		h := newHooks(t)
 		resolved := resolving(h)

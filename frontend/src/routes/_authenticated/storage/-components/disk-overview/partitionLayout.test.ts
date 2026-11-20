@@ -135,4 +135,9 @@ describe("initializeBlocker", () => {
       "Member of btrfs pool abc-123",
     );
   });
+
+  it("blocks a pool's hot spare, naming the pool", () => {
+    const spare = { ...disk, hotSpareOf: { uuid: "u1", label: "tank" } };
+    expect(blocker(spare, [spare])).toBe("Hot spare of tank");
+  });
 });

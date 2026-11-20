@@ -79,7 +79,10 @@ func (b *nmConnectionBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *nmConnectionBackend) SetIPv4DHCP(ctx context.Context) error {
+func (b *nmConnectionBackend) SetIPv4DHCP(ctx context.Context, dns, search []string) error {
+	if len(dns) > 0 || len(search) > 0 {
+		return unsupportedDNS(b, "DNS alongside DHCP")
+	}
 	return b.update(ctx, func(cfg *ini.File) error {
 		section := cfg.Section("ipv4")
 		section.Key("method").SetValue("auto")
@@ -100,7 +103,10 @@ func (b *nmConnectionBackend) SetIPv4DHCP(ctx context.Context) error {
 	})
 }
 
-func (b *nmConnectionBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
+func (b *nmConnectionBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns, search []string) error {
+	if len(search) > 0 {
+		return unsupportedDNS(b, "DNS search domains")
+	}
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}

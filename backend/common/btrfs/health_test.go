@@ -2,6 +2,7 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -53,6 +54,18 @@ func TestErrorOccurrence(t *testing.T) {
 	if got, want := errorOccurrence(failing), "1:r2,c3;2:w5,g1;missing"; got != want {
 		t.Fatalf("occurrence = %q, want %q", got, want)
 	}
+	// A disk that dropped out fails every read, write and flush sent to it,
+	// so those counts rise with each health run and are no new occurrence.
+	dropped := BtrfsFilesystem{
+		Degraded: true,
+		Devices: []BtrfsDevice{
+			{ID: 1, Path: "/dev/sda1"},
+			{ID: 2, Path: "/dev/sdb1", Missing: true, DroppedOut: true, Errors: BtrfsDeviceErrors{Write: 83, Read: 4, Flush: 6, Corruption: 2}},
+		},
+	}
+	if got, want := errorOccurrence(dropped), "2:c2;missing"; got != want {
+		t.Fatalf("dropped-out occurrence = %q, want %q", got, want)
+	}
 	many := BtrfsFilesystem{HealthKnown: true}
 	for i := 1; i <= 16; i++ {
 		many.Devices = append(many.Devices, BtrfsDevice{ID: i, Errors: BtrfsDeviceErrors{Write: 1000000, Read: 1000000, Corruption: 1000000}})
@@ -71,7 +84,7 @@ func TestRaiseAlertsRaisesAndResolves(t *testing.T) {
 		Devices: []BtrfsDevice{{ID: 1, Errors: BtrfsDeviceErrors{Write: 1}}},
 		Scrub:   BtrfsScrubStatus{Status: "finished", UncorrectableErrors: 2, FinishedAt: &end},
 	}
-	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2, Devices: []string{"/dev/sda1"}}, "")
+	raiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2, Devices: []string{"/dev/sda1"}}, "", "")
 	if got := alertKeys(t); got["offline-"+dataUUID] != alerts.SeverityError {
 		t.Fatalf("offline alert = %v", got)
 	}
@@ -123,8 +136,8 @@ func TestCheckHealthFlagsOfflinePoolsAndDropsStaleAlerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resync, err := CheckHealth(ctx); err != nil || len(resync) != 0 {
-		t.Fatalf("CheckHealth = %v, %v", resync, err)
+	if actions, err := CheckHealth(ctx); err != nil || len(actions.Resync) != 0 {
+		t.Fatalf("CheckHealth = %v, %v", actions.Resync, err)
 	}
 	got := alertKeys(t)
 	keys := make([]string, 0, len(got))
@@ -189,9 +202,9 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resync, err := CheckHealth(ctx)
-	if err != nil || !reflect.DeepEqual(resync, []string{dataUUID}) {
-		t.Fatalf("CheckHealth = %v, %v; want a resync of %s", resync, err, dataUUID)
+	actions, err := CheckHealth(ctx)
+	if err != nil || !reflect.DeepEqual(actions.Resync, []string{dataUUID}) {
+		t.Fatalf("CheckHealth = %v, %v; want a resync of %s", actions.Resync, err, dataUUID)
 	}
 	if got := alertKeys(t); got["resync-"+dataUUID] != alerts.SeverityWarning {
 		t.Fatalf("alerts = %v, want the resync warning", got)
@@ -207,8 +220,8 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if resync, err = CheckHealth(ctx); err != nil || len(resync) != 0 {
-		t.Fatalf("CheckHealth after failed resyncs = %v, %v", resync, err)
+	if actions, err = CheckHealth(ctx); err != nil || len(actions.Resync) != 0 {
+		t.Fatalf("CheckHealth after failed resyncs = %v, %v", actions.Resync, err)
 	}
 	if got := alertKeys(t); got["resync-"+dataUUID] != alerts.SeverityError {
 		t.Fatalf("alerts = %v, want the resync error", got)
@@ -216,21 +229,113 @@ func TestCheckHealthStartsResyncOnceEveryDiskIsBack(t *testing.T) {
 
 	// While a disk is still missing there is nothing to resync yet.
 	k.devices[2].path = ""
-	if resync, err = CheckHealth(ctx); err != nil || len(resync) != 0 {
-		t.Fatalf("degraded CheckHealth = %v, %v", resync, err)
+	if actions, err = CheckHealth(ctx); err != nil || len(actions.Resync) != 0 {
+		t.Fatalf("degraded CheckHealth = %v, %v", actions.Resync, err)
 	}
 	if got := alertKeys(t); got["resync-"+dataUUID] != "" {
 		t.Fatalf("alerts = %v, want no resync warning while degraded", got)
 	}
 }
 
+// healthRun runs CheckHealth and fails unless it starts a resync of exactly
+// the pools in want.
+func healthRun(t *testing.T, what string, want ...string) {
+	t.Helper()
+	actions, err := CheckHealth(context.Background())
+	if err != nil || !slices.Equal(actions.Resync, want) {
+		t.Fatalf("CheckHealth %s = %v, %v; want resyncs of %v", what, actions.Resync, err, want)
+	}
+}
+
+// A disk that drops out of the mounted pool opens the episode at the next
+// health run while the pool runs on, recorded with the counters it had while
+// the pool was whole. The resync waits while the kernel holds the dead block
+// device, also once the disk is back under its name, and an attempt then
+// counts no failure; once the pool is mounted again with the disk, it starts.
+func TestCheckHealthOpensAnEpisodeForADiskThatDroppedOut(t *testing.T) {
+	k := raid1Kernel()
+	k.generation = 42
+	k.devices[1].uuid, k.devices[2].uuid = devUUID(1), devUUID(2)
+	stubKernel(t, k)
+	stubDisks(t, nil)
+	healthRun(t, "of the whole pool")
+
+	k.setErrors(2, 40, 3)
+	goneLink(t, "sdb1")
+	healthRun(t, "after the dropout")
+	states, err := loadPoolStates()
+	s := states[dataUUID]
+	if err != nil || !s.Degraded || s.Since == 0 || !slices.Equal(s.Present, []uint64{1}) || !slices.Equal(withoutAt(s.Missing), []missingDisk{{ID: 2, UUID: devUUID(2), Whole: true}}) {
+		t.Fatalf("state after the dropout = %+v, %v; want an episode without devid 2, with its counters of the pool whole", s, err)
+	}
+	doc, err := alerts.Load()
+	if err != nil || !slices.ContainsFunc(doc.Alerts, func(a alerts.Alert) bool {
+		return a.Key == "health-"+dataUUID && strings.Contains(a.Message, "/dev/sdb1 dropped out")
+	}) {
+		t.Fatalf("alerts = %+v, %v; want the health alert to say the disk dropped out", doc.Alerts, err)
+	}
+
+	// The same disk is back under its name while the pool is still mounted:
+	// the kernel's link reaches it, but the pool does not hold it.
+	link := filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdb1")
+	if err = os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(link, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	held := deviceNotBusy
+	notBusy("/dev/sdb1", nil)
+	healthRun(t, "with the disk back but not taken")
+	if err = Resync(context.Background(), dataUUID, nil); !errors.Is(err, errDiskMissing) {
+		t.Fatalf("Resync while the pool holds the dead block device = %v, want %v", err, errDiskMissing)
+	}
+	if states, err = loadPoolStates(); err != nil || states[dataUUID].ResyncFailures != 0 || !states[dataUUID].Degraded {
+		t.Fatalf("state after the held resync = %+v, %v; want no failure counted", states[dataUUID], err)
+	}
+	if got := alertKeys(t); got["resync-"+dataUUID] != "" {
+		t.Fatalf("alerts = %v, want no resync warning while the disk is out", got)
+	}
+
+	// Mounted again, the pool holds the disk.
+	deviceNotBusy = held
+	healthRun(t, "once the pool holds the disk again", dataUUID)
+}
+
 func TestOfflineAlertSaysWhyThePoolWasNotMountedDegraded(t *testing.T) {
 	stubAlerts(t)
 	pool := BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 2, Devices: []string{"/dev/sda1"}}
-	RaiseOfflineAlert(context.Background(), pool, "/dev/sda1 missed writes the other present disks have")
+	raiseOfflineAlert(context.Background(), pool, "/dev/sda1 missed writes the other present disks have", "")
 	doc, err := alerts.Load()
 	if err != nil || len(doc.Alerts) != 1 || !strings.Contains(doc.Alerts[0].Message, "did not mount the pool degraded because /dev/sda1 missed writes") {
 		t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
+	}
+}
+
+// A pool that shows only on parts of other devices, as on the legs of an md
+// array that is not running, lacks no disk an administrator could reconnect
+// and has none to mount degraded: its alert says where it shows.
+func TestOfflineAlertSaysWhereAPoolWithoutDisksShows(t *testing.T) {
+	stubAlerts(t)
+	pool := BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 1, legs: []poolLeg{
+		{device: "/dev/sdb", devid: 1, why: "carries an md signature"},
+		{device: "/dev/sdc", devid: 1, why: "carries an md signature"},
+	}}
+	for _, c := range []struct{ blocked, severity string }{
+		{"", alerts.SeverityWarning},
+		{"disk 1 of the pool shows only on /dev/sdb, which carries an md signature", alerts.SeverityError},
+	} {
+		raiseOfflineAlert(context.Background(), pool, c.blocked, "")
+		doc, err := alerts.Load()
+		if err != nil || len(doc.Alerts) != 1 {
+			t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
+		}
+		a := doc.Alerts[0]
+		if a.Severity != c.severity || a.Title != "Pool data is not mounted" ||
+			!strings.Contains(a.Message, "shows only on /dev/sdb, which carries an md signature") ||
+			strings.Contains(a.Message, "degraded") || strings.Contains(a.Message, "Reconnect") {
+			t.Fatalf("blocked %q: alert = %s %q: %q", c.blocked, a.Severity, a.Title, a.Message)
+		}
 	}
 }
 
@@ -244,6 +349,16 @@ func TestHealthAlertSaysAPoolRunsWithoutADisk(t *testing.T) {
 	fs.Devices[1].Path = "/dev/sdb"
 	if obs = healthObservation(fs, "data", "missing"); !strings.Contains(obs.Message, "connected again") {
 		t.Fatalf("returned-disk alert = %q", obs.Message)
+	}
+	// A disk that dropped out of the mounted pool keeps its path, but the
+	// pool takes it back only at the next mount, whether it is back or not.
+	fs.Devices[1].DroppedOut = true
+	obs = healthObservation(fs, "data", "2:w12,f1;missing")
+	if obs.Title != "Pool data is running without 1 of 2 disks" || strings.Contains(obs.Message, "connected again") ||
+		!strings.Contains(obs.Message, "/dev/sdb dropped out while the pool was mounted") ||
+		!strings.Contains(obs.Message, "takes the disk back only when it is mounted again") ||
+		!strings.Contains(obs.Message, "LinuxIO then resyncs the pool") {
+		t.Fatalf("dropped-out alert = %q: %q", obs.Title, obs.Message)
 	}
 	errors := BtrfsFilesystem{UUID: dataUUID, Devices: []BtrfsDevice{{ID: 1, Path: "/dev/sda", Errors: BtrfsDeviceErrors{Write: 3}}}}
 	if obs = healthObservation(errors, "data", "1:w3"); obs.Title != "Btrfs filesystem data needs attention" {
@@ -279,8 +394,8 @@ func TestOfflineAlertCountsAReplaceTargetAsNoMember(t *testing.T) {
 	}
 
 	stubAlerts(t)
-	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
-	wantMissingOne("RaiseOfflineAlert")
+	raiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "", "")
+	wantMissingOne("raiseOfflineAlert")
 
 	stubAlerts(t)
 	if _, err := CheckHealth(ctx); err != nil {
@@ -299,7 +414,7 @@ func TestCheckHealthShowsARefusalAfterTheUnblockedAlert(t *testing.T) {
 		"sdd": {UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 1, Generation: 3},
 	})
 	ctx := context.Background()
-	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 1, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
+	raiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 1, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "", "")
 	writeFstab(t, "UUID=cold-uuid /srv/cold btrfs defaults 0 0\n")
 	if _, err := CheckHealth(ctx); err != nil {
 		t.Fatal(err)

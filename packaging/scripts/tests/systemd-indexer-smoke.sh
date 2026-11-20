@@ -57,12 +57,18 @@ for path in \
 	/etc/systemd/system/linuxio-indexer.service; do
 	[[ ! -e "$path" ]] || fail "refusing to run with existing LinuxIO state: ${path}"
 done
-command -v make >/dev/null || fail "make is required"
-BIN_SRC_DIR="$(make -s -C "$REPO_ROOT" print-bin-dir)"
-mapfile -t BINARIES < <(make -s -C "$REPO_ROOT" print-binaries)
-for binary in "${BINARIES[@]}"; do
-	[[ -x "${BIN_SRC_DIR}/${binary}" ]] || fail "run make build-binaries before the smoke test (missing ${binary})"
-done
+# The build to install: LINUXIO_SMOKE_BUILD_DIR where there is no make (the
+# test VM, whose make target built it on the host), make's bin dir otherwise.
+if [[ -n "${LINUXIO_SMOKE_BUILD_DIR:-}" ]]; then
+	BIN_SRC_DIR=$LINUXIO_SMOKE_BUILD_DIR
+else
+	command -v make >/dev/null || fail "make is required"
+	BIN_SRC_DIR="$(make -s -C "$REPO_ROOT" print-bin-dir)"
+	mapfile -t BINARIES < <(make -s -C "$REPO_ROOT" print-binaries)
+	for binary in "${BINARIES[@]}"; do
+		[[ -x "${BIN_SRC_DIR}/${binary}" ]] || fail "run make build-binaries before the smoke test (missing ${binary})"
+	done
+fi
 
 installed=1
 if ! bash "${REPO_ROOT}/packaging/scripts/localinstall.sh" --build-dir "$BIN_SRC_DIR" >"${SMOKE_DIR}/install.log" 2>&1; then
@@ -74,7 +80,6 @@ mkdir -p "$(dirname "$INDEX_DROPIN")" "$(dirname "$TIMER_DROPIN")"
 # Exercise timer wiring without launching a full-root scan.
 printf '%s\n' '[Service]' 'ExecStart=' \
 	"ExecStart=${CURL_BIN} --fail --silent --unix-socket ${SOCKET_PATH} http://localhost/status" >"$INDEX_DROPIN"
-printf '%s\n' '[Timer]' 'OnActiveSec=' 'OnActiveSec=1s' >"$TIMER_DROPIN"
 systemctl daemon-reload
 systemctl stop linuxio-indexer.service 2>/dev/null || true
 systemctl start linuxio-indexer.socket
@@ -97,7 +102,13 @@ for _ in {1..150}; do
 done
 systemctl is-active --quiet linuxio-indexer.service && fail "idle indexer did not shut down"
 
-systemctl start linuxio-indexer-index.timer
+# The timer came up with the socket (linuxio.target wants it) on its hourly
+# schedule. Only now, with the indexer stopped, is it made to fire 1s after a
+# restart: firing earlier would start the indexer before the checks above, and
+# the unit's 1min accuracy would let systemd put the firing off past the wait.
+printf '%s\n' '[Timer]' 'OnActiveSec=' 'OnActiveSec=1s' 'AccuracySec=1s' >"$TIMER_DROPIN"
+systemctl daemon-reload
+systemctl restart linuxio-indexer-index.timer
 last_trigger=
 for _ in {1..15}; do
 	last_trigger=$(systemctl show --value --property=LastTriggerUSec linuxio-indexer-index.timer)
@@ -105,6 +116,11 @@ for _ in {1..15}; do
 	sleep 1
 done
 [[ -n "$last_trigger" && "$last_trigger" != n/a ]] || fail "index timer did not trigger"
+# The index service's request reaches the socket just after the trigger.
+for _ in {1..10}; do
+	systemctl is-active --quiet linuxio-indexer.service && break
+	sleep 1
+done
 systemctl is-active --quiet linuxio-indexer.service || fail "timer request did not activate the indexer"
 systemctl stop linuxio-indexer-index.timer
 

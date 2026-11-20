@@ -1,12 +1,6 @@
-/* File-browser surfaces. The theme resolves the chrome and divider tokens
-   (--app-chrome-surface-transparent*, --app-divider-subtle) per colour scheme
-   in theme/surfaces.ts; these helpers only compose them. */
-
-export const getChromeSurfaceColor = (
-  chromeColor: string,
-  emphasis: "default" | "hover" = "default",
-) =>
-  `color-mix(in srgb, ${chromeColor}, transparent var(--app-chrome-surface-transparent${emphasis === "hover" ? "-hover" : ""}))`;
+/* File-browser surfaces. The theme resolves the divider token
+   (--app-divider-subtle) per colour scheme in theme/surfaces.ts; these
+   helpers only compose it with the file-browser variables. */
 
 export const getSubtleDividerColor = () => "var(--app-divider-subtle)";
 

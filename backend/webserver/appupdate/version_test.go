@@ -1,377 +1,95 @@
 package appupdate
 
 import (
-	"context"
 	"encoding/json/v2"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
-	"slices"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	ver "github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-func TestParseComponentVersionOutput(t *testing.T) {
-	tests := []struct {
-		name      string
-		component string
-		output    string
-		want      string
-		ok        bool
-	}{
-		{
-			name:      "bridge",
-			component: "LinuxIO Bridge",
-			output:    "LinuxIO Bridge v1.2.3\n",
-			want:      "v1.2.3",
-			ok:        true,
-		},
-		{
-			name:      "auth",
-			component: "LinuxIO Auth",
-			output:    "LinuxIO Auth v1.2.3\n",
-			want:      "v1.2.3",
-			ok:        true,
-		},
-		{
-			name:      "cli",
-			component: "LinuxIO CLI",
-			output:    "\nLinuxIO CLI v1.2.3\n",
-			want:      "v1.2.3",
-			ok:        true,
-		},
-		{
-			name:      "malformed",
-			component: "LinuxIO CLI",
-			output:    "version=v1.2.3\n",
-			ok:        false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := parseComponentVersionOutput(tt.component, []byte(tt.output))
-			if ok != tt.ok {
-				t.Fatalf("expected ok=%v, got %v", tt.ok, ok)
-			}
-			if got != tt.want {
-				t.Fatalf("expected version %q, got %q", tt.want, got)
-			}
-		})
-	}
-}
-
-func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
-	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, nil)
-	defer restore()
-
-	var mu sync.Mutex
-	var calls []probeCall
-	runComponentVersionCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		mu.Lock()
-		calls = append(calls, probeCall{name: filepath.Base(name), args: slices.Clone(args)})
-		mu.Unlock()
-
-		switch filepath.Base(name) {
-		case "linuxio-bridge":
-			return []byte("LinuxIO Bridge v2.3.4\n"), nil
-		case "linuxio-auth":
-			return []byte("LinuxIO Auth v3.4.5\n"), nil
-		case "linuxio-indexer":
-			return []byte("LinuxIO Indexer v5.6.7\n"), nil
-		case "linuxio-monitoring":
-			return []byte("LinuxIO Monitoring v6.7.8\n"), nil
-		case "linuxio":
-			return []byte("LinuxIO CLI v4.5.6\n"), nil
-		default:
-			return nil, errors.New("unexpected binary")
-		}
-	}
-
-	got := getComponentVersions(context.Background())
-
-	want := map[string]string{
-		"LinuxIO Web Server": "v9.9.9",
-		"LinuxIO Bridge":     "v2.3.4",
-		"LinuxIO Auth":       "v3.4.5",
-		"LinuxIO Indexer":    "v5.6.7",
-		"LinuxIO Monitoring": "v6.7.8",
-		"LinuxIO CLI":        "v4.5.6",
-	}
-	assertVersionMap(t, got, want)
-
-	mu.Lock()
-	gotCalls := slices.Clone(calls)
-	mu.Unlock()
-	slices.SortFunc(gotCalls, func(a, b probeCall) int {
-		if a.name != b.name {
-			if a.name < b.name {
-				return -1
-			}
-			return 1
-		}
-		switch {
-		case len(a.args) < len(b.args):
-			return -1
-		case len(a.args) > len(b.args):
-			return 1
-		default:
-			for i := range a.args {
-				if a.args[i] == b.args[i] {
-					continue
-				}
-				if a.args[i] < b.args[i] {
-					return -1
-				}
-				return 1
-			}
-			return 0
-		}
-	})
-
-	wantCalls := []probeCall{
-		{name: "linuxio", args: []string{"version", "--self"}},
-		{name: "linuxio-auth", args: []string{"version"}},
-		{name: "linuxio-bridge", args: []string{"version"}},
-		{name: "linuxio-indexer", args: []string{"--version"}},
-		{name: "linuxio-monitoring", args: []string{"--version"}},
-	}
-	if !slices.EqualFunc(gotCalls, wantCalls, func(a, b probeCall) bool {
-		return a.name == b.name && slices.Equal(a.args, b.args)
-	}) {
-		t.Fatalf("unexpected probe calls: %#v", gotCalls)
-	}
-}
-
-func TestGetComponentVersionsOmitsFailedProbes(t *testing.T) {
-	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		switch filepath.Base(name) {
-		case "linuxio-bridge":
-			return []byte("LinuxIO Bridge v2.3.4\n"), nil
-		case "linuxio-auth":
-			return nil, errors.New("boom")
-		case "linuxio":
-			return []byte("version=v4.5.6\n"), nil
-		default:
-			return nil, errors.New("unexpected binary")
-		}
-	})
-	defer restore()
-
-	got := getComponentVersions(context.Background())
-	want := map[string]string{
-		"LinuxIO Web Server": "v9.9.9",
-		"LinuxIO Bridge":     "v2.3.4",
-	}
-	assertVersionMap(t, got, want)
-}
-
-func TestGetComponentVersionsTimeoutsAreBounded(t *testing.T) {
-	restore := stubVersionCollector(t, "v9.9.9", 10*time.Millisecond, func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		switch filepath.Base(name) {
-		case "linuxio-bridge":
-			return []byte("LinuxIO Bridge v2.3.4\n"), nil
-		case "linuxio-auth":
-			<-ctx.Done()
-			return nil, ctx.Err()
-		case "linuxio":
-			return []byte("LinuxIO CLI v4.5.6\n"), nil
-		default:
-			return nil, errors.New("unexpected binary")
-		}
-	})
-	defer restore()
-
-	got := getComponentVersions(context.Background())
-	want := map[string]string{
-		"LinuxIO Web Server": "v9.9.9",
-		"LinuxIO Bridge":     "v2.3.4",
-		"LinuxIO CLI":        "v4.5.6",
-	}
-	assertVersionMap(t, got, want)
-}
-
-func TestGetComponentVersionsRespectsCanceledParentContext(t *testing.T) {
-	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		return nil, ctx.Err()
-	})
-	defer restore()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	got := getComponentVersions(ctx)
-	want := map[string]string{
-		"LinuxIO Web Server": "v9.9.9",
-	}
-	assertVersionMap(t, got, want)
-}
-
-func TestVersionHandlerReturnsVersionsAndUsesSelfProbe(t *testing.T) {
-	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, nil)
-	defer restore()
-
-	var mu sync.Mutex
-	var calls []probeCall
-	runComponentVersionCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		mu.Lock()
-		calls = append(calls, probeCall{name: filepath.Base(name), args: slices.Clone(args)})
-		mu.Unlock()
-
-		switch filepath.Base(name) {
-		case "linuxio-bridge":
-			return []byte("LinuxIO Bridge v2.3.4\n"), nil
-		case "linuxio-auth":
-			return []byte("LinuxIO Auth v3.4.5\n"), nil
-		case "linuxio-indexer":
-			return []byte("LinuxIO Indexer v5.6.7\n"), nil
-		case "linuxio-monitoring":
-			return []byte("LinuxIO Monitoring v6.7.8\n"), nil
-		case "linuxio":
-			return []byte("LinuxIO CLI v4.5.6\n"), nil
-		default:
-			return nil, errors.New("unexpected binary")
-		}
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
-	rec := httptest.NewRecorder()
-	handleVersion(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
-	}
-
-	var got map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("unmarshal response: %v", err)
-	}
-
-	want := map[string]string{
-		"LinuxIO Web Server": "v9.9.9",
-		"LinuxIO Bridge":     "v2.3.4",
-		"LinuxIO Auth":       "v3.4.5",
-		"LinuxIO Indexer":    "v5.6.7",
-		"LinuxIO Monitoring": "v6.7.8",
-		"LinuxIO CLI":        "v4.5.6",
-	}
-	assertVersionMap(t, got, want)
-
-	mu.Lock()
-	defer mu.Unlock()
-	for _, call := range calls {
-		if call.name == "linuxio" && !slices.Equal(call.args, []string{"version", "--self"}) {
-			t.Fatalf("linuxio CLI probe used unexpected args: %v", call.args)
-		}
-	}
-}
-
-func TestVersionHandlerReturnsPartialResultsOnProbeFailure(t *testing.T) {
-	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		switch filepath.Base(name) {
-		case "linuxio-bridge":
-			return []byte("LinuxIO Bridge v2.3.4\n"), nil
-		case "linuxio-auth":
-			return nil, errors.New("boom")
-		case "linuxio":
-			return []byte("bad output\n"), nil
-		default:
-			return nil, errors.New("unexpected binary")
-		}
-	})
-	defer restore()
-
-	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
-	rec := httptest.NewRecorder()
-	handleVersion(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
-	}
-
-	var got map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("unmarshal response: %v", err)
-	}
-
-	want := map[string]string{
-		"LinuxIO Web Server": "v9.9.9",
-		"LinuxIO Bridge":     "v2.3.4",
-	}
-	assertVersionMap(t, got, want)
-}
-
-func TestVersionHandlerCachesProbesWithinTTL(t *testing.T) {
-	var probes atomic.Int32
-	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		probes.Add(1)
-		return nil, errors.New("boom")
-	})
-	defer restore()
-
-	for range 2 {
-		rec := httptest.NewRecorder()
-		handleVersion(rec, httptest.NewRequest(http.MethodGet, "/api/version", nil))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", rec.Code)
-		}
-	}
-	if got := probes.Load(); got != 5 {
-		t.Fatalf("expected 5 probes for two calls inside the TTL, got %d", got)
-	}
-}
-
-type probeCall struct {
-	name string
-	args []string
-}
-
-func stubVersionCollector(
-	t *testing.T,
-	version string,
-	timeout time.Duration,
-	runner func(ctx context.Context, name string, args ...string) ([]byte, error),
-) func() {
+// stubComponentVersions makes this build report version and the installer's
+// record hold recorded (or fail to be read with err).
+func stubComponentVersions(t *testing.T, version string, recorded map[string]string, err error) {
 	t.Helper()
-
-	oldVersion := ver.Version
-	oldTimeout := componentVersionCommandTimeout
-	oldRunner := runComponentVersionCommand
-
-	versionCacheAt = time.Time{}
+	oldVersion, oldRead := ver.Version, readComponentVersions
+	t.Cleanup(func() { ver.Version, readComponentVersions = oldVersion, oldRead })
 	ver.Version = version
-	componentVersionCommandTimeout = timeout
-	if runner != nil {
-		runComponentVersionCommand = runner
+	readComponentVersions = func() (map[string]string, error) {
+		return maps.Clone(recorded), err
 	}
+}
 
-	return func() {
-		ver.Version = oldVersion
-		componentVersionCommandTimeout = oldTimeout
-		runComponentVersionCommand = oldRunner
-		versionCacheAt = time.Time{}
+func versionResponse(t *testing.T) map[string]string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	handleVersion(rec, httptest.NewRequest(http.MethodGet, "/api/version", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
 	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	return got
+}
+
+// The handler answers with what the installer recorded, and with this build's
+// own version for the webserver whatever the record says of it.
+func TestVersionHandlerReturnsRecordedVersionsAndItsOwn(t *testing.T) {
+	stubComponentVersions(t, "v9.9.9", map[string]string{
+		"LinuxIO CLI":        "v4.5.6",
+		"LinuxIO Web Server": "v0.0.1",
+		"LinuxIO Bridge":     "v2.3.4",
+		"LinuxIO Auth":       "v3.4.5",
+		"LinuxIO Indexer":    "v5.6.7",
+		"LinuxIO Monitoring": "v6.7.8",
+	}, nil)
+
+	assertVersionMap(t, versionResponse(t), map[string]string{
+		"LinuxIO CLI":        "v4.5.6",
+		"LinuxIO Web Server": "v9.9.9",
+		"LinuxIO Bridge":     "v2.3.4",
+		"LinuxIO Auth":       "v3.4.5",
+		"LinuxIO Indexer":    "v5.6.7",
+		"LinuxIO Monitoring": "v6.7.8",
+	})
+}
+
+// A program the installer could not run is left out, as a failed probe was.
+func TestVersionHandlerLeavesOutWhatWasNotRecorded(t *testing.T) {
+	stubComponentVersions(t, "v9.9.9", map[string]string{"LinuxIO Bridge": "v2.3.4"}, nil)
+
+	assertVersionMap(t, versionResponse(t), map[string]string{
+		"LinuxIO Web Server": "v9.9.9",
+		"LinuxIO Bridge":     "v2.3.4",
+	})
+}
+
+// Without the record, such as a build run in place, the webserver still
+// answers with its own version: the page waits on this endpoint after an
+// update.
+func TestVersionHandlerAnswersWithoutTheRecord(t *testing.T) {
+	stubComponentVersions(t, "v9.9.9", nil, errors.New("no such file"))
+
+	assertVersionMap(t, versionResponse(t), map[string]string{"LinuxIO Web Server": "v9.9.9"})
+}
+
+func TestWebserverComponentIsInTheComponentList(t *testing.T) {
+	for _, c := range ver.Components {
+		if c.Name == webserverComponent && c.Binary == "linuxio-webserver" {
+			return
+		}
+	}
+	t.Fatalf("ver.Components has no %q", webserverComponent)
 }
 
 func assertVersionMap(t *testing.T, got, want map[string]string) {
 	t.Helper()
-
-	if len(got) != len(want) {
-		t.Fatalf("expected %d entries, got %d: %#v", len(want), len(got), got)
-	}
-
-	for key, wantValue := range want {
-		gotValue, ok := got[key]
-		if !ok {
-			t.Fatalf("missing version key %q in %#v", key, got)
-		}
-		if gotValue != wantValue {
-			t.Fatalf("expected %s=%q, got %q", key, wantValue, gotValue)
-		}
+	if !maps.Equal(got, want) {
+		t.Fatalf("versions = %#v, want %#v", got, want)
 	}
 }

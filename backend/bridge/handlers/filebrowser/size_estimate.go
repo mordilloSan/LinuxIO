@@ -88,12 +88,12 @@ func computeArchiveSize(ctx context.Context, paths []string, owner services.Owne
 	return totalSize
 }
 
-func computeExtractSize(archivePath string, archiveSize int64) int64 {
+func computeExtractSize(archive *os.File, archivePath string, archiveSize int64) int64 {
 	lowerName := strings.ToLower(archivePath)
 	if strings.HasSuffix(lowerName, ".tar.gz") || strings.HasSuffix(lowerName, ".tgz") {
 		return archiveSize
 	}
-	totalSize, err := services.ComputeExtractSize(archivePath)
+	totalSize, err := services.ComputeExtractSize(archive, archivePath)
 	if err != nil {
 		slog.Debug("failed to compute extract size", "path", archivePath, "error", err)
 		return 0

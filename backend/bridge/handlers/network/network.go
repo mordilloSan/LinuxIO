@@ -135,13 +135,7 @@ func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsS
 	if err != nil {
 		return err
 	}
-	if setter, ok := backend.(ifconfig.DNSOptionsSetter); ok {
-		return setter.SetIPv4ManualWithSearch(ctx, addressCIDR, gateway, dnsServers, search)
-	}
-	if len(search) > 0 {
-		return fmt.Errorf("%w: %s cannot set DNS search domains", ifconfig.ErrUnsupportedBackend, backend.Name())
-	}
-	return backend.SetIPv4Manual(ctx, addressCIDR, gateway, dnsServers)
+	return backend.SetIPv4Manual(ctx, addressCIDR, gateway, dnsServers, search)
 }
 
 // SetIPv4DHCP switches iface to DHCP. Non-empty dnsServers replace the IPv4
@@ -163,13 +157,7 @@ func SetIPv4DHCP(ctx context.Context, iface string, dnsServers, search []string)
 	if err != nil {
 		return err
 	}
-	if setter, ok := backend.(ifconfig.DNSOptionsSetter); ok {
-		return setter.SetIPv4DHCPWithDNS(ctx, dnsServers, search)
-	}
-	if len(dnsServers) > 0 || len(search) > 0 {
-		return fmt.Errorf("%w: %s cannot set DNS alongside DHCP", ifconfig.ErrUnsupportedBackend, backend.Name())
-	}
-	return backend.SetIPv4DHCP(ctx)
+	return backend.SetIPv4DHCP(ctx, dnsServers, search)
 }
 
 // splitList splits a comma- or whitespace-separated form value.

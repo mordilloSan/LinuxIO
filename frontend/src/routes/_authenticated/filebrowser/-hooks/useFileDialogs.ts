@@ -11,6 +11,8 @@ interface PermissionsDialogState {
   owner?: string;
   pathLabel: string;
   paths: string[];
+  /** Ticked when the dialog opens; "Try again" after a failure sets it. */
+  recursive?: boolean;
   selectionCount: number;
 }
 

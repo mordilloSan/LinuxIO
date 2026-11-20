@@ -2,6 +2,7 @@ package dockerupdate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+	digest "github.com/opencontainers/go-digest"
 )
 
 // TestDockerUpdateComposeIntegration exercises the real Compose-managed replacement
@@ -64,7 +66,7 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	updatedResult, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, updateResult, nil)
+	updatedResult, err := updateComposeContainer(ctx, cli, initial, resolved, service, updateResult, nil)
 	if err != nil {
 		t.Fatalf("production Compose update to %s: %v", secondImage, err)
 	}
@@ -76,6 +78,388 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	if updated.Config == nil || !slices.Contains(updated.Config.Env, "LINUXIO_SERVICE_VALUE=from-service-env-file") {
 		t.Fatalf("updated container environment = %#v, want value from service env_file", updated.Config)
 	}
+}
+
+// TestDockerUpdateComposeRollbackIntegration moves a service's tag to an image
+// the service exits on, as a pull does, and checks that the rollback puts the
+// tag back on the old image and brings the service up on it again.
+func TestDockerUpdateComposeRollbackIntegration(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
+	}
+	requireDockerComposeIntegration(t)
+	withTempUpdateStatusPath(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	defer cancel()
+	cli, clientErr := client.New(client.FromEnv)
+	if clientErr != nil {
+		t.Fatalf("create Docker client: %v", clientErr)
+	}
+	defer cli.Close()
+
+	project := fmt.Sprintf("linuxio-it-%d", time.Now().UnixNano())
+	const service = "app"
+	const oldImage, newImage = "alpine:3.20", "alpine:3.21"
+	tag := project + "-app:latest"
+	for _, ref := range []string{oldImage, newImage} {
+		if _, err := PullAndInspectImage(ctx, cli, ref); err != nil {
+			t.Fatalf("pull %s: %v", ref, err)
+		}
+	}
+	if _, err := cli.ImageTag(ctx, client.ImageTagOptions{Source: oldImage, Target: tag}); err != nil {
+		t.Fatalf("tag %s as %s: %v", oldImage, tag, err)
+	}
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	// The service runs on alpine 3.20 and exits on any other release.
+	content := fmt.Sprintf("services:\n  %s:\n    image: %s\n    command: [\"sh\", \"-c\", \"grep -q '^3.20' /etc/alpine-release && exec sleep infinity\"]\n", service, tag)
+	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write Compose file: %v", err)
+	}
+	// Registered before the project's cleanup, so it runs after it: the tag
+	// is removed once the project is down.
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if _, err := cli.ImageRemove(cleanupCtx, tag, client.ImageRemoveOptions{}); err != nil {
+			t.Logf("best-effort tag cleanup failed: %v", err)
+		}
+	})
+	registerDockerUpdateComposeCleanup(t, project, composePath, dir)
+
+	if err := composeUp(ctx, project, composePath, dir, true, nil); err != nil {
+		t.Fatalf("compose up on %s: %v", oldImage, err)
+	}
+	initial := mustInspectComposeService(t, ctx, cli, project, service)
+	assertInitialComposeContainer(t, initial, project, service)
+	target, resolvedService, managed, err := composeTargetForContainer(ctx, cli, initial)
+	if err != nil || !managed || resolvedService != service {
+		t.Fatalf("resolve Compose target: %#v, %q, %v, %v", target, resolvedService, managed, err)
+	}
+	result, _, err := newContainerUpdateResult(initial)
+	if err != nil {
+		t.Fatalf("build update result: %v", err)
+	}
+	// The update: the tag moves to the new image, as a pull moves it, and
+	// the service is brought up on it.
+	pullAndUp := func(ctx context.Context, target ComposeTarget, service string, emitter ComposeLineEmitter) error {
+		if _, tagErr := cli.ImageTag(ctx, client.ImageTagOptions{Source: newImage, Target: tag}); tagErr != nil {
+			return tagErr
+		}
+		return RunComposeProject(ctx, target, emitter, "up", "-d", "--no-deps", service)
+	}
+
+	_, err = updateComposeContainerWithRunner(ctx, cli, newComposeRollback(cli), initial, target, service, result, pullAndUp, nil)
+	if !errors.As(err, new(rolledBackError)) {
+		t.Fatalf("update error = %v, want a rolled back update", err)
+	}
+	tagged, err := cli.ImageInspect(ctx, tag)
+	if err != nil || tagged.ID != initial.Image {
+		t.Fatalf("tag %s names %s (%v), want the old image %s", tag, tagged.ID, err, initial.Image)
+	}
+	restored := mustInspectComposeService(t, ctx, cli, project, service)
+	if restored.ID == initial.ID || restored.Image != initial.Image || restored.State == nil || !restored.State.Running {
+		t.Fatalf("restored container %s on %s (state %#v), want a new container running %s", restored.ID, restored.Image, restored.State, initial.Image)
+	}
+}
+
+// TestDockerUpdateComposeRebuildIntegration rebuilds a service built from a
+// Dockerfile on the host: with nothing changed, which must leave the
+// container alone (a fully cached build keeps the image ID, or every rebuild
+// would recreate the container); with a changed Dockerfile, which replaces
+// it; and with a Dockerfile whose container exits at once, which is rolled
+// back to the image it ran. Each step starts from what the last left.
+func TestDockerUpdateComposeRebuildIntegration(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
+	}
+	requireDockerComposeIntegration(t)
+	withTempUpdateStatusPath(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	defer cancel()
+	f := newRebuildFixture(ctx, t)
+	initial := f.inspect()
+	assertInitialComposeContainer(t, initial, f.project, rebuildService)
+
+	f.checkFindsBuilt(initial)
+
+	// The image `compose up` built carries Docker's default attestations, so
+	// the first rebuild may give a new image ID even with nothing changed.
+	if first, _, err := f.rebuild(initial); err != nil {
+		t.Fatalf("first rebuild: %v", err)
+	} else {
+		t.Logf("first rebuild of the image compose up built: updated %v, %s -> %s", first.Updated, shortImageID(first.PreviousImageID), shortImageID(first.NewImageID))
+	}
+	current := f.inspect()
+	f.checkBaseRecorded(current)
+	f.rebuildUnchanged(current)
+	f.checkBuiltStatus(current, false)
+	current = f.recordSurvivesProjectDown(current)
+	f.writeDockerfile("echo two > /release", `["sleep", "infinity"]`)
+	second := f.rebuildChanged(current)
+	f.writeDockerfile("echo three > /release", `["false"]`)
+	f.rebuildFailing(second)
+}
+
+// checkFindsBuilt: the check stores the container as built, and an update
+// that is not a rebuild finds nothing to do and records no error.
+func (f rebuildFixture) checkFindsBuilt(initial container.InspectResponse) {
+	f.t.Helper()
+	name := strings.TrimPrefix(initial.Name, "/")
+	if _, err := RefreshContainerUpdate(f.ctx, f.cli, initial.ID); err != nil {
+		f.t.Fatalf("check the container: %v", err)
+	}
+	// Built by `compose up`, not by LinuxIO: nothing records its bases.
+	status, ok := ReadStatusSnapshot().ForContainerName(name)
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.Err != "" || status.UpdateAvailable ||
+		status.CheckReason != builtReason(f.project, rebuildService)+builtWithoutRecord {
+		f.t.Fatalf("stored status = %+v, %v; want built, with no record", status, ok)
+	}
+
+	var phases []string
+	result, err := updateInspectedContainer(f.ctx, f.cli, initial, func(phase, message string) {
+		phases = append(phases, phase+": "+message)
+	})
+	if err != nil || result.Updated {
+		f.t.Fatalf("update of a built container = %+v, %v; want nothing to do", result, err)
+	}
+	if status, _ := ReadStatusSnapshot().ForContainerName(name); status.CheckState != DockerUpdateCheckStateBuilt || status.Err != "" {
+		f.t.Fatalf("status after an update = %+v, want it still built", status)
+	}
+	f.t.Logf("update of a built container reported %q", phases)
+}
+
+// checkBaseRecorded: a rebuild by LinuxIO records the base it resolved, with
+// the digest the registry gives for it now, so the check finds no newer
+// version; a recorded digest the registry no longer gives makes the
+// container wait for a rebuild.
+func (f rebuildFixture) checkBaseRecorded(current container.InspectResponse) {
+	f.t.Helper()
+	record, ok := readBuiltImageRecords()[current.Image]
+	if !ok || len(record.Bases) != 1 || record.Bases[0].Ref != "docker.io/library/alpine:3.20" {
+		f.t.Fatalf("record of %s = %+v, %v; want the base alpine:3.20", current.Image, record, ok)
+	}
+	base := record.Bases[0]
+	remote, err := registryDigest(f.ctx, f.cli, base.Ref)
+	if err != nil || remote.String() != base.Digest {
+		f.t.Fatalf("registry digest of %s = %s (%v), recorded %s; want the same", base.Ref, remote, err, base.Digest)
+	}
+	f.t.Logf("recorded base %s@%s", base.Ref, base.Digest)
+	f.checkBuiltStatus(current, false)
+
+	record.Bases = []baseImage{{Ref: base.Ref, Digest: digest.FromString("an older alpine").String()}}
+	if err := recordBuiltImage(f.ctx, record); err != nil {
+		f.t.Fatalf("record an older base: %v", err)
+	}
+	f.checkBuiltStatus(current, true)
+}
+
+// recordSurvivesProjectDown: a check of every container while the project is
+// down keeps the record of its image, which is still on the host (the image
+// list gives the ID the record is kept by), so the container brought up on
+// it again is still watched. It returns that container.
+func (f rebuildFixture) recordSurvivesProjectDown(current container.InspectResponse) container.InspectResponse {
+	f.t.Helper()
+	composePath := filepath.Join(f.dir, "compose.yaml")
+	if err := composeDown(f.ctx, f.project, composePath, f.dir, false, nil); err != nil {
+		f.t.Fatalf("compose down: %v", err)
+	}
+	if _, err := RefreshImageUpdates(f.ctx, f.cli); err != nil {
+		f.t.Fatalf("check every container: %v", err)
+	}
+	if _, ok := readBuiltImageRecords()[current.Image]; !ok {
+		f.t.Fatalf("the record of image %s was dropped while its project was down", current.Image)
+	}
+	if err := runCompose(f.ctx, f.project, composePath, f.dir, nil, "up", "-d", "--no-build"); err != nil {
+		f.t.Fatalf("compose up: %v", err)
+	}
+	again := f.inspect()
+	if again.Image != current.Image {
+		f.t.Fatalf("container came back on %s, want %s", again.Image, current.Image)
+	}
+	f.checkBuiltStatus(again, false)
+	return again
+}
+
+// checkBuiltStatus checks current, and wants it built, and waiting for a
+// rebuild when baseMoved.
+func (f rebuildFixture) checkBuiltStatus(current container.InspectResponse, baseMoved bool) {
+	f.t.Helper()
+	if _, err := RefreshContainerUpdate(f.ctx, f.cli, current.ID); err != nil {
+		f.t.Fatalf("check the container: %v", err)
+	}
+	status, ok := ReadStatusSnapshot().ForContainerName(strings.TrimPrefix(current.Name, "/"))
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.Err != "" || status.UpdateAvailable != baseMoved {
+		f.t.Fatalf("status = %+v, %v; want built, waiting for a rebuild: %v", status, ok, baseMoved)
+	}
+	f.t.Logf("check of the built container: %s", status.CheckReason)
+}
+
+const rebuildService = "app"
+
+// rebuildFixture is a Compose project whose service rebuildService is built
+// from a Dockerfile in dir.
+type rebuildFixture struct {
+	ctx     context.Context
+	t       *testing.T
+	cli     *client.Client
+	project string
+	dir     string
+}
+
+// newRebuildFixture brings up a project whose service builds FROM
+// alpine:3.20, and removes it and every image it built when the test ends.
+func newRebuildFixture(ctx context.Context, t *testing.T) rebuildFixture {
+	t.Helper()
+	cli, err := client.New(client.FromEnv)
+	if err != nil {
+		t.Fatalf("create Docker client: %v", err)
+	}
+	t.Cleanup(func() { _ = cli.Close() })
+	logDockerImageStore(ctx, t, cli)
+	f := rebuildFixture{ctx: ctx, t: t, cli: cli, project: fmt.Sprintf("linuxio-it-%d", time.Now().UnixNano()), dir: t.TempDir()}
+
+	// The base image is the registry's now, as the rebuild's --pull gets it.
+	if _, err := PullAndInspectImage(ctx, cli, "alpine:3.20"); err != nil {
+		t.Fatalf("pull alpine:3.20: %v", err)
+	}
+	composePath := filepath.Join(f.dir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  "+rebuildService+":\n    build: .\n"), 0o600); err != nil {
+		t.Fatalf("write Compose file: %v", err)
+	}
+	// Registered before the project's cleanup, so it runs after it.
+	registerLabelledImageCleanup(t, cli, "linuxio.integration="+f.project)
+	registerDockerUpdateComposeCleanup(t, f.project, composePath, f.dir)
+	f.writeDockerfile("echo one > /release", `["sleep", "infinity"]`)
+	if err := composeUp(ctx, f.project, composePath, f.dir, true, nil); err != nil {
+		t.Fatalf("compose up: %v", err)
+	}
+	return f
+}
+
+// writeDockerfile writes the service's Dockerfile. Every image built from it
+// carries the project as a label, so the ones a rollback leaves untagged are
+// removed too.
+func (f rebuildFixture) writeDockerfile(run, cmd string) {
+	f.t.Helper()
+	content := fmt.Sprintf("FROM alpine:3.20\nLABEL linuxio.integration=%s\nRUN %s\nCMD %s\n", f.project, run, cmd)
+	if err := os.WriteFile(filepath.Join(f.dir, "Dockerfile"), []byte(content), 0o600); err != nil {
+		f.t.Fatalf("write Dockerfile: %v", err)
+	}
+}
+
+func (f rebuildFixture) inspect() container.InspectResponse {
+	f.t.Helper()
+	return mustInspectComposeService(f.t, f.ctx, f.cli, f.project, rebuildService)
+}
+
+// rebuild rebuilds the service that before runs, and returns the lines of
+// the build's output it reported. The tag that held the image before ran is
+// gone afterwards, whatever the outcome.
+func (f rebuildFixture) rebuild(before container.InspectResponse) (DockerContainerUpdateResult, []string, error) {
+	f.t.Helper()
+	var lines []string
+	result, err := rebuildInspectedContainer(f.ctx, f.cli, before, func(phase, message string) {
+		if phase == ProgressPhaseBuildOutput {
+			lines = append(lines, message)
+		}
+	})
+	hold := strings.TrimSuffix(normalizedReference(before.Config.Image), ":latest") + ":" + rebuildPreviousTag
+	if held, inspectErr := f.cli.ImageInspect(f.ctx, hold); inspectErr == nil {
+		f.t.Fatalf("tag %s still names image %s after the rebuild", hold, held.ID)
+	}
+	return result, lines, err
+}
+
+// rebuildUnchanged: the cached build keeps the image ID, and the container is
+// left as it is.
+func (f rebuildFixture) rebuildUnchanged(initial container.InspectResponse) {
+	f.t.Helper()
+	unchanged, lines, err := f.rebuild(initial)
+	if err != nil {
+		f.t.Fatalf("rebuild with nothing changed: %v", err)
+	}
+	f.t.Logf("cached rebuild reported %d lines of build output, the last: %q", len(lines), lines[max(0, len(lines)-3):])
+	if unchanged.Updated || unchanged.NewImageID != initial.Image {
+		f.t.Fatalf("rebuild with nothing changed = %+v; a fully cached build must keep the image ID %s", unchanged, initial.Image)
+	}
+	if same := f.inspect(); same.ID != initial.ID {
+		f.t.Fatalf("rebuild with nothing changed replaced container %s with %s", initial.ID, same.ID)
+	}
+	if len(lines) < 2 {
+		f.t.Fatalf("building lines = %q, want the build's output reported", lines)
+	}
+}
+
+// rebuildChanged: a changed Dockerfile gives a new image, and the service is
+// replaced on it.
+func (f rebuildFixture) rebuildChanged(initial container.InspectResponse) container.InspectResponse {
+	f.t.Helper()
+	updated, _, err := f.rebuild(initial)
+	if err != nil {
+		f.t.Fatalf("rebuild with a changed Dockerfile: %v", err)
+	}
+	second := f.inspect()
+	if !updated.Updated || updated.NewImageID == initial.Image || second.ID == initial.ID || second.Image != updated.NewImageID ||
+		second.State == nil || !second.State.Running {
+		f.t.Fatalf("rebuild with a changed Dockerfile = %+v, container %s on %s (%#v); want a new running container on a new image", updated, second.ID, second.Image, second.State)
+	}
+	status, ok := ReadStatusSnapshot().ForContainerName(strings.TrimPrefix(second.Name, "/"))
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.ImageID != second.Image {
+		f.t.Fatalf("status = %+v, %v; want the rebuilt container built", status, ok)
+	}
+	return second
+}
+
+// rebuildFailing: a new container that exits at once is rolled back to the
+// image the service ran.
+func (f rebuildFixture) rebuildFailing(second container.InspectResponse) {
+	f.t.Helper()
+	if _, _, err := f.rebuild(second); !errors.As(err, new(rolledBackError)) {
+		f.t.Fatalf("rebuild to a failing image: error %v, want a rolled back rebuild", err)
+	}
+	tagged, err := f.cli.ImageInspect(f.ctx, second.Config.Image)
+	if err != nil || tagged.ID != second.Image {
+		f.t.Fatalf("tag %s names %s (%v), want the image the service ran, %s", second.Config.Image, tagged.ID, err, second.Image)
+	}
+	restored := f.inspect()
+	if restored.ID == second.ID || restored.Image != second.Image || restored.State == nil || !restored.State.Running {
+		f.t.Fatalf("restored container %s on %s (state %#v), want a new container running %s", restored.ID, restored.Image, restored.State, second.Image)
+	}
+}
+
+// registerLabelledImageCleanup removes, when the test ends, every image that
+// carries label (name=value), tagged or not.
+func registerLabelledImageCleanup(t *testing.T, cli *client.Client, label string) {
+	t.Helper()
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		images, err := cli.ImageList(cleanupCtx, client.ImageListOptions{All: true, Filters: client.Filters{}.Add("label", label)})
+		if err != nil {
+			t.Logf("best-effort image cleanup failed: %v", err)
+			return
+		}
+		for _, item := range images.Items {
+			if _, err := cli.ImageRemove(cleanupCtx, item.ID, client.ImageRemoveOptions{Force: true}); err != nil {
+				t.Logf("best-effort image cleanup of %s failed: %v", item.ID, err)
+			}
+		}
+	})
+}
+
+// logDockerImageStore logs the daemon's version and image store: whether a
+// fully cached build keeps its image ID depends on them.
+func logDockerImageStore(ctx context.Context, t *testing.T, cli *client.Client) {
+	t.Helper()
+	info, err := cli.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		t.Logf("docker info: %v", err)
+		return
+	}
+	t.Logf("Docker %s, storage driver %s %v", info.Info.ServerVersion, info.Info.Driver, info.Info.DriverStatus)
 }
 
 func TestDockerUpdateComposeExplicitEnvironmentFileIntegration(t *testing.T) {
@@ -127,7 +511,7 @@ func TestDockerUpdateComposeExplicitEnvironmentFileIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	updatedResult, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, result, nil)
+	updatedResult, err := updateComposeContainer(ctx, cli, initial, resolved, service, result, nil)
 	if err != nil {
 		t.Fatalf("update Compose service with explicit environment file: %v", err)
 	}
@@ -179,7 +563,7 @@ func TestDockerUpdateComposeShellOnlyInterpolationRefusesMutation(t *testing.T) 
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, result, nil); err == nil || !strings.Contains(err.Error(), "validate Compose project") {
+	if _, err := updateComposeContainer(ctx, cli, initial, resolved, service, result, nil); err == nil || !strings.Contains(err.Error(), "validate Compose project") {
 		t.Fatalf("shell-only interpolation update error = %v, want validation refusal", err)
 	}
 
@@ -207,7 +591,7 @@ func TestDockerUpdateComposeScaledServiceRefusesMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainerWithProgress(fixture.ctx, fixture.cli, selected, fixture.target, service, result, nil); err == nil || !strings.Contains(err.Error(), "replicas") {
+	if _, err := updateComposeContainer(fixture.ctx, fixture.cli, selected, fixture.target, service, result, nil); err == nil || !strings.Contains(err.Error(), "replicas") {
 		t.Fatalf("scaled Compose update error = %v, want replica-safety refusal", err)
 	}
 
@@ -351,7 +735,7 @@ func registerDockerUpdateComposeEnvironmentCleanup(t *testing.T, target ComposeT
 }
 
 func runComposeProjectWithEnvironment(ctx context.Context, target ComposeTarget, name, value string, args ...string) error {
-	commandArgs, err := composeCommandArgs(target, args...)
+	commandArgs, err := composeCommandArgs(target, "json", args...)
 	if err != nil {
 		return err
 	}

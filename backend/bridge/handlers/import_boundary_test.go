@@ -16,13 +16,14 @@ const modulePrefix = "github.com/mordilloSan/LinuxIO/backend/"
 // bridge/internal (bridge-only) or common (shared with another binary).
 var allowedHandlerEdges = map[string]map[string]string{
 	"accounts": {"control": "logs the user out through logind when the account is deleted"},
-	"config":   {"docker": "the Docker daemon mount-ordering drop-in is rewritten when its setting changes"},
+	"config":   {"docker": "the Docker startup drop-ins (mount ordering, host IP wait) are rewritten when their settings change"},
 	"capabilities": {
-		"docker": "capability probe", "monitoring": "the health probe reuses the daemon client", "power": "capability probe",
-		"shares": "capability probe", "storage": "capability probe", "virt": "capability probe",
+		"docker": "capability probe", "memory": "capability probe", "monitoring": "the health probe reuses the daemon client",
+		"power": "capability probe", "shares": "capability probe", "storage": "capability probe", "virt": "capability probe",
 	},
 	"docker":      {"indexer": "keeps the file index in sync with container mounts", "monitoring": "container metrics come from the monitoring daemon client"},
 	"filebrowser": {"indexer": "search and index maintenance use the indexer client"},
+	"memory":      {"power": "the swap status says whether a TuneD profile manages swappiness"},
 	"packages":    {"capabilities": "capability registry (CapabilitySpec, InstallSpec)", "docker": "Docker capability probe"},
 	"system":      {"packages": "the health summary counts pending updates", "systemd": "the health summary lists services"},
 	"virt":        {"docker": "excludes Docker-owned bridges from VM bridge candidates"},
@@ -108,7 +109,7 @@ func importViolation(pkg, dep string) string {
 			return ""
 		}
 		return "the bridge reaches the daemons only through their api packages"
-	case pkg == "cli" || pkg == "docker-update" || pkg == "btrfs-timer" || pkg == "claude-relay":
+	case pkg == "cli" || pkg == "docker-update" || pkg == "worker" || pkg == "claude-relay":
 		if strings.HasPrefix(dep, "common/") {
 			return ""
 		}

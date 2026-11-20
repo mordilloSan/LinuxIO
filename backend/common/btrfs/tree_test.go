@@ -89,9 +89,40 @@ func (f *fakeTrees) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 
 func stubTrees(t *testing.T, f *fakeTrees) {
 	t.Helper()
-	old := fsIoctl
-	fsIoctl = f.ioctl
-	t.Cleanup(func() { fsIoctl = old })
+	stubIoctls(t, f.ioctl)
+}
+
+// stubIoctls hands every ioctl, by path or on an open folder, to fake with
+// the path it is issued on: a folder is opened for real, and the kernel
+// names it.
+func stubIoctls(t *testing.T, fake func(path string, req uintptr, arg unsafe.Pointer) error) {
+	t.Helper()
+	oldFS, oldFD := fsIoctl, ioctlFD
+	fsIoctl = fake
+	ioctlFD = func(fd int, req uintptr, arg unsafe.Pointer) error {
+		path, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", fd))
+		if err != nil {
+			return err
+		}
+		return fake(path, req, arg)
+	}
+	t.Cleanup(func() { fsIoctl, ioctlFD = oldFS, oldFD })
+}
+
+// realTop is a top-level mount for the operations that open their folders
+// for real, with the folders dirs below it.
+func realTop(t *testing.T, dirs ...string) string {
+	t.Helper()
+	top, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range dirs {
+		if err = os.MkdirAll(filepath.Join(top, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return top
 }
 
 func rootItem(flags uint64, uuid, parentUUID byte, otime int64) []byte {
@@ -231,13 +262,15 @@ func TestReadQuotaTree(t *testing.T) {
 }
 
 func TestSetSubvolumeReadOnlyKeepsOtherFlags(t *testing.T) {
-	f := &fakeTrees{flags: map[string]uint64{"/mnt/top/@": 1 << 4}}
+	top := realTop(t, "@")
+	at := filepath.Join(top, "@")
+	f := &fakeTrees{flags: map[string]uint64{at: 1 << 4}}
 	stubTrees(t, f)
-	if err := setSubvolumeReadOnly("/mnt/top/@", true); err != nil || f.flags["/mnt/top/@"] != 1<<4|subvolRdonly {
-		t.Fatalf("set: flags=%#x err=%v", f.flags["/mnt/top/@"], err)
+	if err := setSubvolumeReadOnly(top, "@", true); err != nil || f.flags[at] != 1<<4|subvolRdonly {
+		t.Fatalf("set: flags=%#x err=%v", f.flags[at], err)
 	}
-	if err := setSubvolumeReadOnly("/mnt/top/@", false); err != nil || f.flags["/mnt/top/@"] != 1<<4 {
-		t.Fatalf("clear: flags=%#x err=%v", f.flags["/mnt/top/@"], err)
+	if err := setSubvolumeReadOnly(top, "@", false); err != nil || f.flags[at] != 1<<4 {
+		t.Fatalf("clear: flags=%#x err=%v", f.flags[at], err)
 	}
 }
 
@@ -297,22 +330,24 @@ func (k *opsKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 
 func TestSubvolumeOpsIssueIoctls(t *testing.T) {
 	k := &opsKernel{}
-	old := fsIoctl
-	fsIoctl = k.ioctl
-	t.Cleanup(func() { fsIoctl = old })
-	src := t.TempDir()
-	top := t.TempDir()
+	stubIoctls(t, k.ioctl)
+	// The folder the fake kernel makes is no subvolume root.
+	oldNew := isNewSubvolume
+	isNewSubvolume = func(*unix.Statx_t, uint32, time.Time) bool { return true }
+	t.Cleanup(func() { isNewSubvolume = oldNew })
+	// Every folder an operation works in is opened for real, below top.
+	top := realTop(t, "@", "linuxio-snapshots/@")
 	oldUmask := unix.Umask(0o077)
 	t.Cleanup(func() { unix.Umask(oldUmask) })
 	limit := uint64(5000)
 	for name, err := range map[string]error{
-		"create":   createSubvolumeAt(filepath.Join(top, "data")),
-		"destroy":  destroySubvolume("/mnt/top/linuxio-snapshots/@/x"),
-		"snapshot": snapshotSubvolumeTo(src, "/mnt/top/linuxio-snapshots/@/y", true),
+		"create":   createSubvolumeAt(top, "data"),
+		"destroy":  destroySubvolume(top, "linuxio-snapshots/@/x"),
+		"snapshot": snapshotSubvolumeTo(top, "@", "linuxio-snapshots/@/y", true),
 		"default":  setDefaultSubvolumeID("/mnt/top", 257),
 		"quota":    quotaCtl("/mnt/top", true),
-		"limit":    qgroupLimit("/mnt/top/@", &limit),
-		"unlimit":  qgroupLimit("/mnt/top/@", nil),
+		"limit":    qgroupLimit("/mnt/top", 256, &limit),
+		"unlimit":  qgroupLimit("/mnt/top", 256, nil),
 	} {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
@@ -322,16 +357,16 @@ func TestSubvolumeOpsIssueIoctls(t *testing.T) {
 	want := []string{
 		"create " + top + " data",
 		"default /mnt/top 257",
-		"destroy /mnt/top/linuxio-snapshots/@ x",
-		"limit /mnt/top/@ id=0 flags=1 max=18446744073709551615",
-		"limit /mnt/top/@ id=0 flags=1 max=5000",
+		"destroy " + top + "/linuxio-snapshots/@ x",
+		"limit /mnt/top id=256 flags=1 max=18446744073709551615",
+		"limit /mnt/top id=256 flags=1 max=5000",
 		"quota /mnt/top 1",
-		"snapshot /mnt/top/linuxio-snapshots/@ y flags=2 fd=true",
+		"snapshot " + top + "/linuxio-snapshots/@ y flags=2 fd=true",
 	}
 	if !reflect.DeepEqual(k.calls, want) {
 		t.Fatalf("calls =\n%q\nwant\n%q", k.calls, want)
 	}
-	if err := createSubvolumeAt("/mnt/top/" + strings.Repeat("x", 256)); err == nil {
+	if err := createSubvolumeAt(top, strings.Repeat("x", 256)); err == nil {
 		t.Fatal("over-long name accepted")
 	}
 	if info, err := os.Stat(filepath.Join(top, "data")); err != nil || info.Mode().Perm() != 0o755 {
@@ -341,22 +376,21 @@ func TestSubvolumeOpsIssueIoctls(t *testing.T) {
 
 func TestSendStreamPassesParentAsCloneSource(t *testing.T) {
 	k := &opsKernel{}
-	old := fsIoctl
-	fsIoctl = k.ioctl
-	t.Cleanup(func() { fsIoctl = old })
+	stubIoctls(t, k.ioctl)
+	top := realTop(t, "snap", "parent")
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer r.Close()
 	defer w.Close()
-	if err := sendStream("/top/snap", "/top/parent", w); err != nil {
+	if err := sendStream(top, "snap", "parent", w); err != nil {
 		t.Fatal(err)
 	}
-	if err := sendStream("/top/snap", "", w); err != nil {
+	if err := sendStream(top, "snap", "", w); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"send /top/snap parent=301 clones=1 set=true", "send /top/snap parent=0 clones=0 set=false"}; !reflect.DeepEqual(k.calls, want) {
+	if want := []string{"send " + top + "/snap parent=301 clones=1 set=true", "send " + top + "/snap parent=0 clones=0 set=false"}; !reflect.DeepEqual(k.calls, want) {
 		t.Fatalf("calls = %q, want %q", k.calls, want)
 	}
 }

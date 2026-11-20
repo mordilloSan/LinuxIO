@@ -38,6 +38,7 @@ describe("isScheduledRun", () => {
     "scheduled.btrfs_snapshot",
     "scheduled.btrfs_replicate",
     "scheduled.btrfs_resync",
+    "scheduled.btrfs_rebuild",
     "scheduled.docker_update",
   ])("is true for %s", (type) => {
     expect(isScheduledRun(type)).toBe(true);
@@ -102,6 +103,7 @@ describe("scheduledRunLink targets", () => {
     "scheduled.btrfs_snapshot",
     "scheduled.btrfs_replicate",
     "scheduled.btrfs_resync",
+    "scheduled.btrfs_rebuild",
     "scheduled.docker_update",
     "scheduled.system_update",
   ])("links %s to a route the app has", (type) => {
@@ -137,6 +139,16 @@ describe("scheduledRunLink", () => {
       scheduledRunLink(
         scheduledRun("scheduled.btrfs_resync", {
           metadata: { label: "Pool resync", identity: ["pool-uuid"] },
+        }),
+      ),
+    ).toEqual({ to: "/storage", search: { pool: "pool-uuid" } });
+  });
+
+  it("opens the pool a rebuild runs on", () => {
+    expect(
+      scheduledRunLink(
+        scheduledRun("scheduled.btrfs_rebuild", {
+          metadata: { label: "Pool rebuild", identity: ["pool-uuid"] },
         }),
       ),
     ).toEqual({ to: "/storage", search: { pool: "pool-uuid" } });

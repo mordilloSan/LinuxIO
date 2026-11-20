@@ -462,9 +462,9 @@ func (m manager) runNow(ctx context.Context, id string) error {
 	})
 }
 
-// ensureInstalled checks that the unit and script on disk match def. Schedules
-// saved by an older build hash to a different script name, so a missing script
-// is re-applied first; the caller already holds the store lock.
+// ensureInstalled checks that the unit and script on disk match def. The script
+// name carries the definition's revision, so a missing script is re-applied
+// first; the caller already holds the store lock.
 func (m manager) ensureInstalled(ctx context.Context, def apischema.ScheduleDefinition, account *user.User) error {
 	if _, statErr := os.Stat(m.store.scriptPath(def)); errors.Is(statErr, os.ErrNotExist) {
 		if err := m.apply(ctx, def, account); err != nil {

@@ -72,6 +72,23 @@ type Route struct {
 	Secrets      []string
 	Suspend      SuspendFunc
 	Resume       ResumeFunc
+	// ResumeAt is when the root job host resumes an interrupted job of the
+	// route; zero means ResumeAfterReboot (ResumesAt).
+	ResumeAt ResumeAt
+}
+
+// ResumesAt says at which root job host starts an interrupted job of the
+// route is resumed: none without a Resume hook, else ResumeAt, after a reboot
+// by default.
+func (r Route) ResumesAt() ResumeAt {
+	switch {
+	case r.Resume == nil:
+		return 0
+	case r.ResumeAt == 0:
+		return ResumeAfterReboot
+	default:
+		return r.ResumeAt
+	}
 }
 
 type RouteOption func(*Route)
@@ -152,6 +169,14 @@ func WithResume(s SuspendFunc, r ResumeFunc) RouteOption {
 	return func(route *Route) {
 		route.Suspend = s
 		route.Resume = r
+	}
+}
+
+// WithResumeAt says at which root job host starts a route WithResume declares
+// is resumed, when not only after a reboot.
+func WithResumeAt(at ResumeAt) RouteOption {
+	return func(route *Route) {
+		route.ResumeAt = at
 	}
 }
 
@@ -453,7 +478,7 @@ func (r *Router) startStableTask(route Route, req Request, identity TaskIdentity
 		}
 		if _, ok := r.registry.Get(identity.ID); ok {
 			r.mu.Unlock()
-			task, _, claimErr := r.registry.ClaimForOwnerWithIdentity(
+			task, _, claimErr := r.registry.ClaimForOwner(
 				req.Route,
 				req.DecodedValue,
 				req.Owner,
@@ -466,7 +491,7 @@ func (r *Router) startStableTask(route Route, req Request, identity TaskIdentity
 		r.pendingIdentities[claimKey] = pending
 		r.mu.Unlock()
 
-		task, started, startErr := r.startTaskWithIdentity(route, req, identity)
+		task, started, startErr := r.startTask(route, req, identity)
 		r.mu.Lock()
 		delete(r.pendingIdentities, claimKey)
 		close(pending)
@@ -475,13 +500,13 @@ func (r *Router) startStableTask(route Route, req Request, identity TaskIdentity
 	}
 }
 
-func (r *Router) startTaskWithIdentity(route Route, req Request, identity TaskIdentity) (*Task, bool, error) {
+func (r *Router) startTask(route Route, req Request, identity TaskIdentity) (*Task, bool, error) {
 	metadata := buildTaskMetadata(route, req.DecodedValue)
 	target := admissionTarget(route.Name, metadata)
 	if err := r.admit(route, target); err != nil {
 		return nil, false, err
 	}
-	task, created, err := r.registry.ClaimForOwnerWithIdentity(req.Route, req.DecodedValue, req.Owner, normalizedTaskLifetime(route.Lifetime), identity, metadata)
+	task, created, err := r.registry.ClaimForOwner(req.Route, req.DecodedValue, req.Owner, normalizedTaskLifetime(route.Lifetime), identity, metadata)
 	if err != nil || !created {
 		r.release(route.Name, target)
 		return task, false, err

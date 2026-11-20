@@ -349,7 +349,7 @@ func configurePipedUpdateTest(t *testing.T, statusPath string) func() {
 
 func newSessionUpdateTask(t *testing.T) *bridgeipc.Task {
 	t.Helper()
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeAppUpdate, nil, bridgeipc.TaskOwner{
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeAppUpdate, nil, bridgeipc.TaskOwner{
 		SessionID: "session-a",
 		Username:  "alice",
 		UID:       1000,

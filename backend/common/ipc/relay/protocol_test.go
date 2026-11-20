@@ -174,16 +174,13 @@ func TestWriteProgressRejectsOversizePayload(t *testing.T) {
 	}
 }
 
-func TestWriteResultFrameRejectsOversizePayload(t *testing.T) {
-	err := WriteResultFrame(io.Discard, 1, &ResultFrame{
-		Status: "error",
-		Error:  strings.Repeat("x", MaxRelayPayloadSize),
-	})
+func TestWriteResultErrorRejectsOversizePayload(t *testing.T) {
+	err := WriteResultError(io.Discard, 1, strings.Repeat("x", MaxRelayPayloadSize), 0)
 	if err == nil {
-		t.Fatal("WriteResultFrame() error = nil, want oversize payload error")
+		t.Fatal("WriteResultError() error = nil, want oversize payload error")
 	}
 	if !strings.Contains(err.Error(), "result payload invalid") {
-		t.Fatalf("WriteResultFrame() error = %v, want result payload invalid", err)
+		t.Fatalf("WriteResultError() error = %v, want result payload invalid", err)
 	}
 }
 

@@ -31,7 +31,6 @@ const VARIANT_FIELD: Record<string, (v: Variant) => string> = {
   chartTx: (v) => v.chart.tx,
   chartNeutral: (v) => v.chart.neutral,
   fileBrowserSurface: (v) => v.fileBrowser.surface,
-  fileBrowserChrome: (v) => v.fileBrowser.chrome,
   fileBrowserBreadcrumbBackground: (v) => v.fileBrowser.breadcrumbBackground,
   fileBrowserBreadcrumbText: (v) => v.fileBrowser.breadcrumbText,
 };

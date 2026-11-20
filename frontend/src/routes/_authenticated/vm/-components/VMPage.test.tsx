@@ -1019,9 +1019,10 @@ describe("Virtual Machines page", () => {
 
     await renderVMPage();
 
+    // The machines tab no longer carries the host preflight card.
     expect(
-      screen.getByText(/default storage pool is missing/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/default storage pool is missing/i),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create vm/i })).toBeEnabled();
   });
 
@@ -1441,8 +1442,9 @@ describe("Virtual Machines page", () => {
     await user.click(
       within(dialog).getByRole("button", { name: /browse iso files/i }),
     );
-    await user.click(await screen.findByText(`${mocks.managedISOPath}/`));
+    // The tree opens on the ISO folder; browsing it puts it in the field.
     await screen.findByText("debian.iso");
+    await user.click(screen.getByText(`${mocks.managedISOPath}/`));
 
     const isoInput = within(dialog).getByLabelText(/iso path/i);
     expect(isoInput).toHaveValue(`${mocks.managedISOPath}/`);

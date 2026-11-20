@@ -41,10 +41,11 @@ export {
 // === API Errors ===
 export {
   LinuxIOError,
+  classifyRequestOutcome,
   getMutationErrorMessage,
   isConnectionLossError,
 } from "./errors";
-export type { ConnectionLossCode } from "./errors";
+export type { ConnectionLossCode, RequestOutcome } from "./errors";
 export { ensureLoaderRequestReady } from "./linuxio-core";
 export type { RouteTarget, ToastMeta } from "./toast-meta";
 

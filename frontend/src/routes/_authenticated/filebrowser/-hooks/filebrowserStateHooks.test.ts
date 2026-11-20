@@ -101,7 +101,6 @@ describe("filebrowser state hooks", () => {
 
     act(() => {
       result.current.actions.openDialog();
-      result.current.actions.setProcessing(true);
       result.current.actions.mergeEntries([
         {
           isDirectory: true,
@@ -114,9 +113,15 @@ describe("filebrowser state hooks", () => {
         },
       ]);
     });
+    act(() =>
+      result.current.actions.setStatus(
+        result.current.uploadEntries,
+        "checking",
+      ),
+    );
 
     expect(result.current.uploadDialogOpen).toBe(true);
-    expect(result.current.isUploadProcessing).toBe(true);
+    expect(result.current.uploadStatus).toBe("checking");
     expect(result.current.uploadEntries).toHaveLength(2);
     expect(result.current.uploadSummary).toEqual({
       files: 1,
@@ -153,5 +158,50 @@ describe("filebrowser state hooks", () => {
     expect(result.current.uploadDialogOpen).toBe(false);
     expect(result.current.uploadEntries).toEqual([]);
     expect(result.current.ownUploads).toBe(false);
+  });
+
+  it("keeps an upload's entries while it runs and lets its end touch only its own dialog", () => {
+    const { result } = renderHook(() => useFileUpload());
+    const file = new File(["content"], "a.txt");
+
+    act(() => result.current.actions.openDialog());
+    act(() =>
+      result.current.actions.mergeEntries([
+        { file, isDirectory: false, relativePath: "a.txt" },
+      ]),
+    );
+    const first = result.current.uploadEntries;
+    act(() => result.current.actions.setStatus(first, "uploading"));
+    act(() =>
+      result.current.actions.mergeEntries([
+        { isDirectory: true, relativePath: "late" },
+      ]),
+    );
+    expect(result.current.uploadEntries).toBe(first);
+
+    // Closed while the upload runs, then opened again for another upload.
+    act(() => result.current.actions.closeDialog());
+    expect(result.current.uploadStatus).toBe("idle");
+    act(() => result.current.actions.openDialog());
+    act(() =>
+      result.current.actions.mergeEntries([
+        { isDirectory: true, relativePath: "stack" },
+      ]),
+    );
+    const second = result.current.uploadEntries;
+    act(() => result.current.actions.setStatus(second, "uploading"));
+
+    // The first upload's end leaves the dialog and its upload as they are.
+    act(() => result.current.actions.closeDialogFor(first));
+    act(() => result.current.actions.setStatus(first, "idle"));
+    expect(result.current.uploadDialogOpen).toBe(true);
+    expect(result.current.uploadEntries).toBe(second);
+    expect(result.current.uploadStatus).toBe("uploading");
+
+    // Its own upload's end closes it.
+    act(() => result.current.actions.closeDialogFor(second));
+    expect(result.current.uploadDialogOpen).toBe(false);
+    expect(result.current.uploadEntries).toEqual([]);
+    expect(result.current.uploadStatus).toBe("idle");
   });
 });

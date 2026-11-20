@@ -18,6 +18,7 @@ import {
   type RequestShape,
 } from "./query-keys";
 import type { ProgressFrame } from "./StreamMultiplexer";
+import { isTaskCancellationError } from "./tasks";
 
 /** Declarative config for a Mutation: ActionConfig plus job lifecycle hooks. */
 export interface MutationConfig<
@@ -107,7 +108,9 @@ export function defineMutation<TResult, TProgress = ProgressFrame>(
             )
           : core.watchMutation<TResult, TProgress>(adoptedTaskId, handlers);
       },
-      config,
+      // A cancelled job is not a failure: whoever cancelled it, the task
+      // tray or a page, says so.
+      { ...config, quietError: isTaskCancellationError },
     );
     const watch = (taskId: string, variables: unknown) => {
       adoptedTaskRef.current = taskId;

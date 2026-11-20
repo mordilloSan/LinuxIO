@@ -66,6 +66,30 @@ func TestParseSmartTestJSON(t *testing.T) {
 			wantPercent: 0,
 		},
 		{
+			// smartctl leaves passed out of a test the host aborted, which
+			// once read as idle and so as completed once seen running.
+			name: "ATA aborted by the host (status 0x1_, no passed)",
+			input: `{
+				"ata_smart_data": {
+					"self_test": {
+						"status": { "value": 16, "string": "was aborted by the host" }
+					}
+				}
+			}`,
+			wantState: "aborted",
+		},
+		{
+			name: "ATA interrupted by a reset (status 0x2_, no passed)",
+			input: `{
+				"ata_smart_data": {
+					"self_test": {
+						"status": { "value": 32, "string": "was interrupted by the host with a reset" }
+					}
+				}
+			}`,
+			wantState: "aborted",
+		},
+		{
 			name: "NVMe in-progress, real smartmontools shape (object op + scalar pct)",
 			input: `{
 				"nvme_self_test_log": {
@@ -263,7 +287,7 @@ func newSmartTestState(t *testing.T, poll func(context.Context, string) (SmartTe
 	t.Cleanup(func() { pollSmartStatus = orig })
 	pollSmartStatus = poll
 
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity("storage.run_smart_test", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner("storage.run_smart_test", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

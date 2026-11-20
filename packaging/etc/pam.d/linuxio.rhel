@@ -1,0 +1,30 @@
+#%PAM-1.0
+# LinuxIO PAM stack for the RHEL family (Fedora, RHEL, CentOS Stream, Rocky
+# Linux, AlmaLinux), installed as /etc/pam.d/linuxio in place of the Debian
+# family's file. It has every LinuxIO line of that file; the system's own
+# lines come from password-auth and postlogin, which the RHEL family's sshd
+# includes for a remote login where Debian has the common-* files.
+# AUTH
+auth       [success=ok ignore=ignore module_unknown=ignore default=bad] pam_sepermit.so
+auth       substack     password-auth
+auth       include      postlogin
+# ACCOUNT
+# LinuxIO's lines stay above the include: a sufficient line in password-auth ends the stack there.
+account    required     pam_listfile.so item=user sense=deny file=/etc/linuxio/disallowed-users onerr=succeed
+account    required     pam_shells.so
+account    required     pam_nologin.so
+account    include      password-auth
+# PASSWORD
+password   include      password-auth
+# SESSION
+session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so close
+session    required     pam_loginuid.so
+session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open env_params
+session    optional     pam_keyinit.so force revoke
+session    include      password-auth
+session    include      postlogin
+# Register the web login with systemd-logind so it shows up as a session.
+# password-auth usually does too; a second call finds the session made.
+session    optional     pam_systemd.so
+session    required     pam_env.so
+session    required     pam_env.so envfile=/etc/locale.conf

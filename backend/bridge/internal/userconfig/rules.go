@@ -3,6 +3,7 @@ package userconfig
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -130,6 +131,50 @@ func ParseDockerFolders[S ~string](values []S) ([]AbsolutePath, error) {
 		folders = append(folders, AbsolutePath(folder))
 	}
 	return folders, nil
+}
+
+// ParseDockerHostIPs validates the host addresses Docker waits for at startup
+// and returns them in canonical form, with an IPv4-mapped IPv6 address as its
+// IPv4 form. The result goes into a shell line of a systemd drop-in that root
+// writes, so every value returned is the text of a parsed address and nothing
+// else. An empty list is valid; the result is never nil.
+func ParseDockerHostIPs(values []string) ([]string, error) {
+	ips := make([]string, 0, len(values))
+	for _, value := range values {
+		input := strings.TrimSpace(value)
+		if input == "" {
+			return nil, errors.New("docker host IPs cannot include an empty address")
+		}
+		addr, err := netip.ParseAddr(input)
+		if err != nil {
+			return nil, fmt.Errorf("docker host IP %q is not an IP address", input)
+		}
+		if addr.Zone() != "" {
+			return nil, fmt.Errorf("docker host IP %q cannot carry a zone", input)
+		}
+		addr = addr.Unmap()
+		if addr.IsUnspecified() {
+			return nil, fmt.Errorf("docker host IP %q is the unspecified address", input)
+		}
+		if addr.IsLoopback() {
+			return nil, fmt.Errorf("docker host IP %q is a loopback address", input)
+		}
+		ip := addr.String()
+		if slices.Contains(ips, ip) {
+			return nil, errors.New("docker host IPs cannot include duplicates")
+		}
+		ips = append(ips, ip)
+	}
+	return ips, nil
+}
+
+// ValidateDockerHostIPWait refuses the wait switched on with no address to
+// wait for, which would store a setting that writes no drop-in.
+func ValidateDockerHostIPWait(docker Docker) error {
+	if docker.WaitForHostIPs && len(docker.HostIPs) == 0 {
+		return errors.New("docker.waitForHostIPs needs at least one address in docker.hostIPs")
+	}
+	return nil
 }
 
 // ValidateJobSettings returns an error message per negative job setting.

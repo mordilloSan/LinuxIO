@@ -7,10 +7,25 @@ import {
   getMutationErrorMessage,
   type InstallCapabilityResult,
   LinuxIOError,
+  type SwapMode,
+  type SwapModeResult,
   type TaskSnapshot,
 } from "@/api";
+import { toastLinkOptions } from "@/api/toast-meta";
 import { toastFileError } from "@/utils/linkRefusal";
 
+import {
+  DOCKER_STORAGE_APPLIED,
+  DOCKER_STORAGE_FAILED,
+} from "./dockerStorageFeedback";
+import {
+  MEMORY_DRAIN_FAILED,
+  MEMORY_DRAINED,
+  MEMORY_MODE_APPLIED,
+  MEMORY_MODE_FAILED,
+  MEMORY_TOAST_META,
+  modeResultWarning,
+} from "./memoryFeedback";
 import * as TaskTypes from "./taskTypes";
 import { requestString } from "./taskUtils";
 
@@ -117,20 +132,23 @@ function capabilityPresentation(task: TerminalFeedbackTask) {
   const wire = requestString(task.metadata, "capability") ?? "capability";
   const def = CAPABILITIES.find((capability) => capability.wire === wire);
   const label = def?.label ?? wire;
-  // Surface an "Open …" action link on the notification for capabilities
-  // that have a dedicated page (omitted for ones that don't).
-  const opts = def && "route" in def ? { meta: def.route } : undefined;
-  return { label, opts };
+  // The capability's own page, if it has one, for the toast's "Open …" link.
+  const route = def && "route" in def ? def.route : undefined;
+  return { label, route };
 }
 
 const capabilityInstallError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
   task,
   error,
+  deps,
 ) => {
-  const { label, opts } = capabilityPresentation(task);
+  // A failed or canceled install may still have put the package in, as when
+  // a step after the package step failed, so the state is read again.
+  void deps.refreshCapabilities();
+  const { label, route } = capabilityPresentation(task);
   toast.error(
     getMutationErrorMessage(error, `Failed to install ${label}`),
-    opts,
+    toastLinkOptions(route),
   );
 };
 
@@ -141,9 +159,7 @@ const dockerUpdateError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
 ) => {
   toast.error(
     getMutationErrorMessage(error, "Docker container update failed"),
-    {
-      meta: DOCKER_TOAST_META,
-    },
+    toastLinkOptions(DOCKER_TOAST_META),
   );
 };
 
@@ -160,11 +176,22 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
       const name = result?.containerName || "Container";
       toast.success(
         result?.updated ? `${name} updated` : `${name} is already up to date`,
-        { meta: DOCKER_TOAST_META },
+        toastLinkOptions(DOCKER_TOAST_META),
       );
     },
     onFailed: dockerUpdateError,
     onCanceled: dockerUpdateError,
+  },
+  // The Docker settings section can be closed or left while a storage change
+  // runs. A section that follows the job reports it and marks it reported;
+  // this is for a job nobody follows, as after a reload.
+  [TaskTypes.TASK_TYPE_DOCKER_STORAGE]: {
+    onCompleted: () => {
+      toast.success(DOCKER_STORAGE_APPLIED);
+    },
+    onFailed: (_task, error) => {
+      toast.error(getMutationErrorMessage(error, DOCKER_STORAGE_FAILED));
+    },
   },
   // Owned by the global handler (not CapabilityManagerSection) so the toast
   // still fires when the Settings dialog has been closed mid-install. A
@@ -172,24 +199,24 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
   // midway needs attention either way, and both paths have always done so.
   [TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY]: {
     onCompleted: (task, result, deps) => {
-      const { label, opts } = capabilityPresentation(task);
+      const { label, route } = capabilityPresentation(task);
       // Any successful task result (available or not) refreshes app-wide state.
       void deps.refreshCapabilities();
       const install = result as InstallCapabilityResult | undefined;
       if (install?.available) {
         if (install.warning) {
-          toast.warning(`${label} installed with warning`, {
-            ...opts,
-            description: install.warning,
-          });
+          toast.warning(
+            `${label} installed with warning`,
+            toastLinkOptions(route, { description: install.warning }),
+          );
         } else {
-          toast.success(`${label} installed`, opts);
+          toast.success(`${label} installed`, toastLinkOptions(route));
         }
       } else {
         const reason = install?.error ? `: ${install.error}` : ".";
         toast.warning(
           `${label} installed but is still unavailable${reason}`,
-          opts,
+          toastLinkOptions(route),
         );
       }
     },
@@ -201,6 +228,43 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
   [TaskTypes.TASK_TYPE_PACKAGE_UPDATE]: {
     onFailed: (_task, error) => {
       toast.error(getMutationErrorMessage(error, "Package update failed"));
+    },
+  },
+  // The Memory overflow dialog can be closed while its change runs. A dialog
+  // that follows the job reports it and marks it reported; this is for a job
+  // nobody follows, as after a reload. The job's action is the mode asked
+  // for, which the warning needs.
+  [TaskTypes.TASK_TYPE_MEMORY_SWAP_MODE]: {
+    onCompleted: (task, value) => {
+      const result = value as SwapModeResult | undefined;
+      const requested = requestString(task.metadata, "action") as
+        | SwapMode
+        | undefined;
+      const warning = result
+        ? modeResultWarning(result, requested ?? result.mode)
+        : null;
+      if (warning) {
+        toast.warning(warning, toastLinkOptions(MEMORY_TOAST_META));
+      } else {
+        toast.success(MEMORY_MODE_APPLIED, toastLinkOptions(MEMORY_TOAST_META));
+      }
+    },
+    onFailed: (_task, error) => {
+      toast.error(
+        getMutationErrorMessage(error, MEMORY_MODE_FAILED),
+        toastLinkOptions(MEMORY_TOAST_META),
+      );
+    },
+  },
+  [TaskTypes.TASK_TYPE_MEMORY_DRAIN]: {
+    onCompleted: () => {
+      toast.success(MEMORY_DRAINED, toastLinkOptions(MEMORY_TOAST_META));
+    },
+    onFailed: (_task, error) => {
+      toast.error(
+        getMutationErrorMessage(error, MEMORY_DRAIN_FAILED),
+        toastLinkOptions(MEMORY_TOAST_META),
+      );
     },
   },
   // Page-owned: DiskOverview fires its own scoped toast for SMART tests, so

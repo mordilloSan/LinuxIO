@@ -283,7 +283,7 @@ func setupTestDB(t *testing.T) (context.Context, *sql.DB, string) {
 	return ctx, db, dbPath
 }
 
-func insertTestIndex(t *testing.T, db *sql.DB) int64 {
+func insertTestIndex(t testing.TB, db *sql.DB) int64 {
 	t.Helper()
 	res, err := db.Exec(`
 		INSERT INTO indexes (last_indexed)

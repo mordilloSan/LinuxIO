@@ -23,63 +23,62 @@ type ServerConfig struct {
 // test seam (override in tests)
 var runServerFunc = RunServer
 
-// Run executes the LinuxIO webserver CLI and returns the process exit code.
+// Run starts the LinuxIO webserver and returns the process exit code. The
+// program takes flags and no command word: systemd starts it, and linuxio is
+// the admin tool.
 func Run(args []string) int {
-	if len(args) < 2 {
-		printGeneralUsage()
-		return 0
+	if len(args) > 1 {
+		switch args[1] {
+		case "-h", "--help", "help":
+			printGeneralUsage()
+			return 0
+		case "version", "-v", "--version":
+			fmt.Printf("LinuxIO Web Server %s\n", version.Version)
+			return 0
+		}
 	}
 
-	switch args[1] {
-	case "-h", "--help", "help":
-		printGeneralUsage()
-		return 0
-	case "version", "-v", "--version":
-		fmt.Printf("LinuxIO Web Server %s\n", version.Version)
-		return 0
-	case "run":
-		runCmd := flag.NewFlagSet("run", flag.ContinueOnError)
+	flags := flag.NewFlagSet("linuxio-webserver", flag.ContinueOnError)
 
-		var cfg ServerConfig
-		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port (1-65535)")
-		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging (default false)")
+	var cfg ServerConfig
+	flags.IntVar(&cfg.Port, "port", 8090, "HTTP server port (1-65535)")
+	flags.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging (default false)")
 
-		runCmd.Usage = func() {
-			fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
-			fmt.Fprintln(os.Stderr, "\nUsage:")
-			fmt.Fprintln(os.Stderr, "  linuxio-webserver run [flags]")
-			fmt.Fprintln(os.Stderr, "\nFlags:")
-			runCmd.PrintDefaults()
-		}
-
-		if err := runCmd.Parse(args[2:]); err != nil {
-			if errors.Is(err, flag.ErrHelp) {
-				return 0
-			}
-			return 2
-		}
-
-		// Validate port (reject 0: server needs a fixed, known port for clients)
-		if cfg.Port <= 0 || cfg.Port > 65535 {
-			fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535 (port 0 not supported)")
-			return 2
-		}
-
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
-		verbosemode.ReloadOnSIGHUP(ctx)
-		if err := runServerFunc(ctx, cfg); err != nil {
-			logging.ReportFatal(err)
-			return 1
-		}
-		return 0
-
-	default:
+	flags.Usage = func() {
 		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
-		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n", args[1])
+		fmt.Fprintln(os.Stderr, "\nUsage:")
+		fmt.Fprintln(os.Stderr, "  linuxio-webserver [flags]")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		flags.PrintDefaults()
+	}
+
+	if err := flags.Parse(args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
+		fmt.Fprintf(os.Stderr, "unknown argument: %q\n\n", flags.Arg(0))
 		printUsage()
 		return 2
 	}
+
+	// Validate port (reject 0: server needs a fixed, known port for clients)
+	if cfg.Port <= 0 || cfg.Port > 65535 {
+		fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535 (port 0 not supported)")
+		return 2
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	verbosemode.ReloadOnSIGHUP(ctx)
+	if err := runServerFunc(ctx, cfg); err != nil {
+		logging.ReportFatal(err)
+		return 1
+	}
+	return 0
 }
 
 func printGeneralUsage() {
@@ -89,17 +88,10 @@ func printGeneralUsage() {
 
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage:
-  linuxio-webserver <command> [flags]
+  linuxio-webserver [-port N] [-verbose]
+  linuxio-webserver --version
+  linuxio-webserver --help
 
-Commands:
-  run         Run the HTTP server
-  version     Show version information
-  help        Show this help
-
-Examples:
-  linuxio-webserver run
-  linuxio-webserver run -port 8090 -verbose
-
-Use "linuxio-webserver <command> -h" for more info about a command.
+linuxio-webserver is started by systemd. Manage LinuxIO with the linuxio command.
 `)
 }

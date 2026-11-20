@@ -36,7 +36,7 @@ func journalTermsForMode(mode string) []string {
 		"SYSLOG_IDENTIFIER=linuxio-auth",
 		"SYSLOG_IDENTIFIER=linuxio-indexer",
 		"SYSLOG_IDENTIFIER=linuxio-monitoring",
-		"SYSLOG_IDENTIFIER=linuxio-btrfs-timer",
+		"SYSLOG_IDENTIFIER=linuxio-worker",
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
 		"_SYSTEMD_UNIT=linuxio-webserver.socket",
@@ -55,6 +55,7 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-btrfs-health.service",
 		"_SYSTEMD_UNIT=linuxio-btrfs-health.timer",
 		"_SYSTEMD_UNIT=linuxio-btrfs-resync@.service",
+		"_SYSTEMD_UNIT=linuxio-btrfs-rebuild@.service",
 	}
 
 	switch mode {

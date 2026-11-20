@@ -20,7 +20,7 @@ func TestRun_InvokesRunServer(t *testing.T) {
 	}
 	defer func() { runServerFunc = old }()
 
-	code := Run([]string{"linuxio-webserver", "run", "-port", "18090", "-verbose"})
+	code := Run([]string{"linuxio-webserver", "-port", "18090", "-verbose"})
 	if code != 0 {
 		t.Fatalf("Run exit code = %d, want 0", code)
 	}
@@ -33,7 +33,7 @@ func TestRun_InvokesRunServer(t *testing.T) {
 	}
 }
 
-func TestRun_UnknownCommand_ReturnsUsageError(t *testing.T) {
+func TestRun_UnknownArgument_ReturnsUsageError(t *testing.T) {
 	var errb bytes.Buffer
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
@@ -56,8 +56,8 @@ func TestRun_UnknownCommand_ReturnsUsageError(t *testing.T) {
 		t.Fatalf("read stderr: %v", err)
 	}
 
-	if !strings.Contains(errb.String(), "unknown command") {
-		t.Fatalf("expected 'unknown command' in stderr, got: %q", errb.String())
+	if !strings.Contains(errb.String(), "unknown argument") {
+		t.Fatalf("expected 'unknown argument' in stderr, got: %q", errb.String())
 	}
 }
 
@@ -87,7 +87,7 @@ func TestRun_HelpUsesWebserverBinaryName(t *testing.T) {
 	}
 
 	output := errb.String()
-	if !strings.Contains(output, "linuxio-webserver run") {
+	if !strings.Contains(output, "linuxio-webserver [-port N]") {
 		t.Fatalf("expected webserver binary name in help, got: %q", output)
 	}
 	if strings.Contains(output, "  linuxio run") {

@@ -36,7 +36,7 @@ func TestBtrfsAddWipeIntegration(t *testing.T) {
 		}
 	}
 
-	uuid, err := CreatePool(ctx, "linuxio-wipe-it", "single", "dup", []string{pool}, true, nil)
+	uuid, err := CreatePool(ctx, "linuxio-wipe-it", "single", "dup", []string{pool}, true, nil, nil)
 	must("create pool", err)
 	mnt := filepath.Join(dir, "pool")
 	must("mount pool", MountPool(ctx, pool, mnt, nil, false))
@@ -44,7 +44,7 @@ func TestBtrfsAddWipeIntegration(t *testing.T) {
 
 	// The disk carries a filesystem of its own, with a marker in its first
 	// 4 KiB, which btrfs never writes: a wipe would zero it.
-	_, err = CreatePool(ctx, "linuxio-wipe-it-other", "single", "dup", []string{disk}, true, nil)
+	_, err = CreatePool(ctx, "linuxio-wipe-it-other", "single", "dup", []string{disk}, true, nil, nil)
 	must("create the other filesystem", err)
 	marker := make([]byte, 4096)
 	_, err = rand.Read(marker)

@@ -128,7 +128,7 @@ func TestBtrfsIntegration(t *testing.T) {
 		p.disks = append(p.disks, loopDevice(t, filepath.Join(dir, fmt.Sprintf("disk%d.img", i)), 2<<30))
 	}
 
-	uuid, err := CreatePool(p.ctx, "linuxio-it", "raid1", "raid1", p.disks[:2], true, nil)
+	uuid, err := CreatePool(p.ctx, "linuxio-it", "raid1", "raid1", p.disks[:2], true, nil, nil)
 	p.must("create pool", err)
 	p.uuid = uuid
 	p.must("mount pool", MountPool(p.ctx, p.disks[0], p.mnt, []string{"noatime"}, false))
@@ -146,7 +146,7 @@ func TestBtrfsIntegration(t *testing.T) {
 
 	snap := p.subvolumes()
 	p.devices()
-	p.send(filepath.Join(p.mnt, snap.Path))
+	p.send(snap.Path)
 	p.must("delete snapshot", DeleteSnapshot(p.ctx, p.uuid, snap.Path))
 	p.must("delete subvolume", DeleteSubvolume(p.ctx, p.uuid, "share"))
 	if _, found, findErr := findSubvolume(p.ctx, p.uuid, "share"); findErr != nil || found {
@@ -166,6 +166,7 @@ func (p *itPool) subvolumes() BtrfsSnapshot {
 		t.Fatalf("subvolume = %+v", share)
 	}
 	p.must("write", os.WriteFile(filepath.Join(p.mnt, "share", "file.txt"), []byte("hello"), 0o644))
+	p.createIn()
 	snap, err := CreateSnapshot(p.ctx, p.uuid, "share", KindManual, time.Now())
 	p.must("snapshot", err)
 	subvols, err := ListSubvolumes(p.ctx, p.uuid)
@@ -196,6 +197,79 @@ func (p *itPool) subvolumes() BtrfsSnapshot {
 	return snap
 }
 
+// createIn creates a subvolume through the handle of a plain folder inside
+// share and of the top level, checks their paths and mode, refuses a folder
+// off the pool and a reserved name, and deletes them again so share can be
+// deleted later.
+func (p *itPool) createIn() {
+	t := p.t
+	top, err := os.Open(p.mnt)
+	p.must("open top level", err)
+	atTop, err := CreateSubvolumeIn(p.ctx, p.uuid, top, "at-top")
+	p.must("create subvolume at the top level", err)
+	if atTop.Path != "at-top" {
+		t.Fatalf("subvolume at the top level = %+v", atTop)
+	}
+	_, err = CreateSubvolumeIn(p.ctx, p.uuid, top, "linuxio-snapshots")
+	_ = top.Close()
+	if !errors.Is(err, ErrInvalidSubvolume) {
+		t.Fatalf("reserved name: err = %v, want ErrInvalidSubvolume", err)
+	}
+	p.must("delete subvolume at the top level", DeleteSubvolume(p.ctx, p.uuid, "at-top"))
+
+	inner := filepath.Join(p.mnt, "share", "inner")
+	p.must("make folder", os.Mkdir(inner, 0o755))
+	dir, err := os.Open(inner)
+	p.must("open folder", err)
+	nested, err := CreateSubvolumeIn(p.ctx, p.uuid, dir, "nested")
+	_ = dir.Close()
+	p.must("create subvolume in a folder", err)
+	if nested.Path != "share/inner/nested" {
+		t.Fatalf("subvolume in a folder = %+v", nested)
+	}
+	if info, statErr := os.Stat(filepath.Join(inner, "nested")); statErr != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("new subvolume: %v, %v", info, statErr)
+	}
+	outside, err := os.Open(filepath.Dir(p.mnt))
+	p.must("open folder off the pool", err)
+	_, err = CreateSubvolumeIn(p.ctx, p.uuid, outside, "x")
+	_ = outside.Close()
+	if !errors.Is(err, ErrNotOnFilesystem) {
+		t.Fatalf("folder off the pool: err = %v, want ErrNotOnFilesystem", err)
+	}
+	p.must("delete nested subvolume", DeleteSubvolume(p.ctx, p.uuid, "share/inner/nested"))
+
+	// A path through a link someone put in a folder of the pool is refused
+	// by the kernel's own resolution, and nothing appears where it points.
+	target := filepath.Join(filepath.Dir(p.mnt), "link-target")
+	p.must("make link target", os.Mkdir(target, 0o755))
+	link := filepath.Join(p.mnt, "share", "inbox")
+	p.must("plant link", os.Symlink(target, link))
+	if _, err = CreateSubvolume(p.ctx, p.uuid, "share/inbox/x"); !errors.Is(err, ErrLinkOnPath) {
+		t.Fatalf("create through a link: err = %v, want ErrLinkOnPath", err)
+	}
+	if err = subvolOps.destroy(p.mnt, "share/inbox/x"); !errors.Is(err, ErrLinkOnPath) {
+		t.Fatalf("delete through a link: err = %v, want ErrLinkOnPath", err)
+	}
+	if entries, readErr := os.ReadDir(target); readErr != nil || len(entries) != 0 {
+		t.Fatalf("link target holds %v (err %v), want nothing", entries, readErr)
+	}
+	p.must("remove link", os.Remove(link))
+
+	// Another filesystem mounted on a folder of the pool is not the pool: a
+	// path that leads onto it is refused, while subvolumes of the pool,
+	// which the same check passes every time above, are not.
+	other := filepath.Join(p.mnt, "share", "other")
+	p.must("make mountpoint", os.Mkdir(other, 0o755))
+	p.must("mount tmpfs in the pool", unix.Mount("tmpfs", other, "tmpfs", 0, ""))
+	_, err = CreateSubvolume(p.ctx, p.uuid, "share/other/x")
+	p.must("unmount tmpfs", unix.Unmount(other, 0))
+	if !errors.Is(err, ErrNotOnFilesystem) {
+		t.Fatalf("create on another filesystem: err = %v, want ErrNotOnFilesystem", err)
+	}
+	p.must("remove mountpoint", os.Remove(other))
+}
+
 func (p *itPool) quotas() {
 	t := p.t
 	p.must("enable quotas", SetQuotas(p.ctx, p.uuid, true))
@@ -222,7 +296,7 @@ func (p *itPool) quotas() {
 func (p *itPool) devices() {
 	t := p.t
 	unix.Sync() // commit the written files so the scrub reads their data too
-	s, err := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+	s, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	p.must("scrub", err)
 	if s.Status != "finished" || s.ErrorCount != 0 || s.BytesScrubbed == 0 {
 		t.Fatalf("scrub = %+v", s)
@@ -246,8 +320,12 @@ func (p *itPool) devices() {
 		t.Fatalf("after add: %v", devicePaths(fs))
 	}
 	p.must("remove device", RemoveDevice(p.ctx, p.uuid, fs.Devices[i].ID, func(float64) {}))
-	if got := devicePaths(p.filesystem()); !slices.Equal(got, []string{p.disks[0], p.disks[2]}) {
-		t.Fatalf("after remove: %v", got)
+	// devicePaths sorts by name, and loop numbers do not: /dev/loop11 comes
+	// before /dev/loop8.
+	want := []string{p.disks[0], p.disks[2]}
+	slices.Sort(want)
+	if got := devicePaths(p.filesystem()); !slices.Equal(got, want) {
+		t.Fatalf("after remove: %v, want %v", got, want)
 	}
 	p.must("grow", GrowDevice(p.ctx, p.uuid, 1))
 	p.must("relabel", SetLabel(p.ctx, p.uuid, "linuxio-it2"))
@@ -256,7 +334,8 @@ func (p *itPool) devices() {
 	}
 }
 
-// send streams the snapshot at path through the kernel's send ioctl.
+// send streams the snapshot at path below the top level through the kernel's
+// send ioctl.
 func (p *itPool) send(path string) {
 	r, w, err := os.Pipe()
 	p.must("pipe", err)
@@ -265,7 +344,7 @@ func (p *itPool) send(path string) {
 		n, _ := io.Copy(io.Discard, r)
 		sent <- n
 	}()
-	sendErr := sendStream(path, "", w)
+	sendErr := sendStream(p.mnt, path, "", w)
 	_ = w.Close()
 	n := <-sent
 	_ = r.Close()
@@ -299,7 +378,7 @@ func (p *itPool) offline() {
 func (p *itPool) partitioned() {
 	part, err := PartitionDisk(p.ctx, p.disks[1])
 	p.must("partition", err)
-	_, err = CreatePool(p.ctx, "parted", "single", "dup", []string{part}, false, nil)
+	_, err = CreatePool(p.ctx, "parted", "single", "dup", []string{part}, false, nil, nil)
 	p.must("create on partition", err)
 	pools, err := FindOfflinePools(p.ctx, []string{part})
 	p.must("partitioned pool", err)
@@ -316,7 +395,7 @@ func (p *itPool) partitioned() {
 	if want := partitionPath(p.disks[1], 2); free != want {
 		p.t.Fatalf("added partition %s, want %s", free, want)
 	}
-	_, err = CreatePool(p.ctx, "freespace", "single", "dup", []string{free}, false, nil)
+	_, err = CreatePool(p.ctx, "freespace", "single", "dup", []string{free}, false, nil, nil)
 	p.must("create on free space", err)
 	pools, err = FindOfflinePools(p.ctx, []string{free})
 	p.must("free space pool", err)
@@ -402,7 +481,7 @@ func (d *itDisk) trims(part string) {
 	d.must("sync "+part, f.Sync())
 	d.must("close "+part, f.Close())
 	var pcts []float64
-	d.must("trim "+part, trim(d.ctx, []string{part}, func(pct float64) { pcts = append(pcts, pct) }))
+	d.must("trim "+part, trim(d.ctx, []string{part}, nil, func(pct float64) { pcts = append(pcts, pct) }))
 	f, err = os.Open(part)
 	d.must("open "+part, err)
 	defer f.Close()
@@ -447,7 +526,7 @@ func TestPartitionIntegration(t *testing.T) {
 
 	// 1. Initialize: an empty GPT and no partitions.
 	d.locked(func() {
-		d.must("initialize", InitializeDisk(d.ctx, d.dev))
+		d.must("initialize", InitializeDisk(d.ctx, d.dev, nil))
 		d.table()
 	})
 
@@ -524,7 +603,7 @@ func TestPartitionIntegration(t *testing.T) {
 	})
 	d.locked(func() {
 		d.busy("exclusive open of the disk with "+p2+" mounted", CheckNotBusy(d.dev))
-		d.busy("initialize with "+p2+" mounted", InitializeDisk(d.ctx, d.dev))
+		d.busy("initialize with "+p2+" mounted", InitializeDisk(d.ctx, d.dev, nil))
 		d.table(first, second)
 	})
 	d.must("unmount "+p2, unix.Unmount(d.mnt, 0))
@@ -541,7 +620,7 @@ func TestPartitionIntegration(t *testing.T) {
 		var node, renode unix.Stat_t
 		d.must("stat "+p1, unix.Stat(p1, &node))
 		before := d.gptBytes()
-		d.busy("initialize with "+p2+" open", InitializeDisk(d.ctx, d.dev))
+		d.busy("initialize with "+p2+" open", InitializeDisk(d.ctx, d.dev, nil))
 		for _, part := range []string{p1, p2} {
 			_, err = waitForNode(d.ctx, part)
 			d.must("node of "+part, err)
@@ -558,7 +637,7 @@ func TestPartitionIntegration(t *testing.T) {
 
 	// 9. With nothing open, Initialize empties the table.
 	d.locked(func() {
-		d.must("initialize", InitializeDisk(d.ctx, d.dev))
+		d.must("initialize", InitializeDisk(d.ctx, d.dev, nil))
 		d.table()
 	})
 }

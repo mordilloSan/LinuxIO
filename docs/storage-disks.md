@@ -28,6 +28,58 @@ entries" on a BIOS host or in a container); the caption names the mounted
 copy. The node claims nothing about the copies' contents: checking that
 would mean mounting them. A single ESP draws as a plain partition → volume.
 
+## SMART self-tests
+
+A drive's details offer a short and an extended SMART self-test
+(`storage.run_smart_test`,
+`backend/bridge/handlers/storage/smart_test_operation.go`). It is a job in
+the root host ([Jobs](./jobs.md)) that runs `smartctl -t short|long` on the
+whole disk (`sd*`, `hd*` or `nvme*n*`) and follows the drive with
+`smartctl --json -a`, every 15 s for a short test and every minute for an
+extended one. The test runs inside the drive; the job starts it and watches
+it.
+
+- Before it starts the test the job reads the drive and saves in its record
+  who the drive is (model, serial number and WWN) and the drive's self-test
+  log, which the drive keeps across power cycles; once `smartctl -t` started
+  the test it saves that too.
+- Cancel aborts the test in the drive (`smartctl -X`) only once `smartctl -t`
+  started it, and only when `/dev/<name>` still reports the same model, serial
+  number and WWN (a drive with neither serial number nor WWN is not aborted)
+  and runs a test, of the job's kind where the drive says the kind. So a test
+  smartd or an admin started, beside which `-t` was refused, or that started
+  after the job's ended, runs on. A stop of the job host does not abort it.
+- The job is picked up at the root host's next start after its host crashed
+  or was stopped by hand, and at the next boot. It reads `/dev/<name>` again
+  and takes it only when it reports the same model, serial number and WWN,
+  and only when the job had recorded starting the test. It then follows a
+  test the drive still runs (of the job's kind when the drive says which: an
+  NVMe drive always does, an ATA drive when it logs the test it runs), or,
+  when the drive's log gained exactly one ended test since, of the job's
+  kind, ends with that test's result: completed, or failed with the drive's
+  words for a failure or an abort. It never starts a test. When the drive cannot
+  tell (no new test, more than one, one of another kind, a log that does not
+  continue the saved one, a test a reset interrupted, as a reboot does on most
+  drives) or is another drive, the job stays interrupted, with the reason in
+  its error.
+- An ATA drive whose test the host aborted or a reset interrupted reads
+  aborted, which fails the job; smartctl reports neither as passed.
+
+### Known limits
+
+- After a reboot a drive is looked for on the same `/dev` name only; when the
+  name is another drive's now, the job stays interrupted.
+- A drive that reports neither a serial number nor a WWN is never picked up,
+  and Cancel leaves its test running.
+- A drive that does not say which kind of test it runs (an ATA drive that
+  does not log its running test) has any test it runs, while its log shows no
+  new result, followed as the job's.
+- A job a reboot interrupted is read at boot and ends completed, failed or
+  interrupted, the last with "interrupted by a reset" on most ATA drives,
+  which a reboot resets.
+- A test starts only when `smartctl --json -a` can read the drive first: the
+  job fails before `-t` otherwise.
+
 ## Partitions
 
 A plain disk's volumes name their partition. Partitions that nothing mounts
@@ -50,14 +102,15 @@ between them. Its actions are for administrators.
 
 | Row | Action | Enabled when |
 |---|---|---|
-| Free region (GPT disk) | **Create partition**: size, the whole region by default; optionally a filesystem and label, and with them **Mount after formatting** (mount point, **Mount at boot**) | always |
+| Free region (GPT disk) | **Create partition**: size, the whole region by default; optionally a filesystem and label, and with them **Mount after formatting** (mount point, **Mount at boot**) | the disk is not a btrfs pool's [hot spare](./btrfs.md#hot-spare) |
 | Partition | **Format**: filesystem and label; **Overwrite existing data** when it already has one; the dialog names a member of an md array, LVM volume group or other set it erases | the partition is unused |
 | Partition with a filesystem, not mounted | **Mount**: mount point, **Mount at boot** | not busy, and not a btrfs pool member (pools mount from the pool view) |
 | Partition (GPT disk) | **Delete**: the confirmation names the partition, its size and its filesystem, and the md array, LVM volume group or other set it is a member of | the partition is unused |
 | Disk | **Initialize disk**: an empty GPT replaces any table; the confirmation lists every partition that will be lost and names each member of an md array or LVM volume group it erases | the disk and all its partitions are unused and the disk is writable |
 
 A disabled action's tooltip gives the reason, such as "Mounted at /srv",
-"Used by /dev/md127", "In /etc/fstab" or "Member of btrfs pool tank". A
+"Used by /dev/md127", "In /etc/fstab", "Member of btrfs pool tank" or "Hot
+spare of tank". A
 partition whose signature makes it a member of a stopped md array or an
 inactive volume group shows it under **Used by**, such as "Member of md array
 host:data", without blocking anything; Format, Delete and Initialize name it
@@ -90,19 +143,31 @@ disabled states are only hints. A device is in use when:
 
 1. it, or for a disk one of its partitions, is mounted or an active swap;
 2. it has holders (LVM, md, dm-crypt, multipath);
-3. it is a member of a btrfs filesystem, mounted or not;
+3. it is a member of a btrfs filesystem, mounted or not, or, while a disk
+   of a mounted pool is dropped out, at that disk's old path or named by its
+   own superblock as that pool's: it may be the disk, which the pool takes
+   back when mounted again, or the automatic rebuild erases and replaces the
+   member onto, its one taker ([Missing disks](./btrfs.md#missing-disks)). A
+   leg of an md array, a multipath path or an LVM image that shows a pool's
+   superblock is no member, and is refused by rule 2 while held and
+   otherwise as the md, LVM or multipath member it is, which Format, Delete
+   and Initialize erase only once the request confirms it (below), naming
+   its array, not the pool;
 4. `/etc/fstab` names it by path, `/dev/disk/by-*` link, `UUID=`,
-   `PARTUUID=`, `LABEL=` or `PARTLABEL=`.
+   `PARTUUID=`, `LABEL=` or `PARTLABEL=`;
+5. it is a btrfs pool's [hot spare](./btrfs.md#hot-spare), or a partition
+   of one, while that pool is mounted or on a connected disk (`hotSpareOf`).
 
-Format, Delete and Initialize refuse on all four, with the reason as a 409.
-Mount refuses on the first three, and on the fourth only with **Mount at
+Format, Delete and Initialize refuse on all five, with the reason as a 409.
+Mount refuses on all but the fourth, and on the fourth only with **Mount at
 boot**, so a partition already in fstab can still be mounted for now. Create
 needs a GPT disk that is not itself in use; its other partitions may be.
 Create, Format, Delete and Initialize refuse a read-only disk. Format
 overwrites any other signature only with **Overwrite existing data**.
 
-These four are the check every operation that writes a device shares
-(`deviceInUse` in `device_free.go`). md RAID add and replace also refuse a
+These five are the check every operation that writes a device shares
+(`deviceInUse` in `device_free.go`); only a btrfs Replace device in the
+spare's own pool lifts the fifth. md RAID add and replace also refuse a
 device with partitions, holders or any signature at all, naming a member of
 a btrfs pool, md array or volume group and how to free it; btrfs pools add
 their own rule (see [Which disks a pool may take](./btrfs.md#which-disks-a-pool-may-take)).
@@ -124,11 +189,47 @@ pool stays refused by rule 3; its pool is destroyed instead. A btrfs
 signature that belongs to no pool the bridge can read cannot be destroyed as
 a pool, so it is named and confirmed like the rest.
 
+The inventory knows a member by the signature udev reported, and udev does
+not probe a disk while LinuxIO holds its lock, nor before it gets to a
+change. So once Format, Delete and Initialize hold the disk lock, which a
+Format may wait minutes for behind another one, they check the request
+again: against a fresh inventory, and against the md and LVM2 signatures
+read from the devices themselves, the way libblkid reads them except for an
+md 1.x checksum, checked as the kernel and mdadm compute it, kept to 32 bits
+(`ReadMemberSignature` in `backend/common/btrfs/member.go`). A member
+signature where udev reported none, or an md or LVM2 signature other than
+the md, LVM2 or btrfs signature udev reported (another array, an md
+superblock written over an old physical volume, or one over a stale btrfs
+signature), has not been confirmed, so the request is refused with a 409
+naming it, such as "/dev/sdb1: Member of md array a12b3c4d-...; confirm
+erasing it to format /dev/sdb1": libblkid reads md before LVM2 and both
+before any filesystem, as the read does. When a Format or Delete is refused
+under the lock while the read found a member signature, it asks udev, once
+the lock is released, to probe the partition again (it writes `change` to
+its `uevent` file in sysfs), so the next inventory, and the dialog, name
+what udev then finds; a refused Initialize needs no request, since closing
+its writable open of the disk makes udev probe it. A member of another set
+udev reported, such as a firmware RAID that holds an LVM2 label, stays what
+the dialog confirms: the read cannot see that set, and libblkid reports it
+first. One udev reported that the read does not find still needs its
+confirmation. A place the read cannot get back, such as a
+bad sector at the end of a failing disk, counts as holding no signature
+there, and the bridge logs it. md add and replace, and a btrfs device add or
+replace, read the device's signature the same way right before they write,
+and refuse a member as they refuse one udev reported. A pool create reads
+each whole disk again under its lock right before partitioning it, which
+also refuses a disk the kernel by then lists partitions for (a 409), and
+each member right before its trim and again right before `mkfs.btrfs`,
+which starts only after the last trim. When a later member is refused, the
+members trimmed before it stay discarded, and the create fails naming the
+refused device.
+
 The kernel backs these checks, so a stale inventory cannot cause a
 destructive write:
 
-- **Delete** asks the kernel to drop the partition (`BLKPG_DEL_PARTITION`)
-  before touching the table. The kernel drops by number, so Delete first
+- **Delete** reads the partition's signature through an exclusive open,
+  which the kernel refuses while it is mounted or held, then asks the kernel
+  to drop the partition (`BLKPG_DEL_PARTITION`) before touching the table. The kernel drops by number, so Delete first
   checks that the kernel's partition of that number has the GPT entry's
   start and size, and refuses with a 409 when the kernel has not re-read an
   edit made elsewhere. The kernel refuses with `EBUSY` while anything has
@@ -137,15 +238,24 @@ destructive write:
   entries cleared, and if that write fails the partition is given back to the
   kernel.
 - **Format** and **Mount** open the partition with `O_EXCL`, which the kernel
-  refuses while it is mounted or held. `mkfs` repeats that check:
-  `mkfs.ext4` never gets the doubled `-F` that skips it.
+  refuses while it is mounted or held; Format's is its signature read.
+  `mkfs` repeats that check: `mkfs.ext4` never gets the doubled `-F` that
+  skips it.
 - **Initialize** opens the disk with `O_EXCL`, which the kernel refuses while
-  the disk or one of its partitions is mounted or held, then drops every
-  partition from the kernel, which also catches a partition that is merely
-  open. If one is busy, the ones already dropped are given back and nothing
-  is written. Only then are the disk's edges zeroed, an empty GPT written and
-  the table re-read (`BLKRRPART`). If that write fails, the dropped
-  partitions are given back too.
+  the disk or one of its partitions is mounted or held, and keeps it open
+  until the new table is written, so meanwhile nothing can claim the disk
+  or any partition of it (`bd_may_claim` in `block/bdev.c`). Under that
+  claim it reads the signatures of the disk and of every partition, each
+  partition through its own node, since the disk's page cache can hold an
+  older copy of a partition's blocks, and checks them against the
+  confirmation. Then it drops every partition from the kernel, which also
+  catches a partition that is merely open. If one is busy, the ones already
+  dropped are given back and nothing is written. Only then are the disk's
+  edges zeroed and an empty GPT written, through the same open; the table
+  is re-read (`BLKRRPART`) once it is closed, since a re-read from any other
+  descriptor claims the disk itself (`disk_scan_partitions` in
+  `block/genhd.c`). If the write fails, the dropped partitions are given
+  back too.
 
 Create and Delete edit one entry of the existing GPT in place. If a copy does
 not validate, they refuse with the reason, such as "no valid GPT header at
@@ -171,7 +281,37 @@ honours on the whole disk
 ([block device locking](https://systemd.io/BLOCK_DEVICE_LOCKING/)), so until
 they finish udev neither probes the disk nor re-reads its table, which would
 briefly remove every unused partition. `make test-btrfs-integration` checks
-these refusals against the real kernel on a loop device; it needs sudo.
+these refusals against the real kernel on a loop device, and that Format,
+Delete and Initialize refuse an md member udev has not probed
+(`TestPartitionMemberIntegration`); it needs sudo.
+
+### Known limits
+
+- The md and LVM2 signature is read through an exclusive open of its own,
+  closed just before Format, Delete, md add and replace, and a btrfs device
+  add, replace or pool create write: `mkfs`, `mdadm` and the kernel open the
+  device themselves, so a tool that claims it and writes a member signature
+  in that moment is not seen. Initialize reads under the claim it writes
+  with.
+- Only md and LVM2 signatures are read from the device; any other member
+  signature (`zfs_member`, a firmware RAID's), a btrfs signature of no pool
+  the bridge can read, and, for md add and replace and a btrfs device add or
+  replace, a filesystem are known only as udev reported them, so one udev
+  has not reported yet is not seen.
+- A device udev reports as something that is no member (a DRBD backing
+  device, no type because libblkid found two signatures, or none for an md
+  1.x superblock the kernel takes and libblkid misses: one whose checksum
+  fold carries out of 32 bits, and with util-linux 2.39, as on Ubuntu
+  24.04, any md 1.1 superblock of up to 128 member slots, which is what
+  mdadm writes for up to 128 devices) while it carries an md or LVM2
+  signature is refused by Format, Delete, Initialize, md add and a btrfs
+  device add, and the dialog cannot confirm it, since it lists what udev
+  reports; remove the signature with `wipefs`, `mdadm --zero-superblock`
+  (which also finds what libblkid misses) or `pvremove`.
+- Create and Delete write their GPT entry through a shared open of the disk:
+  the kernel refuses an exclusive one while any partition of the disk is
+  claimed, and the other partitions may be in use. The kernel's refusal to
+  add an overlapping partition or drop an open one stands guard.
 
 ## Inventory
 
@@ -191,14 +331,23 @@ with no subprocess:
 - `/proc/swaps` and `/etc/fstab` for the in-use rule and the `inFstab` flag.
 
 Each device also reports `busy` (mounted, active swap, or used by a holder),
-`member` and, for GPT disks, `freeRegions`. `member` is what the device's
-signature makes it part of, whether that is mounted, running or active or
-not: `btrfs` with the pool label and filesystem UUID, `md` with the array
+`member`, `hotSpareOf` and, for GPT disks, `freeRegions`. `member` is what
+the device's signature makes it part of, whether that is mounted, running or
+active or not: `btrfs` with the pool label and filesystem UUID, `md` with the array
 name (`host:name`) and UUID, or `lvm` with the physical volume UUID and the
 volume group, which udev knows only from LVM's own rule once the group is
 complete (`LVM_VG_NAME_COMPLETE`). It comes from the udev database like the
 filesystem type, so it needs no privilege and also names the members of a
-mounted multi-device pool that no mount lists.
+mounted multi-device pool that no mount lists. `hotSpareOf` names the btrfs
+pool (UUID, and label as udev reports it on the pool's disks) a disk is the
+[hot spare](./btrfs.md#hot-spare) of, on the disk and its partitions, while
+udev reports a member of that pool (the checks before a write also count a
+pool the kernel mounts or a connected disk's superblock names); the
+designations are read from
+`/var/lib/linuxio/btrfs-spares.json`, which everyone may read, and a disk is
+found by the WWN, serial and size recorded there. A check before a write
+fails when the file cannot be read; `storage.get_topology` then logs it and
+lists the devices without the marks.
 
 The inventory also carries `bootEntries`: the firmware's Boot#### load
 options whose device path names a GPT partition, read from

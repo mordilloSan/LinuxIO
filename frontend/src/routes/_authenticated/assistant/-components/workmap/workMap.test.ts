@@ -18,7 +18,6 @@ import {
   labelOf,
   rowLine,
   rowTime,
-  shellStation,
   stationOf,
   summarize,
   type WorkRow,
@@ -36,25 +35,6 @@ const tool = (over: Partial<ToolBlock> = {}): ToolBlock => ({
   ...over,
 });
 
-describe("shellStation", () => {
-  it.each([
-    ["cat /etc/hosts | grep local", "files"],
-    ["cd /srv && ls -la", "files"],
-    ["curl -s https://example.com | jq .name", "network"],
-    ["sudo systemctl restart nginx", "shell"],
-    ["FOO=1 make test", "shell"],
-    ["echo 'curl; wget' > notes", "shell"],
-    ['git commit -m "ssh keys; curl"', "shell"],
-    ["echo hello", "shell"],
-  ])("sorts %s to %s", (command, station) => {
-    expect(shellStation(command)).toBe(station);
-  });
-
-  it("keeps a call without a command line at the shell", () => {
-    expect(shellStation(null)).toBe("shell");
-  });
-});
-
 describe("stationOf", () => {
   it("goes by the agent's tool name before the kind", () => {
     expect(stationOf(tool({ toolName: "Skill", toolKind: "other" }))).toBe(
@@ -68,7 +48,54 @@ describe("stationOf", () => {
     );
     expect(stationOf(tool({ toolName: "AskUserQuestion" }))).toBe("you");
     expect(stationOf(tool({ toolName: "memory_recall" }))).toBe("memory");
-    expect(stationOf(tool({ toolName: "TodoWrite" }))).toBe("shell");
+    expect(stationOf(tool({ toolName: "SomeNewTool" }))).toBe("shell");
+  });
+
+  it.each([
+    ["LSP", "files"],
+    ["TodoWrite", "you"],
+    ["TaskCreate", "you"],
+    ["ExitPlanMode", "you"],
+    ["PushNotification", "you"],
+    ["ReportFindings", "you"],
+    ["CronCreate", "agents"],
+    ["ScheduleWakeup", "agents"],
+    ["ListAgents", "agents"],
+    ["ArtifactCheck", "network"],
+    ["ArtifactComments", "network"],
+    ["PublishPlugin", "network"],
+  ])("sorts Claude Code's %s by what it is for: %s", (toolName, station) => {
+    expect(stationOf(tool({ toolName }))).toBe(station);
+  });
+
+  it("sorts an MCP server's resources by the server", () => {
+    const read = (server?: string) =>
+      tool({
+        toolName: "ReadMcpResourceTool",
+        rawInput: { server, uri: "notes://today" },
+      });
+    expect(stationOf(read("memory"))).toBe("memory");
+    expect(stationOf(read("github"))).toBe("network");
+    expect(stationOf(read())).toBe("network");
+    expect(
+      stationOf(
+        tool({
+          toolName: "ListMcpResourcesTool",
+          rawInput: { server: "mem0" },
+        }),
+      ),
+    ).toBe("network");
+  });
+
+  it("sends the browser a linked cloud session reaches to Browser", () => {
+    expect(
+      stationOf(
+        tool({ toolName: "mcp__remote-devices__Claude_Browser__navigate" }),
+      ),
+    ).toBe("browser");
+    expect(
+      stationOf(tool({ toolName: "mcp__remote-devices__computer_click" })),
+    ).toBe("network");
   });
 
   it("sorts a shell tool by its command line", () => {
@@ -77,6 +104,20 @@ describe("stationOf", () => {
     expect(stationOf(bash("rg -n TODO src"))).toBe("files");
     expect(stationOf(bash("ssh host uptime"))).toBe("network");
     expect(stationOf(bash("make build"))).toBe("shell");
+    // Only handling files, of the agent's own notes.
+    expect(
+      stationOf(bash("cat ~/.claude/projects/p/memory/MEMORY.md | head")),
+    ).toBe("memory");
+    expect(stationOf(bash("rm -rf /home/u/.claude/projects/p/memory/"))).toBe(
+      "memory",
+    );
+    expect(stationOf(bash("cd ~/.claude/projects/p/memory && ls"))).toBe(
+      "memory",
+    );
+    expect(stationOf(bash("ls ~/.claude/projects/p/memory-old"))).toBe("files");
+    expect(
+      stationOf(bash("curl -o /home/u/.claude/projects/p/memory/a.md x")),
+    ).toBe("network");
   });
 
   it("sends the agent's own notes to memory", () => {
@@ -125,6 +166,14 @@ describe("labelOf", () => {
     ).toBe("lsblk");
     expect(
       labelOf(
+        tool({
+          toolName: "Bash",
+          rawInput: { command: "LANG=C sudo -u root /usr/sbin/lsblk -d" },
+        }),
+      ),
+    ).toBe("lsblk");
+    expect(
+      labelOf(
         tool({ toolName: "Read", rawInput: { file_path: "/srv/app/main.go" } }),
       ),
     ).toBe("app/main.go");
@@ -147,6 +196,19 @@ describe("labelOf", () => {
     expect(labelOf(tool({ toolName: "mcp__Claude_Browser__take_shot" }))).toBe(
       "take shot",
     );
+    expect(
+      labelOf(
+        tool({ toolName: "mcp__remote-devices__Claude_Browser__take_shot" }),
+      ),
+    ).toBe("take shot");
+    expect(
+      labelOf(
+        tool({
+          toolName: "ReadMcpResourceTool",
+          rawInput: { server: "github", uri: "repo://secret/path" },
+        }),
+      ),
+    ).toBe("ReadMcpResourceTool");
   });
 
   it("uses the agent's words for a call without a tool name", () => {
@@ -163,6 +225,18 @@ describe("formatMs", () => {
     [113, "113 ms"],
     [13_400, "13.4 s"],
     [125_000, "2 min 5 s"],
+    // No part reaches the size of the next unit.
+    [999.6, "1.0 s"],
+    [59_960, "1 min 0 s"],
+    [119_500, "2 min 0 s"],
+    // From an hour on, hours and whole minutes.
+    [3_599_400, "59 min 59 s"],
+    [3_599_600, "1 h 0 min"],
+    [3_900_000, "1 h 5 min"],
+    [86_400_000, "24 h 0 min"],
+    // Rounded once: 60.49 minutes is an hour, not an hour and a minute.
+    [3_629_500, "1 h 0 min"],
+    [5_369_500, "1 h 29 min"],
   ])("writes %d as %s", (ms, text) => {
     expect(formatMs(ms)).toBe(text);
   });
@@ -234,7 +308,10 @@ describe("summarize", () => {
 
   it("counts what happened and what was seen happening", () => {
     const { tally } = summarize(turn, false);
-    expect(tally.you).toMatchObject({ count: 1, seen: { out: 1, back: 1 } });
+    expect(tally.you).toMatchObject({
+      count: 1,
+      seen: { out: 1, back: 1, prompts: 1, answers: 1 },
+    });
     expect(tally.model).toMatchObject({ count: 3, seen: { out: 3, back: 3 } });
     expect(tally.shell).toMatchObject({
       count: 2,
@@ -247,6 +324,22 @@ describe("summarize", () => {
       seen: { out: 1, back: 1, failed: 1 },
     });
     expect(tally.agents.count).toBe(0);
+  });
+
+  it("tells a call at You from a prompt and an answer", () => {
+    const plan = tool({
+      toolName: "TodoWrite",
+      startedAt: 4000,
+      endedAt: 4100,
+    });
+    const { tally } = summarize(
+      [...turn.slice(0, -1), plan, ...turn.slice(-1)],
+      false,
+    );
+    expect(tally.you).toMatchObject({
+      count: 2,
+      seen: { out: 2, back: 2, prompts: 1, answers: 1 },
+    });
   });
 
   it("lists prompts, steps and calls, newest first, with how long each took", () => {
@@ -308,7 +401,13 @@ describe("summarize", () => {
       count: 2,
       seen: { out: 0, back: 0, failed: 0 },
     });
-    expect(tally.model.seen).toEqual({ out: 0, back: 0, failed: 0 });
+    expect(tally.model.seen).toEqual({
+      out: 0,
+      back: 0,
+      failed: 0,
+      prompts: 0,
+      answers: 0,
+    });
   });
 
   it("notes a change of model between prompts", () => {
@@ -467,9 +566,12 @@ describe("summarize", () => {
         ["shell", "Show uptime", "ok", 1],
         // The second message to a subagent is the model's doing: a step.
         ["model", "opus 5.5 · step 2", "ok", 1],
-        // Both subagents' reads, in the order they were seen.
-        ["files", "etc/hostname", "ok", 2],
-        // One row for each subagent, not for each message to it.
+        // Both subagents' reads, in the order they were seen: the calls of
+        // two subagents never fold into one row.
+        ["files", "etc/hostname", "ok", 1],
+        ["files", "etc/os-release", "ok", 1],
+        // One row for each subagent, not for each message to it; both were
+        // started by the chat, so they fold.
         ["agents", "Agent b", "ok", 2],
         ["model", "opus 5.5 · step 1", "ok", 1],
         ["you", "new message", "ok", 1],
@@ -608,5 +710,93 @@ describe("summarize", () => {
     const { rows } = summarize(many, false);
     expect(rows).toHaveLength(16);
     expect(rows[0].label).toBe("call 39");
+  });
+
+  // Finished calls at two stations in turn, so that none of them fold.
+  const finished = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      tool({ title: `call ${i}`, toolKind: i % 2 ? "fetch" : "edit" }),
+    );
+  const runningCall = (title: string) =>
+    tool({ title, toolKind: "execute", status: "in_progress" });
+
+  it("keeps a call that still runs as the last row", () => {
+    const { rows } = summarize([runningCall("long"), ...finished(20)], true);
+    expect(rows).toHaveLength(16);
+    expect(rows[0].label).toBe("call 19");
+    expect(rows[14].label).toBe("call 5");
+    expect(rows[15]).toMatchObject({ label: "long", status: "run", times: 1 });
+  });
+
+  it("makes room for a held call by rows that no longer run", () => {
+    const { rows } = summarize(
+      [
+        runningCall("old"),
+        ...finished(20),
+        runningCall("new"),
+        ...finished(15),
+      ],
+      true,
+    );
+    expect(rows).toHaveLength(16);
+    expect(rows.slice(-2).map((row) => [row.label, row.status])).toEqual([
+      ["new", "run"],
+      ["old", "run"],
+    ]);
+  });
+
+  it("gives the calls that still run half the list, the last for the rest", () => {
+    const running = Array.from({ length: 10 }, (_, i) =>
+      runningCall(`run ${i}`),
+    );
+    const { rows } = summarize([...running, ...finished(20)], true);
+    expect(rows).toHaveLength(16);
+    expect(rows.slice(0, 8).map((row) => row.status)).toEqual(
+      Array(8).fill("ok"),
+    );
+    expect(rows.slice(8).map((row) => [row.label, row.times])).toEqual([
+      ["run 9", 1],
+      ["run 8", 1],
+      ["run 7", 1],
+      ["run 6", 1],
+      ["run 5", 1],
+      ["run 4", 1],
+      ["run 3", 1],
+      // Two more still run: `+2`.
+      ["run 2", 3],
+    ]);
+  });
+
+  it("counts the held calls that find no room on the last one that does", () => {
+    const old = Array.from({ length: 9 }, (_, i) => runningCall(`old ${i}`));
+    const fresh = Array.from({ length: 10 }, (_, i) => runningCall(`new ${i}`));
+    const { rows } = summarize(
+      [...old, ...finished(20), ...fresh, ...finished(6)],
+      true,
+    );
+    expect(rows).toHaveLength(16);
+    expect(rows.every((row) => row.status === "run")).toBe(true);
+    // Ten new ones, then six of the nine old ones, the last for four.
+    expect(rows.slice(10).map((row) => [row.label, row.times])).toEqual([
+      ["old 8", 1],
+      ["old 7", 1],
+      ["old 6", 1],
+      ["old 5", 1],
+      ["old 4", 1],
+      ["old 3", 4],
+    ]);
+  });
+
+  it("folds nothing into the last row past a row left out", () => {
+    // Sixteen rows, one left out, and then calls at the last row's station.
+    const blocks = [
+      tool({ title: "old 1", toolKind: "edit" }),
+      tool({ title: "old 2", toolKind: "edit" }),
+      tool({ title: "gap", toolKind: "fetch" }),
+      ...finished(16),
+    ];
+    const { rows } = summarize(blocks, false);
+    expect(rows).toHaveLength(16);
+    expect(rows[15]).toMatchObject({ label: "call 0", times: 1 });
   });
 });

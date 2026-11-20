@@ -70,8 +70,11 @@ func (f *fakeImagePullResponse) JSONMessages(context.Context) iter.Seq2[jsonstre
 }
 
 type fakeNativeUpdateClient struct {
-	calls            []string
-	pulledImage      client.ImageInspectResult
+	calls       []string
+	pulledImage client.ImageInspectResult
+	// images answers ImageInspect for a reference it holds; any other gets
+	// pulledImage.
+	images           map[string]image.InspectResponse
 	pullErr          error
 	pullWaitErr      error
 	pullCloseErr     error
@@ -93,6 +96,9 @@ func (f *fakeNativeUpdateClient) ImageInspect(
 	_ ...client.ImageInspectOption,
 ) (client.ImageInspectResult, error) {
 	f.calls = append(f.calls, "inspect-image:"+imageRef)
+	if inspect, ok := f.images[imageRef]; ok {
+		return client.ImageInspectResult{InspectResponse: inspect}, nil
+	}
 	if len(f.imageInspectErrs) > 0 {
 		err := f.imageInspectErrs[0]
 		f.imageInspectErrs = f.imageInspectErrs[1:]

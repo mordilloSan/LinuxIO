@@ -53,8 +53,127 @@ that security boundary.
 
 The authenticated layout shows a warning for `fallback` and `memory`. The
 memory warning states that changes are temporary and will be lost on refresh or
-sign-out. Memory-mode config updates also skip the persistent Docker systemd
-mount-ordering side effect.
+sign-out. Memory-mode config updates also skip the Docker startup drop-ins
+described below.
+
+## Docker startup settings
+
+Two Docker settings in the core document end in a systemd drop-in for
+`docker.service`, which `config.set` writes as root after the config is saved
+(`SyncDaemonMountOrdering` and `SyncDaemonHostIPWait` in
+`backend/bridge/handlers/docker`). Both are off by default, and turning one off
+removes its file. A host where neither was turned on has no drop-in from
+LinuxIO.
+
+| Setting | Fields | Drop-in in `/etc/systemd/system/docker.service.d` |
+|---------|--------|---------------------------------------------------|
+| Wait for folder mounts | `docker.requireMountsForFolders`, read with `docker.folders` | `linuxio-require-mounts.conf`: `RequiresMountsFor=` for each folder, after `network-online.target` and `remote-fs.target` |
+| Wait for published host IPs | `docker.waitForHostIPs`, `docker.hostIPs` | `linuxio-wait-host-ips.conf`: one `ExecStartPre=` line for each address |
+
+A drop-in is rewritten when its switch is in the update, or when its list is in
+the update while the switch is on. `docker.requireMountsForFolders` always
+needs a privileged session and `docker.folders` needs one while that switch is
+on. `docker.waitForHostIPs` and `docker.hostIPs` always need one, because the
+address list has no use but the drop-in ([Privilege pattern](./privilege_pattern.md)).
+
+### Wait for published host IPs
+
+A container that publishes a port on one host address (`192.168.1.66:53:53/udp`)
+fails with "cannot assign requested address" when Docker starts before that
+address is assigned, and stays down. `network-online.target` does not prevent
+it: on a Netplan host the generator can run before the network card exists, so
+wait-online never waits for that card. With the setting on, Docker waits for
+each listed address:
+
+```ini
+# Managed by LinuxIO. Do not edit by hand.
+[Service]
+ExecStartPre=-/usr/bin/timeout 30 /usr/bin/sh -c 'until /usr/sbin/ip -o addr show to 192.168.1.66 -tentative | grep -q .; do sleep 0.5; done'
+```
+
+- The line waits for the address and names no network card, so it works with
+  networkd and NetworkManager and stays valid when a
+  [bridge handoff](./vm-bridge-networking.md) moves the address to a bridge.
+- The 30 s limit is inside the command. A timeout of `ExecStartPre` itself
+  counts against `TimeoutStartSec` and fails the unit even with the `-` prefix,
+  and Docker must start when an address never appears.
+- `-tentative` leaves out an IPv6 address still in duplicate address
+  detection, which cannot be bound yet.
+- The line is a shell command and not a LinuxIO command, so it keeps working
+  if LinuxIO is removed. `timeout`, `sh` and `ip` are written with the paths
+  they have in the system folders (`hostcmd.SearchDirs`) when the file is
+  rendered. They are not looked up through `PATH`, which starts with
+  `/usr/local`: a group other than root can write there on some distributions,
+  and the path is one root runs from at every boot. A missing tool refuses the
+  save, before the config is stored, with an error that names it. `grep` and
+  `sleep` come from systemd's default `PATH`.
+- The only request value in the line is the text of a parsed address.
+  `ParseDockerHostIPs` (`backend/bridge/internal/userconfig/rules.go`) accepts
+  an address through `net/netip` only and stores its canonical text, with an
+  IPv4-mapped IPv6 address as its IPv4 form. It refuses an empty value, a
+  zone, the unspecified address, a loopback address and a duplicate. The
+  drop-in is rendered from a second parse of the stored list.
+
+`docker-host-ip-wait.spec.ts` (`frontend/src/test/vm`) is the boot test, in
+the test VM (Ubuntu 26.04, Docker 29.1.3). It gives the VM an address that a
+bridge holds before the network is up, and one that is added 10 s after
+everything `docker.service` is ordered after, with a container that publishes
+a port on each. Without the setting Docker is up 10 s before the late address
+and the container stays down with "cannot assign requested address", whatever
+its restart policy. With the drop-in the settings page wrote,
+`systemd-analyze verify docker.service` passes; after a reboot the line for
+the late address ends with status 0 after 10 to 11 s and the line for the
+bridge's address in under a second, the container runs, and
+`systemd-analyze blame` gives `docker.service` 10.9 s. The two addresses are
+stand-ins: a Netplan host whose card appears late and a host after a bridge
+handoff by LinuxIO have not been run.
+
+The switch on with an empty list is refused with 400 before the config is
+saved, and a document on disk in that state fails validation. Switching off
+keeps the stored list. An empty list is left out of `config.yaml`.
+
+`docker.list_host_ips` gives the settings page two lists in the stored form:
+the host addresses that containers publish ports on, read from
+`HostConfig.PortBindings` of an inspect of every container (the container list
+has no ports for a container that failed to start, which is the case the
+setting is for), and the addresses the host holds now. The page pre-fills an
+empty list with the published addresses the host holds, offers the others to
+add, and marks every listed or detected address that no interface holds. Save
+accepts an unassigned address, since a card can be down or a VPN not up yet;
+the mark is the only signal. With Docker unreachable the published list is
+empty. The gateway of a Docker bridge network (`172.17.0.1` on `docker0`) is
+in neither list: Docker assigns it itself after it starts, so waiting for it
+would take the whole 30 s at every boot. It is never suggested, and one typed
+into the list is marked.
+
+A container's details show the same setting from the container's side
+(`ContainerHostIPWaitHint.tsx`): under its ports, a privileged session reads
+whether Docker waits at boot for the address they are published on, and one
+that is not in the list and that the host holds now can be added from there.
+The button saves the two config fields like the settings page does, so the
+list in the Docker settings stays the only copy. When it turns the setting on,
+it leaves out stored addresses the host no longer holds, since nobody sees
+them on that page and each would cost 30 s at every boot. It reads the address from
+the container's active port bindings, which a container that is not running
+does not have.
+
+The config is stored before the drop-ins are written. When a write or the
+daemon-reload fails, the save returns the error with the setting stored, and
+saving again writes the file.
+
+Known limits:
+
+- Addresses are waited for one after another, so N missing addresses delay
+  every start of Docker by up to N × 30 s. LinuxIO waits three minutes for a
+  Docker restart it asked for (a storage change), so with six or more missing
+  addresses it reports that restart as failed although Docker starts later.
+- The settings are per user and the drop-ins are host-wide, so the last save
+  wins. This holds for both settings.
+- An address that is gone for good (a dynamic IPv6 address that a
+  NetworkManager bridge handoff replaced) is marked on the settings page and
+  not rewritten. The list and the container's own port binding are edited by
+  hand.
+- A drop-in written by hand that does the same job is not touched by LinuxIO.
 
 ## Startup and recovery
 
@@ -86,8 +205,10 @@ default the backend changes later therefore reaches every user who has not
 chosen a value of their own. A file written before this rule holds every field
 and keeps holding them, so those users keep the defaults of the day they
 saved until their next save, which prunes the file. An invalid UI document is
-replaced with `{}` and expanded over backend UI defaults when read. Core and UI updates remain independent: they have separate
-locks, snapshots, validation, and atomic whole-file replacement.
+replaced with `{}` and expanded over backend UI defaults when read; a theme
+colour key that LinuxIO does not have makes the document invalid. Core and UI
+updates remain independent: they have separate locks, snapshots, validation,
+and atomic whole-file replacement.
 
 ## Defaults
 

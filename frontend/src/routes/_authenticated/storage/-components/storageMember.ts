@@ -36,14 +36,29 @@ export const memberConfirmations = (
   );
 
 /**
- * Why a device cannot join a btrfs pool, or null: in use, in /etc/fstab, or
- * part of another pool, array or volume group, which force never erases.
- * The bridge refuses the same devices; this only explains the disabled ones.
+ * The pool a disk, or the disk of a partition, is kept for as its hot spare,
+ * such as "Hot spare of tank", or null. Every write but a replace in that
+ * pool is refused on it.
  */
-export const poolDeviceBlocker = (device: StorageBlockDevice) => {
+export const hotSpareReason = ({ hotSpareOf }: StorageBlockDevice) =>
+  hotSpareOf ? `Hot spare of ${hotSpareOf.label || hotSpareOf.uuid}` : null;
+
+/**
+ * Why a device cannot join a btrfs pool, or null: in use, in /etc/fstab,
+ * part of another pool, array or volume group, which force never erases, or
+ * a pool's hot spare, unless that pool is `ownPool`, whose replace may take
+ * the spare itself, never a partition of it. The bridge refuses the same
+ * devices; this only explains the disabled ones.
+ */
+export const poolDeviceBlocker = (
+  device: StorageBlockDevice,
+  ownPool?: string,
+) => {
   if (device.busy) return device.busy;
   if (device.inFstab) return "In /etc/fstab";
-  return device.member ? `Member of ${describeMember(device.member)}` : null;
+  if (device.member) return `Member of ${describeMember(device.member)}`;
+  const own = device.type !== "part" && device.hotSpareOf?.uuid === ownPool;
+  return own ? null : hotSpareReason(device);
 };
 
 export interface PoolDeviceChoice {
@@ -56,12 +71,14 @@ export interface PoolDeviceChoice {
  * The whole devices a pool create or device add lists: not mounted, not one
  * of `taken` (the pool's own or a mounted pool's), and without partitions or
  * holders. Blocked devices are listed with their reason; a device with an old
- * filesystem only once force is on, since force is what erases it.
+ * filesystem only once force is on, since force is what erases it. The hot
+ * spare of `ownPool` is free for that pool's replace.
  */
 export const poolDeviceChoices = (
   devices: StorageBlockDevice[],
   taken: string[],
   force: boolean,
+  ownPool?: string,
 ): PoolDeviceChoice[] => {
   const partitioned = new Set(devices.flatMap((entry) => entry.parents));
   return devices
@@ -71,7 +88,7 @@ export const poolDeviceChoices = (
         !taken.includes(entry.path) &&
         !partitioned.has(entry.path),
     )
-    .map((device) => ({ device, reason: poolDeviceBlocker(device) }))
+    .map((device) => ({ device, reason: poolDeviceBlocker(device, ownPool) }))
     .filter(
       ({ device, reason }) => reason !== null || device.fsType === "" || force,
     );

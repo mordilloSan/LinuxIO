@@ -3,9 +3,20 @@
 package gpu
 
 import (
+	"slices"
 	"testing"
 	"unsafe"
 )
+
+// nvmlBuffer turns the address a reader hands NVML back into the slice it
+// points to, as the C library does. checkptr cannot know that the address came
+// from a live Go slice and refuses the conversion under -race, so it is off
+// here.
+//
+//go:nocheckptr
+func nvmlBuffer[T any](ptr uintptr, count uint32) []T {
+	return unsafe.Slice((*T)(unsafe.Pointer(ptr)), count)
+}
 
 func TestReadNVMLProcessesV3(t *testing.T) {
 	fn := func(_ nvmlDevice, count *uint32, ptr uintptr) nvmlReturn {
@@ -13,7 +24,7 @@ func TestReadNVMLProcessesV3(t *testing.T) {
 			*count = 2
 			return nvmlReturn(nvmlErrorInsufficientSize)
 		}
-		items := unsafe.Slice((*nvmlProcessInfoV2)(unsafe.Pointer(ptr)), *count)
+		items := nvmlBuffer[nvmlProcessInfoV2](ptr, *count)
 		items[0].PID = 42
 		items[0].UsedGpuMemory = 4096
 		items[1].PID = 43
@@ -47,7 +58,7 @@ func TestReadNVMLProcessesV1(t *testing.T) {
 			*count = 1
 			return nvmlReturn(nvmlErrorInsufficientSize)
 		}
-		items := unsafe.Slice((*nvmlProcessInfoV1)(unsafe.Pointer(ptr)), *count)
+		items := nvmlBuffer[nvmlProcessInfoV1](ptr, *count)
 		items[0].PID = 7
 		items[0].UsedGpuMemory = 128
 		return nvmlReturn(nvmlSuccess)
@@ -67,7 +78,7 @@ func TestReadNVMLProcessUtilizationUsesNewestSample(t *testing.T) {
 			*count = 3
 			return nvmlReturn(nvmlErrorInsufficientSize)
 		}
-		items := unsafe.Slice((*nvmlProcessUtilization)(unsafe.Pointer(ptr)), *count)
+		items := nvmlBuffer[nvmlProcessUtilization](ptr, *count)
 		items[0] = nvmlProcessUtilization{PID: 42, TimeStamp: 110, SMUtil: 10}
 		items[1] = nvmlProcessUtilization{PID: 42, TimeStamp: 120, SMUtil: 20}
 		items[2] = nvmlProcessUtilization{PID: 43, TimeStamp: 115, SMUtil: 30}
@@ -84,5 +95,32 @@ func TestReadNVMLProcessesIgnoresFailures(t *testing.T) {
 	fn := func(_ nvmlDevice, count *uint32, _ uintptr) nvmlReturn { *count = 0; return nvmlReturn(3) }
 	if got := readNVMLProcesses(0, fn, 1); got != nil {
 		t.Fatalf("expected nil, got %#v", got)
+	}
+}
+
+func TestNVMLPciInfoSymbol(t *testing.T) {
+	tests := []struct {
+		name    string
+		exports []string
+		want    string
+	}{
+		{
+			name:    "prefers v3",
+			exports: []string{"nvmlDeviceGetPciInfo", "nvmlDeviceGetPciInfo_v2", "nvmlDeviceGetPciInfo_v3"},
+			want:    "nvmlDeviceGetPciInfo_v3",
+		},
+		{
+			name:    "falls back to the unversioned symbol",
+			exports: []string{"nvmlDeviceGetPciInfo", "nvmlDeviceGetPciInfo_v2"},
+			want:    "nvmlDeviceGetPciInfo",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			has := func(symbol string) bool { return slices.Contains(tt.exports, symbol) }
+			if got := nvmlPciInfoSymbol(has); got != tt.want {
+				t.Fatalf("nvmlPciInfoSymbol() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

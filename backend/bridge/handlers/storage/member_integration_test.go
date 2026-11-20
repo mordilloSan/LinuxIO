@@ -112,7 +112,7 @@ func TestBtrfsMemberIntegration(t *testing.T) {
 
 	// The first pool, raid1 over disks 0 and 1, with data, then unmounted.
 	const label = "linuxio-member-it"
-	uuid, err := btrfs.CreatePool(ctx, label, "raid1", "raid1", disks[:2], true, nil)
+	uuid, err := btrfs.CreatePool(ctx, label, "raid1", "raid1", disks[:2], true, nil, nil)
 	if err != nil {
 		t.Fatalf("create pool: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestBtrfsMemberIntegration(t *testing.T) {
 	wantMember("create with force", err)
 
 	// A device add with force of that member into a mounted pool on disk 2.
-	otherUUID, err := btrfs.CreatePool(ctx, "linuxio-member-it3", "single", "dup", disks[2:], true, nil)
+	otherUUID, err := btrfs.CreatePool(ctx, "linuxio-member-it3", "single", "dup", disks[2:], true, nil, nil)
 	if err != nil {
 		t.Fatalf("create other pool: %v", err)
 	}

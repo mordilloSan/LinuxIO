@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
   queryClient: null as QueryClient | null,
   packageKitAvailable: true,
+  privileged: true,
   recoveryConfig: null as RecoveryConfig | null,
   refreshCapabilities: vi.fn(),
   taskConfig: null as InstallMutationConfig | null,
@@ -54,7 +55,10 @@ const refreshCapabilitiesIntoCache = vi.hoisted(() => async () => {
   return data;
 });
 vi.mock("@/hooks/useAuth", () => ({
-  default: () => ({ refreshCapabilities: refreshCapabilitiesIntoCache }),
+  default: () => ({
+    privileged: mocks.privileged,
+    refreshCapabilities: refreshCapabilitiesIntoCache,
+  }),
 }));
 
 vi.mock("@/tasks/useActiveTaskRecovery", () => ({
@@ -176,6 +180,23 @@ vi.mock("@/components/ui/AppTypography", () => ({
 vi.mock("@iconify/react", () => ({
   Icon: () => <span aria-hidden="true" />,
 }));
+// The section renders outside a router here; a link shows where it points.
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  Link: ({
+    children,
+    search,
+    to,
+  }: {
+    children: ReactNode;
+    search?: Record<string, string>;
+    to: string;
+  }) => (
+    <a href={search ? `${to}?${new URLSearchParams(search)}` : to}>
+      {children}
+    </a>
+  ),
+}));
 
 import CapabilityManagerSection from "./CapabilityManagerSection";
 
@@ -208,6 +229,7 @@ describe("CapabilityManagerSection", () => {
     mocks.queryClient = createTestQueryClient();
     mocks.mutate.mockReset();
     mocks.packageKitAvailable = true;
+    mocks.privileged = true;
     mocks.recoveryConfig = null;
     mocks.refreshCapabilities.mockReset();
     // The initial refresh must echo the seeded scan, as a real scan would.
@@ -221,6 +243,62 @@ describe("CapabilityManagerSection", () => {
     );
     mocks.taskConfig = null;
     mocks.watch.mockReset();
+  });
+
+  it("links an installed capability to its page, and the zram one to its dialog", async () => {
+    mocks.refreshCapabilities.mockImplementation(() =>
+      Promise.resolve({
+        docker: { available: false },
+        libvirt: { available: true },
+        lm_sensors: { available: true },
+        packagekit: { available: true },
+        rsync: { available: false },
+        zram: { available: true },
+      }),
+    );
+    renderSection();
+
+    expect(
+      await screen.findByRole("link", { name: "Open Memory overflow" }),
+    ).toHaveAttribute("href", "/?dialog=memory-overflow");
+    expect(screen.getByRole("link", { name: "Open VMs" })).toHaveAttribute(
+      "href",
+      "/vm",
+    );
+    expect(screen.getByRole("link", { name: "Open hardware" })).toHaveAttribute(
+      "href",
+      "/hardware",
+    );
+    // Docker has a page, but is not installed.
+    expect(
+      screen.queryByRole("link", { name: "Open Docker" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("links without sudo only to pages a session without sudo can open", async () => {
+    mocks.privileged = false;
+    mocks.refreshCapabilities.mockImplementation(() =>
+      Promise.resolve({
+        docker: { available: false },
+        libvirt: { available: true },
+        lm_sensors: { available: true },
+        packagekit: { available: true },
+        rsync: { available: false },
+        zram: { available: true },
+      }),
+    );
+    renderSection();
+
+    expect(
+      await screen.findByRole("link", { name: "Open hardware" }),
+    ).toHaveAttribute("href", "/hardware");
+    // The Memory overflow dialog and the VMs page are for sudo only.
+    expect(
+      screen.queryByRole("link", { name: "Open Memory overflow" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open VMs" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the internal indexer health gate out of the manager", () => {

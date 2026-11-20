@@ -1,0 +1,76 @@
+/* ── AppSlider ────────────────────────────────────────── */
+/* A caller that needs another look sets these on the slider or above it,
+   instead of restyling the engine pseudo-elements:
+     --app-slider-track-height  (4px)
+     --app-slider-track-color   (the divider colour)
+     --app-slider-thumb-size    (16px)
+     --app-slider-thumb-shadow  (none) */
+.app-slider {
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.app-slider:disabled {
+  cursor: default;
+}
+
+/* Not gated on Tab navigation like the checkbox and the radio: a slider in a
+   menu is reached with the arrow keys and must show its ring there too. */
+.app-slider:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+  border-radius: var(--app-radius-pill);
+}
+
+/* Each engine's pseudo-elements in their own rules: one unknown selector in a
+   list drops the whole rule. */
+.app-slider::-webkit-slider-runnable-track {
+  height: var(--app-slider-track-height, 4px);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-slider-track-color, var(--app-palette-divider));
+}
+
+/* WebKit puts the thumb at the top of the track; the margin centres it. */
+.app-slider::-webkit-slider-thumb {
+  width: var(--app-slider-thumb-size, 16px);
+  height: var(--app-slider-thumb-size, 16px);
+  margin-top: calc(
+    (
+        var(--app-slider-track-height, 4px) -
+          var(--app-slider-thumb-size, 16px)
+      ) /
+      2
+  );
+  border: none;
+  border-radius: 50%;
+  background: var(--app-palette-primary-main);
+  box-shadow: var(--app-slider-thumb-shadow, none);
+  appearance: none;
+}
+
+.app-slider::-moz-range-track {
+  height: var(--app-slider-track-height, 4px);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-slider-track-color, var(--app-palette-divider));
+}
+
+.app-slider::-moz-range-thumb {
+  width: var(--app-slider-thumb-size, 16px);
+  height: var(--app-slider-thumb-size, 16px);
+  border: none;
+  border-radius: 50%;
+  background: var(--app-palette-primary-main);
+  box-shadow: var(--app-slider-thumb-shadow, none);
+}
+
+.app-slider:disabled::-webkit-slider-thumb {
+  background: var(--app-palette-action-disabled);
+}
+
+.app-slider:disabled::-moz-range-thumb {
+  background: var(--app-palette-action-disabled);
+}

@@ -75,9 +75,11 @@ const BtrfsCreatePoolDialog = ({
     reason === null ? [device] : [],
   );
   // Unpartitioned space on a disk whose partitions are in use becomes a new
-  // partition; a disk with no partitions is offered whole above instead.
+  // partition; a disk with no partitions is offered whole above instead. A
+  // pool's hot spare stays empty.
   const spaces = all.filter(
-    (entry) => entry.freeBytes > 0 && partitioned.has(entry.path),
+    (entry) =>
+      entry.freeBytes > 0 && partitioned.has(entry.path) && !entry.hotSpareOf,
   );
   const devices = picked.filter((path) =>
     free.some((entry) => entry.path === path),

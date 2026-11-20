@@ -6,6 +6,7 @@ import {
   fileTaskText,
   taskEndedAt,
   taskOutcome,
+  taskOutcomeLevel,
   taskRunTime,
   taskTitle,
 } from "./taskTitles";
@@ -126,6 +127,36 @@ describe("taskOutcome", () => {
       "Interrupted (reboot)",
     );
     expect(taskOutcome(entry("interrupted"))).toBe("Interrupted");
+  });
+});
+
+describe("a scheduled worker's summary", () => {
+  const run = (rest: Partial<TaskHistoryEntry>): TaskHistoryEntry => ({
+    ...entry("completed"),
+    ...rest,
+  });
+
+  it("replaces Completed with what the run did", () => {
+    expect(taskOutcome(run({ summary: "1 updated, 1 failed" }))).toBe(
+      "1 updated, 1 failed",
+    );
+    // The error of a run that failed as a whole says more than its summary.
+    expect(
+      taskOutcome({ ...entry("failed"), summary: "1 updated, 1 failed" }),
+    ).toBe("Failed");
+  });
+
+  it("marks a completed run in which items failed as a warning", () => {
+    expect(taskOutcomeLevel(run({}))).toBe("info");
+    expect(taskOutcomeLevel(run({ summary: "Nothing to update" }))).toBe(
+      "info",
+    );
+    expect(taskOutcomeLevel(run({ summary: "1 failed", failures: 1 }))).toBe(
+      "warn",
+    );
+    expect(taskOutcomeLevel(entry("failed"))).toBe("error");
+    expect(taskOutcomeLevel(entry("canceled"))).toBe("warn");
+    expect(taskOutcomeLevel(entry("interrupted", "reboot"))).toBe("warn");
   });
 });
 

@@ -233,7 +233,7 @@ func renderTypesForRoutes(routes []apischema.RouteSpec) string {
 }
 
 func renderCallTypes(schema *strings.Builder, routes []apischema.RouteSpec, renderer *tsRenderer) {
-	schema.WriteString("/** Type-only contracts for migrated Call routes. */\n")
+	schema.WriteString("/** Type-only contracts for Call routes. */\n")
 	schema.WriteString("export interface LinuxIOCallSchema {\n")
 	callRoutes := make([]apischema.RouteSpec, 0, len(routes))
 	for _, route := range routes {

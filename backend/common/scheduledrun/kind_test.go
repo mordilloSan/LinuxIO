@@ -36,6 +36,7 @@ func TestKindOf(t *testing.T) {
 		{"linuxio-btrfs-snapshot.service", Kind{RouteSnapshot, "Snapshots", "", "/storage/subvolumes?view=snapshots", false}},
 		{"linuxio-btrfs-replicate.service", Kind{RouteReplicate, "Replication", "", "/storage/subvolumes?view=replication", false}},
 		{"linuxio-btrfs-resync@" + testPoolUUID + ".service", Kind{RouteResync, "Pool resync", testPoolUUID, "/storage?pool=" + testPoolUUID, false}},
+		{"linuxio-btrfs-rebuild@" + testPoolUUID + ".service", Kind{RouteRebuild, "Pool rebuild", testPoolUUID, "/storage?pool=" + testPoolUUID, false}},
 		{"linuxio-docker-update.service", Kind{RouteDockerUpdate, "Container updates", "", "/docker/containers", false}},
 		{"apt-daily-upgrade.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},
 		{"dnf-automatic.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},

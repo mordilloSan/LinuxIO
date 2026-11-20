@@ -1,0 +1,32 @@
+#cloud-config
+# First boot of the disposable Fedora test VM (packaging/vm/linuxio-vm.sh
+# create with LINUXIO_VM_DISTRO=fedora); user-data.yaml.in is Ubuntu's. The
+# script fills in the @...@ values and serves this file, meta-data and
+# install-dependencies.sh from @SEED_URL@ for the first boot only. SELinux
+# stays enforcing.
+hostname: linuxio-e2e
+users:
+  - name: linuxio-e2e
+    shell: /bin/bash
+    groups: [wheel]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: false
+    hashed_passwd: '@PASSWORD_HASH@'
+    ssh_authorized_keys:
+      - '@SSH_KEY@'
+ssh_pwauth: false
+package_update: true
+# Every package is brought up to date here, once, as on Ubuntu.
+package_upgrade: true
+packages:
+  - moby-engine
+  # The Compose and buildx plugins, as on Ubuntu.
+  - docker-compose
+  - docker-buildx
+  - btrfs-progs
+runcmd:
+  # The metadata refresh holds dnf's lock while a suite installs a package.
+  - systemctl disable --now dnf-makecache.timer
+  # Fedora's packages do not start their services; Ubuntu's docker.io does.
+  - systemctl enable --now docker.service
+  - curl -fsS -o /root/install-dependencies.sh @SEED_URL@install-dependencies.sh && bash /root/install-dependencies.sh

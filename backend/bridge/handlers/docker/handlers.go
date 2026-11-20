@@ -50,6 +50,7 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.DirPathRequest, apischema.DirectoryValidationResult]("docker.validate_stack_directory", apischema.RetrySafe()).Handle(handlers.handleValidateStackDirectory),
 		apischema.Call[apischema.NoRequest, apischema.DockerDaemonConfig]("docker.get_daemon_config", apischema.RetrySafe()).Handle(handlers.handleGetDaemonConfig),
 		apischema.Mutation("docker.set_daemon_config", handlers.handleSetDaemonConfig, apischema.Privileged()),
+		apischema.Call[apischema.NoRequest, apischema.DockerHostIPs]("docker.list_host_ips", apischema.RetrySafe()).Handle(handlers.handleListHostIPs),
 		apischema.Call[apischema.NoRequest, *apischema.DockerSystemInfo]("docker.get_docker_info", apischema.RetrySafe()).Handle(handlers.handleGetDockerInfo),
 		apischema.Call[apischema.IdentifierRequest, apischema.DockerIconURIResponse]("docker.get_icon_uri").Handle(handlers.handleGetIconURI),
 		apischema.Call[apischema.IdentifierRequest, apischema.DockerIconDataResponse]("docker.get_icon").Handle(handlers.handleGetIcon),
@@ -152,6 +153,10 @@ func (h dockerHandlers) handleEditContainer(ctx context.Context, req apischema.C
 		return apischema.ContainerConfigurationResult{}, err
 	}
 	return EditConfiguredContainer(ctx, req)
+}
+
+func (h dockerHandlers) handleListHostIPs(ctx context.Context, _ apischema.NoRequest) (apischema.DockerHostIPs, error) {
+	return ListHostIPs(ctx)
 }
 
 func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ apischema.NoRequest) (apischema.DockerStartedFailedResponse, error) {

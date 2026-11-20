@@ -2,6 +2,7 @@ import {
   useId,
   useRef,
   useState,
+  type AriaAttributes,
   type ChangeEvent,
   type CSSProperties,
   type FocusEvent,
@@ -19,6 +20,7 @@ export interface AppTextFieldProps {
   "aria-autocomplete"?: "none" | "inline" | "list" | "both";
   "aria-controls"?: string;
   "aria-expanded"?: boolean;
+  "aria-haspopup"?: AriaAttributes["aria-haspopup"];
   "aria-keyshortcuts"?: string;
   autoComplete?: string;
   autoFocus?: boolean;
@@ -88,6 +90,7 @@ const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
     "aria-label": ariaLabel,
     "aria-controls": ariaControls,
     "aria-expanded": ariaExpanded,
+    "aria-haspopup": ariaHaspopup,
     "aria-keyshortcuts": ariaKeyshortcuts,
     "aria-autocomplete": ariaAutocomplete,
   } = props;
@@ -163,6 +166,7 @@ const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
     "aria-label": ariaLabel,
     "aria-controls": ariaControls,
     "aria-expanded": ariaExpanded,
+    "aria-haspopup": ariaHaspopup,
     "aria-keyshortcuts": ariaKeyshortcuts,
     "aria-autocomplete": ariaAutocomplete,
   };

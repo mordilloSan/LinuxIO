@@ -160,13 +160,16 @@ func (h *Host) serve(ctx context.Context) error {
 	h.lastBusy = h.cfg.Now()
 	h.mu.Unlock()
 
+	defer h.rec.stop() // after closeAll: no progress timer outlives Serve
+	// Before the first bridge: one reattaching to a job its crashed host left
+	// finds the job running again, not interrupted.
+	h.resumeInterrupted(ctx, resumes.inBoot)
 	acceptErr := make(chan error, 1)
 	h.conns.Go(func() { acceptErr <- h.accept(ctx, ln) })
-	defer h.rec.stop() // after closeAll: no progress timer outlives Serve
 	defer h.closeAll(ln)
 	h.notify("READY=1")
 	slog.Debug("job host listening", "user", h.cfg.Username, "socket", ln.Addr().String())
-	h.resumeEarlierBoot(ctx, resumes)
+	h.resumeInterrupted(ctx, resumes.afterReboot)
 	return h.run(ctx, ln, acceptErr)
 }
 
@@ -592,12 +595,14 @@ func (s storedJobs) Watch(ctx context.Context, stream net.Conn, id string) error
 
 // markLost marks interrupted a record a host left running with no task in
 // this host to finish it, such as one whose finish failed to write, raises
-// an alert, since its outcome is unknown, and returns it.
+// an alert, since its outcome is unknown, and returns it. It is never
+// resumed: not even its host knows how far it got.
 func (h *Host) markLost(ctx context.Context, record jobs.Record) jobs.Record {
 	marked := false
 	updated, err := h.cfg.Store.Update(context.WithoutCancel(ctx), record.ID, func(r *jobs.Record) error {
 		if r.State == jobs.StateRunning && r.Executor.Kind == "host" {
 			r.State, r.Reason, r.FinishedAt = jobs.StateInterrupted, jobs.ReasonCrash, h.cfg.Now().UTC()
+			r.Resumable = false
 			marked = true
 		}
 		return nil
@@ -807,13 +812,18 @@ func (h *Host) resolveAlert(ctx context.Context, id string) {
 // alertInterrupted raises the alert of a job its host stopped before it
 // finished, whatever the report settings say: a warning for a shutdown or a
 // reboot, and an error for a crash, whose outcome is unknown. A warning
-// follows the levels grid like any other.
-func (h *Host) alertInterrupted(ctx context.Context, r jobs.Record) {
+// follows the levels grid like any other. A job a pick-up left interrupted
+// adds why, when not empty.
+func (h *Host) alertInterrupted(ctx context.Context, r jobs.Record, why string) {
 	severity := alerts.SeverityWarning
 	if r.Reason == jobs.ReasonCrash {
 		severity = alerts.SeverityError
 	}
-	h.alert(ctx, r, severity, "was interrupted", fmt.Sprintf("The job host stopped before the job finished (%s).", r.Reason))
+	message := fmt.Sprintf("The job host stopped before the job finished (%s).", r.Reason)
+	if why != "" {
+		message += " It was not picked up again: " + why + "."
+	}
+	h.alert(ctx, r, severity, "was interrupted", message)
 }
 
 // alertLongJob raises the notice of a job that completed after running for

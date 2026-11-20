@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
-import { memo, useState, type MouseEvent } from "react";
+import { memo, useRef, useState, type MouseEvent } from "react";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -15,6 +15,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
+import type { SettlePowerAction } from "@/contexts/PowerActionContext";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
 import { iconSize } from "@/theme/constants";
@@ -28,18 +29,17 @@ function NavbarUserDropdown() {
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
   const menuOpen = anchorEl !== null;
 
-  // Power actions: the server may die before responding, so errors are
-  // expected and only logged.
+  // The server may die before it answers. The overlay decides what a lost
+  // connection means; a refusal takes it down and shows the reason. Each
+  // request settles the overlay it started, never a later one.
+  const settlePowerAction = useRef<SettlePowerAction | undefined>(undefined);
   const { mutate: reboot } = linuxio.control.reboot.useMutation({
-    error: (error) => {
-      console.warn("Reboot error (may be expected):", error);
-    },
+    error: (error) => settlePowerAction.current?.(error),
   });
 
   const { mutate: powerOff } = linuxio.control.power_off.useMutation({
-    error: (error) => {
-      console.warn("Power off error (may be expected):", error);
-    },
+    success: () => settlePowerAction.current?.(),
+    error: (error) => settlePowerAction.current?.(error),
   });
 
   const toggleMenu = (event: MouseEvent<HTMLButtonElement>) => {
@@ -66,10 +66,10 @@ function NavbarUserDropdown() {
 
     // Show overlay immediately
     if (action === "reboot") {
-      triggerReboot();
+      settlePowerAction.current = triggerReboot();
       reboot();
     } else if (action === "poweroff") {
-      triggerPowerOff();
+      settlePowerAction.current = triggerPowerOff();
       powerOff();
     }
   };

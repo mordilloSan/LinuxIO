@@ -1,6 +1,7 @@
 import {
   focusManager,
   onlineManager,
+  QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
 import {
@@ -23,7 +24,9 @@ import {
   type TaskHostStatus,
   type TaskSnapshot,
 } from "@/api";
+import { CACHE_TTL_MS } from "@/api/call-react-query";
 import { bridgeConfigQueryKey } from "@/api/config-query";
+import { endpointQueryPrefix } from "@/api/query-keys";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import {
@@ -129,14 +132,32 @@ function answer({
 
 const routesCalled = () => mocks.call.mock.calls.map(([route]) => route);
 
+// What api/query-client.ts sets for every query, bar its retry: importing it
+// would also take over the online state of the whole test run.
+const productionClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        refetchOnWindowFocus: false,
+        retry: false,
+        staleTime: CACHE_TTL_MS.TWO_SECONDS,
+      },
+    },
+  });
+
 interface SetupOptions {
   historySeenAt?: string;
   privileged: boolean;
+  queryClient?: QueryClient;
   strict?: boolean;
 }
 
-function setup({ historySeenAt, privileged, strict = false }: SetupOptions) {
-  const queryClient = createTestQueryClient();
+function setup({
+  historySeenAt,
+  privileged,
+  queryClient = createTestQueryClient(),
+  strict = false,
+}: SetupOptions) {
   const { bridge } = buildTestConfigSnapshots();
   queryClient.setQueryData(bridgeConfigQueryKey(USER.id), {
     ...bridge,
@@ -372,22 +393,48 @@ describe("useAwayNotice for another user", () => {
     expect(updateConfig).not.toHaveBeenCalled();
   });
 
-  it("takes the mark when the history fails to load, and says nothing once it does", async () => {
+  it("takes the mark when the history fails to load, and does not ask again, whatever invalidates it", async () => {
     markFreshSignIn();
     answer({ jobs: history(ended), failing: "tasks.history" });
 
-    const { queryClient, updateConfig } = setup({
+    const queryClient = productionClient();
+    const { updateConfig } = setup({
       privileged: false,
       historySeenAt: SEEN_AT,
+      queryClient,
     });
 
     await waitFor(() => expect(hasFreshSignIn()).toBe(false));
+    // What useRefreshHistoryAfterUpdate does when an update wait ends: a later
+    // answer is no longer news, so it is not asked for.
     answer({ jobs: history(ended) });
-    await act(() => queryClient.refetchQueries());
+    await act(() =>
+      queryClient.invalidateQueries({
+        queryKey: endpointQueryPrefix("tasks.history"),
+      }),
+    );
     await settle();
-    expect(routesCalled()).toEqual(["tasks.history", "tasks.history"]);
+    expect(routesCalled()).toEqual(["tasks.history"]);
     expect(mocks.toast.warning).not.toHaveBeenCalled();
     expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("does not ask again once the history answered with jobs, whatever invalidates it", async () => {
+    markFreshSignIn();
+    answer({ jobs: history(ended) });
+
+    const queryClient = productionClient();
+    setup({ privileged: false, historySeenAt: SEEN_AT, queryClient });
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledTimes(1));
+
+    await act(() =>
+      queryClient.invalidateQueries({
+        queryKey: endpointQueryPrefix("tasks.history"),
+      }),
+    );
+    await settle();
+
+    expect(routesCalled()).toEqual(["tasks.history"]);
   });
 
   it("asks for the history once, not again on focus or reconnect", async () => {

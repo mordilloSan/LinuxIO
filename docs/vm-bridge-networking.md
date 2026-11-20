@@ -211,6 +211,18 @@ or Netplan owns the timeout outside the authenticated session.
   NetworkManager-rendered dynamic IPv6 are refused. Netplan with networkd
   supports static IPv6 and EUI64 SLAAC without privacy extensions. LinuxIO
   never converts a dynamic address into a static one to make verification pass.
+- Docker's startup wait for published host IPs
+  ([Bridge Configuration Storage](./config-storage.md#wait-for-published-host-ips))
+  names addresses and no network card, so a handoff, its confirmation and its
+  revert leave that drop-in alone. Every original IPv4 address is on the bridge
+  before a handoff can be confirmed, and a Netplan handoff holds every
+  non-link-local IPv6 address to the same check, so those addresses are still
+  the ones Docker waits for. The bridge is created with STP off, so the
+  address is not held back by a forwarding delay. After a NetworkManager
+  handoff that changed the global IPv6 address, the old address is never
+  assigned again: Docker waits the full 30 s for it at every boot, and the
+  Docker settings mark it as not assigned until it is replaced by hand there
+  and in the container's port binding.
 
 ## Deliberately not done
 
@@ -260,7 +272,13 @@ connectivity):
   interface: Device or resource busy` because a Docker macvlan network on the
   NIC lived in a container namespace, and netplan warned about two default
   routes because the member delta was written under a fresh file. Both are
-  fixed above; the run has not been repeated yet.
+  fixed above; the run has not been repeated yet. The same run checks Docker's
+  startup wait: with "Wait for published host IPs" on and a container
+  publishing on the host address, confirm the handoff, then check that
+  `systemctl cat docker.service` is unchanged, that the port answers without
+  restarting Docker, and that after a reboot the container is up and
+  `systemd-analyze blame` shows no 30 s wait on `docker.service`. Revert a
+  second handoff and check the same.
 - [ ] Stock Fedora/NetworkManager host with `ipv6.method=auto` defaults: handoff
   succeeds and the host keeps its IPv4 address.
 - [ ] ifupdown Debian host: both bridge flows show the recipe; a hand-made

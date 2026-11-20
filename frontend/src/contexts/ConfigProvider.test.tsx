@@ -109,6 +109,8 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     docker: {
       folders: ["/srv/docker"],
       requireMountsForFolders: false,
+      waitForHostIPs: false,
+      hostIPs: [],
     },
     jobs: {
       archiveCompressionWorkers: 2,
@@ -467,6 +469,164 @@ describe("ConfigProvider", () => {
     expect(apiMocks.setUIRemote).toHaveBeenCalledWith(
       expect.objectContaining({ theme: "DARK" }),
     );
+  });
+
+  it("reads a setting the bridge refused back from the bridge", async () => {
+    apiMocks.setConfigRemote.mockRejectedValueOnce(new Error("refused"));
+    const configQueryFn = vi
+      .fn<() => Promise<AppConfig>>()
+      .mockResolvedValue(remoteConfig());
+    renderProvider({ configQueryFn });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set folders" }).click();
+    });
+
+    await waitFor(() => expect(configQueryFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId("docker-folders")).toHaveTextContent(
+        "/srv/docker",
+      ),
+    );
+  });
+
+  it("reads an appearance setting the bridge refused back from the bridge", async () => {
+    apiMocks.setUIRemote.mockRejectedValueOnce(new Error("refused"));
+    const uiQueryFn = vi
+      .fn<() => Promise<UIConfig>>()
+      .mockResolvedValue(remoteUI());
+    const configQueryFn = vi
+      .fn<() => Promise<AppConfig>>()
+      .mockResolvedValue(remoteConfig());
+    renderProvider({ configQueryFn, uiQueryFn });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set theme" }).click();
+    });
+
+    await waitFor(() => expect(uiQueryFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId("theme")).toHaveTextContent("LIGHT"),
+    );
+    // Only the refused store is read back.
+    expect(configQueryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads refused settings back only after the queued saves", async () => {
+    let refuseFirst: (() => void) | undefined;
+    apiMocks.setConfigRemote
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            refuseFirst = () => reject(new Error("refused"));
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const configQueryFn = vi
+      .fn<() => Promise<AppConfig>>()
+      .mockResolvedValueOnce(remoteConfig())
+      .mockResolvedValue(
+        remoteConfig({
+          appSettings: { chunkSizeMB: 4, showHiddenFiles: true },
+        }),
+      );
+    renderProvider({ configQueryFn });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set folders" }).click();
+      screen.getByRole("button", { name: "set chunk four" }).click();
+    });
+    await waitFor(() =>
+      expect(apiMocks.setConfigRemote).toHaveBeenCalledTimes(1),
+    );
+    await act(async () => refuseFirst?.());
+
+    await waitFor(() =>
+      expect(apiMocks.setConfigRemote).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("docker-folders")).toHaveTextContent(
+        "/srv/docker",
+      ),
+    );
+    expect(screen.getByTestId("chunk-size")).toHaveTextContent("4");
+    expect(configQueryFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a change made while a refused setting is read back", async () => {
+    let confirmNewer: (() => void) | undefined;
+    apiMocks.setConfigRemote
+      .mockRejectedValueOnce(new Error("refused"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirmNewer = resolve;
+          }),
+      );
+    let answerReadBack: ((config: AppConfig) => void) | undefined;
+    const configQueryFn = vi
+      .fn<() => Promise<AppConfig>>()
+      .mockResolvedValueOnce(remoteConfig())
+      .mockImplementationOnce(
+        () =>
+          new Promise<AppConfig>((resolve) => {
+            answerReadBack = resolve;
+          }),
+      )
+      .mockResolvedValue(
+        remoteConfig({
+          appSettings: { chunkSizeMB: 4, showHiddenFiles: true },
+        }),
+      );
+    renderProvider({ configQueryFn });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set folders" }).click();
+    });
+    await waitFor(() => expect(configQueryFn).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      screen.getByRole("button", { name: "set chunk four" }).click();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("chunk-size")).toHaveTextContent("4"),
+    );
+    // The stale answer is dropped: the change cancelled that read-back.
+    await act(async () => {
+      answerReadBack?.(remoteConfig());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(screen.getByTestId("chunk-size")).toHaveTextContent("4");
+    expect(configQueryFn).toHaveBeenCalledTimes(2);
+
+    // The refused store is read back again after the newer save.
+    await act(async () => confirmNewer?.());
+    await waitFor(() => expect(configQueryFn).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(screen.getByTestId("docker-folders")).toHaveTextContent(
+        "/srv/docker",
+      ),
+    );
+    expect(screen.getByTestId("chunk-size")).toHaveTextContent("4");
+  });
+
+  it("signs out when the read-back finds the session gone", async () => {
+    apiMocks.setConfigRemote.mockRejectedValueOnce(new Error("refused"));
+    const configQueryFn = vi
+      .fn<() => Promise<AppConfig>>()
+      .mockResolvedValueOnce(remoteConfig())
+      .mockRejectedValue(new LinuxIOError("expired", 401));
+    const { sessionExpired } = renderProvider({ configQueryFn });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set folders" }).click();
+    });
+
+    await waitFor(() => expect(sessionExpired).toHaveBeenCalledTimes(1));
   });
 
   it("persists a StrictMode-replayed update only once", async () => {

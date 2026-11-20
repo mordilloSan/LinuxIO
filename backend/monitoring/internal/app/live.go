@@ -211,7 +211,7 @@ func (a *App) runLiveProcessCollection(ctx context.Context, run *liveProcessRun)
 		run.Err = err
 		return
 	}
-	run.Value, run.Err = a.collectProcessPluginPayloadsWithIdentities(ctx, identities)
+	run.Value, run.Err = a.collectProcessPluginPayloads(ctx, identities)
 }
 
 func cloneJSONPayloads(payloads map[string]jsontext.Value) map[string]jsontext.Value {

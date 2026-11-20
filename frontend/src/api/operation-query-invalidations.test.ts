@@ -35,6 +35,7 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       "remount_cifs",
       "unmount_filesystem",
       "btrfs_subvolume_create",
+      "btrfs_subvolume_create_in",
     ]) {
       expect(OPERATION_QUERY_INVALIDATIONS[`storage.${action}`]).toContainEqual(
         ["linuxio", "storage", "get_topology"],
@@ -103,6 +104,13 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       ]);
     }
   });
+  it("refreshes the swap status after every memory change", () => {
+    for (const action of ["set_swap_mode", "set_swappiness", "drain_swap"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`memory.${action}`]).toEqual([
+        ["linuxio", "memory", "get_swap_status"],
+      ]);
+    }
+  });
   it("refreshes index-backed data after indexing", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["filebrowser.index"]).toEqual([
       ["linuxio", "indexer", "get_status"],
@@ -114,10 +122,15 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
 
   it("refreshes the Trash listing after trash, restore and purge", () => {
     const trashList = ["linuxio", "filebrowser", "trash_list"];
+    // A trashed folder's size too: the next item may take a purged name.
+    const trashSize = ["linuxio", "filebrowser", "trash_size"];
     for (const route of ["trash_batch", "trash_restore", "trash_purge"]) {
       expect(
         OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
       ).toContainEqual(trashList);
+      expect(
+        OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
+      ).toContainEqual(trashSize);
     }
     expect(
       OPERATION_QUERY_INVALIDATIONS["filebrowser.trash_restore"],

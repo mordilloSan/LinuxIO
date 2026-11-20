@@ -268,6 +268,8 @@ Browser                 Server                  Bridge
 
 **Note:** On FIN, the server forwards the payload (typically an `OpStreamClose` frame) to the bridge and waits for the bridge to close the stream. It does not immediately close the yamux stream.
 
+When the browser leaves a stream route that only the bridge writes to (a live log or output follow), the bridge's client monitor reads the close, abort or EOF and cancels the route's context first, and only then sets the write deadline to now that wakes a write blocked on a slow client (`cancelForClientEnd`, `backend/bridge/internal/bridgeipc/query_context.go`). The woken writer therefore finds the context canceled, `streamrelay.WriteErrorUnlessCanceled` closes the stream best effort and returns no error, and the route logs `route completed` (Debug) or `route canceled` (Info), never `route failed`. A session that died as a whole (`stream reset: connection closed: EOF`) is not a page closing and still logs `route failed`.
+
 ### Bridge Closes Stream
 
 ```

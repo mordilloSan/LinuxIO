@@ -23,6 +23,7 @@ type SelectionEvent =
   | { type: "clearClipboard" }
   | { paths: string[]; type: "copyToClipboard" }
   | { paths: string[]; type: "cutToClipboard" }
+  | { paths: string[]; type: "deselect" }
   | { directoryPath: string; paths: Set<string>; type: "select" };
 
 function selectionReducer(
@@ -46,6 +47,16 @@ function selectionReducer(
       return { ...state, clipboard: { operation: "copy", paths: event.paths } };
     case "cutToClipboard":
       return { ...state, clipboard: { operation: "cut", paths: event.paths } };
+    case "deselect": {
+      // Paths are absolute, so this leaves any other selection alone, also
+      // in a folder the user has moved to since.
+      if (!event.paths.some((path) => state.selectedPaths.has(path))) {
+        return state;
+      }
+      const selectedPaths = new Set(state.selectedPaths);
+      for (const path of event.paths) selectedPaths.delete(path);
+      return { ...state, selectedPaths };
+    }
     case "select":
       if (state.directoryPath !== event.directoryPath) return state;
       return { ...state, selectedPaths: event.paths };
@@ -57,6 +68,8 @@ interface SelectionActions {
   clearClipboard: () => void;
   copyToClipboard: (paths: string[]) => void;
   cutToClipboard: (paths: string[]) => void;
+  /** Removes these paths from the selection and keeps the rest selected. */
+  deselect: (paths: string[]) => void;
   select: (paths: Set<string>) => void;
 }
 
@@ -101,6 +114,7 @@ export const useFileSelectionState = (
       clearClipboard: () => dispatch({ type: "clearClipboard" }),
       copyToClipboard: (paths) => dispatch({ paths, type: "copyToClipboard" }),
       cutToClipboard: (paths) => dispatch({ paths, type: "cutToClipboard" }),
+      deselect: (paths) => dispatch({ paths, type: "deselect" }),
       select: (paths) => dispatch({ directoryPath, paths, type: "select" }),
     }),
     [directoryPath],

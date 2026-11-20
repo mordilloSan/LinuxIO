@@ -3,6 +3,13 @@ Description=LinuxIO Web Server (TCP socket)
 Documentation=https://github.com/mordilloSan/LinuxIO
 PartOf=linuxio.target
 Wants=linuxio-issue.service linuxio-indexer.socket
+# A restart of linuxio.target stops this socket and starts it again. Without
+# this ordering systemd also starts linuxio-auth.socket in that window; it
+# forks an sd-chown helper that inherits the old listening fd and keeps :8090
+# bound for a few ms after systemd closed it, so the new bind fails with
+# "Address already in use". Ordered after the auth socket, this one is stopped
+# first and started last, with no helper holding its fd.
+After=linuxio-auth.socket
 
 [Socket]
 # Port-only form binds dual-stack (IPv4 + IPv6 via IPV6_V6ONLY=0).

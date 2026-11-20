@@ -192,6 +192,7 @@ const linuxio = {
     }),
     list_compose_projects: defineCall("docker.list_compose_projects"),
     list_containers: defineCall("docker.list_containers"),
+    list_host_ips: defineCall("docker.list_host_ips"),
     list_images: defineCall("docker.list_images"),
     list_networks: defineCall("docker.list_networks"),
     list_volumes: defineCall("docker.list_volumes"),
@@ -234,8 +235,7 @@ const linuxio = {
       field: "containerId",
     }),
     update_container: defineMutation("docker", "update_container", {
-      kind: "field",
-      field: "containerId",
+      kind: "object",
     }),
     validate_compose: defineCallWithRequest("docker.validate_compose"),
     validate_stack_directory: defineCallWithRequest(
@@ -283,6 +283,7 @@ const linuxio = {
     trash_restore: defineMutation("filebrowser", "trash_restore", {
       kind: "object",
     }),
+    trash_size: defineCallWithRequest("filebrowser.trash_size"),
     upload: defineMutation("filebrowser", "upload", { kind: "object" }),
     upload_batch: defineMutation("filebrowser", "upload_batch", {
       kind: "object",
@@ -311,6 +312,17 @@ const linuxio = {
   logs: {
     general_entry: defineCallWithRequest("logs.general_entry"),
     general_page: defineCallWithRequest("logs.general_page"),
+  },
+  memory: {
+    drain_swap: defineMutation("memory", "drain_swap", { kind: "none" }),
+    get_swap_status: defineCall("memory.get_swap_status"),
+    set_swap_mode: defineMutation("memory", "set_swap_mode", {
+      kind: "object",
+    }),
+    set_swappiness: defineMutation("memory", "set_swappiness", {
+      kind: "field",
+      field: "swappiness",
+    }),
   },
   monitoring: {
     check_database: defineCall("monitoring.check_database"),
@@ -435,6 +447,9 @@ const linuxio = {
     }),
   },
   storage: {
+    btrfs_auto_rebuild: defineMutation("storage", "btrfs_auto_rebuild", {
+      kind: "object",
+    }),
     btrfs_balance: defineMutation("storage", "btrfs_balance", {
       kind: "object",
     }),
@@ -536,9 +551,24 @@ const linuxio = {
       { kind: "none" },
     ),
     btrfs_snapshots: defineCallWithRequest("storage.btrfs_snapshots"),
+    btrfs_spare_clear: defineMutation("storage", "btrfs_spare_clear", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_spare_delay: defineMutation("storage", "btrfs_spare_delay", {
+      kind: "object",
+    }),
+    btrfs_spare_set: defineMutation("storage", "btrfs_spare_set", {
+      kind: "object",
+    }),
     btrfs_subvolume_create: defineMutation(
       "storage",
       "btrfs_subvolume_create",
+      { kind: "object" },
+    ),
+    btrfs_subvolume_create_in: defineMutation(
+      "storage",
+      "btrfs_subvolume_create_in",
       { kind: "object" },
     ),
     btrfs_subvolume_delete: defineMutation(

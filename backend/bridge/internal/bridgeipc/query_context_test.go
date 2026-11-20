@@ -42,6 +42,42 @@ func TestReceiveOnlyChannelContextClientEndCancels(t *testing.T) {
 	}
 }
 
+// deadlineRecorder is a stream whose SetWriteDeadline records whether the
+// context was already canceled when the router woke the writer.
+type deadlineRecorder struct {
+	net.Conn
+	ctx      context.Context
+	canceled chan bool
+}
+
+func (s deadlineRecorder) SetWriteDeadline(time.Time) error {
+	select {
+	case s.canceled <- s.ctx.Err() != nil:
+	default:
+	}
+	return nil
+}
+
+func TestClientEndCancelsBeforeWakingTheBlockedWrite(t *testing.T) {
+	server, client := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := deadlineRecorder{Conn: server, ctx: ctx, canceled: make(chan bool, 1)}
+
+	cancelForClientEnd(stream, cancel, true)
+
+	select {
+	case wasCanceled := <-stream.canceled:
+		if !wasCanceled {
+			t.Fatal("the write was woken while the context was still live")
+		}
+	default:
+		t.Fatal("the blocked write was not woken")
+	}
+}
+
 func TestReceiveOnlyChannelContextAbortInterruptsBlockedWrite(t *testing.T) {
 	server, client := net.Pipe()
 	ctx, cleanup := ReceiveOnlyChannelContext(context.Background(), server)
@@ -141,7 +177,7 @@ func TestTaskCallPrimitivesHonorCanceledContext(t *testing.T) {
 			router := NewRouter(registry)
 			registry.RegisterRoutes(router)
 			owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
-			task, _, err := registry.ClaimForOwnerWithIdentity(
+			task, _, err := registry.ClaimForOwner(
 				"test.task.primitive.abort",
 				nil,
 				owner,

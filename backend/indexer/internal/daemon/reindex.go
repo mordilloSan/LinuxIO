@@ -13,8 +13,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/indexing"
 )
 
-// reindexPathWithProgress reindexes a path and emits progress events.
-func (d *daemon) reindexPathWithProgress(ctx context.Context, operationID, relativePath string, sender sseEventSender) {
+// reindexPath reindexes a path and emits progress events.
+func (d *daemon) reindexPath(ctx context.Context, operationID, relativePath string, sender sseEventSender) {
 	start := time.Now()
 	slog.Debug("starting reindex", "path", relativePath)
 

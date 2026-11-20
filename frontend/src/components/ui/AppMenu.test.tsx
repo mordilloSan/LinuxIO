@@ -58,6 +58,33 @@ describe("AppMenu", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it("makes a slider in the menu a stop of its arrow keys", async () => {
+    const { user } = render(
+      <AppMenu anchorPosition={{ top: 20, left: 20 }} onClose={vi.fn()} open>
+        <AppMenuItem>First action</AppMenuItem>
+        <AppMenuItem>Second action</AppMenuItem>
+        <input aria-label="Level" max={3} min={0} type="range" />
+      </AppMenu>,
+    );
+    const first = screen.getByRole("menuitem", { name: "First action" });
+    const second = screen.getByRole("menuitem", { name: "Second action" });
+    const slider = screen.getByRole("slider", { name: "Level" });
+    await waitFor(() => expect(first).toHaveFocus());
+
+    await user.keyboard("{ArrowDown}");
+    expect(second).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(slider).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(first).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(slider).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(first).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(slider).toHaveFocus();
+  });
+
   it("restores its connected trigger when closing owned focus", async () => {
     const { user } = render(<MenuHarness />);
     const trigger = screen.getByRole("button", { name: "Open menu" });

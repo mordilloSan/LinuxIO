@@ -1,11 +1,5 @@
 package storage
 
-import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-
-// DriveInfo represents the disk inventory read from sysfs and udev. Live SMART and power
-// data belongs to the monitoring daemon; self-test mutations remain here.
-type DriveInfo = apischema.ApiDisk
-
 // LVM command JSON output structures (for parsing pvs/vgs/lvs --reportformat json)
 
 type pvsReport struct {

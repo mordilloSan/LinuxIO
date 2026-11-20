@@ -19,6 +19,8 @@ const noopSearchCaseChange = () => {};
 interface FileBrowserHeaderProps {
   /** Leading slot for the browsing view — the breadcrumb trail. */
   breadcrumbs?: ReactNode;
+  /** The card view's size slider, beside the view button; none when null. */
+  cardSizeSlider?: ReactNode;
   editingFileName?: string;
   editingFilePath?: string;
   isDirty?: boolean;
@@ -30,6 +32,8 @@ interface FileBrowserHeaderProps {
   onSearchChange?: (value: string) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
+  /** Items dragged onto the Trash button move to the Trash. */
+  onTrashItems?: (paths: string[]) => Promise<unknown>;
   searchQuery?: string;
   searchCaseSensitive?: boolean;
   showHiddenFiles: boolean;
@@ -41,12 +45,14 @@ const FileBrowserHeader = ({
   showQuickSave = false,
   onSwitchView,
   onToggleHiddenFiles,
+  onTrashItems,
   onSaveFile,
   onCloseEditor,
   isSaving = false,
   readOnly = false,
   viewMode,
   breadcrumbs,
+  cardSizeSlider,
   editingFileName,
   editingFilePath,
   isDirty = false,
@@ -68,12 +74,14 @@ const FileBrowserHeader = ({
           display: isBrowsing ? "grid" : "flex",
           // The desktop columns mirror .tab-selector (tab-selector.css), so
           // the search sits at the same screen-centered spot here as on tab
-          // routes. Mobile collapses the field into the actions menu, matching
-          // the routed tab headers.
+          // routes; where the actions need more than their side, their column
+          // grows and the search moves over instead of lying under them.
+          // Mobile collapses the field into the actions menu, matching the
+          // routed tab headers.
           gridTemplateColumns: isBrowsing
             ? isMobile
               ? "minmax(0, 1fr) auto"
-              : "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(0, 1fr)"
+              : "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(max-content, 1fr)"
             : undefined,
           gap: isBrowsing ? 6 : undefined,
           alignItems: "center",
@@ -199,11 +207,13 @@ const FileBrowserHeader = ({
 
           {!showQuickSave && (
             <FileBrowserHeaderActions
+              cardSizeSlider={cardSizeSlider}
               isMobile={isMobile}
               onSearchChange={onSearchChange}
               onSearchCaseSensitiveChange={onSearchCaseSensitiveChange}
               onSwitchView={onSwitchView}
               onToggleHiddenFiles={onToggleHiddenFiles}
+              onTrashItems={onTrashItems}
               searchQuery={isMobile ? searchQuery : ""}
               searchCaseSensitive={searchCaseSensitive}
               showHiddenFiles={showHiddenFiles}

@@ -38,7 +38,12 @@ const FILEBROWSER_LISTING_KEYS = [
   endpointQueryPrefix("filebrowser.dir_size"),
   endpointQueryPrefix("filebrowser.subfolders"),
 ];
-const TRASH_LIST_KEYS = [endpointQueryPrefix("filebrowser.trash_list")];
+// A trashed folder's size goes with the list: the next item trashed may take
+// the name of one purged or restored.
+const TRASH_LIST_KEYS = [
+  endpointQueryPrefix("filebrowser.trash_list"),
+  endpointQueryPrefix("filebrowser.trash_size"),
+];
 const FILEBROWSER_PERMISSION_KEYS = [
   endpointQueryPrefix("filebrowser.resource_stat"),
 ];
@@ -102,6 +107,10 @@ const NETWORK_BRIDGE_KEYS = [
   endpointQueryPrefix("network.get_bridge_options"),
   endpointQueryPrefix("virt.networks"),
 ];
+
+// Each memory change returns the new swap status; the Memory dialog refetches
+// it so a session that did not start the change sees the new host too.
+const MEMORY_STATUS_KEYS = [endpointQueryPrefix("memory.get_swap_status")];
 
 /**
  * Single source of truth for which query caches a completed operation makes
@@ -344,9 +353,16 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.run_smart_test": [endpointQueryPrefix("monitoring.get_live")],
+  // A new subvolume is a new folder, which the folder picker lists.
   "storage.btrfs_subvolume_create": [
     endpointQueryPrefix("storage.btrfs_subvolumes"),
     endpointQueryPrefix("storage.get_topology"),
+    ...FILEBROWSER_LISTING_KEYS,
+  ],
+  "storage.btrfs_subvolume_create_in": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+    ...FILEBROWSER_LISTING_KEYS,
   ],
   "storage.btrfs_subvolume_delete": [
     endpointQueryPrefix("storage.btrfs_subvolumes"),
@@ -420,6 +436,11 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "storage.btrfs_scrub_cancel": BTRFS_DEVICE_KEYS,
   "storage.btrfs_device_grow": BTRFS_DEVICE_KEYS,
   "storage.btrfs_set_label": BTRFS_DEVICE_KEYS,
+  // The spare is part of the pool's read model and reserved in the inventory.
+  "storage.btrfs_spare_set": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_spare_delay": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_spare_clear": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_auto_rebuild": BTRFS_DEVICE_KEYS,
   "storage.btrfs_pool_create": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_destroy": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_mount": BTRFS_POOL_KEYS,
@@ -440,6 +461,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "updates.set_auto_updates": [endpointQueryPrefix("updates.get_auto_updates")],
   "logging.set_debug": [endpointQueryPrefix("logging.get_debug")],
+
+  "memory.set_swap_mode": MEMORY_STATUS_KEYS,
+  "memory.set_swappiness": MEMORY_STATUS_KEYS,
+  "memory.drain_swap": MEMORY_STATUS_KEYS,
 
   "wireguard.add_interface": [endpointQueryPrefix("wireguard.list_interfaces")],
   "wireguard.update_interface": [

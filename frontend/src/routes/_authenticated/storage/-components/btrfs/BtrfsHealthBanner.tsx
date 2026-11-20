@@ -9,6 +9,7 @@ import {
   type BtrfsFilesystem,
   type BtrfsScrubStatus,
 } from "@/api";
+import { toastLinkOptions } from "@/api/toast-meta";
 import { STATUS_COLOR } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
@@ -54,8 +55,79 @@ interface Health {
   title: string;
 }
 
+/** The automatic rebuild, which leads while it runs or waits on a person. */
+const rebuildHealth = (
+  filesystem: BtrfsFilesystem,
+  name: string,
+): Health | null => {
+  const { rebuild } = filesystem;
+  switch (rebuild?.state) {
+    case "running":
+      return {
+        color: STATUS_COLOR.warning,
+        icon: "mdi:database-refresh",
+        text: `LinuxIO is rebuilding device ${rebuild.deviceId} of ${name} onto ${rebuild.device}, ${rebuild.spare ? "the hot spare" : "the disk that came back"}, from the pool's other disks. The pool stays mounted; once the copy is checked, LinuxIO resyncs the pool.`,
+        title: "Rebuilding",
+      };
+    case "failed":
+      return {
+        action: "replace",
+        color: STATUS_COLOR.error,
+        icon: "mdi:shield-alert",
+        text: `The automatic rebuild of device ${rebuild.deviceId} onto ${rebuild.device} failed: ${rebuild.reason}. LinuxIO does not try that disk again by itself; replace the disk.`,
+        title: "Rebuild failed",
+      };
+    case "refused":
+      // A refusal that keeps a copy a replace would give up says what to do
+      // instead, and offers no replace.
+      return {
+        action: rebuild.advice ? undefined : "replace",
+        color: STATUS_COLOR.error,
+        icon: "mdi:shield-alert",
+        text: `${sentence(rebuild.reason ?? "")} ${rebuild.advice ?? "Replace the missing disk."}`,
+        title: "Not rebuilt automatically",
+      };
+    case "waiting":
+      // A rebuild on record that waits says what for; otherwise a disk is
+      // back and waits for its second health check.
+      return rebuild.reason
+        ? {
+            color: STATUS_COLOR.warning,
+            icon: "mdi:timer-sand",
+            text: `${sentence(rebuild.reason)} Nothing is copied meanwhile.`,
+            title: "Rebuild waits",
+          }
+        : {
+            color: STATUS_COLOR.warning,
+            icon: "mdi:sync",
+            text: `${rebuild.device} is back as device ${rebuild.deviceId} of ${name}. LinuxIO erases it and rebuilds the pool onto it once the next health check, within 10 minutes, sees it too.`,
+            title: "Disk back",
+          };
+  }
+  return null;
+};
+
+/** A reason the bridge words as a clause, as a sentence. */
+const sentence = (clause: string) =>
+  `${clause.charAt(0).toUpperCase()}${clause.slice(1)}${clause.endsWith(".") ? "" : "."}`;
+
 /** The worst condition first: it is the one to act on. */
 const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
+  const rebuild = rebuildHealth(filesystem, name);
+  if (rebuild) return rebuild;
+  // A disk that dropped out counts the writes that failed as it went, so it
+  // comes before the errors: they are what the dropout left.
+  const dropped = filesystem.devices.find((d) => d.droppedOut);
+  if (dropped)
+    return {
+      action: "replace",
+      color: STATUS_COLOR.warning,
+      icon: "mdi:shield-alert-outline",
+      text: filesystem.autoRebuild
+        ? `${dropped.path} dropped out of ${name} while it was mounted, and the pool runs on its other disks. Reconnect the disk: LinuxIO rebuilds the pool onto it once two health checks in a row have seen it back. Or replace the disk.`
+        : `${dropped.path} dropped out of ${name} while it was mounted, and the pool runs on its other disks. The pool takes the disk back only when it is mounted again: reconnect the disk, then unmount and mount the pool, or restart, and LinuxIO resyncs it. Or replace the disk.`,
+      title: "Disk dropped out",
+    };
   if (filesystem.devices.some((d) => deviceErrorCount(d) > 0))
     return {
       color: STATUS_COLOR.error,
@@ -154,9 +226,10 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       await call("tasks.cancel", { taskId: job.id });
     } catch (error) {
       setStoppingScrub(null);
-      toast.error(getMutationErrorMessage(error, "Failed to stop the check"), {
-        meta: BTRFS_POOL_TOAST_META,
-      });
+      toast.error(
+        getMutationErrorMessage(error, "Failed to stop the check"),
+        toastLinkOptions(BTRFS_POOL_TOAST_META),
+      );
     }
   };
 

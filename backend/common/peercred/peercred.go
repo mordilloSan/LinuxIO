@@ -5,7 +5,6 @@ package peercred
 import (
 	"context"
 	"net"
-	"net/http"
 	"syscall"
 )
 
@@ -38,11 +37,6 @@ func UID(ctx context.Context) (uint32, bool) {
 		return 0, false
 	}
 	return cred.UID, true
-}
-
-// RequestUID is UID for an HTTP request.
-func RequestUID(r *http.Request) (uint32, bool) {
-	return UID(r.Context())
 }
 
 // WithCredForTest attaches a uid without a socket. Tests only.

@@ -43,11 +43,11 @@ func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 	t.Cleanup(func() { runUpdates = originalRun })
 
 	var gotConfig string
-	runUpdates = func(ctx context.Context, configPath string, _ func(string)) error {
+	runUpdates = func(ctx context.Context, configPath string, _ func(string)) (dockerupdate.PassReport, error) {
 		gotConfig = configPath
-		return nil
+		return dockerupdate.PassReport{}, nil
 	}
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run", "--config", "/tmp/custom"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "--config", "/tmp/custom"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("run exit code = %d, want 0", code)
 	}
 	if gotConfig != "/tmp/custom" {
@@ -55,40 +55,112 @@ func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 	}
 }
 
-func TestRunCLIExitCodesAndErrors(t *testing.T) {
-	originalRun := runUpdates
-	t.Cleanup(func() { runUpdates = originalRun })
-	runUpdates = func(context.Context, string, func(string)) error { return errors.New("docker unavailable") }
+// passHarness runs "linuxio-docker-update" over a stubbed pass and a
+// stubbed summary store.
+type passHarness struct {
+	stored   []scheduledrun.Summary
+	storeErr error
+}
 
+func newPassHarness(t *testing.T) *passHarness {
+	t.Helper()
+	originalRun, originalSummarize := runUpdates, summarize
+	t.Cleanup(func() { runUpdates, summarize = originalRun, originalSummarize })
+	h := &passHarness{}
+	summarize = func(_ context.Context, summary scheduledrun.Summary) error {
+		if h.storeErr != nil {
+			return h.storeErr
+		}
+		h.stored = append(h.stored, summary)
+		return nil
+	}
+	return h
+}
+
+// run runs one pass that ends with report and err.
+func (h *passHarness) run(report dockerupdate.PassReport, err error) (code int, stdout, stderr string) {
+	runUpdates = func(context.Context, string, func(string)) (dockerupdate.PassReport, error) { return report, err }
+	var out, errOut bytes.Buffer
+	h.stored = nil
+	code = runCLI(context.Background(), []string{"linuxio-docker-update"}, &out, &errOut)
+	return code, out.String(), errOut.String()
+}
+
+func failedProxyPass() (dockerupdate.PassReport, error, error) {
+	cause := errors.New("container keeps restarting")
+	return dockerupdate.PassReport{
+		Mode:    "update",
+		Checked: dockerupdate.DockerUpdateCheckResult{Checked: 3, Updates: 1},
+		Containers: []dockerupdate.ContainerOutcome{
+			{Name: "docker-proxy", Image: "example/proxy:latest", OldImageID: "sha256:old", Err: cause},
+		},
+	}, scheduledrun.Reported(cause), cause
+}
+
+func TestRunCLIFailsOnlyForWhatNoAlertReports(t *testing.T) {
+	h := newPassHarness(t)
+
+	// A pass that ended before it checked anything prints and stores nothing.
+	code, stdout, stderr := h.run(dockerupdate.PassReport{}, errors.New("docker unavailable"))
+	if code != 1 || stdout != "" || len(h.stored) != 0 || !strings.Contains(stderr, "run failed: docker unavailable") {
+		t.Fatalf("run failure = code %d, stdout %q, stderr %q, stored %+v", code, stdout, stderr, h.stored)
+	}
+
+	// A container that failed raised its own alert: the pass did its work, so
+	// the unit does not fail, and the report and the summary name the failure.
+	report, reported, _ := failedProxyPass()
+	code, stdout, stderr = h.run(report, reported)
+	if code != 0 || stderr != "" {
+		t.Fatalf("reported failure = code %d, stderr %q; want 0 and no run failure", code, stderr)
+	}
+	if !strings.Contains(stdout, "Container updates: 3 checked, 1 failed") || !strings.Contains(stdout, "docker-proxy") || !strings.Contains(stdout, "container keeps restarting") {
+		t.Fatalf("stdout = %q, want the totals and the failed container", stdout)
+	}
+	if len(h.stored) != 1 || h.stored[0].Message != "1 failed" || h.stored[0].Failures != 1 || h.stored[0].Skipped {
+		t.Fatalf("stored summary = %+v, want one failure", h.stored)
+	}
+
+	// One failure without an alert fails the run, and only it is printed as
+	// the run's failure: the report already names the container's.
+	code, _, stderr = h.run(report, errors.Join(reported, errors.New("a scheduled container is gone")))
+	if code != 1 || !strings.Contains(stderr, "run failed: a scheduled container is gone") || strings.Contains(stderr, "keeps restarting") {
+		t.Fatalf("partly reported failure = code %d, stderr %q", code, stderr)
+	}
+}
+
+func TestRunCLISkippedPassCompletes(t *testing.T) {
+	h := newPassHarness(t)
+	skipped := dockerupdate.PassReport{Skipped: "another Docker update was running"}
+
+	// A pass another update held off did no work: it completes and says so.
+	code, stdout, stderr := h.run(skipped, nil)
+	if code != 0 || stderr != "" || !strings.Contains(stdout, "skipped, another Docker update was running") {
+		t.Fatalf("skipped pass = code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if len(h.stored) != 1 || !h.stored[0].Skipped || h.stored[0].Failures != 0 {
+		t.Fatalf("stored summary = %+v, want a skipped run", h.stored)
+	}
+
+	// Without its summary the end hook would read the skipped pass as one
+	// that ran, so the exit status says it instead; a pass that ran still
+	// exits with 0, since its completed run is read correctly without one.
+	h.storeErr = scheduledrun.ErrNoRun
+	if code, _, _ := h.run(skipped, nil); code != scheduledrun.ExitSkipped {
+		t.Fatalf("skipped pass without a stored summary = code %d, want %d", code, scheduledrun.ExitSkipped)
+	}
+	report, reported, _ := failedProxyPass()
+	if code, _, _ := h.run(report, reported); code != 0 {
+		t.Fatalf("reported failure without a stored summary = code %d, want 0", code)
+	}
+}
+
+func TestRunCLIRejectsBadArguments(t *testing.T) {
 	var stderr bytes.Buffer
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "run failed: docker unavailable") {
-		t.Fatalf("run failure = code %d, stderr %q", code, stderr.String())
-	}
-	// A pass whose every failure has its container's alert says so, and the
-	// end hook raises no run alert; one failure without an alert undoes that.
-	reported := scheduledrun.Reported(errors.New("web: pull failed"))
-	runUpdates = func(context.Context, string, func(string)) error { return reported }
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != scheduledrun.ExitReported {
-		t.Fatalf("reported failure exit code = %d, want %d", code, scheduledrun.ExitReported)
-	}
-	runUpdates = func(context.Context, string, func(string)) error {
-		return errors.Join(reported, errors.New("a scheduled container is gone"))
-	}
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != 1 {
-		t.Fatalf("partly reported failure exit code = %d, want 1", code)
-	}
-	runUpdates = func(context.Context, string, func(string)) error {
-		return scheduledrun.Skipped(errors.New("another Docker update is already in progress"))
-	}
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != scheduledrun.ExitSkipped {
-		t.Fatalf("skipped pass exit code = %d, want %d", code, scheduledrun.ExitSkipped)
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "bogus"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "unknown argument") {
+		t.Fatalf("unknown argument = code %d, stderr %q", code, stderr.String())
 	}
 	stderr.Reset()
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "bogus"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "unknown command") {
-		t.Fatalf("unknown command = code %d, stderr %q", code, stderr.String())
-	}
-	stderr.Reset()
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run", "--config"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "requires a path") {
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "--config"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "requires a path") {
 		t.Fatalf("missing config = code %d, stderr %q", code, stderr.String())
 	}
 }
@@ -97,14 +169,14 @@ func TestRunCLIReportsUpdateStepsAsUnknownPercentage(t *testing.T) {
 	originalRun, originalReport := runUpdates, reportProgress
 	t.Cleanup(func() { runUpdates, reportProgress = originalRun, originalReport })
 
-	runUpdates = func(_ context.Context, _ string, report func(string)) error {
+	runUpdates = func(_ context.Context, _ string, report func(string)) (dockerupdate.PassReport, error) {
 		report("Checking for updates")
-		return nil
+		return dockerupdate.PassReport{}, nil
 	}
 	var percentage int
 	var message string
 	reportProgress = func(p int, m string) { percentage, message = p, m }
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("run exit code = %d, want 0", code)
 	}
 	if percentage != -1 || message != "Checking for updates" {
@@ -115,11 +187,11 @@ func TestRunCLIReportsUpdateStepsAsUnknownPercentage(t *testing.T) {
 func TestRunWorkerConfiguresLoggingBeforeDispatch(t *testing.T) {
 	originalConfigure := configureLogging
 	originalRun := runUpdates
-	originalReporter, originalReport := newReporter, reportProgress
+	originalReporter, originalReport, originalSummarize := newReporter, reportProgress, summarize
 	t.Cleanup(func() {
 		configureLogging = originalConfigure
 		runUpdates = originalRun
-		newReporter, reportProgress = originalReporter, originalReport
+		newReporter, reportProgress, summarize = originalReporter, originalReport, originalSummarize
 	})
 
 	configured := false
@@ -133,29 +205,29 @@ func TestRunWorkerConfiguresLoggingBeforeDispatch(t *testing.T) {
 	// The reporter logs a record it cannot read, so it is built once the
 	// logger is configured.
 	reporterBuilt := false
-	newReporter = func() func(int, string) {
+	newReporter = func() (func(int, string), func(context.Context, scheduledrun.Summary) error) {
 		if !configured {
 			t.Fatal("progress reporter built before logging was configured")
 		}
 		reporterBuilt = true
-		return func(int, string) {}
+		return func(int, string) {}, func(context.Context, scheduledrun.Summary) error { return nil }
 	}
-	runUpdates = func(context.Context, string, func(string)) error {
+	runUpdates = func(context.Context, string, func(string)) (dockerupdate.PassReport, error) {
 		if !configured {
 			t.Fatal("update dispatched before logging was configured")
 		}
-		return nil
+		return dockerupdate.PassReport{}, nil
 	}
-	if code := runWorker(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
-		t.Fatalf("runWorker exit code = %d, want 0", code)
+	if code := runUpdater(context.Background(), []string{"linuxio-docker-update"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("runUpdater exit code = %d, want 0", code)
 	}
 	if !reporterBuilt {
-		t.Fatal("runWorker did not build the progress reporter")
+		t.Fatal("runUpdater did not build the progress reporter")
 	}
 
 	configureLogging = func(string, bool) error { return errors.New("journald unavailable") }
 	var stderr bytes.Buffer
-	if code := runWorker(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "initialize logging") {
+	if code := runUpdater(context.Background(), []string{"linuxio-docker-update"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "initialize logging") {
 		t.Fatalf("logging failure = code %d, stderr %q", code, stderr.String())
 	}
 }

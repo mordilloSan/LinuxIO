@@ -1,8 +1,11 @@
 package packagekit
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +128,29 @@ func TestSignalsFlowWhilePackageKitGateHeld(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("signal was blocked while PackageKit gate was held")
+	}
+}
+
+// LogClose takes a transaction's match off the bus even when handed a
+// cancelled context, as every operation a cancel ends does: godbus does not
+// send RemoveMatch on a cancelled context, and the match would stay.
+func TestLogCloseRemovesTheMatchWithACancelledContext(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	sub, err := dbusclient.WatchObjectSignals(context.Background(), "/org/freedesktop/PackageKit/transactions/x", 1, "", "")
+	if err != nil {
+		t.Fatalf("WatchObjectSignals: %v", err)
+	}
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	LogClose(ctx, &Transaction{sub: sub})
+	if strings.Contains(logs.String(), "failed to close PackageKit transaction subscription") {
+		t.Fatalf("logs = %q, want the match removed", logs.String())
 	}
 }
 

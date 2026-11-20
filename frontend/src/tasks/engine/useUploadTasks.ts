@@ -453,6 +453,7 @@ export function useUploadTasks(
           toast,
           navigate,
           `Failed to upload ${failures.length} item${failures.length === 1 ? "" : "s"}: ${first.message}`,
+          { failures: failures.map((failure) => failure.message) },
         );
       }
 

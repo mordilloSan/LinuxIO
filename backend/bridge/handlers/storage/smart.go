@@ -52,6 +52,24 @@ func RunSmartTest(ctx context.Context, device, testType string) error {
 	return nil
 }
 
+// abortSmartTest aborts the self-test device runs (smartctl -X). It is a
+// test seam.
+var abortSmartTest = func(ctx context.Context, device string) error {
+	if !validDeviceNameRe.MatchString(device) {
+		return errors.New("invalid device name")
+	}
+	smartctlPath, err := exec.LookPath("smartctl")
+	if err != nil {
+		return fmt.Errorf("smartctl not found: %w", err)
+	}
+	out, err := exec.CommandContext(ctx, smartctlPath, "-X", "/dev/"+device).CombinedOutput()
+	// Its exit status is a bitmask that can be non-zero after an abort.
+	if err != nil && !strings.Contains(strings.ToLower(string(out)), "aborted") {
+		return fmt.Errorf("smartctl self-test abort failed for %s: %w\nOutput: %s", device, err, out)
+	}
+	return nil
+}
+
 // SmartTestStatus represents the current state of a SMART self-test on a drive.
 type SmartTestStatus struct {
 	State           string // "in_progress" | "completed" | "failed" | "aborted" | "idle"
@@ -65,8 +83,18 @@ type SmartTestStatus struct {
 // current_self_test_completion_percent. Older / fully-scalar / fully-object
 // variants are also supported via custom unmarshalling below.
 type smartctlOutput struct {
-	ATA  *ataSmartData    `json:"ata_smart_data"`
-	NVMe *nvmeSelfTestLog `json:"nvme_self_test_log"`
+	ModelName    string           `json:"model_name"`
+	SerialNumber string           `json:"serial_number"`
+	WWN          *smartctlWWN     `json:"wwn"`
+	ATA          *ataSmartData    `json:"ata_smart_data"`
+	ATALog       *ataSelfTestLog  `json:"ata_smart_self_test_log"`
+	NVMe         *nvmeSelfTestLog `json:"nvme_self_test_log"`
+}
+
+type smartctlWWN struct {
+	NAA uint64 `json:"naa"`
+	OUI uint64 `json:"oui"`
+	ID  uint64 `json:"id"`
 }
 
 type ataSmartData struct {
@@ -84,6 +112,28 @@ type ataSelfTestStatus struct {
 	RemainingPercent *int   `json:"remaining_percent"`
 }
 
+// ataSelfTestLog is the drive's standard self-test log, newest first.
+type ataSelfTestLog struct {
+	Standard *struct {
+		Table []ataSelfTestLogEntry `json:"table"`
+	} `json:"standard"`
+}
+
+type ataSelfTestLogEntry struct {
+	Type          *intOrObj          `json:"type"`
+	Status        *ataSelfTestStatus `json:"status"`
+	LifetimeHours int                `json:"lifetime_hours"`
+}
+
+// The self-test execution status of an ATA drive is the high nibble of its
+// status byte.
+const (
+	ataSelfTestCompleted   = 0x0
+	ataSelfTestAborted     = 0x1 // by the host, as smartctl -X does
+	ataSelfTestInterrupted = 0x2 // by a hard or soft reset of the drive
+	ataSelfTestInProgress  = 0xf
+)
+
 type nvmeSelfTestLog struct {
 	// Newer smartctl: scalar.
 	CurrentSelfTestOp                *intOrObj `json:"current_self_test_op"`
@@ -95,7 +145,9 @@ type nvmeSelfTestLog struct {
 }
 
 type nvmeSelfTestLogEntry struct {
+	SelfTestCode   *nvmeSelfTestResult `json:"self_test_code"`
 	SelfTestResult *nvmeSelfTestResult `json:"self_test_result"`
+	PowerOnHours   int                 `json:"power_on_hours"`
 }
 
 type nvmeSelfTestResult struct {
@@ -136,16 +188,19 @@ func parseSmartTestJSON(b []byte) (SmartTestStatus, error) {
 	if err := json.Unmarshal(b, &out, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return SmartTestStatus{}, fmt.Errorf("parse smartctl json: %w", err)
 	}
+	return out.status(), nil
+}
 
+func (out smartctlOutput) status() SmartTestStatus {
 	if st, ok := parseATASmartTestStatus(out.ATA); ok {
-		return st, nil
+		return st
 	}
 	if out.NVMe != nil {
-		return parseNVMeSmartTestStatus(out.NVMe), nil
+		return parseNVMeSmartTestStatus(out.NVMe)
 	}
 
 	// Neither block present.
-	return SmartTestStatus{State: "idle"}, nil
+	return SmartTestStatus{State: "idle"}
 }
 
 func parseATASmartTestStatus(ata *ataSmartData) (SmartTestStatus, bool) {
@@ -164,6 +219,11 @@ func parseATASmartTestStatus(ata *ataSmartData) (SmartTestStatus, bool) {
 		}, true
 	}
 	if st.Passed == nil {
+		// smartctl leaves passed out for a test the host aborted or a reset
+		// interrupted: neither passed.
+		if st.Value != nil && (*st.Value>>4 == ataSelfTestAborted || *st.Value>>4 == ataSelfTestInterrupted) {
+			return SmartTestStatus{State: "aborted", Message: st.String}, true
+		}
 		// Status block present but no actionable fields -> idle.
 		return SmartTestStatus{State: "idle", Message: st.String}, true
 	}
@@ -250,17 +310,168 @@ func interpretSmartctlResult(out []byte, runErr error) (SmartTestStatus, error) 
 	return SmartTestStatus{}, errors.New("smartctl produced no parseable output")
 }
 
+// smartctlJSON is a test seam: `smartctl --json -a /dev/X`, its stdout and
+// its run error. Uses Output() so stderr can't poison stdout JSON.
+var smartctlJSON = func(ctx context.Context, device string) ([]byte, error) {
+	smartctlPath, err := exec.LookPath("smartctl")
+	if err != nil {
+		return nil, fmt.Errorf("smartctl not found: %w", err)
+	}
+	return exec.CommandContext(ctx, smartctlPath, "--json", "-a", "/dev/"+device).Output()
+}
+
 // PollSmartTestStatus runs `smartctl --json -a /dev/X` and returns the parsed
-// SMART self-test state. Uses cmd.Output() so stderr can't poison stdout JSON.
+// SMART self-test state.
 func PollSmartTestStatus(ctx context.Context, device string) (SmartTestStatus, error) {
 	if !validDeviceNameRe.MatchString(device) {
 		return SmartTestStatus{}, errors.New("invalid device name")
 	}
-	smartctlPath, err := exec.LookPath("smartctl")
-	if err != nil {
-		return SmartTestStatus{}, fmt.Errorf("smartctl not found: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, smartctlPath, "--json", "-a", "/dev/"+device)
-	out, runErr := cmd.Output()
+	out, runErr := smartctlJSON(ctx, device)
 	return interpretSmartctlResult(out, runErr)
+}
+
+// smartIdentity is who a drive is, as smartctl reads it from the drive
+// itself, whatever /dev name it has.
+type smartIdentity struct {
+	Model  string `json:"model,omitzero"`
+	Serial string `json:"serial,omitzero"`
+	WWN    string `json:"wwn,omitzero"`
+}
+
+// selfTestEntry is one test of a drive's self-test log, which the drive keeps
+// across reboots.
+type selfTestEntry struct {
+	// Kind is "short", "long" or "other".
+	Kind string `json:"kind"`
+	// Result is "completed", "aborted" (by the host, or another command),
+	// "interrupted" (by a reset of the drive), "failed", or "in_progress" for
+	// the test an ATA drive may log while it runs it.
+	Result string `json:"result"`
+	// Hours is the drive's power-on hours when the test ended.
+	Hours int `json:"hours"`
+	// Text is the drive's words for the result.
+	Text string `json:"text,omitzero"`
+}
+
+// smartDrive is what a self-test job reads of a drive.
+type smartDrive struct {
+	identity smartIdentity
+	status   SmartTestStatus
+	// running is the kind of self-test the drive runs, "short" or "long", or
+	// "" when it runs none or does not say, as an ATA drive does not.
+	running string
+	// log is the drive's self-test log, newest first.
+	log []selfTestEntry
+}
+
+// runningKind is the kind of self-test the drive says it runs, from its
+// status (NVMe) or the test it logs as running (some ATA drives); "" when it
+// does not say.
+func (d smartDrive) runningKind() string {
+	if d.running != "" {
+		return d.running
+	}
+	for _, entry := range d.log {
+		if entry.Result == "in_progress" {
+			return entry.Kind
+		}
+	}
+	return ""
+}
+
+// readSmartDrive reads who device is, its self-test status and its self-test
+// log.
+func readSmartDrive(ctx context.Context, device string) (smartDrive, error) {
+	if !validDeviceNameRe.MatchString(device) {
+		return smartDrive{}, errors.New("invalid device name")
+	}
+	raw, runErr := smartctlJSON(ctx, device)
+	var out smartctlOutput
+	if len(raw) == 0 || json.Unmarshal(raw, &out, json.MatchCaseInsensitiveNames(true)) != nil {
+		_, err := interpretSmartctlResult(raw, runErr)
+		return smartDrive{}, err
+	}
+	drive := smartDrive{
+		identity: smartIdentity{Model: strings.TrimSpace(out.ModelName), Serial: strings.TrimSpace(out.SerialNumber)},
+		status:   out.status(),
+	}
+	if out.WWN != nil {
+		drive.identity.WWN = fmt.Sprintf("%x-%x-%x", out.WWN.NAA, out.WWN.OUI, out.WWN.ID)
+	}
+	if out.ATALog != nil && out.ATALog.Standard != nil {
+		for _, entry := range out.ATALog.Standard.Table {
+			if logged, ok := ataSelfTestEntry(entry); ok {
+				drive.log = append(drive.log, logged)
+			}
+		}
+	}
+	if out.NVMe != nil {
+		switch op, _ := firstIntOrObjValue(out.NVMe.CurrentSelfTestOp, out.NVMe.CurrentSelfTestOperation); op {
+		case 1:
+			drive.running = "short"
+		case 2:
+			drive.running = "long"
+		}
+		for _, entry := range out.NVMe.Table {
+			if logged, ok := nvmeSelfTestEntry(entry); ok {
+				drive.log = append(drive.log, logged)
+			}
+		}
+	}
+	return drive, nil
+}
+
+func ataSelfTestEntry(entry ataSelfTestLogEntry) (selfTestEntry, bool) {
+	if entry.Type == nil || entry.Status == nil || entry.Status.Value == nil {
+		return selfTestEntry{}, false
+	}
+	logged := selfTestEntry{Hours: entry.LifetimeHours, Text: entry.Status.String}
+	// Offline (1, 2) and captive (129, 130) short and extended tests.
+	switch entry.Type.Value {
+	case 1, 129:
+		logged.Kind = "short"
+	case 2, 130:
+		logged.Kind = "long"
+	default:
+		logged.Kind = "other"
+	}
+	switch *entry.Status.Value >> 4 {
+	case ataSelfTestCompleted:
+		logged.Result = "completed"
+	case ataSelfTestAborted:
+		logged.Result = "aborted"
+	case ataSelfTestInterrupted:
+		logged.Result = "interrupted"
+	case ataSelfTestInProgress:
+		logged.Result = "in_progress"
+	default:
+		logged.Result = "failed"
+	}
+	return logged, true
+}
+
+func nvmeSelfTestEntry(entry nvmeSelfTestLogEntry) (selfTestEntry, bool) {
+	if entry.SelfTestCode == nil || entry.SelfTestCode.Value == nil || entry.SelfTestResult == nil || entry.SelfTestResult.Value == nil {
+		return selfTestEntry{}, false
+	}
+	logged := selfTestEntry{Hours: entry.PowerOnHours, Text: entry.SelfTestResult.String}
+	switch *entry.SelfTestCode.Value {
+	case 1:
+		logged.Kind = "short"
+	case 2:
+		logged.Kind = "long"
+	default:
+		logged.Kind = "other"
+	}
+	// The NVMe self-test result codes; 2 is a controller reset, 15 an
+	// unused entry.
+	switch code := *entry.SelfTestResult.Value; code {
+	case 15:
+		return selfTestEntry{}, false
+	case 2:
+		logged.Result = "interrupted"
+	default:
+		logged.Result = nvmeResultCodeToStatus(code, "").State
+	}
+	return logged, true
 }

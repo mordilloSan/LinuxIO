@@ -8,10 +8,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -31,9 +30,9 @@ func streamFileDownload(parent context.Context, stream net.Conn, req apischema.P
 	ctx, cleanup := bridgeipc.ReceiveOnlyChannelContext(parent, stream)
 	defer cleanup()
 
-	file, size, err := openDownloadFile(req.Path)
+	file, size, err := openDownloadFile(ctx, req.Path)
 	if err != nil {
-		return writeFileDownloadError(stream, err)
+		return streamrelay.WriteError(stream, 0, err)
 	}
 	defer file.Close()
 
@@ -53,37 +52,32 @@ func streamFileDownload(parent context.Context, stream net.Conn, req apischema.P
 	return relay.WriteResultOKAndClose(stream, 0, nil)
 }
 
-func openDownloadFile(requestPath string) (*os.File, int64, error) {
+func openDownloadFile(ctx context.Context, requestPath string) (*os.File, int64, error) {
 	if requestPath == "" {
 		return nil, 0, fmt.Errorf("%w: missing file path", bridgeipc.ErrInvalidArgs)
 	}
-
-	root, err := fsroot.Open()
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to access filesystem: %w", err)
+	// A download reads, so every link on the way is followed, an absolute
+	// target included, and only a regular file is opened at all (see
+	// services.OpenRegularForRead).
+	file, info, err := services.OpenRegularForRead(ctx, requestPath)
+	if errors.Is(err, services.ErrNotRegularFile) {
+		return nil, 0, downloadable(info)
 	}
-	defer root.Close()
-
-	cleanPath := filepath.Clean(requestPath)
-	// O_NONBLOCK keeps a FIFO from blocking the open; it is rejected below.
-	file, err := root.Root.OpenFile(fsroot.ToRel(cleanPath), os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, 0, fsError("open file", err)
 	}
-	stat, err := file.Stat()
-	if err != nil {
-		file.Close()
-		return nil, 0, fmt.Errorf("stat file: %w", err)
+	return file, info.Size(), nil
+}
+
+// downloadable refuses what is not a regular file.
+func downloadable(info os.FileInfo) error {
+	if info.IsDir() {
+		return fmt.Errorf("%w: path is a directory, use archive download instead", bridgeipc.ErrInvalidArgs)
 	}
-	if stat.IsDir() {
-		file.Close()
-		return nil, 0, fmt.Errorf("%w: path is a directory, use archive download instead", bridgeipc.ErrInvalidArgs)
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: path is not a regular file", bridgeipc.ErrInvalidArgs)
 	}
-	if !stat.Mode().IsRegular() {
-		file.Close()
-		return nil, 0, fmt.Errorf("%w: path is not a regular file", bridgeipc.ErrInvalidArgs)
-	}
-	return file, stat.Size(), nil
+	return nil
 }
 
 func copyDownloadFile(ctx context.Context, stream net.Conn, file io.Reader) error {
@@ -108,8 +102,4 @@ func copyDownloadFile(ctx context.Context, stream net.Conn, file io.Reader) erro
 			return fmt.Errorf("read file: %w", readErr)
 		}
 	}
-}
-
-func writeFileDownloadError(stream net.Conn, err error) error {
-	return streamrelay.WriteError(stream, 0, err)
 }

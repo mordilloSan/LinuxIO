@@ -140,7 +140,7 @@ func TestTrimReportsPercentAcrossDevices(t *testing.T) {
 	}
 	var pcts []float64
 	// /dev/sdd has no size, like a regular file, and is skipped.
-	if err := trim(context.Background(), []string{"/dev/sdb", "/dev/sdd", "/dev/sdc"}, func(pct float64) { pcts = append(pcts, pct) }); err != nil {
+	if err := trim(context.Background(), []string{"/dev/sdb", "/dev/sdd", "/dev/sdc"}, nil, func(pct float64) { pcts = append(pcts, pct) }); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"/dev/sdb", "/dev/sdc"}; !slices.Equal(discarded, want) {
@@ -153,7 +153,7 @@ func TestTrimReportsPercentAcrossDevices(t *testing.T) {
 
 	discardDevice = func(context.Context, string, uint64, func(uint64)) error { return errors.New("busy") }
 	pcts = nil
-	if err := trim(context.Background(), []string{"/dev/sdb"}, func(pct float64) { pcts = append(pcts, pct) }); err == nil || !slices.Equal(pcts, []float64{0}) {
+	if err := trim(context.Background(), []string{"/dev/sdb"}, nil, func(pct float64) { pcts = append(pcts, pct) }); err == nil || !slices.Equal(pcts, []float64{0}) {
 		t.Errorf("failed discard: err = %v, progress = %v", err, pcts)
 	}
 }

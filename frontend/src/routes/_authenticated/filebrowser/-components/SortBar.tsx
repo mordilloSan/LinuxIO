@@ -10,20 +10,45 @@ import { getSubtleDividerColor } from "./fileBrowserSurfaces";
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
-interface SortBarProps {
-  onSortChange: (field: SortField) => void;
-  sortField: SortField;
+export interface SortColumn<F extends string> {
+  /** Centres the label over a centred column. */
+  centered?: boolean;
+  field: F;
+  label: string;
+}
+
+// Allow numeric columns to shrink on smaller widths while keeping alignment in
+// sync with rows (FileListRow's COLUMN_TEMPLATE).
+const FOLDER_COLUMN_TEMPLATE =
+  "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
+
+const FOLDER_COLUMNS: SortColumn<SortField>[] = [
+  { field: "name", label: "Name" },
+  { field: "size", label: "Size" },
+  { centered: true, field: "modTime", label: "Last modified" },
+];
+
+interface SortBarProps<F extends string> {
+  /** The listing's columns; a folder's when left out. */
+  columns?: SortColumn<F>[];
+  /** The grid columns, matching the rows under the bar. */
+  columnTemplate?: string;
+  onSortChange: (field: F) => void;
+  sortField: F;
   sortOrder: SortOrder;
 }
 
-const SortBar = ({ sortField, sortOrder, onSortChange }: SortBarProps) => {
-  const [hoveredField, setHoveredField] = useState<SortField | null>(null);
-  const [focusedField, setFocusedField] = useState<SortField | null>(null);
-  // Allow numeric columns to shrink on smaller widths while keeping alignment in sync with rows
-  const columnTemplate =
-    "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
+const SortBar = <F extends string = SortField>({
+  columns = FOLDER_COLUMNS as SortColumn<string>[] as SortColumn<F>[],
+  columnTemplate = FOLDER_COLUMN_TEMPLATE,
+  sortField,
+  sortOrder,
+  onSortChange,
+}: SortBarProps<F>) => {
+  const [hoveredField, setHoveredField] = useState<F | null>(null);
+  const [focusedField, setFocusedField] = useState<F | null>(null);
 
-  const renderSortIcon = (field: SortField) => {
+  const renderSortIcon = (field: F) => {
     const isVisible =
       hoveredField === field || focusedField === field || sortField === field;
 
@@ -65,41 +90,52 @@ const SortBar = ({ sortField, sortOrder, onSortChange }: SortBarProps) => {
     transition: "background-color 150ms ease",
   };
 
-  const renderSortButton = (
-    field: SortField,
-    label: string,
-    style?: CSSProperties,
-  ) => (
-    <AppButton
-      aria-label={`Sort by ${label}${
-        sortField === field
-          ? `, ${sortOrder === "asc" ? "ascending" : "descending"}`
-          : ""
-      }`}
-      aria-pressed={sortField === field}
-      color="inherit"
-      onBlur={() => setFocusedField(null)}
-      onClick={() => onSortChange(field)}
-      onFocus={() => setFocusedField(field)}
-      onMouseEnter={() => setHoveredField(field)}
-      onMouseLeave={() => setHoveredField(null)}
-      style={{ ...columnStyle, ...style }}
-    >
-      <AppTypography
-        fontWeight={500}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: style?.justifyContent,
-          width: "100%",
-        }}
-        variant="body2"
+  const renderSortButton = ({ centered, field, label }: SortColumn<F>) => {
+    const style: CSSProperties | undefined = centered
+      ? { justifyContent: "center", textAlign: "center" }
+      : undefined;
+    return (
+      <AppButton
+        aria-label={`Sort by ${label}${
+          sortField === field
+            ? `, ${sortOrder === "asc" ? "ascending" : "descending"}`
+            : ""
+        }`}
+        aria-pressed={sortField === field}
+        color="inherit"
+        key={field}
+        onBlur={() => setFocusedField(null)}
+        onClick={() => onSortChange(field)}
+        onFocus={() => setFocusedField(field)}
+        onMouseEnter={() => setHoveredField(field)}
+        onMouseLeave={() => setHoveredField(null)}
+        style={{ ...columnStyle, ...style }}
       >
-        {label}
-        {renderSortIcon(field)}
-      </AppTypography>
-    </AppButton>
-  );
+        <AppTypography
+          fontWeight={500}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: style?.justifyContent,
+            minWidth: 0,
+            width: "100%",
+          }}
+          variant="body2"
+        >
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {label}
+          </span>
+          {renderSortIcon(field)}
+        </AppTypography>
+      </AppButton>
+    );
+  };
 
   return (
     <div
@@ -111,12 +147,7 @@ const SortBar = ({ sortField, sortOrder, onSortChange }: SortBarProps) => {
         borderRadius: "var(--app-radius-md)",
       }}
     >
-      {renderSortButton("name", "Name")}
-      {renderSortButton("size", "Size")}
-      {renderSortButton("modTime", "Last modified", {
-        justifyContent: "center",
-        textAlign: "center",
-      })}
+      {columns.map(renderSortButton)}
     </div>
   );
 };

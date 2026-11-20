@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"maps"
 	"reflect"
 	"slices"
 	"testing"
@@ -464,18 +465,28 @@ func TestMutationInfersTypesAndDetectsTarget(t *testing.T) {
 	}
 }
 
-// The resumable set is pinned: a route resumes after a shutdown only when
-// its operation is known to survive one.
+// The resumable set is pinned, with when each resumes: after a reboot only
+// when its operation is known to survive one, and in the same boot only when
+// its work runs on outside the job host.
 func TestResumableRoutes(t *testing.T) {
-	var got []string
+	got := map[string]bridgeipc.ResumeAt{}
 	for _, route := range handlers.Routes {
 		if route.Resumable {
-			got = append(got, route.Route)
+			got[route.Route] = route.ResumeAt
 		}
 	}
-	slices.Sort(got)
-	want := []string{"storage.btrfs_balance", "storage.btrfs_device_remove", "storage.btrfs_device_replace", "storage.btrfs_scrub_start"}
-	if !slices.Equal(got, want) {
+	want := map[string]bridgeipc.ResumeAt{
+		"storage.btrfs_balance":        bridgeipc.ResumeAfterReboot,
+		"storage.btrfs_device_remove":  bridgeipc.ResumeAfterReboot,
+		"storage.btrfs_device_replace": bridgeipc.ResumeAfterReboot,
+		"storage.btrfs_scrub_start":    bridgeipc.ResumeAfterReboot,
+		// PackageKit runs a transaction on when the job host dies, not across
+		// a reboot; a stop by hand may be meant to halt the batch.
+		"packages.update": bridgeipc.ResumeAfterCrash,
+		// A drive runs its self-test on, and keeps its result across a reboot.
+		"storage.run_smart_test": bridgeipc.ResumeInBoot | bridgeipc.ResumeAfterReboot,
+	}
+	if !maps.Equal(got, want) {
 		t.Fatalf("resumable routes = %v, want %v", got, want)
 	}
 }
@@ -534,7 +545,7 @@ func TestRedactedMutationRecordsItsRequestWithoutTheSecret(t *testing.T) {
 
 func TestMutationVoidRequiresNoResponse(t *testing.T) {
 	binding := apischema.MutationVoid("test.void_mutation", func(context.Context, poolRequest) error { return nil })
-	if !binding.Route.Result.Void() {
+	if !apischema.IsVoidType(binding.Route.Result.GoType) {
 		t.Fatalf("MutationVoid result = %v, want NoResponse", binding.Route.Result.GoType)
 	}
 }
@@ -551,6 +562,7 @@ func TestTaskMetadataBuildersAreAllowlisted(t *testing.T) {
 		"storage.btrfs_snapshot_rollback": true, "storage.btrfs_device_remove": true, "storage.btrfs_device_replace": true,
 		"storage.btrfs_balance": true, "storage.btrfs_scrub_start": true, "storage.btrfs_replication_run": true,
 		"storage.btrfs_pool_create": true, "storage.partition_create": true, "storage.partition_format": true,
+		"memory.set_swap_mode": true, "memory.drain_swap": true,
 	}
 	for _, route := range handlers.Routes {
 		if route.Metadata == nil {

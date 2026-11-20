@@ -28,21 +28,8 @@ func TestAllReported(t *testing.T) {
 			t.Errorf("%s: AllReported = %v, want %v", name, got, tt.want)
 		}
 	}
-	if Reported(nil) != nil || Skipped(nil) != nil {
+	if Reported(nil) != nil {
 		t.Error("a marked nil is not nil")
-	}
-	for name, tt := range map[string]struct {
-		err  error
-		want int
-	}{
-		"all reported": {fmt.Errorf("pass: %w", reported), ExitReported},
-		"one is not":   {errors.Join(reported, other), 1},
-		"skipped":      {fmt.Errorf("pass: %w", Skipped(other)), ExitSkipped},
-		"not marked":   {other, 1},
-	} {
-		if got := ExitStatus(tt.err); got != tt.want {
-			t.Errorf("%s: ExitStatus = %d, want %d", name, got, tt.want)
-		}
 	}
 	if !errors.Is(reported, cause) || reported.Error() != "web: pull failed" {
 		t.Errorf("Reported changed the error: %v", reported)

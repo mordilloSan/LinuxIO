@@ -1,13 +1,16 @@
 import type { ReactElement } from "react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NetworkInterface } from "@/api";
+import { LinuxIOError } from "@/api/errors";
 import { testNetworkInterface } from "@/test/networkInterface";
 import { render as renderWithApp, screen, within } from "@/test/render";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
 const mocks = vi.hoisted(() => ({
+  configs: {} as Record<string, { error?: (error: unknown) => void }>,
   hostname: "10.0.0.9",
   disableConnection: vi.fn(),
   enableConnection: vi.fn(),
@@ -36,7 +39,8 @@ vi.mock("@/api", async (importOriginal) => {
   };
 });
 
-const answerMutation = (endpoint: { route: string }) => {
+const answerMutation = (endpoint: { route: string }, config?: never) => {
+  mocks.configs[endpoint.route] = config ?? {};
   const mutate = endpoint.route.endsWith("disable_connection")
     ? mocks.disableConnection
     : endpoint.route.endsWith("enable_connection")
@@ -517,4 +521,66 @@ describe("NetworkInterfaceEditor", () => {
       screen.getByRole("button", { name: "Apply Configuration" }),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    ["network.set_ipv4", "Failed to set DHCP configuration"],
+    ["network.set_ipv4_manual", "Failed to save network configuration"],
+    ["network.set_mtu", "Failed to set MTU"],
+    ["network.enable_connection", "Failed to enable connection"],
+    ["network.disable_connection", "Failed to disable connection"],
+  ])(
+    "says the outcome of %s is unknown only when nothing says whether the host acted",
+    (route, fallback) => {
+      const warning = vi.spyOn(toast, "warning").mockReturnValue(1);
+      const error = vi.spyOn(toast, "error").mockReturnValue(1);
+      render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface()}
+          onClose={vi.fn()}
+        />,
+      );
+      const onError = mocks.configs[route].error!;
+      const unknownMessage =
+        "The host did not confirm the change, so the outcome is unknown. Check the interface once you are connected again.";
+
+      for (const unknown of [
+        new LinuxIOError("lost", "outcome_unknown"),
+        new LinuxIOError("job host is stopping", 503),
+        new LinuxIOError("job was interrupted", 409),
+        new LinuxIOError("timed out", 504),
+        new LinuxIOError("slow", "timeout"),
+      ]) {
+        onError(unknown);
+      }
+      expect(warning).toHaveBeenCalledTimes(5);
+      expect(warning).toHaveBeenCalledWith(
+        unknownMessage,
+        expect.objectContaining({ id: "network-outcome-unknown" }),
+      );
+      expect(error).not.toHaveBeenCalled();
+
+      onError(new LinuxIOError("address in use", 400));
+      expect(error).toHaveBeenLastCalledWith(
+        "address in use",
+        expect.anything(),
+      );
+      // A plain handler error is a 500: NetworkManager rejecting a setting.
+      onError(new LinuxIOError("failed to apply: invalid gateway", 500));
+      expect(error).toHaveBeenLastCalledWith(
+        "failed to apply: invalid gateway",
+        expect.anything(),
+      );
+      expect(warning).toHaveBeenCalledTimes(5);
+      onError(new LinuxIOError("not sent", "connection_unavailable"));
+      expect(error).toHaveBeenLastCalledWith("not sent", expect.anything());
+      onError(new LinuxIOError("", 403));
+      expect(error).toHaveBeenLastCalledWith(fallback, expect.anything());
+      onError(new LinuxIOError("update_pending: LinuxIO update waits", 409));
+      expect(error).toHaveBeenLastCalledWith(
+        "LinuxIO update waits",
+        expect.anything(),
+      );
+    },
+  );
 });

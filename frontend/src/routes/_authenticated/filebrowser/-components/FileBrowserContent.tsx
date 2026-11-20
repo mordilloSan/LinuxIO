@@ -1,5 +1,6 @@
 import {
   memo,
+  useRef,
   type DragEventHandler,
   type MouseEventHandler,
   type ReactNode,
@@ -9,6 +10,8 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import { allowContextMenuProps } from "@/utils/contextMenu";
 
+import { useShownCardSize } from "../-hooks/useShownCardSize";
+import type { TrashDragItem } from "../-internalDrag";
 import type {
   FileItem,
   FileResource,
@@ -16,6 +19,7 @@ import type {
   SortOrder,
   ViewMode,
 } from "../-types";
+import CardSizeSlider from "./CardSizeSlider";
 import DirectoryListing from "./DirectoryListing";
 import FileBrowserHeader from "./FileBrowserHeader";
 import { FileDropOverlay } from "./FileBrowserPanels";
@@ -32,9 +36,12 @@ interface FileBrowserSurfaceProps {
 }
 
 interface FileBrowserChromeProps {
+  /** The card view's size step, the slider's value. */
+  cardSize: number;
   editingPath: string | null;
   isSavingFile: boolean;
   normalizedPath: string;
+  onCardSizeChange: (size: number) => void;
   onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
   onOpenDirectory: (path: string) => void;
   onSearchCaseSensitiveChange: (value: boolean) => void;
@@ -42,6 +49,8 @@ interface FileBrowserChromeProps {
   onSortChange: (field: SortField) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
+  /** Items dragged onto the header's Trash button move to the Trash. */
+  onTrashItems?: (paths: string[]) => Promise<unknown>;
   searchQuery: string;
   searchCaseSensitive: boolean;
   showHiddenFiles: boolean;
@@ -67,6 +76,7 @@ interface FileBrowserListingProps {
   onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
   onNavigateUp: () => void;
   onOpenDirectory: (path: string) => void;
+  onRestoreItems?: (items: TrashDragItem[], destinationDir: string) => void;
   onSelectedPathsChange: (paths: Set<string>) => void;
   onStartRename: () => void;
   renamingPath: string | null;
@@ -101,6 +111,12 @@ const FileBrowserContent = ({
   listing,
   surface,
 }: FileBrowserContentProps) => {
+  // The listing fills the area under the header and the sort bar, in an
+  // empty folder too: the slider is offered where a step can change the
+  // cards there.
+  const listingAreaRef = useRef<HTMLDivElement>(null);
+  const shownCardSize = useShownCardSize(listingAreaRef, chrome.cardSize);
+
   return (
     <div
       {...allowContextMenuProps}
@@ -121,11 +137,20 @@ const FileBrowserContent = ({
       {!chrome.editingPath && (
         <FileBrowserHeader
           breadcrumbs={breadcrumbs}
+          cardSizeSlider={
+            chrome.viewMode === "card" && shownCardSize.offered ? (
+              <CardSizeSlider
+                onChange={chrome.onCardSizeChange}
+                value={chrome.cardSize}
+              />
+            ) : null
+          }
           isSaving={chrome.isSavingFile}
           onSearchCaseSensitiveChange={chrome.onSearchCaseSensitiveChange}
           onSearchChange={chrome.onSearchChange}
           onSwitchView={chrome.onSwitchView}
           onToggleHiddenFiles={chrome.onToggleHiddenFiles}
+          onTrashItems={chrome.onTrashItems}
           searchQuery={chrome.searchQuery}
           searchCaseSensitive={chrome.searchCaseSensitive}
           showHiddenFiles={chrome.showHiddenFiles}
@@ -152,6 +177,7 @@ const FileBrowserContent = ({
         )}
         <div
           data-app-view-mode-content
+          ref={listingAreaRef}
           style={{
             paddingLeft: chrome.editingPath ? 0 : "var(--app-space-8)",
             paddingRight: chrome.editingPath ? 0 : "var(--app-space-8)",
@@ -177,6 +203,7 @@ const FileBrowserContent = ({
             data.filteredResource &&
             data.filteredResource.type === "directory" && (
               <DirectoryListing
+                cardSize={shownCardSize.size}
                 // A directory is a lifecycle boundary: reset scroll, focus and
                 // range-selection anchors, marquee state, and measured rows.
                 cutPaths={listing.cutPaths}
@@ -190,6 +217,7 @@ const FileBrowserContent = ({
                 onDropItems={listing.onDropItems}
                 onNavigateUp={listing.onNavigateUp}
                 onOpenDirectory={listing.onOpenDirectory}
+                onRestoreItems={listing.onRestoreItems}
                 onSelectedPathsChange={listing.onSelectedPathsChange}
                 onStartRename={listing.onStartRename}
                 renamingPath={listing.renamingPath}

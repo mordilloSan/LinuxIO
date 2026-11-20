@@ -64,7 +64,10 @@ func (b *ifcfgBackend) Read() (InterfaceConfig, error) {
 	return result, nil
 }
 
-func (b *ifcfgBackend) SetIPv4DHCP(ctx context.Context) error {
+func (b *ifcfgBackend) SetIPv4DHCP(ctx context.Context, dns, search []string) error {
+	if len(dns) > 0 || len(search) > 0 {
+		return unsupportedDNS(b, "DNS alongside DHCP")
+	}
 	return b.update(ctx, func(doc *keyValueDoc) error {
 		doc.set("BOOTPROTO", "dhcp")
 		for _, key := range []string{"IPADDR", "PREFIX", "NETMASK", "GATEWAY", "PEERDNS"} {
@@ -75,7 +78,10 @@ func (b *ifcfgBackend) SetIPv4DHCP(ctx context.Context) error {
 	})
 }
 
-func (b *ifcfgBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
+func (b *ifcfgBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns, search []string) error {
+	if len(search) > 0 {
+		return unsupportedDNS(b, "DNS search domains")
+	}
 	ip, prefix, err := parseIPv4CIDR(addressCIDR)
 	if err != nil {
 		return err

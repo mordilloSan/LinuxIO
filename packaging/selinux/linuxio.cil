@@ -1,0 +1,71 @@
+; LinuxIO: a domain for linuxio-auth (hand-written CIL, no macros).
+; systemd starts /usr/local/bin/linuxio-auth for each connection to
+; /run/linuxio/auth.sock (linuxio-auth@.service) and enters linuxio_auth_t
+; instead of unconfined_service_t. The domain is as unconfined as
+; unconfined_service_t; it adds one permission, to start linuxio-bridge as
+; unconfined_t once pam_selinux has set that context, and only for the
+; SELinux user unconfined_u. install-linuxio-binaries.sh loads it on the RHEL
+; family; docs/process-systemd-architecture.md, "SELinux".
+
+; The executable.
+(type linuxio_auth_exec_t)
+(roletype object_r linuxio_auth_exec_t)
+(typeattributeset file_type (linuxio_auth_exec_t))
+(typeattributeset non_security_file_type (linuxio_auth_exec_t))
+(typeattributeset non_auth_file_type (linuxio_auth_exec_t))
+(typeattributeset exec_type (linuxio_auth_exec_t))
+(typeattributeset entry_type (linuxio_auth_exec_t))
+(typeattributeset direct_init_entry (linuxio_auth_exec_t))
+(filecon "/usr/local/bin/linuxio-auth" file (system_u object_r linuxio_auth_exec_t ((s0) (s0))))
+
+; The domain systemd enters when it runs the executable.
+(type linuxio_auth_t)
+(roletype system_r linuxio_auth_t)
+(typeattributeset domain (linuxio_auth_t))
+(typeattributeset daemon (linuxio_auth_t))
+(allow linuxio_auth_t linuxio_auth_exec_t (file (entrypoint ioctl read getattr lock map execute open)))
+(typetransition initrc_domain linuxio_auth_exec_t process linuxio_auth_t)
+
+; Unconfined: the attributes unconfined_service_t has.
+(typeattributeset unconfined_domain_type (linuxio_auth_t))
+(typeattributeset process_uncond_exempt (linuxio_auth_t))
+(typeattributeset kern_unconfined (linuxio_auth_t))
+(typeattributeset can_load_kernmodule (linuxio_auth_t))
+(typeattributeset corenet_unconfined_type (linuxio_auth_t))
+(typeattributeset corenet_unlabeled_type (linuxio_auth_t))
+(typeattributeset devices_unconfined_type (linuxio_auth_t))
+(typeattributeset files_unconfined_type (linuxio_auth_t))
+(typeattributeset filesystem_unconfined_type (linuxio_auth_t))
+(typeattributeset storage_unconfined_type (linuxio_auth_t))
+(typeattributeset selinux_unconfined_type (linuxio_auth_t))
+(typeattributeset can_load_policy (linuxio_auth_t))
+(typeattributeset can_setbool (linuxio_auth_t))
+(typeattributeset can_setenforce (linuxio_auth_t))
+(typeattributeset can_setsecparam (linuxio_auth_t))
+(typeattributeset can_change_object_identity (linuxio_auth_t))
+(typeattributeset can_read_shadow_passwords (linuxio_auth_t))
+(typeattributeset can_write_shadow_passwords (linuxio_auth_t))
+(typeattributeset can_relabelto_shadow_passwords (linuxio_auth_t))
+(typeattributeset can_relabelto_binary_policy (linuxio_auth_t))
+(typeattributeset named_filetrans_domain (linuxio_auth_t))
+(typeattributeset userdom_filetrans_type (linuxio_auth_t))
+(typeattributeset dbusd_unconfined (linuxio_auth_t))
+(allow linuxio_auth_t self (process (transition dyntransition)))
+
+; The one thing unconfined_service_t may not do: start the bridge as
+; unconfined_t ...
+(allow linuxio_auth_t unconfined_t (process (transition)))
+; ... and only into the SELinux user unconfined_u. Without a line for
+; linuxio_auth_t in contexts/users/*, pam_selinux falls back to
+; failsafe_context (unconfined_r:unconfined_t), which staff_u may also
+; take; this keeps a staff_u login out of unconfined_t.
+(constrain (process (transition)) (or (neq t1 linuxio_auth_t) (or (eq u1 u2) (eq u2 unconfined_u))))
+
+; The SSH banner update-issue writes, which /etc/motd.d/linuxio links to. In
+; its folder's type, var_run_t, pam_motd in sshd may not read it; as
+; motd_var_run_t, the type of /run/motd.d, it may. update-issue relabels the
+; file after each write. Optional: a policy without motd_var_run_t drops this
+; block and loads the rest, since a missing banner must not stop sign-in.
+(optional linuxio_banner
+	(filecon "/run/linuxio/issue" file (system_u object_r motd_var_run_t ((s0) (s0))))
+)

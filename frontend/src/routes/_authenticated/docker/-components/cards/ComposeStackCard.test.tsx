@@ -112,6 +112,34 @@ describe("ComposeStackCard", () => {
     expect(frostedCardRender).toHaveBeenCalledTimes(2);
   });
 
+  // A base image of a built image has a newer version: the project waits for
+  // a rebuild, not an update, and its label follows the containers' checks.
+  it("says a rebuild waits when only a built image has a newer base", () => {
+    const rebuild = {
+      ...container,
+      updateAvailable: true,
+      updateCheckState: "built" as const,
+    };
+    const view = render(
+      <Card
+        value={{ ...project, containers: [rebuild], update_available: true }}
+      />,
+    );
+    expect(screen.getByText("Rebuild available")).toBeInTheDocument();
+    expect(screen.queryByText("Update available")).toBeNull();
+
+    view.rerender(
+      <Card
+        value={{
+          ...project,
+          containers: [rebuild, { ...container, updateAvailable: true }],
+          update_available: true,
+        }}
+      />,
+    );
+    expect(screen.getByText("Update available")).toBeInTheDocument();
+  });
+
   it("opens details from the summary and uses the container stop icon", async () => {
     const onOpen = vi.fn();
     const { user } = render(<Card onOpen={onOpen} value={project} />);

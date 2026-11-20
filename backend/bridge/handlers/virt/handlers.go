@@ -135,5 +135,5 @@ func handleCreate(ctx context.Context, task *bridgeipc.Task, req apischema.VMCre
 	report := func(progress apischema.VMCreateProgress) {
 		task.ReportProgress(progress)
 	}
-	return CreateVMWithProgress(ctx, req, report)
+	return CreateVM(ctx, req, report)
 }

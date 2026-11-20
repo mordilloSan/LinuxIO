@@ -137,6 +137,40 @@ describe("useFileSelection", () => {
     expect(result.current.selection.selectedPaths.size).toBe(0);
   });
 
+  it("deselects only the given paths and keeps the rest selected", () => {
+    const { result } = renderHook(() =>
+      useSelectionHarness({
+        copyItems: vi.fn(),
+        moveItems: vi.fn(),
+        normalizedPath: "/srv/projects",
+        resource: directoryResource,
+      }),
+    );
+
+    // A delete job ends after the user selected other items as well.
+    act(() =>
+      result.current.selection.actions.select(
+        new Set(["/srv/projects/alpha.txt", "/srv/projects/beta"]),
+      ),
+    );
+    act(() =>
+      result.current.selection.actions.deselect([
+        "/srv/projects/alpha.txt",
+        "/srv/projects/gone.txt",
+      ]),
+    );
+    expect([...result.current.selection.selectedPaths]).toEqual([
+      "/srv/projects/beta",
+    ]);
+
+    // Paths that are not selected leave the selection as it is.
+    const selected = result.current.selection.selectedPaths;
+    act(() =>
+      result.current.selection.actions.deselect(["/srv/projects/gone.txt"]),
+    );
+    expect(result.current.selection.selectedPaths).toBe(selected);
+  });
+
   it("derives selected items from the current directory resource", () => {
     const { result } = renderHook(() =>
       useSelectionHarness({
@@ -188,13 +222,7 @@ describe("useFileSelection", () => {
     expect(result.current.selection.cutPaths.size).toBe(0);
     expect(toastMocks.success).toHaveBeenCalledWith(
       "2 item(s) copied to clipboard",
-      expect.objectContaining({
-        meta: {
-          label: "Open files",
-          params: { _splat: "" },
-          to: "/filebrowser/$",
-        },
-      }),
+      {},
     );
   });
 
@@ -295,16 +323,7 @@ describe("useFileSelection", () => {
       await result.current.handlePaste();
     });
 
-    expect(toastMocks.error).toHaveBeenCalledWith(
-      "Nothing to paste",
-      expect.objectContaining({
-        meta: {
-          label: "Open files",
-          params: { _splat: "" },
-          to: "/filebrowser/$",
-        },
-      }),
-    );
+    expect(toastMocks.error).toHaveBeenCalledWith("Nothing to paste", {});
     expect(copyItems).not.toHaveBeenCalled();
     expect(moveItems).not.toHaveBeenCalled();
   });
@@ -348,6 +367,42 @@ describe("useFileViewState", () => {
       wrapper: configWrapper(),
     });
     expect(result.current.viewMode).toBe("card");
+  });
+
+  it("keeps the card size and restores it on a fresh mount", () => {
+    const first = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    const initialActions = first.result.current.actions;
+
+    expect(first.result.current.cardSize).toBe(3);
+    act(() => first.result.current.actions.setCardSize(6));
+    expect(first.result.current.cardSize).toBe(6);
+    expect(first.result.current.actions).toBe(initialActions);
+    expect(window.localStorage.getItem("linuxio.filebrowserCardSize")).toBe(
+      "6",
+    );
+    first.unmount();
+
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    expect(result.current.cardSize).toBe(6);
+  });
+
+  it("starts from a size saved before and ignores one out of range", () => {
+    window.localStorage.setItem("linuxio.filebrowserCardSize", "7");
+    const saved = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    expect(saved.result.current.cardSize).toBe(7);
+    saved.unmount();
+
+    window.localStorage.setItem("linuxio.filebrowserCardSize", "12");
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    expect(result.current.cardSize).toBe(3);
   });
 
   it("toggles the sort order when the active field is selected again", () => {

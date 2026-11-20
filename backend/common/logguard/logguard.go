@@ -7,7 +7,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -214,6 +216,13 @@ func returnedError(ret *ast.ReturnStmt, errIdx, nres int) ast.Expr {
 // acronyms are the product names and acronyms a log message may start with.
 var acronyms = []string{"NFS", "CIFS", "SMB", "LVM", "NVML", "PAM", "TLS", "HTTP", "HTTPS", "WebSocket", "WireGuard", "LinuxIO", "Docker", "Btrfs", "SMART", "GPU", "CPU", "PCI", "D-Bus", "NTP", "SSH", "QR", "UI", "API", "PackageKit", "Compose", "Netplan", "NetworkManager", "VNC", "PTY", "JSON", "YAML", "ZFS", "IPv4", "IPv6", "DNS", "MAC", "IP", "systemd", "journald", "yamux", "SSE", "FTS5", "GitHub", "Samba", "SIGHUP"}
 
+// containerNamedPaths are the folders whose log messages about one container
+// end with its name, as `"<text> container " + name`, and keep the
+// "container" attribute: an exception to constant messages for the Docker
+// update pass, which runs from a timer, since the saved output of a run
+// (journalctl -o short-iso) shows a message without its attributes.
+var containerNamedPaths = []string{"common/dockerupdate/"}
+
 var (
 	logLevels   = map[string]bool{"Debug": true, "Info": true, "Warn": true, "Error": true}
 	prefixRe    = regexp.MustCompile(`^[A-Za-z]+: `)
@@ -223,7 +232,9 @@ var (
 // MessageStyle returns one "file:line: reason" per slog call in path that
 // breaks the message contract: constant lowercase text (or a leading entry of
 // acronyms), no "[tag]" or "Prefix: ", no trailing punctuation, no value
-// built into the message, and the error attribute key is "error", not "err".
+// built into the message (a line about one container under
+// containerNamedPaths ends with its name), and the error attribute key is
+// "error", not "err".
 // It checks slog.<Level>[Context] and <Level>[Context] on a receiver named
 // logger; a *slog.Logger under any other name is not recognised.
 func MessageStyle(path string) ([]string, error) {
@@ -236,6 +247,9 @@ func MessageStyle(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	namesContainers := slices.ContainsFunc(containerNamedPaths, func(dir string) bool {
+		return strings.Contains(filepath.ToSlash(path), dir)
+	})
 	var found []string
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -249,13 +263,73 @@ func MessageStyle(path string) ([]string, error) {
 		report := func(pos token.Pos, reason string) {
 			found = append(found, fmt.Sprintf("%s:%d: %s", path, fset.Position(pos).Line, reason))
 		}
-		if reason := messageViolation(call.Args[msgIdx]); reason != "" {
-			report(call.Args[msgIdx].Pos(), reason)
+		msg, attrs := call.Args[msgIdx], call.Args[msgIdx+1:]
+		if prefix, name, ok := containerNamedMessage(msg); ok && namesContainers {
+			if reason := literalViolation(prefix); reason != "" {
+				report(msg.Pos(), reason)
+			} else if value, ok := attrValue(attrs, "container"); !ok || types.ExprString(value) != types.ExprString(name) {
+				report(msg.Pos(), `message ends with a container's name: the "container" attribute must hold the same expression`)
+			}
+		} else if reason := messageViolation(msg); reason != "" {
+			report(msg.Pos(), reason)
 		}
-		checkAttrKeys(call.Args[msgIdx+1:], report)
+		checkAttrKeys(attrs, report)
 		return true
 	})
 	return found, nil
+}
+
+// containerNamedMessage reports whether msg is a constant text ending in
+// "container " followed by one value, the container's name, and returns the
+// text and the name.
+func containerNamedMessage(msg ast.Expr) (string, ast.Expr, bool) {
+	sum, ok := msg.(*ast.BinaryExpr)
+	if !ok || sum.Op != token.ADD {
+		return "", nil, false
+	}
+	lit, ok := sum.X.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", nil, false
+	}
+	switch sum.Y.(type) {
+	case *ast.BasicLit, *ast.BinaryExpr:
+		return "", nil, false
+	}
+	text, err := strconv.Unquote(lit.Value)
+	if err != nil || !strings.HasSuffix(text, "container ") {
+		return "", nil, false
+	}
+	return text, sum.Y, true
+}
+
+// attrValue returns the value of the attribute key in a log call's attribute
+// list. A slog.String(...)-style call is one attribute; anything else is a
+// key followed by its value, a key that is not a literal included.
+func attrValue(args []ast.Expr, key string) (ast.Expr, bool) {
+	quoted := strconv.Quote(key)
+	for i := 0; i < len(args); i++ {
+		if call, ok := args[i].(*ast.CallExpr); ok && isSlogAttr(call) {
+			if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Value == quoted && len(call.Args) > 1 {
+				return call.Args[1], true
+			}
+			continue
+		}
+		if lit, ok := args[i].(*ast.BasicLit); ok && lit.Value == quoted && i+1 < len(args) {
+			return args[i+1], true
+		}
+		i++ // skip the value
+	}
+	return nil, false
+}
+
+// isSlogAttr reports whether call builds one attribute, as slog.String does.
+func isSlogAttr(call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || len(call.Args) == 0 {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "slog" && slices.Contains(slogAttrFns, sel.Sel.Name)
 }
 
 // logMessageIndex reports whether call is a log call and where its message

@@ -1,0 +1,283 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"os/exec"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
+)
+
+const (
+	alertUsage = "Usage: linuxio-worker alert raise|resolve|auto-update|pending-updates [flags]"
+
+	aptLogTailBytes = 256 << 10
+)
+
+var (
+	aptUnattendedLogPath = "/var/log/unattended-upgrades/unattended-upgrades.log"
+	rebootRequiredPath   = "/run/reboot-required"
+	lookupEnv            = os.Getenv
+	pendingExecCommand   = exec.CommandContext
+)
+
+func runAlert(ctx context.Context, args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, alertUsage)
+		return 1
+	}
+	var err error
+	switch args[0] {
+	case "raise":
+		err = alertRaise(ctx, args[1:])
+	case "resolve":
+		err = alertResolve(ctx, args[1:])
+	case "auto-update":
+		err = alertAutoUpdate(ctx, args[1:])
+	case "pending-updates":
+		err = alertPendingUpdates(ctx, args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown alert action: %s\n%s\n", args[0], alertUsage)
+		return 1
+	}
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		fmt.Fprintf(os.Stderr, "Failed to record alert: %v\n", err)
+		if errors.Is(err, fs.ErrPermission) {
+			fmt.Fprintln(os.Stderr, "This command requires root")
+		}
+		return 1
+	}
+	return 0
+}
+
+func newAlertFlagSet(name string) *flag.FlagSet {
+	fs := flag.NewFlagSet("linuxio-worker alert "+name, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	return fs
+}
+
+func alertRaise(ctx context.Context, args []string) error {
+	fs := newAlertFlagSet("raise")
+	var obs alerts.Observation
+	var fromStdin bool
+	fs.StringVar(&obs.Source, "source", "", "alert source (required)")
+	fs.StringVar(&obs.Key, "key", "", "alert key (required)")
+	fs.StringVar(&obs.Title, "title", "", "alert title (required)")
+	fs.StringVar(&obs.Severity, "severity", alerts.SeverityInfo, "info|warning|error")
+	fs.StringVar(&obs.Message, "message", "", "alert message")
+	fs.BoolVar(&fromStdin, "message-stdin", false, "read the message from stdin")
+	fs.StringVar(&obs.Link, "link", "", "in-app path, e.g. /updates")
+	fs.StringVar(&obs.OccurrenceID, "occurrence", "", "identity of this occurrence")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if obs.Source == "" || obs.Key == "" || obs.Title == "" {
+		return errors.New("--source, --key and --title are required")
+	}
+	if fromStdin {
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, alerts.MaxMessageLen*2))
+		if err != nil {
+			return fmt.Errorf("read message from stdin: %w", err)
+		}
+		obs.Message = strings.TrimSpace(string(data))
+	}
+	return alerts.Raise(ctx, obs)
+}
+
+func alertResolve(ctx context.Context, args []string) error {
+	fs := newAlertFlagSet("resolve")
+	var source, key string
+	fs.StringVar(&source, "source", "", "alert source (required)")
+	fs.StringVar(&key, "key", "", "alert key (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if source == "" || key == "" {
+		return errors.New("--source and --key are required")
+	}
+	return alerts.Resolve(ctx, source, key)
+}
+
+type autoUpdateRun struct {
+	// Listed says the provider told what the run installed. Only
+	// unattended-upgrades does, through its log; for the others a run that
+	// succeeded ran, rather than found nothing to install.
+	Listed   bool
+	Upgraded []string
+	Errors   []string
+}
+
+func validNotifyPolicy(p string) bool {
+	return p == "on_failure" || p == "on_change" || p == "always"
+}
+
+func alertAutoUpdate(ctx context.Context, args []string) error {
+	fs := newAlertFlagSet("auto-update")
+	var provider, policy string
+	fs.StringVar(&provider, "provider", "", "apt|dnf|mint")
+	fs.StringVar(&policy, "policy", "", "on_failure|on_change|always")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if !validNotifyPolicy(policy) {
+		return fmt.Errorf("invalid --policy %q", policy)
+	}
+	var run autoUpdateRun
+	switch provider {
+	case "apt":
+		run = readAptUnattendedRun()
+	case "dnf", "mint":
+		// Only the service result is known for these providers in this slice.
+	default:
+		return fmt.Errorf("invalid --provider %q", provider)
+	}
+	_, rebootErr := os.Stat(rebootRequiredPath)
+	occurrence := lookupEnv("INVOCATION_ID")
+	if occurrence == "" {
+		occurrence = time.Now().UTC().Format(time.RFC3339)
+	}
+	obs, ok := autoUpdateAlert(policy, lookupEnv("SERVICE_RESULT"), run, rebootErr == nil, occurrence)
+	if !ok {
+		return nil
+	}
+	return alerts.Raise(ctx, obs)
+}
+
+func readAptUnattendedRun() autoUpdateRun {
+	f, err := os.Open(aptUnattendedLogPath)
+	if err != nil {
+		return autoUpdateRun{}
+	}
+	defer f.Close()
+	if info, err := f.Stat(); err == nil && info.Size() > aptLogTailBytes {
+		_, _ = f.Seek(info.Size()-aptLogTailBytes, io.SeekStart)
+	}
+	return parseAptUnattendedLog(f)
+}
+
+// parseAptUnattendedLog keeps only the block after the last
+// "Starting unattended upgrades script" line.
+func parseAptUnattendedLog(r io.Reader) autoUpdateRun {
+	run := autoUpdateRun{Listed: true}
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 64<<10), 1<<20)
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.Contains(line, "Starting unattended upgrades script"):
+			run = autoUpdateRun{Listed: true}
+		case strings.Contains(line, "Packages that were upgraded:"):
+			_, list, _ := strings.Cut(line, "Packages that were upgraded:")
+			run.Upgraded = append(run.Upgraded, strings.Fields(list)...)
+		case strings.Contains(line, " ERROR "):
+			_, msg, _ := strings.Cut(line, " ERROR ")
+			run.Errors = append(run.Errors, strings.TrimSpace(msg))
+		}
+	}
+	return run
+}
+
+// autoUpdateAlert decides whether a run deserves an alert under policy and
+// builds it. serviceResult is systemd's $SERVICE_RESULT; empty means success.
+func autoUpdateAlert(policy, serviceResult string, run autoUpdateRun, rebootRequired bool, occurrence string) (alerts.Observation, bool) {
+	failed := (serviceResult != "" && serviceResult != "success") || len(run.Errors) > 0
+	changed := len(run.Upgraded) > 0
+	if !(failed || (policy == "on_change" && changed) || policy == "always") {
+		return alerts.Observation{}, false
+	}
+	obs := alerts.Observation{
+		Source: scheduledrun.UpdateAlertSource, Key: scheduledrun.UpdateAlertKey, Link: "/updates", OccurrenceID: occurrence,
+		Severity: alerts.SeverityInfo,
+	}
+	var parts []string
+	switch {
+	case failed:
+		obs.Severity = alerts.SeverityError
+		obs.Title = "Automatic updates failed"
+		if serviceResult != "" && serviceResult != "success" {
+			parts = append(parts, "Service result: "+serviceResult+".")
+		}
+		parts = append(parts, run.Errors...)
+	case changed:
+		obs.Title = fmt.Sprintf("Automatic updates installed %d packages", len(run.Upgraded))
+		parts = append(parts, strings.Join(run.Upgraded, " "))
+	case run.Listed:
+		obs.Title = "Automatic updates found nothing to install"
+	default:
+		obs.Title = "Automatic updates ran"
+	}
+	if rebootRequired {
+		if obs.Severity == alerts.SeverityInfo {
+			obs.Severity = alerts.SeverityWarning
+		}
+		parts = append(parts, "Reboot required.")
+	}
+	obs.Message = strings.Join(parts, "\n")
+	return obs, true
+}
+
+// alertPendingUpdates runs after the package lists were refreshed: it
+// raises one info alert naming the packages an upgrade would install and
+// clears it once nothing is pending.
+func alertPendingUpdates(ctx context.Context, args []string) error {
+	fs := newAlertFlagSet("pending-updates")
+	var provider string
+	fs.StringVar(&provider, "provider", "", "apt")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if provider != "apt" {
+		return fmt.Errorf("invalid --provider %q", provider)
+	}
+	// --quiet=2 leaves only the Inst/Conf/Remv lines of the simulation.
+	aptArgs := []string{"--simulate", "--quiet=2", "dist-upgrade"}
+	out, err := pendingExecCommand(ctx, "apt-get", aptArgs...).CombinedOutput()
+	if err != nil {
+		return hostcmd.OutputError("apt-get", aptArgs, out, err)
+	}
+	pending := parseAptSimulation(strings.NewReader(string(out)))
+	if len(pending) == 0 {
+		return alerts.Resolve(ctx, "auto-update", "pending")
+	}
+	sum := sha256.Sum256([]byte(strings.Join(pending, "\n")))
+	title := fmt.Sprintf("%d system updates available", len(pending))
+	if len(pending) == 1 {
+		title = "1 system update available"
+	}
+	return alerts.Raise(ctx, alerts.Observation{
+		Source: "auto-update", Key: "pending", Severity: alerts.SeverityInfo, Link: "/updates",
+		Title: title, Message: strings.Join(pending, " "), OccurrenceID: hex.EncodeToString(sum[:]),
+	})
+}
+
+// parseAptSimulation returns the sorted package names of the "Inst" lines
+// of an apt-get --simulate run.
+func parseAptSimulation(r io.Reader) []string {
+	var pending []string
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		if name, ok := strings.CutPrefix(scanner.Text(), "Inst "); ok {
+			if fields := strings.Fields(name); len(fields) > 0 {
+				pending = append(pending, fields[0])
+			}
+		}
+	}
+	slices.Sort(pending)
+	return pending
+}

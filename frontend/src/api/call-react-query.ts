@@ -21,7 +21,7 @@ import type {
 } from "./generated/linuxio-types";
 import { OPERATION_QUERY_INVALIDATIONS } from "./operation-query-invalidations";
 import { endpointQueryPrefix } from "./query-keys";
-import type { ToastMeta } from "./toast-meta";
+import { type ToastMeta, toastLinkOptions } from "./toast-meta";
 
 // Shared freshness presets for TanStack Query descriptors.
 export const CACHE_TTL_MS = {
@@ -55,7 +55,7 @@ export type CallFactory<R extends RequestCallRoute> = {
   readonly route: R;
 };
 
-/** Generated namespace value for a migrated Call route. */
+/** Generated namespace value for a Call route. */
 export type CallDefinition<R extends CallRoute> = R extends NoRequestCallRoute
   ? CallDescriptor<R>
   : R extends RequestCallRoute
@@ -76,7 +76,7 @@ export function defineCall<R extends NoRequestCallRoute>(
   };
 }
 
-/** Build a request-bound descriptor factory for a migrated Call route. */
+/** Build a request-bound descriptor factory for a Call route. */
 export function defineCallWithRequest<R extends RequestCallRoute>(
   route: R,
 ): CallFactory<R> {
@@ -115,7 +115,12 @@ export interface ActionConfig<TRequest, TResult> {
   warning?: (result: TResult, variables: TRequest) => string | null | undefined;
   /** Error toast fallback text, or a callback for custom error handling. */
   error?: string | ((error: LinuxIOError, variables: TRequest) => void);
-  /** Typed navigation target attached to string-form feedback. */
+  /**
+   * An error the string-form `error` does not toast. The Mutation layer sets
+   * it for a cancelled job, which is not a failure.
+   */
+  quietError?: (error: LinuxIOError) => boolean;
+  /** The page string-form feedback belongs to; see toastLinkOptions. */
   toast?: ToastMeta;
   /** Raw TanStack mutation options; callbacks run after the config callbacks. */
   options?: MutationOptions<TRequest, TResult>;
@@ -155,7 +160,7 @@ export const actionErrorMessage = (error: unknown, fallback: string) =>
         .trimStart()
     : getMutationErrorMessage(error, fallback);
 
-/** Run a migrated Call as a TanStack mutation. */
+/** Run a Call as a TanStack mutation. */
 export function useCallMutation<R extends CallRoute>(
   endpoint: CallTarget<R>,
   config?: ActionConfig<CallRequest<R>, CallResult<R>>,
@@ -185,10 +190,10 @@ export function useActionMutation<TResult, TRequest = unknown>(
     success,
     warning,
     error,
+    quietError,
     toast: toastMeta,
     options,
   } = config ?? {};
-  const toastOpts = toastMeta ? { meta: toastMeta } : undefined;
 
   return useMutation<TResult, LinuxIOError, TRequest>({
     mutationFn,
@@ -203,12 +208,12 @@ export function useActionMutation<TResult, TRequest = unknown>(
       );
       const warningMessage = warning?.(result, variables);
       if (warningMessage) {
-        toast.warning(warningMessage, toastOpts);
+        toast.warning(warningMessage, toastLinkOptions(toastMeta));
       }
       if (typeof success === "function") {
         success(result, variables);
       } else if (success !== undefined && !warningMessage) {
-        toast.success(success, toastOpts);
+        toast.success(success, toastLinkOptions(toastMeta));
       }
       options?.onSuccess?.(result, variables, onMutateResult, context);
     },
@@ -221,8 +226,11 @@ export function useActionMutation<TResult, TRequest = unknown>(
       }
       if (typeof error === "function") {
         error(err, variables);
-      } else if (error !== undefined) {
-        toast.error(actionErrorMessage(err, error), toastOpts);
+      } else if (error !== undefined && !quietError?.(err)) {
+        toast.error(
+          actionErrorMessage(err, error),
+          toastLinkOptions(toastMeta),
+        );
       }
       options?.onError?.(err, variables, onMutateResult, context);
     },

@@ -1,6 +1,12 @@
 import { useState } from "react";
 
-import { linuxio, type NetworkInterface as BaseNI } from "@/api";
+import {
+  actionErrorMessage,
+  classifyRequestOutcome,
+  linuxio,
+  type LinuxIOError,
+  type NetworkInterface as BaseNI,
+} from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -25,6 +31,13 @@ const NETWORK_TOAST_META = {
   label: "Open network",
   to: "/network",
 } as const;
+
+// A change to the interface this browser uses can cut the connection before the
+// host answers. Nothing then says whether the change was applied. One toast id
+// keeps the several requests of one Apply from stacking this warning.
+const OUTCOME_UNKNOWN_TOAST_ID = "network-outcome-unknown";
+const OUTCOME_UNKNOWN_MESSAGE =
+  "The host did not confirm the change, so the outcome is unknown. Check the interface once you are connected again.";
 
 /* ================= helpers ================= */
 
@@ -215,6 +228,16 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
     );
   };
 
+  // The interface list refetches when the connection returns, so the unknown
+  // outcome resolves to what the host now has.
+  const failedChange = (fallback: string) => (error: LinuxIOError) => {
+    if (classifyRequestOutcome(error) === "unknown") {
+      toast.warning(OUTCOME_UNKNOWN_MESSAGE, { id: OUTCOME_UNKNOWN_TOAST_ID });
+    } else {
+      toast.error(actionErrorMessage(error, fallback));
+    }
+  };
+
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
     linuxio.network.set_ipv4.useMutation({
@@ -222,7 +245,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
         toast.success("Switched to DHCP mode");
         onClose();
       },
-      error: "Failed to set DHCP configuration",
+      error: failedChange("Failed to set DHCP configuration"),
       toast: NETWORK_TOAST_META,
     });
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
@@ -231,19 +254,19 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
         toast.success("Manual configuration saved");
         onClose();
       },
-      error: "Failed to save network configuration",
+      error: failedChange("Failed to save network configuration"),
       toast: NETWORK_TOAST_META,
     });
   const { mutate: enableConnection, isPending: isEnabling } =
     linuxio.network.enable_connection.useMutation({
       success: "Connection enabled",
-      error: "Failed to enable connection",
+      error: failedChange("Failed to enable connection"),
       toast: NETWORK_TOAST_META,
     });
   const { mutate: disableConnection, isPending: isDisabling } =
     linuxio.network.disable_connection.useMutation({
       success: "Connection disabled",
-      error: "Failed to disable connection",
+      error: failedChange("Failed to disable connection"),
       toast: NETWORK_TOAST_META,
     });
   const { mutate: setOptional, isPending: isSettingOptional } =
@@ -255,7 +278,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   const { mutate: setMTU, isPending: isSettingMTU } =
     linuxio.network.set_mtu.useMutation({
       success: "MTU saved",
-      error: "Failed to set MTU",
+      error: failedChange("Failed to set MTU"),
       toast: NETWORK_TOAST_META,
     });
   const saving = isSettingIPv4 || isSettingIPv4Manual || isSettingMTU;

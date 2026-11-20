@@ -2,9 +2,11 @@ package storage
 
 import (
 	"context"
+	"slices"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
@@ -73,24 +75,26 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, apischema.StorageTopologyInventory]("storage.get_topology", apischema.RetrySafe()).Handle(handleGetTopology),
 )
 
-// routes is every storage route set: Routes declares and RegisterHandlers
-// registers these same ones, so no contract route is left answering "not
-// found".
-var routes = []apischema.BindingSet{api, smartTestBindings(), btrfsRollbackBindings(), btrfsDeviceBindings(), btrfsReplicationBindings(), partitionBindings()}
+// routes is every storage route set but the one acting on a host folder,
+// which is bound to the session it acts for. Routes declares and
+// RegisterHandlers registers these same ones, so no contract route is left
+// answering "not found".
+var routes = []apischema.BindingSet{api, smartTestBindings(), btrfsRollbackBindings(), btrfsDeviceBindings(), btrfsSpareBindings(), btrfsReplicationBindings(), partitionBindings()}
 
 var Routes = func() []apischema.RouteSpec {
 	var specs []apischema.RouteSpec
-	for _, set := range routes {
+	for _, set := range slices.Concat(routes, []apischema.BindingSet{btrfsSubvolumeFolderBindings(linksafe.Owner{})}) {
 		specs = append(specs, set.Routes()...)
 	}
 	return specs
 }()
 
 // RegisterHandlers registers all storage handlers with the global registry
-func RegisterHandlers(_ runtime.Runtime, router *bridgeipc.Router) {
+func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	for _, set := range routes {
 		set.Register(router)
 	}
+	btrfsSubvolumeFolderBindings(linksafe.ActingFor(rt.Session.User.UID, rt.Session.User.GID)).Register(router)
 }
 
 func handleMDList(_ context.Context, _ apischema.NoRequest) ([]apischema.MDArray, error) {

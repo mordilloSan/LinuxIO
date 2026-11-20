@@ -4,6 +4,7 @@ import { useState, type MouseEvent } from "react";
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
+import { CARD_SIZE_DEFAULT } from "@/routes/_authenticated/filebrowser/-cardSize";
 import ContextMenu from "@/routes/_authenticated/filebrowser/-components/ContextMenu";
 import DirectoryListing from "@/routes/_authenticated/filebrowser/-components/DirectoryListing";
 import {
@@ -119,6 +120,7 @@ function DeleteFlowsFixture() {
         style={{ height: "calc(100% - 120px)", minHeight: 0 }}
       >
         <DirectoryListing
+          cardSize={CARD_SIZE_DEFAULT}
           cutPaths={new Set()}
           isContextMenuOpen={menuPosition !== null}
           onCancelRename={noop}

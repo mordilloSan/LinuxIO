@@ -66,7 +66,7 @@ func DefaultHooks() Hooks {
 }
 
 // UpdateNotifyDropIn is the drop-in the auto-update settings write on the
-// provider's update service unit to report its runs (`linuxio alert
+// provider's update service unit to report its runs (`linuxio-worker alert
 // auto-update`). That package owns the path and tests it against this one.
 func UpdateNotifyDropIn(unit string) string {
 	return "/etc/systemd/system/" + unit + ".d/linuxio-alert.conf"
@@ -171,20 +171,22 @@ func (h Hooks) failedUpdateAlert(kind Kind, unit, invocationID string, record jo
 
 // reportWorkerRun raises or clears the run alert of a worker unit (snapshots,
 // resync, Docker updates) whose run ended as record says. The worker raises
-// an alert for each rule, job, pool or container that fails and then exits
-// with ExitReported; a run that failed in any other way (configuration that
+// an alert for each rule, job, pool or container that fails and still
+// completes; a run that failed in any other way (configuration that
 // cannot be read, a Docker daemon that does not answer, a killed worker) has
 // nothing of its own to report it under, so it is reported here, whatever the
 // report settings say. The alert is one per unit and links to the latest such
 // run in the history, where its output is. A run
-// that completes, or that failed with everything reported, clears it; one the
-// system stopped, that was canceled or that did no work (ExitSkipped) changes
-// nothing.
+// that completes clears it; one the system stopped, that was canceled or that
+// did no work changes nothing. A run that did no work says so in its summary
+// and completes, or exits with ExitSkipped when the summary was not stored.
 func (h Hooks) reportWorkerRun(ctx context.Context, kind Kind, record jobs.Record, result Result) error {
+	summary, _ := SummaryOf(record)
 	switch {
-	case record.State == jobs.StateFailed && result.exited(ExitSkipped):
+	case record.State == jobs.StateCompleted && summary.Skipped,
+		record.State == jobs.StateFailed && result.exited(ExitSkipped):
 		// The run did no work: it neither failed nor cleared anything.
-	case record.State == jobs.StateCompleted, record.State == jobs.StateFailed && result.exited(ExitReported):
+	case record.State == jobs.StateCompleted:
 		if h.Resolve == nil {
 			return nil
 		}
@@ -233,15 +235,17 @@ func runAlertKey(kind Kind) string {
 	return key
 }
 
-// ResyncRunAlertPool returns the pool whose resync unit raised the run alert
-// key under AlertSource. The btrfs health check uses it to clear the run
-// alert of a pool that is gone, since only the unit's next run clears it.
-func ResyncRunAlertPool(key string) (string, bool) {
-	uuid, ok := strings.CutPrefix(key, runAlertKey(Kind{Route: RouteResync})+"-")
-	if !ok || jobs.ValidateID(uuid) != nil {
-		return "", false
+// PoolRunAlertPool returns the pool whose resync or rebuild unit raised the
+// run alert key under AlertSource. The btrfs health check uses it to clear
+// the run alert of a pool that is gone, since only the unit's next run
+// clears it.
+func PoolRunAlertPool(key string) (string, bool) {
+	for _, route := range []string{RouteResync, RouteRebuild} {
+		if uuid, ok := strings.CutPrefix(key, runAlertKey(Kind{Route: route})+"-"); ok && jobs.ValidateID(uuid) == nil {
+			return uuid, true
+		}
 	}
-	return uuid, true
+	return "", false
 }
 
 // RequestCancel marks the running record of unit as canceled by request, so

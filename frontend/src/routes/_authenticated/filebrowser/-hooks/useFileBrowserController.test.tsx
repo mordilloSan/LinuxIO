@@ -114,6 +114,7 @@ const mocks = vi.hoisted(() => ({
     extractArchive: vi.fn(),
     moveItems: vi.fn(),
     renameItem: vi.fn(),
+    trashItems: vi.fn(),
   },
   navigation: {
     handleOpenDirectory: vi.fn(),
@@ -145,6 +146,7 @@ const mocks = vi.hoisted(() => ({
       clearClipboard: vi.fn(),
       copyToClipboard: vi.fn(),
       cutToClipboard: vi.fn(),
+      deselect: vi.fn(),
       select: vi.fn(),
     },
     clipboard: {
@@ -158,17 +160,18 @@ const mocks = vi.hoisted(() => ({
     actions: {
       clearEntries: vi.fn(),
       closeDialog: vi.fn(),
+      closeDialogFor: vi.fn(),
       mergeEntries: vi.fn(),
       openDialog: vi.fn(),
       setOwnUploads: vi.fn(),
-      setProcessing: vi.fn(),
+      setStatus: vi.fn(),
     },
     fileInputRef: { current: null },
     folderInputRef: { current: null },
-    isUploadProcessing: false,
     ownUploads: false,
     uploadDialogOpen: false,
     uploadEntries: [],
+    uploadStatus: "idle",
     uploadSummary: {
       files: 0,
       folders: 0,
@@ -339,7 +342,7 @@ function applyDefaultHookReturns() {
   mocks.useFileViewState.mockReturnValue(mocks.viewState);
 }
 
-function setup() {
+function setup(options?: Parameters<typeof useFileBrowserController>[1]) {
   const queryClient = new QueryClient({
     defaultOptions: {
       mutations: { retry: false },
@@ -357,6 +360,7 @@ function setup() {
     () =>
       useFileBrowserController(
         createFileBrowserListingQueryOptions("/srv/projects"),
+        options,
       ),
     { wrapper },
   );
@@ -464,7 +468,7 @@ describe("useFileBrowserController", () => {
     expect(mocks.viewState.actions.closeContextMenu).toHaveBeenCalledTimes(1);
   });
 
-  it("wires cross-domain callbacks for selection clearing and listing invalidation", () => {
+  it("wires cross-domain callbacks for deselection and listing invalidation", () => {
     setup();
     const mutationArgs = mocks.useFileMutations.mock.calls[0]?.[0];
     const dragArgs = mocks.useFileDragAndDrop.mock.calls[0]?.[0];
@@ -488,11 +492,20 @@ describe("useFileBrowserController", () => {
     expect(dragArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
     expect(mutationArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
 
+    // A delete or trash job that ends deselects only its own items.
     act(() => {
-      void mutationArgs.onDeleteSuccess();
+      void mutationArgs.onDeleteSuccess(["/srv/projects/readme.md"]);
     });
 
-    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
+    expect(mocks.selectionState.actions.deselect).toHaveBeenCalledWith([
+      "/srv/projects/readme.md",
+    ]);
+    expect(mocks.selectionState.actions.clear).not.toHaveBeenCalled();
+
+    // "Try again" on a permission change's failure toast opens the dialog.
+    expect(mutationArgs.onPermissionsRetry).toBe(
+      mocks.dialogs.actions.openPermissions,
+    );
 
     act(() => {
       void dragArgs.onUploadComplete();
@@ -503,6 +516,27 @@ describe("useFileBrowserController", () => {
 
     // Both flows share the one useListingInvalidation callback.
     expect(mocks.invalidateListing).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands items dragged out of the Trash to the page's restore, and drops on the Trash button to a move to Trash", () => {
+    const onRestoreItems = vi.fn();
+    const { result } = setup({ onRestoreItems });
+
+    // A folder row, the folder shown and a breadcrumb all restore there.
+    expect(result.current.contentProps.listing.onRestoreItems).toBe(
+      onRestoreItems,
+    );
+    expect(mocks.useFileDragAndDrop.mock.calls[0]?.[0]).toMatchObject({
+      onRestoreItems,
+    });
+    expect(result.current.contentProps.chrome.onTrashItems).toBe(
+      mocks.mutations.trashItems,
+    );
+    // The question about a disk without a trash deletes through the page's
+    // permanent delete, which reports its own result.
+    expect(result.current.dialogsProps.deleteDialog.onDeleteForGood).toBe(
+      mocks.mutations.deleteItems,
+    );
   });
 
   it("goes up to the parent folder and does nothing at the root", () => {

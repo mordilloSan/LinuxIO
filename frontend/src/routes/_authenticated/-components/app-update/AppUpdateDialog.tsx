@@ -85,9 +85,11 @@ const AppUpdateDialog = ({
                 gap: "var(--app-space-8)",
                 padding: "var(--app-space-8)",
                 borderRadius: "var(--app-radius-base)",
-                backgroundColor: updateSuccess
-                  ? "var(--app-palette-success-main)"
-                  : "var(--app-palette-error-main)",
+                backgroundColor: `color-mix(in srgb, var(${
+                  updateSuccess
+                    ? "--app-palette-success-main"
+                    : "--app-palette-error-main"
+                }) 55%, black)`,
                 color: "white",
               }}
             >
@@ -240,7 +242,7 @@ const AppUpdateDialog = ({
       </AppDialogContent>
       <AppDialogActions>
         {updateComplete && updateSuccess && onContinue && (
-          <AppButton color="success" onClick={onContinue} variant="contained">
+          <AppButton onClick={onContinue} variant="contained">
             Sign in again
           </AppButton>
         )}

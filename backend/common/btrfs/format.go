@@ -69,7 +69,7 @@ func Format(ctx context.Context, device, fsType, label string, overwrite bool, p
 			return "", err
 		}
 	}
-	if err := trim(ctx, []string{device}, progress); err != nil {
+	if err := trim(ctx, []string{device}, nil, progress); err != nil {
 		return "", err
 	}
 	uuid := newUUID()
@@ -123,9 +123,11 @@ const trimChunk = 1 << 30
 
 // trim discards every block of devices, the full-device TRIM mkfs would
 // otherwise run silently, so callers run mkfs with its nodiscard flag.
-// progress, if not nil, gets the whole percent done whenever it changes,
-// ending at 100. A device without discard, such as a hard disk, is skipped.
-func trim(ctx context.Context, devices []string, progress func(pct float64)) error {
+// check, if not nil, runs right before each device's trim, and its error
+// stops the trim there. progress, if not nil, gets the whole percent done
+// whenever it changes, ending at 100. A device without discard, such as a
+// hard disk, is skipped.
+func trim(ctx context.Context, devices []string, check func(device string) error, progress func(pct float64)) error {
 	sizes := make([]uint64, len(devices))
 	var total, done uint64
 	for i, d := range devices {
@@ -145,6 +147,11 @@ func trim(ctx context.Context, devices []string, progress func(pct float64)) err
 	}
 	report()
 	for i, d := range devices {
+		if check != nil {
+			if err := check(d); err != nil {
+				return err
+			}
+		}
 		if sizes[i] == 0 {
 			continue
 		}
@@ -163,7 +170,7 @@ func trim(ctx context.Context, devices []string, progress func(pct float64)) err
 // treats a failed discard as the end of the trim, not an error. A var so
 // tests can stub it.
 var discardDevice = func(ctx context.Context, device string, size uint64, advance func(uint64)) error {
-	f, err := os.OpenFile(device, os.O_WRONLY|os.O_EXCL, 0)
+	f, err := openExclusive(device, os.O_WRONLY)
 	if err != nil {
 		return err
 	}

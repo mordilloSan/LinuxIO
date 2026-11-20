@@ -177,18 +177,28 @@ See `docs/development.md`, "Test VM", for usage.
   key and login live in `~/.cache/linuxio-vm`, outside git.
 - `make vm-install` installs the current build; `make vm-reset` reverts every
   disk to `clean`; `make vm-destroy` removes the domain and its volumes.
-- `make test-vm-browser` runs `frontend/src/test/vm/*.spec.ts` with
+- `make test-vm-browser-rerun` runs `frontend/src/test/vm/*.spec.ts` with
   `frontend/config/playwright.vm.config.ts`; `login.spec.ts` signs in, sees the
   dashboard and signs out.
 - `jobs-phase2.spec.ts` and `jobs-phase3.spec.ts` start real jobs in the browser
   (package update, Compose, file copy, scrub, balance, device replace, pool
   create, Docker storage switch) and cut the host: `systemctl stop`, `kill -9`,
   reboot and power loss (`virsh destroy`). `linuxio-vm.sh throttle` caps a data
-  disk's speed so a job outlasts the event. What each spec file covers is in
+  disk's speed so a job outlasts the event. `jobs-phase3.spec.ts` also cuts a
+  pool resync, the timer run, by a power loss, after a data disk dropped out
+  on the guest's PCI bus. What each spec file covers is in
   [Jobs](../jobs.md#testing).
 - `make vm-test-btrfs-integration` runs the root btrfs and partition kernel
   tests (`test-btrfs-integration`) as root in the VM; the kernel-level claims
   of the btrfs resume work rest on that run.
+- `capability-install.spec.ts` installs zram from Capabilities, on Ubuntu,
+  and on Fedora once sign-in works there (see [Distributions](#distributions)).
+  On Ubuntu it also cancels an install while dpkg runs
+  ([Capabilities](../capabilities.md#zram)), which passed in test VM 2 on
+  2026-11-19.
+- `DISTRO=fedora` on the same targets drives a Fedora 45 VM,
+  `linuxio-e2e-fedora`, beside the Ubuntu ones (see
+  [Distributions](#distributions)).
 
 Not yet: tags, the mutation allowlist, fixtures, and artifact collection beyond
 Playwright's own traces and screenshots.
@@ -207,8 +217,90 @@ The committed repo should contain a VM recipe, not a VM image. The recipe should
 
 Prepared base images can be cached outside git. The cache key should include the
 VM recipe hash, the Ubuntu base image digest, and any major dependency versions.
-Future distro coverage can add additional recipes or profiles using the same
-test contract.
+
+### Distributions
+
+Decided 2026-11-17: the rig gets a VM for every distribution the installer
+accepts (`is_debian` and `is_fedora` in
+`packaging/scripts/install-dependencies.sh`), not Ubuntu alone:
+
+| Family | Distributions |
+|---|---|
+| Debian | Ubuntu (exists), Debian, Linux Mint, Pop!_OS |
+| RHEL | Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux |
+
+RHEL 8 and its rebuilds are not supported and get no VM.
+
+Built (2026-11-18):
+
+- `packaging/vm/linuxio-vm.sh` takes the distribution as a parameter,
+  `DISTRO=fedora` on the Make targets (`LINUXIO_VM_DISTRO` to the script),
+  Ubuntu when it is not given. A profile at the top of the script holds what
+  differs: the image URL, where its checksum is published, the first-boot
+  seed, the package manager the suites install with and the packages they
+  install. The domain, its volumes and its cache are named per distribution
+  (`linuxio-e2e-fedora`, `linuxio-e2e-fedora-*`, `~/.cache/linuxio-vm-fedora`),
+  so two exist side by side; Ubuntu keeps the names it had.
+  `docs/development.md`, "Test VM", says how.
+- A Fedora 45 profile (Cloud Base image, `user-data-fedora.yaml.in`, `dnf`,
+  SELinux enforcing), and these on it, on 2026-11-18 (kernel
+  7.3.4-300.fc45):
+
+| Target, with `DISTRO=fedora` | Result |
+|---|---|
+| `make vm-create` | Passes; the first boot takes about 2½ minutes |
+| `make vm-install` | Passes: `linuxio.target` active, the dashboard answers on 8090, no SELinux denial |
+| `make test-vm-backend SUITES=relay` | Passes |
+| `make test-vm-backend SUITES='filebrowser userconfig' VMS=1` | Passes |
+| `make vm-test-memory-integration` | Passes with zram-generator: `TestMemoryIntegration`, and the drain with 2 GiB (the cancel left 1806 of 2063 MiB parked, the rest drained in 13 s) and capped (280 MiB in 2 min 13 s) |
+| `make vm-test-memory-integration`, with the host checks (same day) | Passes after `make vm-reset DISTRO=fedora`, with the swap file held off at boot by a drop-in in place of the mask, which had kept `swap.target`, and with it zram, from starting at boot: after each reboot `swap.target` is active and zram the only swap. Also passing: Fedora's default zram alone and beside the swap file, `TestMemoryIntegration` with the generator's units for drop-ins in four folders and the zswap compressor refused with `ENOENT`, the status without sudo under TuneD 2.28, both drains (1806 MiB left after the cancel, drained in 12 s; capped, 279 MiB in 2 min 14 s), the drain through a `UUID=` alias, and `TestMemoryRebootIntegration` with fstab naming the swap file by its path and through a link |
+| `make test-vm-backend SUITES=packagekit VMS=1` (same day) | Passes: with PackageKit's cache made cold by a dnf transaction outside it, Resolve returns an empty result, and the install refreshes once and installs `hello` |
+| `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=capability-install.spec.ts` (same day, before `linuxio.rhel`) | Fails at sign-in, and `login.spec.ts` the same way: PAM cannot open the Debian `common-*` files the PAM file included (`PAM _pam_load_conf_file: unable to open config for common-auth`) |
+| `make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=capability-install.spec.ts`, with those includes changed to `password-auth` by hand and SELinux permissive in the VM, on the first sign-in after the VM booted (same day, before `linuxio.rhel`) | Passes: the install showed "Refreshing the package lists", then installed `zram-generator`, 3 s in all; no zram started, and the Memory overflow dialog named zram-generator as the provider |
+| `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, with `packaging/etc/pam.d/linuxio.rhel` installed (same day) | Fails one step later: PAM authenticates and opens the session, and SELinux denies the bridge's exec the `transition` to the user's context ([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)). A wrong password and a user in `/etc/linuxio/disallowed-users` are refused by PAM (`pam_unix`, `pam_listfile`) |
+| `make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, then `PLAYWRIGHT_ARGS=capability-install.spec.ts`, with SELinux enforcing and, made in the VM, first `pam_selinux.so open` removed from the PAM file and then a `SELinuxContext=` drop-in on `linuxio-auth@.service` with its socket already listening (same day) | Both pass under each change with no denial: `zram-generator` installed in 2 s and in 3 s, both without a refresh, later in a boot that had seen other sign-ins; no zram started, and the dialog named zram-generator as the provider |
+| `make test-vm-browser VMS=1 VM_KEEP=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`, with `SELinuxContext=-unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023` in `linuxio-auth@.service` as installed (same day) | Fails before any sign-in: systemd creates `linuxio-auth.socket`'s listening socket in that context, SELinux denies `init_t` the `create`, the socket fails with Permission denied and `linuxio-webserver.socket` with it, so port 8090 refuses connections. The VM run above added the drop-in while the socket was already listening (under Rejected in the [backlog](./backlog.md#rejected)) |
+| `make test-vm-browser-rerun VMS=1 VM_KEEP=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`, with an SELinux module that gives `linuxio-auth` a domain of its own loaded in the VM, after a reboot (same day) | Both pass, three times: with the module compiled from a `.te`, with the CIL generated from it on a VM reverted to clean, and with the hand-written CIL now in `packaging/selinux/linuxio.cil`. No denial of LinuxIO's; `linuxio-auth` and its listening socket run as `linuxio_auth_t`, the bridges as `unconfined_t`; a `user_u` and a `staff_u` user are refused |
+| `make test-vm-browser VMS=1 VM_KEEP=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`, with the installer loading `packaging/selinux/linuxio.cil`, then a reboot and `make test-vm-browser-rerun` with the same specs (same day) | Both pass as installed and again after the reboot. `ausearch -ts boot` shows no denial; the contexts and the refusals (a wrong password, a user in `/etc/linuxio/disallowed-users`, a `user_u` and a `staff_u` user) are those of [Process & Systemd Architecture](../process-systemd-architecture.md#selinux), and the SSH banner shows at an interactive login. On the same VM with the module removed and `linuxio-auth` relabelled `bin_t` (sign-in refused), `make vm-install` made the next sign-in work without a reboot; the installer run in a transient unit with the in-app updater's sandbox (`ProtectSystem=full` and its `ReadWritePaths`) found the module up to date and relabelled the binary, and with another version of the module in the store did not try the load (`/etc/selinux` read-only), named the command that loads it, relabelled the binary and went on, the older module and its policy staying loaded; with the banner's optional block naming a type the policy lacks, the module loaded, sign-in worked after a reboot and only the banner kept `var_run_t`; `uninstall.sh` left no module and no file of its types |
+
+Not run on Fedora yet: the `btrfs`, `indexer`, `docker`, `updater` and
+`network` suites, and the browser specs other than `login.spec.ts` and
+`capability-install.spec.ts`. The root suites needed three things of the
+rig and none of LinuxIO: `cloud-init status` as root (Fedora's cloud-init
+keeps its state from other users), its default `zram0` switched off the way
+Fedora documents before the memory suite, and a swap file made by btrfs and
+labelled `swapfile_t` (`docs/development.md`, "Test VM"). Signing in needed
+two things of LinuxIO: a PAM file of the RHEL family's own
+(`packaging/etc/pam.d/linuxio.rhel`), since the Debian one includes
+`common-*` files the RHEL family does not have, and an SELinux domain for
+`linuxio-auth`, which the installer loads
+([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)).
+
+Not built yet:
+
+1. The other profiles. The first of the RHEL family also runs the SELinux
+   checks of [Process & Systemd Architecture](../process-systemd-architecture.md#selinux)
+   (what runs where, who gets in): that its policy has every name the module
+   uses is expected, not seen.
+2. The browser specs on the RHEL family. `login.spec.ts` needs nothing of
+   the distribution, and `capability-install.spec.ts` is written for both
+   families (it takes the zram tool out and puts it back with the
+   distribution's package manager); both pass on Fedora as installed. The
+   others assume Ubuntu: `jobs-phase2.spec.ts` builds `apt`
+   packages (`frontend/src/test/vm/fixtures/many-updates.sh`,
+   `slow-package.sh`), and `memory.spec.ts`, `ui-actions.spec.ts` and the
+   `jobs-phase4`, `-phase5a`, `-phase5b`, `-needrestart` and `-update` specs
+   call `apt-get`, `dpkg` or `stopAptRuns`. Each needs an `rpm` twin of what
+   it does with packages, or stays on the Debian family; the other specs have
+   not been tried on Fedora.
+   Then the table above grows a column per distribution. The root Go suites
+   are expected to run everywhere.
+
+Open, to settle with the other profiles: Linux Mint and Pop!_OS publish installer images
+and no cloud image, and a RHEL image needs a Red Hat account, so these three
+need another way in (an unattended install, or an image the owner supplies)
+or are covered by their family: Ubuntu for the first two, Rocky Linux or
+AlmaLinux for RHEL.
 
 ### Tier 3 Scope
 

@@ -102,7 +102,7 @@ directories straight to the internal store.
 ## Command line
 
 ```text
-linuxio-monitoring run [--config PATH] [--verbose]
+linuxio-monitoring [--config PATH] [--verbose]
 linuxio-monitoring --version
 linuxio-monitoring --help
 ```
@@ -183,7 +183,11 @@ container listing, one-shot stats, version, host info and health inspection.
 The daemon retains its per-key CPU and network baselines, memory-cache
 subtraction, exclusion patterns and request deadlines. Docker 25 and newer
 and Podman use at most five concurrent stats requests; older Docker versions
-retain the batch behavior required by their one-shot stats endpoint.
+retain the batch behavior required by their one-shot stats endpoint. The
+stats pass samples the listed containers that are running or paused and skips
+the rest with a debug line: the list also returns a container Docker is
+restarting, which has no process between two runs, and asking for its stats
+logged an error on every cycle of a restart loop.
 
 ## HTTP API
 
@@ -479,6 +483,13 @@ If the database has to be recovered manually, stop the service, move
 `/var/lib/linuxio/monitoring/metrics.db*` aside, and start it again — the daemon
 creates an empty store and begins recording from the next tick. Move rather than
 delete, so the old history stays available for inspection.
+
+## Known limits
+
+- The NVIDIA collector reads a GPU's bus id through `nvmlDeviceGetPciInfo_v3`,
+  or the unversioned `nvmlDeviceGetPciInfo` of a library that does not export
+  it (`backend/monitoring/internal/collector/gpu/nvml.go`): not checked on a
+  host with an NVIDIA GPU.
 
 ## See Also
 

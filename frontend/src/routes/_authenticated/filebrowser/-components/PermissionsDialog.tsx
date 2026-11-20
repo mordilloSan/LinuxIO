@@ -1,14 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { type CountProgress, linuxio, type TaskProgress } from "@/api";
+import { linuxio } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -34,8 +33,8 @@ interface PermissionsDialogProps {
   open: boolean;
   owner?: string;
   pathLabel: string;
-  isPending?: boolean;
-  progress?: TaskProgress<CountProgress> | null;
+  /** Whether "Apply recursively" is ticked when the dialog opens. */
+  recursive?: boolean;
   selectionCount: number;
 }
 interface PermissionBits {
@@ -145,13 +144,12 @@ const PermissionsDialog = ({
   onClose,
   onConfirm,
   onExited,
-  isPending = false,
-  progress,
+  recursive: initialRecursive = false,
 }: PermissionsDialogProps) => {
   const [permissions, setPermissions] = useState<PermissionBits>(() =>
     parseMode(currentMode),
   );
-  const [recursive, setRecursive] = useState(false);
+  const [recursive, setRecursive] = useState(initialRecursive);
   const [ownerInput, setOwnerInput] = useState(owner || "");
   const [groupInput, setGroupInput] = useState(group || "");
 
@@ -160,7 +158,7 @@ const PermissionsDialog = ({
     setPrevOpen(open);
     if (open) {
       setPermissions(parseMode(currentMode));
-      setRecursive(false);
+      setRecursive(initialRecursive);
       setOwnerInput(owner || "");
       setGroupInput(group || "");
     }
@@ -194,8 +192,8 @@ const PermissionsDialog = ({
     const mode = permissionsToOctal(permissions);
     const nextOwner = ownerInput.trim() || undefined;
     const nextGroup = groupInput.trim() || undefined;
-    if (!isPending) onConfirm(mode, recursive, nextOwner, nextGroup);
-  }, [groupInput, isPending, onConfirm, ownerInput, permissions, recursive]);
+    onConfirm(mode, recursive, nextOwner, nextGroup);
+  }, [groupInput, onConfirm, ownerInput, permissions, recursive]);
   const isMobile = useMediaQuery(down("sm"));
   const permissionColumns: AppVirtualTableColumnDef<PermissionMatrixRow>[] = [
     {
@@ -215,7 +213,6 @@ const PermissionsDialog = ({
           <AppCheckbox
             aria-label={`${row.original.label} ${flag}`}
             checked={permissions[row.original.id][flag]}
-            disabled={isPending}
             onChange={(e) =>
               handlePermissionChange(row.original.id, flag, e.target.checked)
             }
@@ -237,13 +234,13 @@ const PermissionsDialog = ({
     ),
   ];
 
+  // A permission change is a job: Apply closes the dialog and starts it, and
+  // the task tray shows its progress and can cancel it.
   return (
     <FileBrowserDialog
-      aria-busy={isPending || undefined}
-      disableEscapeKeyDown={isPending}
       fullWidth
       maxWidth="sm"
-      onClose={isPending ? undefined : onClose}
+      onClose={onClose}
       open={open}
       slotProps={{ transition: { onExited } }}
     >
@@ -278,7 +275,6 @@ const PermissionsDialog = ({
           }}
         >
           <AppAutocomplete
-            disabled={isPending}
             freeSolo
             fullWidth
             label="Owner"
@@ -293,7 +289,6 @@ const PermissionsDialog = ({
           />
 
           <AppAutocomplete
-            disabled={isPending}
             freeSolo
             fullWidth
             label="Group"
@@ -330,7 +325,6 @@ const PermissionsDialog = ({
               control={
                 <AppCheckbox
                   checked={recursive}
-                  disabled={isPending}
                   onChange={(e) => setRecursive(e.target.checked)}
                 />
               }
@@ -339,37 +333,10 @@ const PermissionsDialog = ({
           </div>
         )}
       </AppDialogContent>
-      {isPending && (
-        <AppTypography
-          aria-live="polite"
-          color="text.secondary"
-          role="status"
-          style={{ paddingInline: "var(--app-space-12)" }}
-          variant="body2"
-        >
-          {progress?.message ?? progress?.phase ?? "Changing permissions"}
-          {/* Indeterminate progress carries no percentage; fall back to the
-              running entry count so the dialog never sits frozen. */}
-          {progress?.percentage !== undefined
-            ? ` (${progress.percentage}%)`
-            : progress?.detail?.processed
-              ? ` (${progress.detail.processed.toLocaleString()} entries)`
-              : ""}
-        </AppTypography>
-      )}
       <AppDialogActions>
-        <AppButton disabled={isPending} onClick={onClose}>
-          Cancel
-        </AppButton>
-        <AppButton
-          disabled={isPending}
-          onClick={handleConfirm}
-          startIcon={
-            isPending ? <AppCircularProgress color="inherit" size={14} /> : null
-          }
-          variant="contained"
-        >
-          {isPending ? "Applying…" : "Apply"}
+        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton onClick={handleConfirm} variant="contained">
+          Apply
         </AppButton>
       </AppDialogActions>
     </FileBrowserDialog>

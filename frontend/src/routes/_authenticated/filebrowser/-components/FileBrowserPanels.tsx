@@ -7,7 +7,6 @@ import {
   type RefObject,
 } from "react";
 
-import type { CountProgress, TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -38,7 +37,7 @@ import type {
   ConflictPrompt,
 } from "../-hooks/useFileConflicts";
 import type { DeleteMode } from "../-hooks/useFileDialogs";
-import type { UploadSummary } from "../-hooks/useFileUpload";
+import type { UploadStatus, UploadSummary } from "../-hooks/useFileUpload";
 import type {
   FileResource,
   MultiStatsItem,
@@ -280,25 +279,22 @@ export const FileBrowserSaveConflictDialog = ({
 );
 
 export interface FileBrowserDeleteDialogProps {
-  isPending?: boolean;
   mode: DeleteMode;
   onClose: () => void;
   onConfirm: () => void;
   open: boolean;
   pendingDeletePaths: string[];
-  progress?: TaskProgress<CountProgress> | null;
 }
 
-// Moving to the trash asks as well: the dialog doubles as the progress
-// surface, and its wording is what tells the two modes apart.
+// Moving to the trash asks as well: the wording is what tells the two modes
+// apart. Either is a job: confirming closes the dialog and starts it, and the
+// task tray shows its progress and can cancel it.
 export const FileBrowserDeleteDialog = ({
-  isPending,
   mode,
   onClose,
   onConfirm,
   open,
   pendingDeletePaths,
-  progress,
 }: FileBrowserDeleteDialogProps) => {
   const isTrash = mode === "trash";
   const count = pendingDeletePaths.length;
@@ -317,7 +313,6 @@ export const FileBrowserDeleteDialog = ({
     <AppConfirmDialog
       confirmText={isTrash ? "Move to Trash" : "Delete"}
       destructive={!isTrash}
-      isPending={isPending}
       message={
         isTrash
           ? `Move ${subject} to Trash?`
@@ -326,8 +321,6 @@ export const FileBrowserDeleteDialog = ({
       onClose={onClose}
       onConfirm={onConfirm}
       open={open}
-      pendingText={isTrash ? "Moving…" : undefined}
-      progress={progress}
       title={isTrash ? "Move to Trash" : "Delete permanently"}
     />
   );
@@ -435,7 +428,6 @@ export const FileBrowserDetailsDialog = ({
 interface FileBrowserUploadDialogProps {
   fileInputRef: RefObject<HTMLInputElement | null>;
   folderInputRef: RefObject<HTMLInputElement | null>;
-  isUploadProcessing: boolean;
   normalizedPath: string;
   onChangeUploadInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearUploadSelection: () => void;
@@ -447,13 +439,13 @@ interface FileBrowserUploadDialogProps {
   open: boolean;
   ownUploads: boolean;
   uploadEntries: DroppedEntry[];
+  uploadStatus: UploadStatus;
   uploadSummary: UploadSummary;
 }
 
 export const FileBrowserUploadDialog = ({
   fileInputRef,
   folderInputRef,
-  isUploadProcessing,
   normalizedPath,
   onChangeUploadInput,
   onClearUploadSelection,
@@ -465,14 +457,20 @@ export const FileBrowserUploadDialog = ({
   open,
   ownUploads,
   uploadEntries,
+  uploadStatus,
   uploadSummary,
 }: FileBrowserUploadDialogProps) => {
   // Only a privileged session's bridge runs as root and keeps uploads
   // root-owned; any other bridge already writes as the user.
   const { privileged } = useAuth();
+  // The destination check and the conflict prompt hold the dialog. Once the
+  // upload runs, its task tray row has the progress and Cancel, so the
+  // dialog can be closed and the upload runs on; the rest stays held.
+  const busy = uploadStatus !== "idle";
+  const checking = uploadStatus === "checking";
   return (
     <FileBrowserDialog
-      disableEscapeKeyDown={isUploadProcessing}
+      disableEscapeKeyDown={checking}
       fullWidth
       maxWidth="sm"
       onClose={onClose}
@@ -491,10 +489,10 @@ export const FileBrowserUploadDialog = ({
             flexWrap: "wrap",
           }}
         >
-          <AppButton onClick={onPickFiles} variant="outlined">
+          <AppButton disabled={busy} onClick={onPickFiles} variant="outlined">
             Select files
           </AppButton>
-          <AppButton onClick={onPickFolder} variant="outlined">
+          <AppButton disabled={busy} onClick={onPickFolder} variant="outlined">
             Select folders
           </AppButton>
         </div>
@@ -527,7 +525,7 @@ export const FileBrowserUploadDialog = ({
               control={
                 <AppCheckbox
                   checked={ownUploads}
-                  disabled={isUploadProcessing}
+                  disabled={busy}
                   onChange={(_, checked) => onOwnUploadsChange(checked)}
                 />
               }
@@ -571,20 +569,20 @@ export const FileBrowserUploadDialog = ({
       </AppDialogContent>
       <AppDialogActions>
         <AppButton
-          disabled={!uploadEntries.length || isUploadProcessing}
+          disabled={!uploadEntries.length || busy}
           onClick={onClearUploadSelection}
         >
           Clear
         </AppButton>
-        <AppButton disabled={isUploadProcessing} onClick={onClose}>
-          Cancel
+        <AppButton disabled={checking} onClick={onClose}>
+          {uploadStatus === "uploading" ? "Close" : "Cancel"}
         </AppButton>
         <AppButton
-          disabled={!uploadEntries.length || isUploadProcessing}
+          disabled={!uploadEntries.length || busy}
           onClick={onStartUpload}
           variant="contained"
         >
-          {isUploadProcessing ? "Uploading..." : "Upload"}
+          {busy ? "Uploading..." : "Upload"}
         </AppButton>
       </AppDialogActions>
     </FileBrowserDialog>

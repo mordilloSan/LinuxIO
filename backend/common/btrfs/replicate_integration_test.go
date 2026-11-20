@@ -40,7 +40,7 @@ func stubReplicationState(t *testing.T, dir string) {
 func itMount(t *testing.T, ctx context.Context, dir, name string) (string, string) {
 	t.Helper()
 	dev := loopDevice(t, filepath.Join(dir, name+".img"), 1<<30)
-	uuid, err := CreatePool(ctx, "linuxio-it-"+name, "single", "single", []string{dev}, true, nil)
+	uuid, err := CreatePool(ctx, "linuxio-it-"+name, "single", "single", []string{dev}, true, nil, nil)
 	if err != nil {
 		t.Fatalf("create pool %s: %v", name, err)
 	}

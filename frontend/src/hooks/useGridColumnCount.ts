@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState, type RefObject } from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
 
 interface GridColumnCountOptions {
   /** Horizontal gap between columns, in px. */
@@ -10,8 +10,20 @@ interface GridColumnCountOptions {
 }
 
 /**
+ * How many `minItemWidth`-wide columns fit a container `width` wide, CSS
+ * `auto-fill` style; at least one.
+ */
+export const gridColumnCount = (
+  width: number,
+  { gap, minItemWidth, padding }: GridColumnCountOptions,
+) => {
+  const availableWidth = Math.max(0, width - padding * 2);
+  return Math.max(1, Math.floor((availableWidth + gap) / (minItemWidth + gap)));
+};
+
+/**
  * Tracks a scroll container's client width and derives how many
- * `minItemWidth`-wide columns fit, CSS `auto-fill` style. Shared by the
+ * `minItemWidth`-wide columns fit (`gridColumnCount`). Shared by the
  * virtualized card grids (AppVirtualGrid, VirtualDirectoryItems), which lay
  * items out in virtual rows of `columnCount` cells.
  */
@@ -39,11 +51,5 @@ export function useGridColumnCount(
     return () => observer.disconnect();
   }, [containerRef]);
 
-  return useMemo(() => {
-    const availableWidth = Math.max(0, viewportWidth - padding * 2);
-    return Math.max(
-      1,
-      Math.floor((availableWidth + gap) / (minItemWidth + gap)),
-    );
-  }, [gap, minItemWidth, padding, viewportWidth]);
+  return gridColumnCount(viewportWidth, { gap, minItemWidth, padding });
 }

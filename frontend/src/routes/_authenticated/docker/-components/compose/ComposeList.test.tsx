@@ -237,6 +237,27 @@ describe("ComposeList expanded-container mutation feedback", () => {
     expect(routeMocks.search.stack).toBeUndefined();
   });
 
+  it("labels a stack whose only waiting item is a rebuild", () => {
+    render(
+      <ComposeList
+        onDelete={noopProject}
+        onRestart={noopName}
+        onStart={noopName}
+        onStop={noopName}
+        projects={[
+          {
+            ...project,
+            containers: [{ ...alpha, updateCheckState: "built" }, beta],
+          },
+        ]}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /demo/ });
+    expect(within(row).getByText("Rebuild")).toBeInTheDocument();
+    expect(within(row).queryByText("Update")).toBeNull();
+  });
+
   it("does not offer inline expansion without rendered containers", () => {
     render(
       <ComposeList

@@ -2,18 +2,20 @@ package filebrowser
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 // selfOwner is the test process's own ids. Any process may hand its own
@@ -36,7 +38,7 @@ func openTestRoot(t *testing.T) *fsroot.FSRoot {
 func newOwnedUpload(t *testing.T, target string, size int, newOwner sessionOwner, private, overwrite bool) *uploadTransferTask {
 	t.Helper()
 	req := apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(size)}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	return &uploadTransferTask{
 		transferLifecycle: &transferLifecycle{task: task},
@@ -50,20 +52,55 @@ func newOwnedUpload(t *testing.T, target string, size int, newOwner sessionOwner
 	}
 }
 
-// uploadThroughHandles drives prepare, the buffer reopen and commit, the steps
-// attach runs, for content.
+// uploadThroughHandles drives prepare, the writes through the buffer the task
+// holds and commit, the steps attach runs, for content.
 func uploadThroughHandles(t *testing.T, transfer *uploadTransferTask, content string) {
 	t.Helper()
 	root := openTestRoot(t)
 	require.NoError(t, transfer.prepare(root))
-	file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
+	_, err := transfer.buffer.WriteString(content)
 	require.NoError(t, err)
-	defer file.Close()
-	_, err = file.WriteString(content)
-	require.NoError(t, err)
-	code, err := transfer.commit(root, file, transfer.path, transfer.tempRel, transfer.finalRel)
+	code, err := transfer.commit(root, transfer.path, transfer.tempRel, transfer.finalRel)
 	require.NoError(t, err)
 	require.Zero(t, code)
+}
+
+// registeredUpload is the single-file transfer the task with id runs, once its
+// data stream has attached.
+func registeredUpload(t *testing.T, id string) *uploadTransferTask {
+	t.Helper()
+	registered, ok := fileTransferTasks.Load(id)
+	require.True(t, ok, "no transfer registered as %s", id)
+	transfer, ok := registered.(*uploadTransferTask)
+	require.True(t, ok, "%s is not a single-file upload", id)
+	return transfer
+}
+
+// heldBuffer is the buffer transfer holds open, read under its lock as the
+// attach that may still run reads it.
+func heldBuffer(transfer *uploadTransferTask) *os.File {
+	transfer.mu.Lock()
+	defer transfer.mu.Unlock()
+	return transfer.buffer
+}
+
+// requireClosed checks that f, a buffer an upload held, was closed.
+func requireClosed(t *testing.T, f *os.File) {
+	t.Helper()
+	require.NotNil(t, f)
+	_, err := f.Stat()
+	require.ErrorIs(t, err, os.ErrClosed)
+}
+
+// waitDetached waits for an attach whose stream dropped to park the upload.
+func waitDetached(t *testing.T, attachErr <-chan error) {
+	t.Helper()
+	select {
+	case err := <-attachErr:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the attach to detach")
+	}
 }
 
 // uploadThroughStream runs a whole filebrowser.upload task: the runner, the
@@ -71,9 +108,9 @@ func uploadThroughHandles(t *testing.T, transfer *uploadTransferTask, content st
 func uploadThroughStream(t *testing.T, req apischema.FileUploadRequest, content string, session sessionOwner) {
 	t.Helper()
 	req.Size = strconv.Itoa(len(content))
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, session)
 	})
 	conn, results, _ := attachUploadBatchStream(t, task, "")
@@ -130,7 +167,7 @@ func TestUploadNewOwnerComesOnlyFromARootBridgeSession(t *testing.T) {
 
 func TestUploadTaskRejectsUnknownOwner(t *testing.T) {
 	req := apischema.FileUploadRequest{TargetPath: filepath.Join(t.TempDir(), "f.txt"), Size: "1", Owner: "root"}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 
 	_, err = runUploadTask(context.Background(), task, req, sessionOwner{uid: 1000, gid: 1000, set: true})
@@ -271,25 +308,31 @@ func TestUploadKeepsTheGroupOfASetgidFolder(t *testing.T) {
 	requireOwnerAndMode(t, compose, owner.uid, uint32(group), 0o644)
 }
 
-// ext4 gives a deleted file's inode number to the next file created, so a
-// reopened buffer must also have the file handle it was created with: the
-// same device and inode with another handle is a different file.
-func TestUploadBufferIDNeedsTheSameHandle(t *testing.T) {
-	file, err := os.Create(filepath.Join(t.TempDir(), "buffer"))
+// ext4 gives a deleted file's inode number to the next file created, but not
+// while the deleted file is still open: a file created at the name of the
+// buffer the upload holds open never has its device and inode.
+func TestCheckUploadBufferNeedsTheHeldFile(t *testing.T) {
+	dirPath := t.TempDir()
+	dir, err := os.Open(dirPath)
 	require.NoError(t, err)
-	defer file.Close()
-	created, err := uploadBufferIDOf(file)
+	defer dir.Close()
+	buffer, err := createUploadBuffer(dir, "buffer")
 	require.NoError(t, err)
-	require.True(t, created.is(created))
-	require.False(t, created.is(uploadBufferID{}))
-	if created.handle == nil {
-		t.Skip("this filesystem gives no file handles")
-	}
+	defer buffer.Close()
+	require.NoError(t, checkUploadBuffer(dir, "buffer", buffer))
 
-	reused := created
-	reused.handle = append([]byte(nil), created.handle...)
-	reused.handle[len(reused.handle)-1] ^= 1
-	require.False(t, created.is(reused))
+	require.NoError(t, os.Remove(filepath.Join(dirPath, "buffer")))
+	recreated, err := createUploadBuffer(dir, "buffer")
+	require.NoError(t, err)
+	require.NoError(t, recreated.Close())
+	require.ErrorIs(t, checkUploadBuffer(dir, "buffer", buffer), errUploadBufferReplaced)
+
+	require.NoError(t, os.Remove(filepath.Join(dirPath, "buffer")))
+	require.NoError(t, os.Symlink("elsewhere", filepath.Join(dirPath, "buffer")))
+	require.ErrorIs(t, checkUploadBuffer(dir, "buffer", buffer), errUploadBufferReplaced)
+
+	require.NoError(t, os.Remove(filepath.Join(dirPath, "buffer")))
+	require.ErrorIs(t, checkUploadBuffer(dir, "buffer", buffer), fs.ErrNotExist)
 }
 
 // seedVictim is a file a swapped buffer name points at, standing in for
@@ -320,8 +363,8 @@ func requireVictimUntouched(t *testing.T, victim string) {
 
 // The buffer's name sits in a folder the session user may write to, so the
 // bridge never follows or trusts that name: it creates the buffer
-// exclusively, reopens it without following a symlink and only if it is
-// still the same file, and sets owner and mode through the open handle.
+// exclusively, writes and settles it only through the handle it holds open,
+// and commits only while the name is still that file.
 func TestUploadBufferNameIsNeverFollowed(t *testing.T) {
 	t.Run("planted before the buffer is created", func(t *testing.T) {
 		victim := seedVictim(t)
@@ -334,7 +377,7 @@ func TestUploadBufferNameIsNeverFollowed(t *testing.T) {
 		requireVictimUntouched(t, victim)
 	})
 
-	t.Run("swapped before a reopen", func(t *testing.T) {
+	t.Run("deleted and replaced between chunks", func(t *testing.T) {
 		victim := seedVictim(t)
 		target := filepath.Join(t.TempDir(), "docker-compose.yml")
 		transfer := newOwnedUpload(t, target, 3, selfOwner(), false, false)
@@ -344,14 +387,12 @@ func TestUploadBufferNameIsNeverFollowed(t *testing.T) {
 
 		require.NoError(t, os.Remove(buffer))
 		plant(t, victim, buffer)
-		_, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
-		require.ErrorIs(t, err, syscall.ELOOP)
-		requireVictimUntouched(t, victim)
-
-		require.NoError(t, os.Remove(buffer))
-		require.NoError(t, os.WriteFile(buffer, nil, 0o600))
-		_, err = openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
+		_, err := transfer.buffer.WriteString("new")
+		require.NoError(t, err)
+		_, err = transfer.commit(root, target, transfer.tempRel, transfer.finalRel)
 		require.ErrorIs(t, err, errUploadBufferReplaced)
+		requireVictimUntouched(t, victim)
+		require.NoFileExists(t, target)
 	})
 
 	t.Run("swapped while the buffer is open", func(t *testing.T) {
@@ -362,24 +403,155 @@ func TestUploadBufferNameIsNeverFollowed(t *testing.T) {
 			owner = sessionOwner{uid: 12345, gid: 12346, set: true}
 			require.NoError(t, os.Chown(filepath.Dir(target), 12345, 12346))
 		}
-		transfer := newOwnedUpload(t, target, 3, owner, true, false)
+		transfer := newOwnedUpload(t, target, 3, owner, false, false)
 		root := openTestRoot(t)
 		require.NoError(t, transfer.prepare(root))
-		file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
-		require.NoError(t, err)
-		defer file.Close()
-		_, err = file.WriteString("new")
+		_, err := transfer.buffer.WriteString("new")
 		require.NoError(t, err)
 
 		buffer := "/" + transfer.tempRel
 		moved := buffer + ".moved"
 		require.NoError(t, os.Rename(buffer, moved))
 		plant(t, victim, buffer)
-		_, err = transfer.commit(root, file, target, transfer.tempRel, transfer.finalRel)
-		require.NoError(t, err)
+		_, err = transfer.commit(root, target, transfer.tempRel, transfer.finalRel)
+		require.ErrorIs(t, err, errUploadBufferReplaced)
 
 		requireVictimUntouched(t, victim)
-		requireOwnerAndMode(t, moved, owner.uid, owner.gid, 0o600)
+		// Refused before it is handed over: the moved buffer keeps the
+		// bridge's owner and its private mode, not owner's and 0644.
+		requireOwnerAndMode(t, moved, uint32(os.Geteuid()), uint32(os.Getegid()), 0o600)
+		require.NoFileExists(t, target, "the link at the buffer's name is not committed")
+	})
+}
+
+// The upload holds its buffer open from prepare to the commit, so a process
+// that can write the folder and, between two attaches of the data stream,
+// deletes the buffer and keeps a file of its own open at the name receives
+// none of the rest of the upload. The commit finds another file at the
+// buffer's name and fails: the file root wrote has no name left to commit,
+// and the one at the name is not root's.
+func TestUploadBufferReplacedBetweenAttachesGetsNothing(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "notes.txt")
+	req := apischema.FileUploadRequest{TargetPath: target, Size: "6"}
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	require.NoError(t, err)
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+		return runUploadTask(ctx, j, req, sessionOwner{})
+	})
+
+	conn, _, attachErr := attachUploadBatchStream(t, task, "")
+	writeData(t, conn, []byte("abc"))
+	_ = conn.Close()
+	waitDetached(t, attachErr)
+	held := heldBuffer(registeredUpload(t, task.ID()))
+	require.NotNil(t, held, "a parked upload keeps its buffer open")
+
+	buffer := filepath.Join(dir, ".notes.txt.linuxio-upload-"+task.ID()+".part")
+	require.NoError(t, os.Remove(buffer))
+	planted, err := os.OpenFile(buffer, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	require.NoError(t, err)
+	defer planted.Close()
+
+	conn, results, _ := attachUploadBatchStream(t, task, "3")
+	writeData(t, conn, []byte("def"))
+	writeClose(t, conn)
+	result := waitResult(t, results)
+	require.Equal(t, "error", result.Status)
+	require.Equal(t, 500, result.Code)
+	require.Contains(t, result.Error, errUploadBufferReplaced.Error())
+	require.Equal(t, bridgeipc.TaskStateFailed, waitTaskDone(t, task).State)
+
+	info, err := planted.Stat()
+	require.NoError(t, err)
+	require.Zero(t, info.Size(), "the planted file receives none of the upload")
+	require.NoFileExists(t, target)
+	requireClosed(t, held)
+}
+
+// The task is the buffer's one owner: the commit closes it whether it lands
+// or not, and the cleanup of a failed or cancelled upload closes it, so no
+// upload leaves it open.
+func TestUploadClosesItsBuffer(t *testing.T) {
+	t.Run("on commit", func(t *testing.T) {
+		target := filepath.Join(t.TempDir(), "notes.txt")
+		transfer := newOwnedUpload(t, target, 3, sessionOwner{}, false, false)
+		root := openTestRoot(t)
+		require.NoError(t, transfer.prepare(root))
+		held := transfer.buffer
+		_, err := held.WriteString("new")
+		require.NoError(t, err)
+		_, err = transfer.commit(root, target, transfer.tempRel, transfer.finalRel)
+		require.NoError(t, err)
+
+		require.Nil(t, transfer.buffer)
+		requireClosed(t, held)
+		content, err := os.ReadFile(target)
+		require.NoError(t, err)
+		require.Equal(t, "new", string(content))
+	})
+
+	t.Run("on a failed commit", func(t *testing.T) {
+		target := filepath.Join(t.TempDir(), "notes.txt")
+		transfer := newOwnedUpload(t, target, 3, sessionOwner{}, false, false)
+		root := openTestRoot(t)
+		require.NoError(t, transfer.prepare(root))
+		held := transfer.buffer
+		require.NoError(t, os.WriteFile(target, []byte("appeared"), 0o644))
+		code, err := transfer.commit(root, target, transfer.tempRel, transfer.finalRel)
+		require.ErrorIs(t, err, fs.ErrExist)
+		require.Equal(t, 409, code)
+
+		require.Nil(t, transfer.buffer)
+		requireClosed(t, held)
+		transfer.cleanupPartial()
+		require.Len(t, dirEntries(t, filepath.Dir(target)), 1, "the cleanup removes the buffer")
+	})
+
+	t.Run("on cancel", func(t *testing.T) {
+		target := filepath.Join(t.TempDir(), "notes.txt")
+		transfer := newOwnedUpload(t, target, 3, sessionOwner{}, false, false)
+		require.NoError(t, transfer.prepare(openTestRoot(t)))
+		held := transfer.buffer
+		transfer.cleanupPartial()
+
+		require.Nil(t, transfer.buffer)
+		requireClosed(t, held)
+		require.Empty(t, dirEntries(t, filepath.Dir(target)))
+	})
+
+	t.Run("when cancelled before the buffer is made", func(t *testing.T) {
+		base := t.TempDir()
+		transfer := newOwnedUpload(t, filepath.Join(base, "missing", "notes.txt"), 3, sessionOwner{}, false, false)
+		transfer.cleanupPartial()
+
+		require.ErrorIs(t, transfer.prepare(openTestRoot(t)), errUploadEnded)
+		require.Nil(t, transfer.buffer)
+		require.Empty(t, dirEntries(t, base), "no folder and no buffer is made once the upload ended")
+	})
+
+	t.Run("on a failed chunk", func(t *testing.T) {
+		dir := t.TempDir()
+		req := apischema.FileUploadRequest{TargetPath: filepath.Join(dir, "notes.txt"), Size: "3"}
+		task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+		require.NoError(t, err)
+		startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+			return runUploadTask(ctx, j, req, sessionOwner{})
+		})
+		conn, results, _ := attachUploadBatchStream(t, task, "")
+		writeData(t, conn, []byte("ab"))
+		transfer := registeredUpload(t, task.ID())
+		held := heldBuffer(transfer)
+
+		writeData(t, conn, []byte("cd")) // one byte past the size
+		result := waitResult(t, results)
+		require.Equal(t, "error", result.Status)
+		require.Equal(t, 400, result.Code)
+		require.Equal(t, bridgeipc.TaskStateFailed, waitTaskDone(t, task).State)
+
+		require.Nil(t, heldBuffer(transfer))
+		requireClosed(t, held)
+		require.Empty(t, dirEntries(t, dir))
 	})
 }
 
@@ -398,10 +570,7 @@ func TestUploadCommitStaysInThePreparedFolder(t *testing.T) {
 		transfer := newOwnedUpload(t, env, 3, selfOwner(), true, true)
 		root := openTestRoot(t)
 		require.NoError(t, transfer.prepare(root))
-		file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
-		require.NoError(t, err)
-		defer file.Close()
-		_, err = file.WriteString("new")
+		_, err := transfer.buffer.WriteString("new")
 		require.NoError(t, err)
 
 		// Both names now resolve into prod, buffer included.
@@ -410,7 +579,7 @@ func TestUploadCommitStaysInThePreparedFolder(t *testing.T) {
 		require.NoError(t, os.Symlink("prod", stack))
 		require.NoError(t, os.Rename(filepath.Join(stack+".moved", partName), filepath.Join(prod, partName)))
 
-		_, err = transfer.commit(root, file, env, transfer.tempRel, transfer.finalRel)
+		_, err = transfer.commit(root, env, transfer.tempRel, transfer.finalRel)
 		require.ErrorIs(t, err, errUploadFolderReplaced)
 		content, err := os.ReadFile(filepath.Join(prod, ".env"))
 		require.NoError(t, err)
@@ -544,15 +713,16 @@ func TestUploadWithoutOwnerNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) 
 	transfer.linkRule = session
 	require.ErrorContains(t, transfer.prepare(root), docs+" is a link to "+victim+". Open that folder to make this change")
 
-	batch, batchSession := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+	batch, batchRoot := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
 		Destination: home,
 		Files:       []apischema.FileUploadBatchEntry{{Path: "docs/new.txt", Size: "3"}},
 		Directories: []string{"docs/made"},
 	}, sessionOwner{})
 	batch.linkRule = session
-	batch.prepareDirectories(batchSession.root)
+	batch.prepareDirectories(batchRoot)
 	require.Len(t, batch.failures, 1)
-	require.ErrorIs(t, batch.ensurePrepared(batchSession), bridgeipc.ErrForbidden)
+	_, err := batch.ensurePrepared(batchRoot)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 
 	entries := dirEntries(t, victim)
 	require.Len(t, entries, 1)

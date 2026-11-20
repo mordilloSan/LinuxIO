@@ -35,6 +35,30 @@ func createTestDir(t *testing.T, dir, name string) string {
 	return dirPath
 }
 
+// extractArchiveAt opens the archive at path as the extract route does and
+// extracts it through that handle.
+func extractArchiveAt(t *testing.T, path, destination string, owner Owner, opts *OperationCallbacks, workers int) error {
+	t.Helper()
+	archive, _, err := OpenArchive(t.Context(), path, owner)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	return ExtractArchive(t.Context(), archive, path, destination, owner, opts, workers)
+}
+
+// extractSizeAt opens the archive at path as the extract route does and
+// estimates what extracting it writes.
+func extractSizeAt(t *testing.T, path string, owner Owner) (int64, error) {
+	t.Helper()
+	archive, _, err := OpenArchive(t.Context(), path, owner)
+	if err != nil {
+		return 0, err
+	}
+	defer archive.Close()
+	return ComputeExtractSize(archive, path)
+}
+
 // createZipFile writes a zip of filenames to path, created or truncated
 // here as the compress task creates its temp file, and closes it.
 func createZipFile(t *testing.T, path string, opts *OperationCallbacks, skipPath string, filenames ...string) error {
@@ -42,7 +66,7 @@ func createZipFile(t *testing.T, path string, opts *OperationCallbacks, skipPath
 	out, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	require.NoError(t, err)
 	defer out.Close()
-	return CreateZip(out, opts, skipPath, ArchiveSources{}, filenames...)
+	return CreateZip(t.Context(), out, opts, skipPath, ArchiveSources{}, filenames...)
 }
 
 // createTarGzFile is createZipFile for a tar.gz.
@@ -51,7 +75,7 @@ func createTarGzFile(t *testing.T, path string, opts *OperationCallbacks, skipPa
 	out, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	require.NoError(t, err)
 	defer out.Close()
-	return CreateTarGz(out, opts, skipPath, ArchiveSources{}, workers, filenames...)
+	return CreateTarGz(t.Context(), out, opts, skipPath, ArchiveSources{}, workers, filenames...)
 }
 
 func TestComputeArchiveSize(t *testing.T) {
@@ -129,7 +153,7 @@ func TestComputeExtractSize(t *testing.T) {
 		err := createZipFile(t, zipPath, nil, zipPath, srcDir)
 		require.NoError(t, err)
 
-		size, err := ComputeExtractSize(zipPath)
+		size, err := extractSizeAt(t, zipPath, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(content)), size)
 	})
@@ -143,13 +167,13 @@ func TestComputeExtractSize(t *testing.T) {
 		err := createTarGzFile(t, tarPath, nil, tarPath, 0, srcDir)
 		require.NoError(t, err)
 
-		size, err := ComputeExtractSize(tarPath)
+		size, err := extractSizeAt(t, tarPath, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(content)), size)
 	})
 
 	t.Run("unsupported_format", func(t *testing.T) {
-		_, err := ComputeExtractSize(filepath.Join(tmpDir, "file.bin"))
+		_, err := extractSizeAt(t, filepath.Join(tmpDir, "file.bin"), Owner{})
 		require.Error(t, err)
 	})
 }
@@ -235,7 +259,7 @@ func TestCreateZip(t *testing.T) {
 		require.NoError(t, createZipFile(t, zipPath, nil, zipPath, sourceDir))
 
 		extractDir := filepath.Join(fixtureDir, "extracted")
-		require.NoError(t, ExtractArchive(t.Context(), zipPath, extractDir, Owner{}, nil, 0))
+		require.NoError(t, extractArchiveAt(t, zipPath, extractDir, Owner{}, nil, 0))
 
 		content, err := os.ReadFile(filepath.Join(extractDir, "source", "python"))
 		require.NoError(t, err)
@@ -298,7 +322,7 @@ func TestExtractArchive(t *testing.T) {
 		require.NoError(t, err, "CreateZip should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "zip-dest")
-		err = ExtractArchive(t.Context(), zipPath, destDir, Owner{}, nil, 0)
+		err = extractArchiveAt(t, zipPath, destDir, Owner{}, nil, 0)
 		require.NoError(t, err, "ExtractArchive should extract zip")
 
 		content, err := os.ReadFile(filepath.Join(destDir, "zip-src", "file.txt"))
@@ -315,7 +339,7 @@ func TestExtractArchive(t *testing.T) {
 		require.NoError(t, err, "CreateTarGz should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "tar-dest")
-		err = ExtractArchive(t.Context(), tarPath, destDir, Owner{}, nil, 0)
+		err = extractArchiveAt(t, tarPath, destDir, Owner{}, nil, 0)
 		require.NoError(t, err, "ExtractArchive should extract tar.gz")
 
 		content, err := os.ReadFile(filepath.Join(destDir, "tar-src", "nested.txt"))
@@ -401,7 +425,7 @@ func TestExtractArchiveStaysInsideDestination(t *testing.T) {
 			archivePath := filepath.Join(tmpDir, "archive"+format.ext)
 			format.write(t, archivePath, "../escape.txt")
 
-			require.Error(t, ExtractArchive(t.Context(), archivePath, filepath.Join(tmpDir, "dest"), Owner{}, nil, 0))
+			require.Error(t, extractArchiveAt(t, archivePath, filepath.Join(tmpDir, "dest"), Owner{}, nil, 0))
 			assert.NoFileExists(t, filepath.Join(tmpDir, "escape.txt"))
 		})
 
@@ -418,7 +442,7 @@ func TestExtractArchiveRefusesExistingDestination(t *testing.T) {
 	outside := createTestDir(t, tmpDir, "outside")
 	require.NoError(t, os.Symlink("../outside", filepath.Join(destDir, "link")))
 
-	require.ErrorContains(t, ExtractArchive(t.Context(), archivePath, destDir, Owner{}, nil, 0), "already exists")
+	require.ErrorContains(t, extractArchiveAt(t, archivePath, destDir, Owner{}, nil, 0), "already exists")
 	assert.NoFileExists(t, filepath.Join(outside, "pwned.txt"))
 }
 
@@ -500,7 +524,7 @@ func TestCreateTarGzKeepsHeaderSizeWhenFileGrows(t *testing.T) {
 	require.True(t, grown)
 
 	destDir := filepath.Join(tmpDir, "dest")
-	require.NoError(t, ExtractArchive(t.Context(), tarPath, destDir, Owner{}, nil, 0))
+	require.NoError(t, extractArchiveAt(t, tarPath, destDir, Owner{}, nil, 0))
 	content, err := os.ReadFile(filepath.Join(destDir, "src", "app.log"))
 	require.NoError(t, err)
 	assert.Equal(t, "0123456789", string(content))
@@ -519,7 +543,7 @@ func TestExtractArchiveKeepsExecutableBit(t *testing.T) {
 
 	for _, archivePath := range []string{zipPath, tarPath} {
 		destDir := filepath.Join(tmpDir, "dest-"+filepath.Base(archivePath))
-		require.NoError(t, ExtractArchive(t.Context(), archivePath, destDir, Owner{}, nil, 0))
+		require.NoError(t, extractArchiveAt(t, archivePath, destDir, Owner{}, nil, 0))
 		info, err := os.Stat(filepath.Join(destDir, "src", "run.sh"))
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(), archivePath)
@@ -542,7 +566,7 @@ func TestExtractZipStopsWorkersAfterFirstError(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	destDir := filepath.Join(tmpDir, "dest")
-	require.Error(t, ExtractArchive(t.Context(), archivePath, destDir, Owner{}, nil, 1))
+	require.Error(t, extractArchiveAt(t, archivePath, destDir, Owner{}, nil, 1))
 	assert.NoFileExists(t, filepath.Join(destDir, "later.txt"))
 }
 
@@ -556,12 +580,12 @@ func TestExtractNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
 	require.NoError(t, createZipFile(t, archive, nil, archive, src))
 
 	for _, dest := range []string{filepath.Join(f.docs, "out"), filepath.Join(f.docs, "missing", "out")} {
-		require.ErrorIs(t, ExtractArchive(t.Context(), archive, dest, f.session, nil, 0), bridgeipc.ErrForbidden, dest)
+		require.ErrorIs(t, extractArchiveAt(t, archive, dest, f.session, nil, 0), bridgeipc.ErrForbidden, dest)
 		f.requireVictimUntouched(t)
 	}
 
 	// A bridge that is not root acts as the user and follows their links.
-	require.NoError(t, ExtractArchive(t.Context(), archive, filepath.Join(f.docs, "out"), Owner{}, nil, 0))
+	require.NoError(t, extractArchiveAt(t, archive, filepath.Join(f.docs, "out"), Owner{}, nil, 0))
 	assert.FileExists(t, filepath.Join(f.victim, "out", "payload.txt"))
 }
 
@@ -573,7 +597,7 @@ func TestExtractAbortRemovesItsDestination(t *testing.T) {
 	require.NoError(t, createTarGzFile(t, archive, nil, archive, 0, src))
 	dest := filepath.Join(t.TempDir(), "out")
 
-	err := ExtractArchive(t.Context(), archive, dest, Owner{}, &OperationCallbacks{Cancel: func() bool { return true }}, 0)
+	err := extractArchiveAt(t, archive, dest, Owner{}, &OperationCallbacks{Cancel: func() bool { return true }}, 0)
 	require.ErrorIs(t, err, ErrAborted)
 	assert.NoDirExists(t, dest)
 }
@@ -639,9 +663,9 @@ func TestCompressNeverReadsThroughALinkTheUserCouldPlant(t *testing.T) {
 				require.NoError(t, err)
 				defer file.Close()
 				if strings.HasSuffix(name, ".zip") {
-					return CreateZip(file, nil, "", sources, paths...)
+					return CreateZip(t.Context(), file, nil, "", sources, paths...)
 				}
-				return CreateTarGz(file, nil, "", sources, 1, paths...)
+				return CreateTarGz(t.Context(), file, nil, "", sources, 1, paths...)
 			}
 			base := filepath.Base(f.home)
 
@@ -701,7 +725,57 @@ func TestCompressFollowsALinkInARootFolderAsRoot(t *testing.T) {
 		skipped = append(skipped, path)
 	}}
 
-	require.NoError(t, CreateZip(file, nil, "", sources, system))
+	require.NoError(t, CreateZip(t.Context(), file, nil, "", sources, system))
 	assert.Equal(t, map[string]string{"system/app.conf": "conf", "system/current.conf": "conf"}, archiveContents(t, archive))
 	assert.Empty(t, skipped)
+}
+
+// On a root bridge an extract does not read its archive through a link the
+// session user could have planted: a link in their folder to an archive only
+// root can read would hand them its content.
+func TestExtractNeverReadsAnArchiveThroughALinkTheUserCouldPlant(t *testing.T) {
+	home, vault := t.TempDir(), t.TempDir()
+	src := createTestFile(t, t.TempDir(), "payload.txt", []byte("payload"))
+	archive := filepath.Join(vault, "backup.zip")
+	require.NoError(t, createZipFile(t, archive, nil, archive, src))
+	// A relative target: one that starts at / is refused for every session
+	// (os.Root), whoever planted it.
+	link := filepath.Join(home, "backup.zip")
+	target, err := filepath.Rel(home, archive)
+	require.NoError(t, err)
+	require.NoError(t, os.Symlink(target, link))
+	session := Owner{UID: uint32(os.Getuid()), GID: uint32(os.Getgid()), Set: true}
+	out := filepath.Join(home, "out")
+
+	require.ErrorIs(t, extractArchiveAt(t, link, out, session, nil, 0), bridgeipc.ErrForbidden)
+	assert.NoDirExists(t, out, "a refused archive leaves no destination behind")
+	_, err = extractSizeAt(t, link, session)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+
+	// A bridge that is not root acts as the user and follows their links.
+	require.NoError(t, extractArchiveAt(t, link, out, Owner{}, nil, 0))
+	assert.FileExists(t, filepath.Join(out, "payload.txt"))
+}
+
+// An aborted extract removes the folder it made and no other: a folder
+// renamed onto the destination's name meanwhile is not the extract's to drop.
+func TestExtractAbortKeepsAFolderRenamedOntoItsDestination(t *testing.T) {
+	src := createTestFile(t, t.TempDir(), "payload.txt", []byte("payload"))
+	archive := filepath.Join(t.TempDir(), "payload.tar.gz")
+	require.NoError(t, createTarGzFile(t, archive, nil, archive, 0, src))
+	parent := t.TempDir()
+	dest := filepath.Join(parent, "out")
+	swapped := false
+	swap := func() bool {
+		if !swapped {
+			swapped = true
+			require.NoError(t, os.Rename(dest, filepath.Join(parent, "moved")))
+			createTestFile(t, createTestDir(t, parent, "out"), "theirs.txt", []byte("theirs"))
+		}
+		return true
+	}
+
+	err := extractArchiveAt(t, archive, dest, Owner{}, &OperationCallbacks{Cancel: swap}, 0)
+	require.ErrorIs(t, err, ErrAborted)
+	assert.Equal(t, "theirs", readString(t, filepath.Join(dest, "theirs.txt")))
 }

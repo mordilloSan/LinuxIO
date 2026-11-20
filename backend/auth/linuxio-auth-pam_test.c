@@ -19,6 +19,9 @@ static unsigned int g_real_gid;
 
 #define BRIDGE_DIR "bridge-bin"
 #define LINUXIO_SYSTEMCTL "systemctl-stub"
+// The sudo policy probe exits with the status in sudo-status (1, not
+// privileged, when absent), so no scenario depends on the host's sudoers.
+#define LINUXIO_SUDO "sudo-stub"
 // A hanging systemctl is killed after a second instead of three.
 #define JOBS_HOST_START_TIMEOUT_SEC 1
 #define LINUXIO_BRIDGE_OWNER ((uid_t)g_real_uid)
@@ -148,6 +151,15 @@ static int reset_case(const char *pam_control, const char *bridge_control)
   t_remove("systemctl-trace");
   t_remove("systemctl-status");
   t_remove("systemctl-hang");
+  t_remove("sudo-status");
+  t_remove("bridge_control");
+  {
+    static const char sudo_stub[] =
+        "#!/bin/sh\n"
+        "exit \"$(cat sudo-status 2>/dev/null || echo 1)\"\n";
+    if (t_write_file(LINUXIO_SUDO, sudo_stub, sizeof(sudo_stub) - 1, 0755) != 0)
+      return -1;
+  }
   {
     // The systemctl seam records its arguments and how many PAM steps had
     // run, hangs while systemctl-hang exists, and exits with the status in
@@ -317,10 +329,11 @@ static int check_error_response(const struct login_result *res,
   return 0;
 }
 
-// Exact golden OK frame for an unprivileged login, optionally followed by
+// Exact golden OK frame for a login in want_mode, optionally followed by
 // the stub's post-GO marker bytes proving response-before-Yamux ordering.
-static int check_ok_response(const struct login_result *res,
-                             const char *want_user, const char *want_marker)
+static int check_ok_response_mode(const struct login_result *res,
+                                  const char *want_user, const char *want_marker,
+                                  uint8_t want_mode)
 {
   size_t user_len = strlen(want_user);
   size_t frame_len = (size_t)PROTO_AUTH_RESP_HEADER_SIZE + 8 + 2 + user_len;
@@ -331,7 +344,7 @@ static int check_ok_response(const struct login_result *res,
   CHECK(res->out[2] == PROTO_MAGIC_2);
   CHECK(res->out[3] == PROTO_VERSION);
   CHECK(res->out[4] == PROTO_STATUS_OK);
-  CHECK(res->out[5] == PROTO_MODE_UNPRIVILEGED);
+  CHECK(res->out[5] == want_mode);
   CHECK(res->out[6] == PROTO_RESULT_OK);
   CHECK(res->out[7] == 0);
 
@@ -354,6 +367,13 @@ static int check_ok_response(const struct login_result *res,
     CHECK(res->out_len == frame_len);
   }
   return 0;
+}
+
+static int check_ok_response(const struct login_result *res,
+                             const char *want_user, const char *want_marker)
+{
+  return check_ok_response_mode(res, want_user, want_marker,
+                                PROTO_MODE_UNPRIVILEGED);
 }
 
 // -------- PAM trace helpers --------
@@ -724,6 +744,25 @@ static int test_jobs_host_hang_keeps_login(void)
   CHECK(res.rc == 0);
   CHECK(check_ok_response(&res, CANON_USER, STUB_MARKER) == 0);
   CHECK(access("systemctl-trace", F_OK) == 0);
+  return 0;
+}
+
+// A login the sudo policy probe admits is privileged: the bridge runs as root
+// and starts the root host itself, so the launcher starts no user host.
+static int test_privileged_login_skips_jobs_host(void)
+{
+  struct login_result res;
+
+  CHECK(reset_case("", "ok") == 0);
+  CHECK(t_write_file("sudo-status", "0\n", 2, 0644) == 0);
+  // A privileged bridge keeps the launcher's working directory instead of
+  // the user's home, so the stub finds its control word here.
+  CHECK(t_write_file("bridge_control", "ok", 2, 0644) == 0);
+  CHECK(run_login(CANON_USER, TEST_PASSWORD, 0, &res) == 0);
+  CHECK(res.rc == 0);
+  CHECK(check_ok_response_mode(&res, CANON_USER, STUB_MARKER,
+                               PROTO_MODE_PRIVILEGED) == 0);
+  CHECK(access("systemctl-trace", F_OK) != 0);
   return 0;
 }
 
@@ -1344,6 +1383,7 @@ int main(void)
       {"jobs host start failure keeps the login", test_jobs_host_start_failure_keeps_login},
       {"jobs host exec failure keeps the login", test_jobs_host_exec_failure_keeps_login},
       {"jobs host hang keeps the login", test_jobs_host_hang_keeps_login},
+      {"privileged login skips the jobs host", test_privileged_login_skips_jobs_host},
       {"wrong password hits btmp", test_wrong_password_hits_btmp},
       {"unknown user hits btmp", test_unknown_user_hits_btmp},
       {"PAM_USER canonicalization", test_pam_user_canonicalization},

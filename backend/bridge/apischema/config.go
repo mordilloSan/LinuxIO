@@ -141,6 +141,9 @@ type ConfigThemeColorsPayload map[ThemeColorKey]*string
 type ConfigDockerPayload struct {
 	Folders                 []string `json:"folders,omitempty"`
 	RequireMountsForFolders *bool    `json:"requireMountsForFolders,omitzero"`
+	WaitForHostIPs          *bool    `json:"waitForHostIPs,omitzero"`
+	// HostIPs replaces the stored list when present; an empty list clears it.
+	HostIPs []string `json:"hostIPs,omitempty"`
 }
 
 type ConfigJobSettingsPayload struct {

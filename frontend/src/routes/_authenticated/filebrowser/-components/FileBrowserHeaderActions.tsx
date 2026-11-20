@@ -1,5 +1,14 @@
 import { Icon } from "@iconify/react";
-import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -14,16 +23,20 @@ import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/tasks/useIsIndexing";
 import { iconSize } from "@/theme/constants";
 
+import { acceptInternalDrop, hasInternalDrag } from "../-internalDrag";
 import type { ViewMode } from "../-types";
 import FileBrowserSearch from "./FileBrowserSearch";
-import TrashDialog from "./TrashDialog";
 
 interface FileBrowserHeaderActionsProps {
+  /** The card view's size slider, placed before the view button. */
+  cardSizeSlider?: ReactNode;
   isMobile: boolean;
   onSearchCaseSensitiveChange: (value: boolean) => void;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
+  /** Items dragged onto the Trash button move to the Trash. */
+  onTrashItems?: (paths: string[]) => Promise<unknown>;
   searchQuery: string;
   searchCaseSensitive: boolean;
   showHiddenFiles: boolean;
@@ -31,23 +44,26 @@ interface FileBrowserHeaderActionsProps {
 }
 
 const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
+  cardSizeSlider,
   isMobile,
   onSearchCaseSensitiveChange,
   onSearchChange,
   onSwitchView,
   onToggleHiddenFiles,
+  onTrashItems,
   searchQuery,
   searchCaseSensitive,
   showHiddenFiles,
   viewMode,
 }: FileBrowserHeaderActionsProps) {
   const headerActionSlot = useHeaderActionSlot();
+  const navigate = useNavigate();
   const [actionsAnchorEl, setActionsAnchorEl] = useState<HTMLElement | null>(
     null,
   );
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
     useState<HTMLElement | null>(null);
-  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashDropTarget, setTrashDropTarget] = useState(false);
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
   const isIndexing = useIsIndexing();
@@ -108,40 +124,70 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
           onClick={handleIndexer}
         />
       ) : null}
-      <AppActionIconButton
-        ariaLabel="Trash"
-        icon="mdi:trash-can-outline"
-        iconSize={20}
-        label="Trash"
-        onClick={() => {
-          onDone?.();
-          setTrashOpen(true);
+      {/* The Trash is a place: the button opens it in this folder's stead,
+          and Back returns. Items dragged onto it move to the Trash. */}
+      <span
+        onDragLeave={(event: DragEvent) => {
+          if (
+            event.currentTarget.contains(event.relatedTarget as Node | null)
+          ) {
+            return;
+          }
+          setTrashDropTarget(false);
         }}
+        onDragOver={(event: DragEvent) => {
+          if (!onTrashItems || !hasInternalDrag(event.dataTransfer)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          setTrashDropTarget(true);
+        }}
+        onDrop={(event: DragEvent) => {
+          if (!onTrashItems || !hasInternalDrag(event.dataTransfer)) return;
+          // The page's upload drop handler must never see an internal drag.
+          event.preventDefault();
+          event.stopPropagation();
+          setTrashDropTarget(false);
+          const paths = acceptInternalDrop(event.dataTransfer);
+          if (paths.length === 0) return;
+          onTrashItems(paths).catch(() => {
+            // The move to Trash reports its own failure.
+          });
+        }}
+        style={{ display: "inline-flex" }}
+      >
+        <AppActionIconButton
+          ariaLabel="Trash"
+          color={
+            trashDropTarget ? "var(--app-palette-primary-main)" : undefined
+          }
+          icon="mdi:trash-can-outline"
+          iconSize={20}
+          label="Trash"
+          onClick={() => {
+            onDone?.();
+            void navigate({ search: { trash: true }, to: "." });
+          }}
+        />
+      </span>
+    </>
+  );
+  // A size step leaves the mobile menu open; the view button closes it.
+  const viewAction = (onDone?: () => void) => (
+    <>
+      {cardSizeSlider}
+      <ViewModeToggle
+        alternateMode="list"
+        onViewModeChange={() => {
+          onDone?.();
+          onSwitchView();
+        }}
+        viewMode={viewMode}
       />
     </>
   );
-  const viewAction = (onDone?: () => void) => (
-    <ViewModeToggle
-      alternateMode="list"
-      onViewModeChange={() => {
-        onDone?.();
-        onSwitchView();
-      }}
-      viewMode={viewMode}
-    />
-  );
-
-  const trashDialog = (
-    <TrashDialog onClose={() => setTrashOpen(false)} open={trashOpen} />
-  );
 
   if (!isMobile) {
-    return (
-      <>
-        <HeaderActions options={optionActions()} view={viewAction()} />
-        {trashDialog}
-      </>
-    );
+    return <HeaderActions options={optionActions()} view={viewAction()} />;
   }
 
   const headerActionHost = headerActionSlot?.host ?? null;
@@ -213,7 +259,6 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
           />
         </div>
       </AppPopover>
-      {trashDialog}
     </>
   );
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
@@ -39,7 +40,7 @@ func TestReadCallsPreserveCancellationIdentity(t *testing.T) {
 	cancel()
 	_, listErr := listDirectory(ctx, apischema.PathRequest{Path: "/"})
 	_, childrenErr := directoryChildren(ctx, apischema.DirectoryChildrenRequest{Path: "/"})
-	_, textErr := readText(ctx, apischema.PathRequest{Path: "/missing"})
+	_, textErr := readText(ctx, apischema.PathRequest{Path: "/missing"}, services.Owner{})
 	require.ErrorIs(t, listErr, context.Canceled)
 	require.ErrorIs(t, childrenErr, context.Canceled)
 	require.ErrorIs(t, textErr, context.Canceled)

@@ -47,6 +47,35 @@ export const formatContainerPort = (port: ContainerPort) =>
     ? `${port.PublicPort}:${port.PrivatePort}/${port.Type}`
     : `${port.PrivatePort}/${port.Type}`;
 
+type ContainerUpdateFlags = Pick<
+  ContainerInfo,
+  "updateAvailable" | "updateCheckState"
+>;
+
+/** The registry has a newer image: Update pulls it. */
+export const hasRegistryUpdate = (container: ContainerUpdateFlags) =>
+  container.updateAvailable === true && container.updateCheckState !== "built";
+
+/**
+ * A base image of an image this host builds has a newer version: only
+ * "Rebuild and update" takes it, since there is no registry image to pull.
+ */
+export const hasNewerBaseImage = (container: ContainerUpdateFlags) =>
+  container.updateAvailable === true && container.updateCheckState === "built";
+
+/**
+ * What waits among containers: "update" when one has a newer registry image,
+ * otherwise "rebuild" when a base image of one's image has a newer version;
+ * undefined when nothing waits.
+ */
+export const getWaitingUpdate = (
+  containers: readonly ContainerUpdateFlags[],
+) => {
+  if (containers.some(hasRegistryUpdate)) return "update" as const;
+  if (containers.some(hasNewerBaseImage)) return "rebuild" as const;
+  return undefined;
+};
+
 /** Compose service name from its label, `-` for containers outside Compose. */
 export const getContainerServiceName = (container: ContainerInfo) =>
   container.Labels?.["com.docker.compose.service"] || "-";

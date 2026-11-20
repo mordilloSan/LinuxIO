@@ -6,6 +6,11 @@ import { joinPath } from "@/utils/path";
 
 import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import { extractDroppedEntries } from "../-fileUpload";
+import {
+  acceptTrashDrop,
+  hasTrashDrag,
+  type TrashDragItem,
+} from "../-internalDrag";
 import type { FileResource } from "../-types";
 import type { ResolveCollisionsFn } from "./useFileConflicts";
 
@@ -17,6 +22,8 @@ const isInternalDrag = (event: DragEvent) =>
 interface UseDragAndDropUploadParams {
   editingPath?: string | null;
   normalizedPath: string;
+  /** Items dragged out of the Trash onto the folder are restored into it. */
+  onRestoreItems?: (items: TrashDragItem[], destinationDir: string) => void;
   onUploadComplete: () => void;
   resolveCollisions: ResolveCollisionsFn;
   resource?: FileResource | null;
@@ -35,6 +42,7 @@ export const useFileDragAndDrop = ({
   normalizedPath,
   resource,
   editingPath,
+  onRestoreItems,
   resolveCollisions,
   startUpload,
   onUploadComplete,
@@ -59,14 +67,21 @@ export const useFileDragAndDrop = ({
 
   const handleDragOver = useCallback(
     (event: DragEvent) => {
-      if (editingPath || isInternalDrag(event)) return;
-      if (!resource || resource.type !== "directory") return;
+      if (editingPath || !resource || resource.type !== "directory") return;
+      // Items dragged out of the Trash and dropped on the folder itself, not
+      // on a subfolder's row, go back into this folder.
+      if (onRestoreItems && hasTrashDrag(event.dataTransfer)) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        return;
+      }
+      if (isInternalDrag(event)) return;
       if (!event.dataTransfer?.types?.includes("Files")) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
       setIsDragOver(true);
     },
-    [editingPath, resource],
+    [editingPath, onRestoreItems, resource],
   );
 
   const handleDragLeave = useCallback(
@@ -86,8 +101,14 @@ export const useFileDragAndDrop = ({
 
   const handleDrop = useCallback(
     async (event: DragEvent) => {
-      if (editingPath || isInternalDrag(event)) return;
-      if (!resource || resource.type !== "directory") return;
+      if (editingPath || !resource || resource.type !== "directory") return;
+      if (onRestoreItems && hasTrashDrag(event.dataTransfer)) {
+        event.preventDefault();
+        const items = acceptTrashDrop(event.dataTransfer);
+        if (items.length > 0) onRestoreItems(items, normalizedPath);
+        return;
+      }
+      if (isInternalDrag(event)) return;
       event.preventDefault();
       setIsDragOver(false);
 
@@ -150,6 +171,7 @@ export const useFileDragAndDrop = ({
     [
       editingPath,
       normalizedPath,
+      onRestoreItems,
       onUploadComplete,
       resolveCollisions,
       resource,

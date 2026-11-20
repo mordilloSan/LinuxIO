@@ -81,17 +81,7 @@ func (j Journal) read() (standaloneUpdateTransaction, bool, error) {
 	if err := json.Unmarshal(data, &tx); err != nil {
 		return standaloneUpdateTransaction{}, false, fmt.Errorf("parse standalone update transaction: %w", err)
 	}
-	switch tx.Version {
-	case 1:
-		// Version 1 transactions could only begin from a running container and
-		// always started the replacement before verification.
-		tx.OriginalRunning = true
-		tx.ReplacementStarted = true
-		tx.ReplacementName = tx.OriginalName
-	case 2:
-		tx.ReplacementName = tx.OriginalName
-	case standaloneUpdateJournalVersion:
-	default:
+	if tx.Version != standaloneUpdateJournalVersion {
 		return standaloneUpdateTransaction{}, false, fmt.Errorf("unsupported standalone update transaction version %d", tx.Version)
 	}
 	if tx.OriginalID == "" || tx.OriginalName == "" || tx.BackupName == "" || tx.ReplacementName == "" {
@@ -124,7 +114,7 @@ func recoverStandaloneUpdate(ctx context.Context, cli ContainerClient, journal J
 		if tx.Phase != standaloneUpdateVerified {
 			// Nothing is left to restore; keeping the journal would only
 			// refuse every later update. The replacement, if any, stays.
-			slog.Warn("standalone Docker update journal cleared without rollback", "component", "docker", "container", tx.OriginalName, "phase", tx.Phase)
+			slog.Warn("cleared the standalone Docker update journal without rollback for container "+tx.OriginalName, "component", "docker", "container", tx.OriginalName, "phase", tx.Phase)
 		}
 		return journal.clear()
 	}

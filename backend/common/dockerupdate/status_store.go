@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -32,7 +33,9 @@ var (
 )
 
 // ImageUpdateStatus is the persisted result of the last update check for one
-// container and its image.
+// container and its image. A container in state built has UpdateAvailable
+// when a base image of its image has a newer version, and RemoteDigest then
+// stands for the digests of those base images (builtCheck).
 type ImageUpdateStatus struct {
 	ContainerID     string                 `json:"container_id,omitempty"`
 	ContainerName   string                 `json:"container_name,omitempty"`
@@ -50,6 +53,11 @@ type ImageUpdateStatus struct {
 type updateStatusDocument struct {
 	Version  int                 `json:"version"`
 	Statuses []ImageUpdateStatus `json:"statuses"`
+	// BuiltImages holds the base images of each image a rebuild by LinuxIO
+	// built (recordBuiltImage). They are kept beside the statuses, under the
+	// same lock, so the check that replaces every status also drops the
+	// records of images no longer on the host (writeUpdateStatuses).
+	BuiltImages []builtImageRecord `json:"built_images,omitempty"`
 }
 
 // StatusSnapshot indexes the persisted statuses for lookup by container or image.
@@ -126,12 +134,29 @@ func (s StatusSnapshot) ForImage(img image.Summary) (ImageUpdateStatus, bool) {
 	return ImageUpdateStatus{}, false
 }
 
-func writeUpdateStatuses(ctx context.Context, statuses []ImageUpdateStatus) error {
+// writeUpdateStatuses replaces every status with statuses. When images, the
+// daemon's image list, is not nil, it also drops the base images recorded for
+// an image no longer on the host (pruneBuiltImageRecords).
+func writeUpdateStatuses(ctx context.Context, statuses []ImageUpdateStatus, images *hostImages) error {
 	return withUpdateStatusWriteLock(ctx, func() error {
-		return writeUpdateStatusFile(statuses)
+		doc := readUpdateStatusDocument()
+		doc.Statuses = statuses
+		if images != nil {
+			doc.BuiltImages = pruneBuiltImageRecords(doc.BuiltImages, *images)
+		}
+		return writeUpdateStatusDocument(doc)
 	})
 }
 
+// hostImages is the ID of every image the daemon holds (listHostImages), and
+// when that list was asked for.
+type hostImages struct {
+	ids      map[string]bool
+	listedAt time.Time
+}
+
+// mergeUpdateStatuses replaces the statuses of the containers statuses name,
+// and removes those of removeContainerIDs. The recorded base images stay.
 func mergeUpdateStatuses(ctx context.Context, statuses []ImageUpdateStatus, removeContainerIDs ...string) error {
 	return withUpdateStatusWriteLock(ctx, func() error {
 		remove := make(map[string]struct{}, len(removeContainerIDs))
@@ -141,8 +166,9 @@ func mergeUpdateStatuses(ctx context.Context, statuses []ImageUpdateStatus, remo
 			}
 		}
 
+		doc := readUpdateStatusDocument()
 		merged := make(map[string]ImageUpdateStatus)
-		for _, status := range readUpdateStatusFile() {
+		for _, status := range doc.Statuses {
 			if _, ok := remove[status.ContainerID]; ok {
 				continue
 			}
@@ -156,51 +182,87 @@ func mergeUpdateStatuses(ctx context.Context, statuses []ImageUpdateStatus, remo
 			}
 		}
 
-		out := make([]ImageUpdateStatus, 0, len(merged))
+		doc.Statuses = make([]ImageUpdateStatus, 0, len(merged))
 		for _, status := range merged {
-			out = append(out, status)
+			doc.Statuses = append(doc.Statuses, status)
 		}
-		return writeUpdateStatusFile(out)
+		return writeUpdateStatusDocument(doc)
+	})
+}
+
+// recordBuiltImage keeps record, replacing what was recorded for its image.
+func recordBuiltImage(ctx context.Context, record builtImageRecord) error {
+	return withUpdateStatusWriteLock(ctx, func() error {
+		doc := readUpdateStatusDocument()
+		doc.BuiltImages = slices.DeleteFunc(doc.BuiltImages, func(existing builtImageRecord) bool {
+			return existing.ImageID == record.ImageID
+		})
+		doc.BuiltImages = append(doc.BuiltImages, record)
+		return writeUpdateStatusDocument(doc)
+	})
+}
+
+// readBuiltImageRecords is each recorded image's base images, by image ID.
+func readBuiltImageRecords() map[string]builtImageRecord {
+	records := make(map[string]builtImageRecord)
+	for _, record := range readUpdateStatusDocument().BuiltImages {
+		records[record.ImageID] = record
+	}
+	return records
+}
+
+// pruneBuiltImageRecords drops the record of an image that images does not
+// hold. A record is written once its image exists, so one written after the
+// list was asked for may name an image the list could not show yet: it is
+// kept until a later list.
+func pruneBuiltImageRecords(records []builtImageRecord, images hostImages) []builtImageRecord {
+	return slices.DeleteFunc(records, func(record builtImageRecord) bool {
+		return !images.ids[record.ImageID] && record.RecordedAt.Before(images.listedAt)
 	})
 }
 
 func readUpdateStatusFile() []ImageUpdateStatus {
+	return readUpdateStatusDocument().Statuses
+}
+
+// readUpdateStatusDocument reads the status file; a missing or invalid file
+// reads as empty.
+func readUpdateStatusDocument() updateStatusDocument {
 	data, err := os.ReadFile(updateStatusPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			slog.Debug("failed to read Docker update status file", "component", "docker", "path", updateStatusPath, "error", err)
 		}
-		return nil
+		return updateStatusDocument{}
 	}
 
 	var doc updateStatusDocument
 	if err := json.Unmarshal(data, &doc); err != nil {
 		slog.Debug("failed to parse Docker update status file", "component", "docker", "path", updateStatusPath, "error", err)
-		return nil
+		return updateStatusDocument{}
 	}
 	if doc.Version != updateStatusVersion {
 		slog.Debug("ignoring unsupported Docker update status file version", "component", "docker", "path", updateStatusPath, "version", doc.Version)
-		return nil
+		return updateStatusDocument{}
 	}
 	for _, status := range doc.Statuses {
 		if !validDockerUpdateCheckState(status.CheckState) {
 			slog.Debug("ignoring Docker update status file with an invalid check state", "component", "docker", "path", updateStatusPath, "state", status.CheckState)
-			return nil
+			return updateStatusDocument{}
 		}
 	}
-	return doc.Statuses
+	return doc
 }
 
-func writeUpdateStatusFile(statuses []ImageUpdateStatus) error {
-	for _, status := range statuses {
+func writeUpdateStatusDocument(doc updateStatusDocument) error {
+	for _, status := range doc.Statuses {
 		if !validDockerUpdateCheckState(status.CheckState) {
 			return fmt.Errorf("write Docker update status: invalid check state %q", status.CheckState)
 		}
 	}
-	doc := updateStatusDocument{
-		Version:  updateStatusVersion,
-		Statuses: compactUpdateStatuses(statuses),
-	}
+	doc.Version = updateStatusVersion
+	doc.Statuses = compactUpdateStatuses(doc.Statuses)
+	slices.SortFunc(doc.BuiltImages, func(a, b builtImageRecord) int { return strings.Compare(a.ImageID, b.ImageID) })
 	data, err := json.Marshal(doc, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return fmt.Errorf("marshal Docker update status: %w", err)
@@ -217,6 +279,7 @@ func validDockerUpdateCheckState(state DockerUpdateCheckState) bool {
 	case DockerUpdateCheckStateCurrent,
 		DockerUpdateCheckStateAvailable,
 		DockerUpdateCheckStateUncheckable,
+		DockerUpdateCheckStateBuilt,
 		DockerUpdateCheckStateError:
 		return true
 	default:
@@ -291,19 +354,38 @@ func updateStatusLockPath() string {
 // markContainerCurrent records a freshly updated container (which may have a
 // new ID after recreation) as having no pending update.
 func markContainerCurrent(ctx context.Context, oldContainerID string, inspect container.InspectResponse) {
+	markContainerChecked(ctx, oldContainerID, inspect, DockerUpdateCheckStateCurrent, builtCheck{})
+}
+
+// markContainerBuilt records a container (which may have a new ID after a
+// rebuild recreated it) as running the image its Compose service builds, as
+// check found it. A base image with a newer version keeps the container's
+// update-available alert, which the check raised.
+func markContainerBuilt(ctx context.Context, oldContainerID string, inspect container.InspectResponse, check builtCheck) {
+	markContainerChecked(ctx, oldContainerID, inspect, DockerUpdateCheckStateBuilt, check)
+}
+
+func markContainerChecked(ctx context.Context, oldContainerID string, inspect container.InspectResponse, state DockerUpdateCheckState, check builtCheck) {
 	status := ImageUpdateStatus{
-		ContainerID:   inspect.ID,
-		ContainerName: strings.TrimPrefix(inspect.Name, "/"),
-		CheckState:    DockerUpdateCheckStateCurrent,
-		ImageID:       inspect.Image,
-		CheckedAt:     time.Now(),
+		ContainerID:     inspect.ID,
+		ContainerName:   strings.TrimPrefix(inspect.Name, "/"),
+		CheckReason:     check.reason,
+		CheckState:      state,
+		ImageID:         inspect.Image,
+		UpdateAvailable: check.baseMoved,
+		RemoteDigest:    check.remoteDigest,
+		CheckedAt:       time.Now(),
 	}
 	if inspect.Config != nil {
 		status.ImageRef = inspect.Config.Image
 	}
 
 	if err := mergeUpdateStatuses(ctx, []ImageUpdateStatus{status}, oldContainerID); err != nil {
-		slog.Warn("failed to mark Docker container image current", "component", "docker", "container", inspect.ID, "error", err)
+		slog.Warn("failed to record the update status of Docker container "+status.ContainerName, "component", "docker", "container", status.ContainerName, "container_id", inspect.ID, "state", state, "error", err)
+		return
+	}
+	if check.baseMoved {
+		resolveDockerUpdateFailureAlerts(ctx, inspect.Name)
 		return
 	}
 	resolveDockerUpdateAlert(ctx, inspect.Name)

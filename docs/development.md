@@ -60,10 +60,12 @@ runs Docker's convenience script and streams its output.
 
 Release installation deliberately combines immutable release binaries with
 current-`main` packaging assets (systemd units, PAM and application
-configuration, MOTD, and helper files). This is the recovery path for fixing
+configuration, MOTD, helper files, and the SELinux policy
+`packaging/selinux/linuxio.cil`). This is the recovery path for fixing
 installer or service-definition bugs in already-published releases. Keep those
 assets compatible with supported historical binaries, or add a clear minimum
-binary-version failure before making an incompatible packaging change.
+binary-version failure before making an incompatible packaging change. Every
+release's installer fetches them by path, so their paths must not move.
 
 ## Initial setup
 
@@ -109,65 +111,479 @@ and installer tests consume. `make localinstall` runs
 
 ## Test VM
 
-`mk/vm.mk` drives a disposable Ubuntu 26.04 VM for checks that need root, a
+`mk/vm.mk` drives a disposable Ubuntu 26.04 VM (or Fedora 45, with
+`DISTRO=fedora`, below) for checks that need root, a
 real kernel, systemd or Docker. `packaging/vm/linuxio-vm.sh` does the work on
 `qemu:///system`, so it needs `virsh`, membership in the `libvirt` group, the
 `default` NAT network (`192.168.122.1`), `curl`, `openssl` and `python3`, but no
-`sudo`. It touches only the domain `linuxio-e2e` and its `linuxio-e2e-*`
+`sudo`. It touches only the `linuxio-e2e*` domains and their `linuxio-e2e*`
 volumes in the `default` pool. Its state (the cloud image cache, the SSH key
 and the login) lives in `~/.cache/linuxio-vm`.
 
-While it runs, the VM takes about 4 GiB of RAM and 4 vCPU. Its disks are
+While it runs, a VM takes up to 4 GiB of RAM and 4 vCPU. Its disks are
 sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
-(`vdb`–`vde`) for storage tests.
+(`vdb`–`vde`) for storage tests. Each data disk carries a serial,
+`linuxio-vdb` to `linuxio-vde`, which udev reports as `ID_SERIAL`, as a real
+disk's: the btrfs hot spare and the automatic rebuild recognise a disk by it.
+A VM created before the disks had serials gets them at its next
+`make vm-reset`, which every test target without `VM` runs, since the revert
+to `clean` brings back the definition the snapshot kept; `make vm-update`
+takes the snapshot again with them.
+
+`make test-vm-browser` is the whole browser run in one command. It builds
+LinuxIO and the update build the update checks install (`vm-update-build`,
+[Jobs](./jobs.md#testing)), picks free VMs (below), creating the ones it
+needs, reverts each to `clean`, installs the build in each and runs the specs
+on all of them at once. Then it reverts the first
+VM to `clean` again and runs `jobs-update.spec.ts` alone on it, the
+Playwright project `release-update`, since that file installs an older release
+and leaves the VM changed; a run narrowed with `PLAYWRIGHT_ARGS` skips that
+stage. At the end it shuts the VMs down. `make test-vm-backend` is
+the same for the root suites, without the install. A VM needs 4 GiB of free
+memory (`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and
+4 CPUs, so a host with 12 CPUs and 14 GiB free runs three; four is the most
+either takes, since a fifth would not shorten the run, and `test-vm-backend`
+takes no more than it has suites. `VMS=2` asks for two. Both work from a host
+with no VM yet; the first run waits for each VM's first boot.
+
+The VMs are numbered from 1: `linuxio-e2e`, then `linuxio-e2e-2` with its
+`linuxio-e2e-2-*` volumes and `~/.cache/linuxio-vm-2`, up to 9. They share
+only the image cache. `VM=2` on a target names one of them. `vm-create`,
+`vm-destroy` and `vm-ssh` act on one VM, the first unless `VM` names another;
+`vm-install`, `vm-reset`, `vm-update`, `vm-stop` and `test-vm-browser-rerun`
+act on every VM that exists, side by side (any of 1 to 9, so a gap left by
+`vm-destroy` does not hide the VMs after it), on VMs 1 to `VMS` when `VMS`
+is given, or on those `VM` names, one or a list (`VM='2 3'`). The test targets pick their VMs (below) unless `VM` names
+them. A run prints the VMs it used, as the `VM` that names them again:
+`test-vm-browser-rerun` and `vm-ssh` after a `test-vm-browser` take that
+`VM`, since the other VMs do not have the build.
+
+The specs wait on reboots, throttled disks and timers and hardly use the CPU,
+so more CPUs for a VM gain nothing and more VMs do. Playwright runs one worker
+for each VM; a worker takes the next spec file and runs it against its own
+VM, so a spec file starts from what `vm-install` left and never from what
+another file did. The longest file sets the floor: on a host with 12 CPUs
+the specs took 42 minutes on one VM and 15 on three.
+
+What a run prints says which VM did what. A command run on several VMs
+(`prepare`, `reset`, `install`, `stop` and so on) shows one row per VM with
+its steps as they end, colour-coded `vm1`, `vm2`, `vm3`; each VM's own
+output goes to `.cache/test-logs/vm-N-COMMAND.log`, and the end of it is
+shown when that VM fails. On a terminal the rows go on from one command to
+the next of the same target, so `test-vm-backend` keeps one row per VM from
+`ready` to `stop`; a failure, or anything else printed, starts new rows
+below. A row wider than the terminal drops its oldest steps for `…`, and the
+cursor is hidden while the rows are redrawn. The specs' reporter
+(`frontend/config/vm-reporter.ts`) puts the VM on every result, and prints
+what a spec writes under its own test once that test ends, so lines of two
+VMs never mix. On a terminal a board under the results shows each VM's
+test, with the number its result line will carry, its file and how long it
+has run; in a log or a pipe the results come alone. The
+run ends with a table for each VM (tests, passed, failed, skipped, when it
+finished), a timeline of which file ran on which VM, and each failure with
+its error, its code and its trace. Every line, without colour, is also in
+`.cache/test-logs/test-vm-browser.log`.
+
+Each VM has a lock, `~/.cache/linuxio-vm/locks/DOMAIN`. A target takes the
+locks of the VMs it acts on, without waiting, as its recipe begins: after
+its prerequisites (`build-nocheck`, `vm-update-build`, `ensure-go`,
+`setup-frontend`) and after make has asked the script how many VMs exist,
+but before it touches a VM, so a refused target may have built something but
+has reverted, booted or stopped nothing. The recipe's shell opens the lock
+files and the script takes the locks on those descriptors, so they stay with
+the shell for the whole recipe, and every step of the recipe (prepare,
+install, the specs, the release-update stage on its first VM, the trap that
+stops the VMs, each VM's row and log) acts on the VMs it locked. Targets on
+different VMs, of any distribution or release, run side by side, as many as
+the host has memory for; a target that needs a VM another target holds is
+refused with the name of that VM, since it would revert, reboot or stop the
+VM under the first. A target that needs several VMs takes all of them or
+none, under a short lock (`locks/taking`) so that no other target finds part
+of them held: refused for one, it stops nothing and leaves the others free.
+A lock file it cannot open refuses it too. `make vm-ssh VM_KEEP=1` on a
+running VM takes no lock, since it stops nothing, so it can look into a VM
+another target holds; on a VM that is off it takes the VM's lock to start
+it, like any target, and should the VM stop while it runs without the lock,
+it refuses to start it again.
+
+A test target given no `VM` (`test-vm-backend`, `test-vm-browser` and the
+`vm-test-*` suites) picks its VMs. It first tries the lock of each of VMs 1
+to 4, so it sees every VM of its release other targets hold, then takes, in order, the free
+ones that exist and are off and hold no installed build, then those that
+hold one (`install` leaves `installed` in the VM's state folder; a revert, a
+create and a destroy remove it), then numbers that do not exist yet, which it
+creates (a first boot takes a few minutes), until it has what it wants: one
+for a `vm-test-*` suite, and for the others as many as the CPUs allow
+(`test-vm-backend` no more than it has suites), or `VMS`. It takes a VM only
+when the memory has room for it: 4 GiB for each of the run's VMs and 1.5 GiB
+kept for the host, where other test VMs count as spent (what the running
+ones have not used yet, and 4 GiB for each one another target holds that is
+off or still being created, since its target will start it). A VM that runs with no target holding
+it was left up to look at (`VM_KEEP=1`, or a target killed before its trap),
+so it is left alone. Picking and locking are one step under `locks/taking`,
+so two targets started at once never take the same VM. Its first line says
+what it took, why no more and the memory it counted, and the run goes on
+with what it got: `linuxio-vm: VM 2 for this run; in use: linuxio-e2e;
+memory: 14.4 GiB available, less 4.0 GiB for other test VMs and 1.5 GiB
+kept for the host; VM=2 names it again`, or `VM 2 for this run, 1 of 3
+wanted (another VM needs 4.0 GiB and 3.5 GiB is left); ...`. With none it
+fails, naming the busy VMs and what the memory check found. A first line
+that takes a VM holding a build says so (`VM 1 held an installed build,
+which the revert removes`). A picked VM's state is unknown, so a `vm-test-*`
+suite reverts it to `clean` first (and creates it when it is
+missing), as the full runs do. With `VM=N` a suite runs on that VM as it is,
+and is refused when another target holds it; `VM` with a list is for the
+targets that act on several. `make vm-create VM=4` creates a VM ahead of
+the run that would want it.
+
+A checkout or worktree whose `mk/vm.mk` is older than these locks takes
+`~/.cache/linuxio-vm/lock` alone for any VM target, and one older than
+commit `0042b2a6` (2026-11-17) takes no lock at all, so nothing keeps its
+targets away from any other. Targets with the per-VM locks take the old lock
+shared, so a target of a checkout with the old lock is refused while one of
+them runs, and the other way round, while they run beside each other. The
+shared lock can go once no checkout with the old lock is left.
+
+Before the script starts a VM that is not running (a first boot in
+`vm-create`, a target that starts a stopped VM, a spec's `power-cut` or
+`off-for`, or its boot after it powered the VM off), it checks the host's
+memory, since targets side by side could otherwise start more VMs than the
+host holds. A first start needs the VM's 4 GiB and the 1.5 GiB kept for the
+host free, where what running test VMs of any distribution or release were
+given and have not used yet (their memory less their RSS) counts as spent,
+and a running one whose numbers libvirt does not give counts whole. A
+restart of a VM that the same target started before or found running needs
+only its 4 GiB: the reserve is for the run's browsers, which have it by then.
+Make gives each target an ID, `LINUXIO_VM_RUN`, which the specs' rig calls
+inherit, and the VM's state folder keeps, in `run`, the ID of the target that
+last started it or found it running. When the VM does not fit, the script
+fails before starting it, saying what it needs, what is free and which test
+VMs are running. Starts take a short lock (`locks/start`) around the check,
+so two at once never count the same memory, and `vm-create` also checks
+before its download. `test-vm-browser` shuts the other VMs of the run down
+before the release-update spec boots the first one again (not with
+`VM_KEEP=1`).
+`LINUXIO_VM_MEMINFO=FILE` makes the check read `FILE` in place of
+`/proc/meminfo`, to see a refusal without filling the host.
+
+Known limits:
+
+- A run counts the memory when it picks, and each start checks again: a
+  start can still be refused, failing the run, when memory went elsewhere
+  meanwhile, or at the edge of what the host has, since a running VM holds a
+  little more than its 4 GiB. A busy VM that is off, or still being
+  created, counts as 4 GiB to come even when its target only stops or
+  reverts it, so a run beside `vm-reset` may take fewer VMs than the host
+  holds. A run plans the CPUs for itself, so
+  runs side by side share them.
+- Picking counts the VMs of its own release only: a VM of another release
+  or distribution that another target holds and has not started yet is not
+  counted, so one of the two can be refused at its start.
+- Only `install` (`make vm-install`, the browser runs) marks a VM as holding
+  a build. The indexer and updater suites install LinuxIO themselves and
+  leave no mark, so such a VM is picked like a clean one; it is reverted
+  first either way.
+- A VM a test target creates stays, stopped, and joins the VMs that the
+  targets without `VM` act on (`vm-reset`, `vm-install` and so on);
+  `make vm-destroy VM=N` removes it.
+- A VM left running with no target holding it is not picked until
+  `make vm-stop VM=N` shuts it down, and what it has not used yet counts as
+  spent meanwhile.
+- A restart can still be refused when other targets started VMs while this
+  one was off (during an `off-for`, or after a spec powered it off); the VM
+  then stays off and the specs after it on that VM fail. A restart counts on
+  no reserve, so it can also take what another target's first start counted
+  on, and a VM that a target created counts as started by it, so its next
+  boot in that target is a restart.
+- Every program a target starts inherits the lock descriptors, so a target
+  killed with SIGKILL whose child lives on (the seed server of a first boot,
+  a Playwright browser) leaves its VMs locked until that child ends.
+  `lslocks` names it, by the lock file `~/.cache/linuxio-vm/locks/DOMAIN`.
+- Targets started from one checkout share its `.cache` (the suite binaries
+  and their queue, the logs, the Playwright results), so targets that run
+  side by side are started from separate checkouts or worktrees, as
+  `AGENTS.md` asks of any two Make runs.
+
+The full runs are long: the browser specs take 15 minutes on three VMs and
+42 on one, the root suites about 6 on three, and either holds every VM it
+runs on, up to four, meanwhile. An agent therefore runs only the suite
+(`SUITES=...`) or the spec file (`PLAYWRIGHT_ARGS=...`) its change needs and
+leaves the full runs to the owner (`AGENTS.md`).
 
 `VM_RELEASE=noble` on a `vm-*` target selects a second VM on Ubuntu 24.04
 (kernel 6.8): the domain `linuxio-e2e-noble`, its `linuxio-e2e-noble-*`
 volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
 `make vm-test-btrfs-integration VM_RELEASE=noble`, the root btrfs tests on a
 kernel before 6.19, where a signal does not abort a scrub or a replace. The
-test program is built without cgo, so it runs on the older glibc. LinuxIO
-itself is not installed or tested in that VM.
+test program is built without cgo, so it runs on the older glibc. The browser
+specs run there too (`make vm-install VM_RELEASE=noble`, then
+`make test-vm-browser-rerun VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in
+and the scheduled-script specs were run on it.
+
+`DISTRO=fedora` on a `vm-*` or `test-vm-*` target selects the Fedora VMs
+instead of Ubuntu's: the domain `linuxio-e2e-fedora` (`linuxio-e2e-fedora-2`
+and so on), its `linuxio-e2e-fedora-*` volumes and
+`~/.cache/linuxio-vm-fedora`, beside the Ubuntu VMs, which keep their names
+when `DISTRO` is not given. Each has a lock of its own, so a target on a
+Fedora VM runs beside one on an Ubuntu VM. What differs between
+distributions is a profile at the top of the script: the cloud image, where its checksum is
+published, the first-boot seed, the package manager the suites install with,
+and the packages they install. Fedora's is:
+
+- the Fedora Cloud Base image (`Fedora-Cloud-Base-Generic-45-1.4.x86_64.qcow2`)
+  from `download.fedoraproject.org`, which sends it from a mirror, checked
+  against the SHA-256 in the release's `CHECKSUM` file read from
+  `dl.fedoraproject.org`. The script does not check the signature of either
+  distribution's checksum file. A Fedora release's images do not change once
+  it ships, so a new release is a new version in the profile.
+- `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
+  passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
+  `docker-compose` and `docker-buildx`, `btrfs-progs`,
+  `install-dependencies.sh`, every package upgraded, and
+  `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
+  filesystem is btrfs.
+- `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
+
+On Fedora the root suites `relay`, `filebrowser`, `userconfig`, `memory` and
+`packagekit` have been run (`docs/TODO/e2e-testing.md`, "Distributions", has the
+results), and of the browser specs `login.spec.ts` and
+`capability-install.spec.ts`, which pass there as installed with SELinux
+enforcing and again after a reboot. The other specs do things with `apt`
+packages; `capability-install.spec.ts` is written for both distributions,
+except its cancel test, which skips on Fedora.
 
 ```sh
-make vm-create        # download and check the image, first boot, snapshot "clean"
-make vm-install       # make build-nocheck, then install this build in the VM
+make test-vm-browser        # everything below that a browser run needs, in one go
+make test-vm-backend        # the same for the root suites, shared out between the VMs
+make vm-create              # download and check the image, first boot, snapshot "clean"
+make vm-create VM=2         # one more VM
+make vm-install             # make build-nocheck, then install this build in the VMs
 make vm-ssh CMD='systemctl is-active linuxio.target'
-make test-vm-browser  # Playwright specs in frontend/src/test/vm
+make test-vm-browser-rerun  # the Playwright specs in frontend/src/test/vm, on the VMs as they are
 make vm-test-btrfs-integration
-make vm-reset         # revert every disk to "clean" and stop the VM
-make vm-destroy       # delete the domain and its volumes; the cache stays
+make vm-stop                # shut the VMs down; what is installed stays
+make vm-reset               # revert every disk to "clean" and stop the VMs
+make vm-update              # upgrade the packages in "clean" and take the snapshot again
+make vm-update-build        # this tree with jobs.Protocol one higher, for the update checks
+make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 
 - `vm-create` downloads the cloud image (checked against the release's
-  `SHA256SUMS`), and boots it once with `packaging/vm/user-data.yaml.in`.
+  `SHA256SUMS`, Fedora's `CHECKSUM`), and boots it once with
+  `packaging/vm/user-data.yaml.in` (`user-data-fedora.yaml.in` on Fedora).
   cloud-init reads its seed over HTTP from a server on
-  `192.168.122.1:8399` that runs only during that boot. It creates the user
-  `linuxio-e2e` with passwordless sudo and installs `docker.io`,
-  `btrfs-progs` and the LinuxIO dependencies. The VM is then shut down and
-  snapshotted as `clean`, without LinuxIO.
-- Every target that needs the VM starts it if it is stopped. `vm-reset` leaves
-  it stopped, without LinuxIO; run `vm-install` again after a reset.
+  `192.168.122.1:8399` (8400 for VM 2, and so on; from 8409 for
+  `VM_RELEASE=noble` and 8419 for Fedora, so that first boots of any VMs can
+  run at once) that runs only during that boot. It creates the user
+  `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
+  Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
+  `btrfs-progs` and the LinuxIO dependencies, and upgrades every package. The
+  VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
+  to the seed's packages reaches a VM only when it is created again
+  (`vm-destroy`, then `vm-create`); `vm-update` upgrades what `clean` already
+  has.
+- Every target that needs the VM starts it if it is stopped and shuts it
+  down when it ends, passed or failed (`vm-install`, `vm-ssh`, the
+  `test-vm-*` and the `vm-test-*` ones), so no VM runs unused. What was
+  installed and the journal stay on its disks only until a target reverts
+  it: a stopped VM may be reverted by any test target that picks it (one
+  that holds a build after the others). To keep one, leave it running with
+  `VM_KEEP=1`, which a pick never takes, or name it with `VM=N` in your own
+  next target before another run takes it. `VM_KEEP=1` on a target leaves
+  the VM up, to look at a failure while its processes still run, or to run
+  several `vm-ssh` commands against one boot; `make vm-stop` then shuts it
+  down. `vm-reset` leaves it stopped, without
+  LinuxIO; run `vm-install` again after a reset.
+- A change to a systemd unit or socket, a PAM file or SELinux policy counts
+  as working only when it is seen as the installer puts it and again after a
+  reboot, so that every socket and service starts with it. Every target
+  shuts the VM down when it ends (not with `VM_KEEP=1`), so the next one
+  (`make vm-ssh CMD=...`) boots it afresh under its lock. The script's own `reboot`
+  (`packaging/vm/linuxio-vm.sh reboot`) takes no lock: it is for a spec, or
+  for a VM a target of yours holds. A drop-in or an edit made on a running VM shows
+  less: `SELinuxContext=` on `linuxio-auth@.service` let sign-in pass that
+  way, because its socket was already listening, and as installed systemd
+  could not create the socket at all
+  (`docs/process-systemd-architecture.md`, "SELinux").
+- The seed switches `apt-daily.timer` and `apt-daily-upgrade.timer` off, so
+  the VM never upgrades itself: an unattended upgrade that a power-cut check
+  interrupts leaves dpkg broken for the specs after it. `vm-update` is how
+  its packages are brought up to date instead. It reverts to `clean`, runs
+  `apt-get dist-upgrade`, switches the two timers off (a VM created before
+  the seed did so still has them on) and takes `clean` again; run it now and
+  then, since a long list of waiting updates also slows the Updates page.
+  The kernel is upgraded with the rest, so the kernel tests then run on the
+  new one. On Fedora it runs `dnf upgrade`; Fedora upgrades nothing by
+  itself.
 - `make vm-ssh` without `CMD` opens a shell. The user can `sudo` without a
   password. Make expands `$` in `CMD`, so write `$$`.
-- `test-vm-browser` signs in at `https://<vm-ip>:8090` as `linuxio-e2e`, with
-  the password in `~/.cache/linuxio-vm/password`. `PLAYWRIGHT_ARGS` applies.
-  Run each jobs spec file on its own fresh VM (`login.spec.ts` plus one
-  file): the specs leave their schedules behind, and the Schedules table
-  renders only the rows near what is visible, so a later file does not find
-  its own row among an earlier file's.
+- `test-vm-browser-rerun` runs the specs against the VMs as they are, which
+  is what a rerun of one file wants (`PLAYWRIGHT_ARGS=jobs-phase4`). It signs in
+  at `https://<vm-ip>:8090` as `linuxio-e2e`, with the VM's password in its
+  state directory (`~/.cache/linuxio-vm/password` for the first).
+  `PLAYWRIGHT_ARGS` applies to `test-vm-browser` too. Both run the
+  Playwright project `specs` unless `PLAYWRIGHT_ARGS` names a project
+  (`--project=release-update` runs `jobs-update.spec.ts`).
+  The specs leave their schedules behind, and the Schedules table renders
+  only the rows near what is visible, in the order of the definition files
+  (by ID, so a new schedule lands anywhere). The helpers in `vm.ts`
+  (`createSchedule`, `runNow`, `clickInScheduleRow`) scroll the table to the
+  row, so leftover schedules do not hide a spec's own; a spec that reads
+  `scheduleRow` directly must do the same.
   The specs reach the VM through `linuxio-vm.sh`: `ssh`, and for host events
-  `reboot` (an orderly ACPI reboot) and `power-cut` (`virsh destroy`, then
-  `start`), each of which waits for the next boot. `jobs-phase2.spec.ts`
+  `reboot` (an orderly ACPI reboot), `power-cut` (`virsh destroy`, then
+  `start`) and `off-for SECONDS` (an orderly shutdown, the domain off for
+  that long, then a boot), each of which waits for the next boot. `reboot`
+  first waits until the boot is 40 s old, and `power-cut` and `off-for` keep
+  the domain off for what is missing: libvirt's DHCP server offers an address without
+  its 3 s ping when it pinged it in the last 30 s, which is fast enough for
+  the initrd's DHCP client to take the VM's address, and the system then
+  gets another, where no spec looks for it. `jobs-phase2.spec.ts`
   installs Docker's Compose plugin, creates a btrfs pool on `vdb` and `vdc`
   and reboots the VM, so run `vm-reset` and `vm-install` before reusing it
-  for other checks.
+  for other checks. A disk that drops out needs no rig command:
+  `jobs-phase3.spec.ts` takes a data disk off the guest's PCI bus
+  (`/sys/bus/pci/devices/<function>/remove`) and brings it back under its
+  name with `/sys/bus/pci/rescan`, while the domain keeps it.
+  `ui-actions.spec.ts` is not a jobs spec: a session without sudo, the
+  "Open the real folder" action, a toast's page link on Docker, and the
+  navbar's Reboot and Power Down. It creates and removes a user without sudo
+  (`e2e-ui`), a folder `/srv/e2e-link` and two busybox containers, reboots the
+  VM and powers it off (the rig's `ssh` starts a domain that is shut off).
+  `docker-host-ip-wait.spec.ts` is the boot test of Docker's wait for
+  published host IPs
+  ([Bridge Configuration Storage](./config-storage.md#wait-for-published-host-ips)).
+  Two units of its own stand in for the hosts the setting is for: `e2e-early`
+  puts an address on a bridge before the network is up, and `e2e-late` adds
+  one on a dummy interface 10 s after everything Docker's unit is ordered
+  after. A busybox container publishes a port on each, and the VM reboots
+  twice, without the setting and with it. The spec removes its units, links
+  and container and leaves the setting off; a run that stops between its
+  save and its last test leaves it on, with addresses the VM no longer has,
+  and the next run switches it off first.
+  `capability-install.spec.ts` installs zram from Capabilities
+  ([Capabilities](./capabilities.md#zram)), and on Ubuntu cancels a second
+  install while apt holds dpkg back for 30 s, through an apt drop-in it
+  always removes, to check that the job waits for PackageKit's transaction.
+  It reads the distribution from
+  `LINUXIO_VM_DISTRO` (`vmDistro` in `vm.ts`), takes the zram tool out with
+  that distribution's package manager first, and leaves zram and its tool as
+  the clean image has them: on Ubuntu no zram tool and no swap, with the apt
+  timers stopped until the next boot; on Fedora `zram-generator` with its
+  default `zram0` swapping.
+- The `vm-test-*` targets are the root suites. Each builds its test binaries
+  on the host into `.cache/vm`, static so they also run on the older glibc
+  of `VM_RELEASE=noble`, and the script's `test` command copies them into
+  the VM, prints its kernel version and runs them as root, with the test
+  patterns of the matching host target. Without `VM` a suite picks a free
+  VM and reverts it to `clean` first; with `VM=N` it runs on that VM as it
+  is.
+- `test-vm-backend` runs every root suite: the four above, and six that
+  have no target of their own. It picks as many free VMs as the CPUs and
+  the memory allow, one for each suite at most, creates the ones it needs
+  and reverts each to `clean` so the run starts from a known state; it installs no build,
+  since the suites bring their own test binaries. The suites wait in one queue, longest first, and each VM takes the
+  next when it is free: memory (about 6 minutes, with two reboots), btrfs (3), indexer (just
+  under 2, most of it the indexer's idle timeout), docker (1½), packagekit
+  (under ½, most of it the first boot), then relay,
+  updater, userconfig, filebrowser and network, seconds each. On three VMs
+  the run takes about as long as memory, plus the LinuxIO build the indexer
+  suite needs. `SUITES='docker updater'` runs only those. With one VM
+  (`VMS=1`) they run one after another on it, the later ones on what the
+  earlier left. The first failure ends that VM's suites; the other VMs take
+  what is left of the queue. With more than one VM each one's output is in
+  `.cache/test-logs/vm-N-test.log`. The six without a target:
+  - `indexer` is the disposable-host smoke test
+    ([Indexer](./indexer.md#disposable-host-smoke-test)). It needs the
+    LinuxIO build, so the target runs `build-nocheck` first; the suite
+    copies the checkout's packaging and the build in, and the script
+    installs it, checks socket activation, idle exit and the index timer, and
+    uninstalls it.
+  - `docker` is `test-docker-update-integration`: real Compose replacements,
+    which pull alpine images from Docker Hub. Ubuntu's `docker.io` and
+    Fedora's `moby-engine` come without the Compose and buildx plugins, so
+    the seed installs them (`docker-compose-v2`, `docker-compose` on Fedora,
+    and `docker-buildx`), and the suite installs them in a VM created before
+    the seed did. With buildx Compose builds through Bake, as it does on a
+    host that has Docker's own packages; a host without buildx is covered by
+    the unit tests' recorded build output only.
+  - `updater` is `test-updater`, the install script's `--dry-run` under the
+    updater's systemd sandbox. The test reads the script from
+    `LINUXIO_INSTALL_SCRIPT`, a copy, since the VM has no checkout.
+  - `network` adds dummy and macvlan links and a network namespace as root
+    (`TestVirtualChildrenByParentSeesOtherNamespaces`).
+  - `userconfig` has a root bridge create config files for another user's
+    IDs (`TestOwnedConfigArtifactsCanTargetDifferentIDsWhenPrivileged`).
+  - `packagekit` is `TestInstallByNameRefreshesAColdCacheIntegration`
+    (`bridge/handlers/packages`): an install by name through the real
+    PackageKit while its cache is cold, which must refresh the package lists
+    once and install the package, GNU `hello`, which the suite removes before
+    and after. With PackageKit stopped, the suite removes apt's lists and
+    binary caches on Ubuntu, and on Fedora removes PackageKit's own cache and
+    makes a dnf transaction outside it (`hello` installed and removed),
+    after which its dnf backend finds nothing until a refresh; without that
+    transaction it fetches a cache itself. Both backends answer an empty
+    result, not PackageKit's package-not-found error. Run it with
+    `make test-vm-backend SUITES=packagekit VMS=1`, and `DISTRO=fedora`.
 - `vm-test-btrfs-integration` builds the `common/btrfs` and
   `bridge/handlers/storage` test binaries on the host,
   prints the VM's kernel version and runs the same tests as
   `test-btrfs-integration`, as root in the VM.
+- `vm-test-memory-integration` builds the `bridge/handlers/memory` test binary
+  on the host and runs `TestMemoryIntegration` as root in the VM: a switch to
+  zram and back through systemd, the kernel and `/etc` (see
+  [Memory overflow](./memory.md#tests)). With `ZRAM_PROVIDER=zram-generator`
+  it installs `systemd-zram-generator` instead and refuses a VM that has
+  zram-tools, which LinuxIO prefers: run `make vm-reset` first. The test needs
+  a zram tool and a swap file in `/etc/fstab`, so the first run installs
+  `zram-tools` with apt and disables the `zramswap.service` its package
+  starts, and, when `/etc/fstab`
+  has no `/swap.img`, creates a 1 GiB `/swap.img`, adds it to fstab and starts
+  it. On Fedora, which has no zram-tools, `zram-generator` is the default
+  and comes with the image, and so does a `zram0` that swaps from boot
+  (`zram-generator-defaults`). Where such a vendor file
+  (`/usr/lib/systemd/zram-generator.conf`) is there, the suite first puts
+  that default back as a fresh image has it, undoing an earlier run: no
+  `/swap.img` (taken away and out of fstab, made again after), no
+  `/etc/systemd/zram-generator.conf`, and `zram0` started again from the
+  vendor file. It runs `TestMemoryDefaultZramIntegration` there, and again
+  once `/swap.img` swaps beside it. `TestMemoryIntegration` starts from disk,
+  so the suite then switches the default off the way Fedora documents, which
+  is also where LinuxIO's disk mode leaves it: an empty
+  `/etc/systemd/zram-generator.conf`, a reload, then a stop of
+  `dev-zram0.swap` and its setup service. A stop alone does not hold: while a
+  configuration names the device, systemd starts it again as soon as it is
+  reset. Its root is btrfs, so `/swap.img` is made with
+  `btrfs filesystem mkswapfile` (a file without copy-on-write), which, unlike
+  `mkswap`, leaves the file with its folder's SELinux type: the suite labels
+  it `swapfile_t`, the type `swapon` is allowed to use. After
+  `TestMemoryIntegration` the suite installs TuneD (`tuned`) and starts it,
+  and runs `TestMemoryStatusWithoutRootIntegration` as a system user without
+  sudo it creates, `linuxio-e2e-nosudo`, from a copy of the test binary in
+  `/var/tmp`; TuneD is then stopped and disabled, and the user and the copy
+  removed. It then runs `TestMemoryDrainIntegration` twice on the data disk
+  `vdb`, made a swap device with a `noauto` fstab entry and started only for
+  the test: once with 2 GiB parked on it, and once with 320 MiB and the test's
+  reads from the disk capped at 2 MiB a second, where the drain has to take
+  more than 90 seconds. The test runs in a cgroup of its own,
+  `/sys/fs/cgroup/linuxio-drain-test`, which it removes. fstab then names
+  `vdb` by `UUID=` for `TestMemoryDrainAliasIntegration`, and by its path
+  again after it, also at the next run after a cut one. The device is stopped
+  when its tests end, passed, failed or interrupted. A `vdb` that holds
+  anything but swap, as after a storage check, is refused: run
+  `make vm-reset` first. Last, `TestMemoryRebootIntegration` runs twice
+  around an orderly reboot of the VM (the script's `reboot`): with fstab
+  naming `/swap.img`, and naming it through the link `/swap-link`, which the
+  suite makes and removes, also at the next run after a cut one. The whole
+  target takes about six minutes. These changes stay in the VM until
+  `make vm-reset` reverts its disks.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only
   ownership tests (`test-filebrowser-root`).
+- `vm-test-relay-root` builds the `bridge/cmd` test binary on the host and
+  runs the bridge-to-job-host relay tests (`jobs_relay_test.go`) as root in the
+  VM. The tests serve a host in-process and the relay dials it without
+  starting its socket unit, which as root would call systemd, so they also run
+  as the invoking user; as root the in-process host is the root host.
 
 ## Overrides
 
@@ -228,7 +644,7 @@ version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GO_TEST_PKGS` | `./...` | Go packages (relative to `backend/`) for `test-go`, for example `./bridge/handlers/filebrowser/...`. |
-| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. |
+| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. `test-go` builds with the `sqlite_fts5` tag `build-indexer` uses and, on amd64, the `glibc` tag `build-monitoring` uses, so the indexer's FTS5 search and the NVML collector are tested; `golint-only` adds `glibc` too. A `-tags` given here replaces both. |
 | `PLAYWRIGHT_ARGS` | empty | Extra arguments for the browser suite, such as one spec path. |
 | `VITEST_MAX_WORKERS` | `8` | Maximum Vitest workers; lower this on memory-constrained hosts. |
 | `VITEST_FILE` | empty | Frontend-relative test/spec file for a focused Vitest run. |
@@ -280,6 +696,30 @@ Both targets only touch the `linuxio.linuxio-dev-status-*` symlink, so the
 extension always runs from the checkout. Install is safe to repeat. The target
 directory is `VSCODE_EXTENSIONS_DIR`, which defaults to
 `~/.vscode-server/extensions` when it exists and `~/.vscode/extensions` otherwise.
+
+The extension also ships the key bindings, because VS Code has no
+workspace-level `keybindings.json` and a repo cannot carry bindings any other
+way. They apply only while the extension is active in a LinuxIO checkout (the
+`linuxioDevStatus.active` context), so installing it is all a contributor does;
+a binding of the same key in the user's own `keybindings.json` wins over them.
+
+| Key | Command | Does |
+| --- | --- | --- |
+| `Ctrl+Shift+1` | `linuxioDevStatus.start` | Runs the `make dev` task. |
+| `Ctrl+Shift+2` | `linuxioDevStatus.stop` | Runs the `make dev-stop` task. |
+| `Ctrl+Shift+3` | `linuxioDevStatus.reinstall` | Asks for the sudo password in a masked prompt, then runs `make reinstall` in a visible terminal. |
+
+`make reinstall` calls `sudo` from the Makefile, and `sudo` caches credentials
+per terminal, so priming it first would not help. The reinstall command instead
+runs `make reinstall SUDO='sudo -A'` (`SUDO` defaults to `sudo` in
+`mk/install.mk`) with `SUDO_ASKPASS` pointing at
+`.vscode/dev-status/askpass.sh`, which prints `$LINUXIO_SUDO_PASSWORD`. That
+variable is set only in the task's environment: the password is never written
+to disk, put on a command line or shown in the terminal, but the build tools
+that `make` starts inherit it. A wrong password fails the task, and you press
+`Ctrl+Shift+3` again. Changing a binding or command needs the extension's
+`version` bumped in `package.json`, then `make dev-status-install` and a window
+reload, because the symlink name carries the version.
 
 ### Target-specific inputs
 
@@ -382,8 +822,10 @@ The full index groups the supported targets as follows:
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
-- test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
-  `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `test-vm-browser`
+- test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-update-build`, `vm-destroy`,
+  `vm-test-btrfs-integration`, `vm-test-memory-integration`,
+  `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,
+  `test-vm-browser-rerun`
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)
 

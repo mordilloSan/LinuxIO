@@ -43,6 +43,16 @@ export function useDockerUpdateStatusRefresh() {
   });
 }
 
+/**
+ * What the scan found waiting, updates and rebuilds named apart: a rebuild
+ * (a newer base image of an image this host builds) is taken by "Rebuild and
+ * update", not Update. `updates` counts both, as the check result does.
+ */
+const describeFound = (updates: number, rebuilds: number) =>
+  rebuilds > 0
+    ? `found ${updates - rebuilds} update(s) and ${rebuilds} rebuild(s)`
+    : `found ${updates} update(s)`;
+
 export function useDockerUpdateCheck() {
   const toast = useScopedToast(DOCKER_TOAST_META);
   const { isEnabled: dockerUpdatesEnabled, reason: dockerUpdatesReason } =
@@ -53,24 +63,25 @@ export function useDockerUpdateCheck() {
         const checked = result?.checked ?? 0;
         const errors = result?.errors ?? 0;
         const uncheckable = result?.uncheckable ?? 0;
-        const updates = result?.updates ?? 0;
+        const found = describeFound(
+          result?.updates ?? 0,
+          result?.rebuilds ?? 0,
+        );
         if (errors > 0) {
           const uncheckableMessage =
             uncheckable > 0 ? `, ${uncheckable} cannot be checked` : "";
           toast.warning(
-            `Checked ${checked} container(s), ${errors} check error(s)${uncheckableMessage}, found ${updates} update(s)`,
+            `Checked ${checked} container(s), ${errors} check error(s)${uncheckableMessage}, ${found}`,
           );
           return;
         }
         if (uncheckable > 0 && errors === 0) {
           toast.warning(
-            `Checked ${checked} container(s), ${uncheckable} cannot be checked, found ${updates} update(s)`,
+            `Checked ${checked} container(s), ${uncheckable} cannot be checked, ${found}`,
           );
           return;
         }
-        toast.success(
-          `Checked ${checked} container(s), found ${updates} update(s)`,
-        );
+        toast.success(`Checked ${checked} container(s), ${found}`);
       },
       error: "Failed to check updates",
       toast: DOCKER_TOAST_META,

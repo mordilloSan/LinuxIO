@@ -118,7 +118,13 @@ func (th *testHost) start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	th.cancel = cancel
 	go func() { th.served <- th.host.serve(ctx) }()
-	th.t.Cleanup(func() { _ = th.stop() })
+	// Registered after newTestHost's TempDir, so it runs first: the store's
+	// folder outlives every write of the host.
+	th.t.Cleanup(func() {
+		if err := th.stop(); err != nil {
+			th.t.Errorf("Serve at cleanup = %v, want nil", err)
+		}
+	})
 	th.waitNotify("READY=1")
 }
 
@@ -302,9 +308,11 @@ func TestHostServesMutationOverYamuxAndRecords(t *testing.T) {
 	th := newTestHost(t, asUserHost)
 	th.start()
 	sess := th.connect()
-	if bridges, _ := th.host.counts(); bridges != 1 {
-		t.Fatalf("bridges after hello = %d, want 1", bridges)
-	}
+	// The host answers the hello before it counts the bridge in.
+	waitFor(t, "the bridge to be counted", func() bool {
+		bridges, _ := th.host.counts()
+		return bridges == 1
+	})
 
 	quick := th.startJob(sess, "test.job", jobA)
 	record := th.record(jobA)
@@ -410,6 +418,7 @@ func TestHostIdleExitAfterGrace(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 	select {
 	case err := <-th.served:
+		th.served <- err // for the cleanup's stop
 		t.Fatalf("Serve returned %v with a bridge connected", err)
 	default:
 	}
@@ -581,6 +590,48 @@ func TestJobThatCompletesDuringSuspendStaysCompleted(t *testing.T) {
 	}
 	if record := th.record(jobA); record.State != jobs.StateCompleted || record.Reason != jobs.ReasonNone || len(record.Checkpoint) != 0 {
 		t.Fatalf("record = %s/%s with checkpoint %s, want completed", record.State, record.Reason, record.Checkpoint)
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
+	}
+}
+
+// A job that completes while its Suspend hook runs keeps its outcome also when
+// the shutdown reaches the store before the job's own Finish does.
+func TestJobThatCompletesDuringSuspendStaysCompletedWhenItsFinishComesLast(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		// Started an hour ago, so its completed record is kept, not dropped as transient.
+		c.Now = func() time.Time { return time.Now().Add(-time.Hour) }
+	})
+	release := make(chan struct{})
+	var task *bridgeipc.Task
+	th.cfg.Router.Mutation("test.suspend",
+		func(context.Context, *bridgeipc.Task, any) (any, error) { return nil, nil },
+		bridgeipc.WithResume(
+			func(context.Context, jsontext.Value) (jsontext.Value, error) {
+				close(release)
+				<-task.Done()
+				return jsontext.Value(`{"at":5}`), nil
+			},
+			func(context.Context, jsontext.Value) (any, error) { return nil, nil }))
+	task, _, err := th.cfg.Tasks.ClaimForOwner("test.suspend", nil,
+		bridgeipc.TaskOwner{SessionID: "s", Username: "alice", UID: th.cfg.UID},
+		bridgeipc.TaskLifetimeDurable, bridgeipc.TaskIdentity{ID: jobA, Fingerprint: "f"})
+	if err != nil {
+		t.Fatalf("ClaimForOwner: %v", err)
+	}
+	// The task has no recorder, so its Finish comes only when the test calls
+	// it: after the shutdown's write, as a Finish that waited for the store.
+	th.host.rec.Started(task, jsontext.Value(`{}`))
+	task.Start(func(context.Context, *bridgeipc.Task, any) (any, error) {
+		<-release
+		return map[string]bool{"ok": true}, nil
+	})
+
+	th.host.interruptRunning()
+	th.host.rec.Finished(task)
+	if r := th.record(jobA); r.State != jobs.StateCompleted || r.Reason != jobs.ReasonNone || len(r.Checkpoint) != 0 {
+		t.Fatalf("record = %s/%s with checkpoint %s, want completed", r.State, r.Reason, r.Checkpoint)
 	}
 	if got := th.observed(); len(got) != 0 {
 		t.Fatalf("alerts = %#v, want none", got)
@@ -953,6 +1004,54 @@ func TestResumedJobThatCompletesClearsItsInterruptedAlert(t *testing.T) {
 	waitFor(t, "the interrupted alert to clear", func() bool { return len(first.observed()) == 0 })
 }
 
+// A stop waits for a job that ended to have its end recorded: a resumed job
+// has no stream for the stop to drain, and a host that returned meanwhile
+// would exit before the job's record and alerts were written.
+func TestStopWaitsForTheEndOfAJobToBeRecorded(t *testing.T) {
+	resumed := make(chan string, 1)
+	recording := make(chan struct{})
+	release := make(chan struct{})
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		addResumableRoute(c, resumed)
+		// Clearing the alert of its interruption is part of recording the end
+		// of a resumed job that completed.
+		c.ResolveAlert = func(context.Context, string, string) error {
+			close(recording)
+			<-release
+			return nil
+		}
+	})
+	if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.resumable", jobs.StateInterrupted)); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	th.start()
+	// Registered after start's cleanup, so it runs before the stop.
+	unblock := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(unblock)
+	receiveIDs(t, resumed, 1)
+	select {
+	case <-recording:
+	case <-time.After(ioTimeout):
+		t.Fatal("the end of the resumed job was not recorded")
+	}
+
+	th.cancel() // SIGTERM
+	select {
+	case err := <-th.served:
+		th.served <- err // for the cleanup's stop
+		t.Fatalf("Serve returned %v while the end of a job was being recorded", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	unblock()
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	if r := th.record(jobA); r.State != jobs.StateCompleted {
+		t.Fatalf("record = %s, want completed", r.State)
+	}
+}
+
 // receiveIDs reads n job IDs from ch and returns them sorted.
 func receiveIDs(t *testing.T, ch <-chan string, n int) []string {
 	t.Helper()
@@ -1278,11 +1377,11 @@ func TestJobNameForAlerts(t *testing.T) {
 // the recorder directly.
 func claim(t *testing.T, th *testHost, id string) *bridgeipc.Task {
 	t.Helper()
-	task, _, err := th.cfg.Tasks.ClaimForOwnerWithIdentity("test.job", nil,
+	task, _, err := th.cfg.Tasks.ClaimForOwner("test.job", nil,
 		bridgeipc.TaskOwner{SessionID: "s", Username: "alice", UID: th.cfg.UID},
 		bridgeipc.TaskLifetimeDurable, bridgeipc.TaskIdentity{ID: id, Fingerprint: "f"})
 	if err != nil {
-		t.Fatalf("ClaimForOwnerWithIdentity: %v", err)
+		t.Fatalf("ClaimForOwner: %v", err)
 	}
 	return task
 }
@@ -1382,6 +1481,24 @@ func TestRecorderStopFlushesAndCancelsProgressTimers(t *testing.T) {
 	th.host.rec.Finished(task)
 	if got := th.progressFile(jobA); got != `{"percentage":30}` {
 		t.Fatalf("progress after Finished = %s, want the last value flushed", got)
+	}
+}
+
+// A job that ended as the shutdown began, before Finished wrote its end, is
+// not interrupted: its record ends as the job did, with no alert.
+func TestShutdownLeavesAJobThatEndedToItsRecorder(t *testing.T) {
+	th := newTestHost(t, nil)
+	task := claim(t, th, jobA)
+	th.host.rec.Started(task, jsontext.Value(`{}`))
+	task.Cancel() // terminal; this task has no recorder to call Finished
+
+	th.host.interruptRunning()
+	th.host.rec.Finished(task)
+	if r := th.record(jobA); r.State != jobs.StateCanceled {
+		t.Fatalf("record = %s/%s, want canceled", r.State, r.Reason)
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
 	}
 }
 

@@ -112,7 +112,7 @@ func mountProductionSPA(mux *http.ServeMux, ui fs.FS) {
 	for _, f := range rootFiles {
 		fileName := f
 		mux.HandleFunc("/"+fileName, func(w http.ResponseWriter, r *http.Request) {
-			serveFileFS(w, r, ui, fileName)
+			serveFileFS(w, r, ui, fileName, fileName, "")
 		})
 	}
 
@@ -120,7 +120,7 @@ func mountProductionSPA(mux *http.ServeMux, ui fs.FS) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// If it's a real file in assets, let it through (already handled above)
 		// Otherwise serve index.html
-		serveFileFS(w, r, ui, "index.html")
+		serveFileFS(w, r, ui, "index.html", "index.html", "")
 	})
 }
 
@@ -156,20 +156,17 @@ func servePrecompressedAssetFS(w http.ResponseWriter, r *http.Request, fsys fs.F
 			}
 		}
 		if best.quality > 0 {
-			serveFileFSAs(w, r, fsys, best.name, name, best.encoding)
+			serveFileFS(w, r, fsys, best.name, name, best.encoding)
 			return
 		}
 	}
 
-	serveFileFS(w, r, fsys, name)
+	serveFileFS(w, r, fsys, name, name, "")
 }
 
-// serveFileFS serves a single uncompressed file from the fs.FS.
-func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string) {
-	serveFileFSAs(w, r, fsys, name, name, "")
-}
-
-func serveFileFSAs(w http.ResponseWriter, r *http.Request, fsys fs.FS, fileName, responseName, contentEncoding string) {
+// serveFileFS serves fileName from the fs.FS under the content type of
+// responseName, with contentEncoding when the file is a compressed variant.
+func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, fileName, responseName, contentEncoding string) {
 	f, err := fsys.Open(fileName)
 	if err != nil {
 		http.NotFound(w, r)

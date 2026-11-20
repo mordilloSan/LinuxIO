@@ -44,6 +44,7 @@ const (
 	iocScrubProgress   = ioRW | unsafe.Sizeof(scrubArgs{})<<16 | iocMagic<<8 | 29
 	iocDevInfo         = ioRW | unsafe.Sizeof(devInfoArgs{})<<16 | iocMagic<<8 | 30
 	iocSend            = ioWrite | unsafe.Sizeof(sendArgs{})<<16 | iocMagic<<8 | 38
+	iocDevicesReady    = ioRead | unsafe.Sizeof(volArgs{})<<16 | iocMagic<<8 | 39 // _IOR in the header
 	iocQuotaCtl        = ioRW | unsafe.Sizeof(quotaCtlArgs{})<<16 | iocMagic<<8 | 40
 	iocQgroupLimit     = ioRead | unsafe.Sizeof(qgroupLimitArgs{})<<16 | iocMagic<<8 | 43 // _IOR in the header
 	iocFSInfo          = ioRead | unsafe.Sizeof(fsInfoArgs{})<<16 | iocMagic<<8 | 31
@@ -171,6 +172,11 @@ type devStatsArgs struct {
 	Unused  [121]uint64
 }
 
+// devStatsReset is BTRFS_DEV_STATS_RESET: GET_DEV_STATS returns the counters
+// and zeroes all five of the device, whatever nr_items asks for
+// (volumes.c btrfs_get_dev_stats).
+const devStatsReset = 1 << 0
+
 // balanceFilter mirrors struct btrfs_balance_args.
 type balanceFilter struct {
 	Profiles   uint64
@@ -271,6 +277,12 @@ const (
 	replaceStateCanceled  = 3
 	replaceStateSuspended = 4 // an unmount stopped it; the next rw mount resumes it
 
+	// BTRFS_IOCTL_DEV_REPLACE_CONT_READING_FROM_SRCDEV_MODE_AVOID: the copy
+	// reads another mirror first and the source only when no other copy
+	// exists (scrub.c scrub_submit_initial_read); _ALWAYS (0) reads the
+	// source first.
+	replaceReadAvoid = 1
+
 	// Offsets inside Params.
 	replaceSrcDevID          = 0
 	replaceContReading       = 8
@@ -278,6 +290,7 @@ const (
 	replaceStatusState       = 0
 	replaceStatusPerMill     = 8
 	replaceStatusTimeStarted = 16 // seconds since the epoch, kept across a power loss
+	replaceStatusTimeStopped = 24 // seconds since the epoch; 0 before any replace ended
 )
 
 // replaceResultNotStarted is also what a cancel reports when it canceled
@@ -330,6 +343,24 @@ var fsIoctl = func(mountpoint string, req uintptr, arg unsafe.Pointer) error {
 		return fmt.Errorf("open %s: %w", mountpoint, err)
 	}
 	defer unix.Close(fd)
+	return ioctlFD(fd, req, arg)
+}
+
+// openMount opens the filesystem mounted at mnt, for a sequence of ioctls
+// that must all act on that one filesystem; a var so tests can fake it.
+var openMount = func(mnt string) (int, error) {
+	fd, err := unix.Open(mnt, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, fmt.Errorf("open %s: %w", mnt, err)
+	}
+	return fd, nil
+}
+
+// ioctlFD issues one ioctl on fd, an open descriptor on the filesystem; a
+// var so tests can fake the kernel.
+var ioctlFD = rawIoctl
+
+func rawIoctl(fd int, req uintptr, arg unsafe.Pointer) error {
 	r1, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
 	if errno != 0 {
 		return errno
@@ -400,25 +431,32 @@ func rmDevCancel(mountpoint string) error {
 // controlIoctl sends one device path to /dev/btrfs-control; a var so tests
 // can record calls.
 var controlIoctl = func(req uintptr, device string) error {
+	_, err := controlCall(req, device)
+	return err
+}
+
+// controlCall sends one device path to /dev/btrfs-control and returns what
+// the ioctl returned.
+func controlCall(req uintptr, device string) (uintptr, error) {
 	var args volArgs
 	if len(device) >= len(args.Name) {
-		return fmt.Errorf("device path too long: %s", device)
+		return 0, fmt.Errorf("device path too long: %s", device)
 	}
 	copy(args.Name[:], device)
 	f, err := os.OpenFile(controlDevice, os.O_RDWR, 0)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("%s is missing; is the btrfs kernel module loaded? (%w)", controlDevice, err)
+			return 0, fmt.Errorf("%s is missing; is the btrfs kernel module loaded? (%w)", controlDevice, err)
 		}
-		return err
+		return 0, err
 	}
 	defer f.Close()
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), req, uintptr(unsafe.Pointer(&args)))
+	r, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), req, uintptr(unsafe.Pointer(&args)))
 	runtime.KeepAlive(&args)
 	if errno != 0 {
-		return errno
+		return 0, errno
 	}
-	return nil
+	return r, nil
 }
 
 // blockDeviceSize reads the size of a block device; a var so tests can stub it.

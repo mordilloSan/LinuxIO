@@ -27,7 +27,6 @@ export interface ThemeColors {
   chartTx?: string;
   chartNeutral?: string;
   fileBrowserSurface?: string;
-  fileBrowserChrome?: string;
   fileBrowserBreadcrumbBackground?: string;
   fileBrowserBreadcrumbText?: string;
 }
@@ -77,7 +76,6 @@ export interface AppTheme {
   };
   fileBrowser: {
     surface: string;
-    chrome: string;
     breadcrumbBackground: string;
     breadcrumbText: string;
   };
@@ -291,7 +289,6 @@ function resolveVariantTheme(
     fileBrowser: {
       surface:
         themeColors?.fileBrowserSurface ?? themeConfig.fileBrowser.surface,
-      chrome: themeColors?.fileBrowserChrome ?? themeConfig.fileBrowser.chrome,
       breadcrumbBackground:
         themeColors?.fileBrowserBreadcrumbBackground ??
         themeConfig.fileBrowser.breadcrumbBackground,

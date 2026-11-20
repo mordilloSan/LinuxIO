@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import { useMemo } from "react";
-import { toast } from "sonner";
+import { type ExternalToast, toast } from "sonner";
 
-import type { ToastMeta } from "@/api";
+import { type ToastMeta, toastLinkOptions } from "@/api/toast-meta";
 
 type ToastFn = typeof toast.success;
-type ToastOpts = Parameters<ToastFn>[1];
+/** Sonner's options, plus a `meta.label` that renames this toast's link. */
+type ToastOpts = ExternalToast & { meta?: { label?: string } };
 
 interface ScopedToast {
   error: (msg: ReactNode, opts?: ToastOpts) => ReturnType<ToastFn>;
@@ -14,6 +15,11 @@ interface ScopedToast {
   warning: (msg: ReactNode, opts?: ToastOpts) => ReturnType<ToastFn>;
 }
 
+/**
+ * Sonner's toast functions for feedback that belongs to meta's page: a toast
+ * fired while the user is on another page offers a button that opens it
+ * (toastLinkOptions).
+ */
 export function useScopedToast(meta: ToastMeta): ScopedToast {
   // Destructure before the memo so the closure only reads primitives: callers
   // pass inline meta objects, and depending on `meta` itself would rebuild the
@@ -35,10 +41,10 @@ export function useScopedToast(meta: ToastMeta): ScopedToast {
     };
     const wrap = (fn: ToastFn) => (msg: ReactNode, opts?: ToastOpts) => {
       const { meta: override, ...toastOptions } = opts ?? {};
-      return fn(msg, {
-        ...toastOptions,
-        meta: createMeta(override?.label ?? label),
-      });
+      return fn(
+        msg,
+        toastLinkOptions(createMeta(override?.label ?? label), toastOptions),
+      );
     };
 
     return {

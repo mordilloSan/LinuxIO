@@ -349,6 +349,11 @@ export interface BtrfsAllocation {
   usedBytes: number;
 }
 
+export interface BtrfsAutoRebuildRequest {
+  uuid: string;
+  enabled: boolean;
+}
+
 export interface BtrfsBalanceRequest {
   uuid: string;
   dataProfile?: string;
@@ -376,6 +381,7 @@ export interface BtrfsDevice {
   sizeBytes: number;
   usedBytes: number;
   missing: boolean;
+  droppedOut?: boolean;
   errors: BtrfsDeviceErrors;
   physicalBytes: number;
   growable: boolean;
@@ -418,6 +424,9 @@ export interface BtrfsFilesystem {
   scrub: BtrfsScrubStatus;
   degraded: boolean;
   lowMetadataSpace: boolean;
+  spare?: BtrfsSpare;
+  autoRebuild: boolean;
+  rebuild?: BtrfsRebuild;
 }
 
 export interface BtrfsJobIDRequest {
@@ -495,6 +504,17 @@ export interface BtrfsQuotaRequest {
   uuid: string;
   enabled: boolean;
 }
+
+export interface BtrfsRebuild {
+  state: BtrfsRebuildState;
+  deviceId?: number;
+  device?: string;
+  spare?: boolean;
+  reason?: string;
+  advice?: string;
+}
+
+export type BtrfsRebuildState = "waiting" | "running" | "failed" | "refused";
 
 export interface BtrfsReplicationJob {
   id: string;
@@ -618,6 +638,38 @@ export interface BtrfsSnapshotsRequest {
   path?: string;
 }
 
+export interface BtrfsSpare {
+  disk: BtrfsSpareDisk;
+  device: string;
+  delayMinutes: number;
+  state: BtrfsSpareState;
+  reason?: string;
+}
+
+export interface BtrfsSpareDelayRequest {
+  uuid: string;
+  delayMinutes: number;
+}
+
+export interface BtrfsSpareDisk {
+  wwn?: string;
+  serial?: string;
+  sizeBytes: number;
+}
+
+export interface BtrfsSpareSetRequest {
+  uuid: string;
+  device: string;
+  delayMinutes: number;
+}
+
+export type BtrfsSpareState =
+  | "ready"
+  | "absent"
+  | "too-small"
+  | "in-use"
+  | "unknown";
+
 export interface BtrfsSubvolume {
   id: number;
   parentId: number;
@@ -639,6 +691,12 @@ export interface BtrfsSubvolumeCompressionRequest {
   uuid: string;
   path: string;
   algorithm: string;
+}
+
+export interface BtrfsSubvolumeCreateInRequest {
+  uuid: string;
+  folder: string;
+  name: string;
 }
 
 export interface BtrfsSubvolumeReadOnlyRequest {
@@ -711,6 +769,7 @@ export type CapabilityName =
   | "assistant_gemini"
   | "assistant_codex"
   | "tuned"
+  | "zram"
   | "avahi"
   | "wireguard"
   | "libvirt"
@@ -816,6 +875,8 @@ export interface ConfigDockAccentGradient {
 export interface ConfigDockerPayload {
   folders?: string[];
   requireMountsForFolders?: boolean;
+  waitForHostIPs?: boolean;
+  hostIPs?: string[];
 }
 
 export interface ConfigJobSettingsPayload {
@@ -1244,6 +1305,7 @@ export interface DockerContainerUpdateProgress {
 
 export interface DockerContainerUpdateRequest {
   containerId: string;
+  rebuild?: boolean;
 }
 
 export interface DockerContainerUpdateResult {
@@ -1280,6 +1342,11 @@ export interface DockerDaemonStorageProgress {
 
 export interface DockerFoldersResponse {
   folders: string[];
+}
+
+export interface DockerHostIPs {
+  published: string[];
+  assigned: string[];
 }
 
 export interface DockerIconDataResponse {
@@ -1383,6 +1450,8 @@ export interface DockerNetworkIPAMConfig {
 export interface DockerSettings {
   folders: string[];
   requireMountsForFolders: boolean;
+  waitForHostIPs: boolean;
+  hostIPs: string[];
 }
 
 export interface DockerStartedFailedResponse {
@@ -1449,8 +1518,10 @@ export interface DockerSystemPruneResponse {
 }
 
 export interface DockerUpdateCheckResult {
+  built: number;
   checked: number;
   errors: number;
+  rebuilds: number;
   uncheckable: number;
   updates: number;
 }
@@ -1459,6 +1530,7 @@ export type DockerUpdateCheckState =
   | "current"
   | "available"
   | "uncheckable"
+  | "built"
   | "error";
 
 export type DockerUpdateNotify = "never" | "on_failure" | "on_change";
@@ -1534,9 +1606,12 @@ export interface FileArchiveResult {
   format: string;
 }
 
+export type FileBatchFailureReason = "exists" | "no_trash";
+
 export interface FileBatchItemFailure {
   path: string;
   error: string;
+  reason?: FileBatchFailureReason;
 }
 
 export interface FileBatchResult {
@@ -1646,6 +1721,11 @@ export interface FilesystemInfo {
   total: number;
   used: number;
   usedPercent: number;
+}
+
+export interface ForeignZramConfig {
+  copy_path: string;
+  path: string;
 }
 
 export interface GeneralLogEntryRequest {
@@ -2988,6 +3068,7 @@ export interface StorageBlockDevice {
   busy?: string;
   inFstab?: boolean;
   member?: StorageMember;
+  hotSpareOf?: StoragePoolRef;
   freeRegions?: StorageRegion[];
 }
 
@@ -3008,6 +3089,11 @@ export interface StorageMountResult {
   success: boolean;
   mountpoint?: string;
   warning?: string;
+}
+
+export interface StoragePoolRef {
+  uuid: string;
+  label?: string;
 }
 
 export interface StorageRegion {
@@ -3047,6 +3133,154 @@ export interface SuccessPathResponse {
 
 export interface SuccessResponse {
   success: boolean;
+}
+
+export interface SwapDevice {
+  disk_hint?: SwapDiskHint;
+  fs_type?: string;
+  kind: SwapDeviceKind;
+  path: string;
+  priority: number;
+  size: number;
+  used: number;
+}
+
+export type SwapDeviceKind = "file" | "partition" | "zram";
+
+export type SwapDiskHint = "" | "mmc" | "removable";
+
+export type SwapDrainBlockedReason =
+  | ""
+  | "nothing_parked"
+  | "not_enough_memory"
+  | "unmanaged_device"
+  | "unit_held_off"
+  | "others_can_write";
+
+export interface SwapFile {
+  active: boolean;
+  disk_hint: SwapDiskHint;
+  fs_type: string;
+  managed: boolean;
+  path: string;
+  unmanaged_reason: SwapFileUnmanagedReason;
+}
+
+export type SwapFileUnmanagedReason =
+  | ""
+  | "not_in_fstab"
+  | "others_can_write"
+  | "unit_unusable";
+
+export interface SwapLeft {
+  reason: SwapLeftReason;
+  what: SwapLeftWhat;
+}
+
+export type SwapLeftReason =
+  | "not_enough_memory"
+  | "zram_not_swapping"
+  | "not_identified"
+  | "others_can_write"
+  | "not_managed"
+  | "no_other_swap"
+  | "other_size";
+
+export type SwapLeftWhat = "swap_file" | "zram" | "zram_size";
+
+export type SwapMode = "disk" | "zswap" | "zram" | "none" | "mixed";
+
+export interface SwapModePreset {
+  mode: SwapMode;
+  swappiness: number;
+}
+
+export interface SwapModeRequest {
+  confirm_replace?: string;
+  mode: SwapMode;
+}
+
+export interface SwapModeResult {
+  can_drain: boolean;
+  devices: SwapDevice[];
+  drain_blocked_reason: SwapDrainBlockedReason;
+  foreign_zram_config?: ForeignZramConfig;
+  mem_available: number;
+  mem_total: number;
+  mode: SwapMode;
+  page_cluster: number;
+  presets: SwapModePreset[];
+  recommended_mode: SwapMode;
+  recommended_swappiness: number;
+  swap_file?: SwapFile;
+  swap_total: number;
+  swap_used: number;
+  swappiness: number;
+  tuned_active: boolean;
+  tuned_profile: string;
+  unmanaged_fstab_swaps: UnmanagedFstabSwap[];
+  watermark_boost_factor: number;
+  watermark_scale_factor: number;
+  zram_available: boolean;
+  zram_devices: ZramDevice[];
+  zram_generator_devices: ZramGeneratorDevice[];
+  zram_planned_size: number;
+  zram_provider: ZramProvider;
+  zram_unavailable_reason: ZramUnavailableReason;
+  zswap: ZswapStatus;
+  left: SwapLeft[];
+}
+
+export interface SwapProgress {
+  device?: string;
+  index: number;
+  step: SwapStep;
+  total: number;
+}
+
+export interface SwapStatus {
+  can_drain: boolean;
+  devices: SwapDevice[];
+  drain_blocked_reason: SwapDrainBlockedReason;
+  foreign_zram_config?: ForeignZramConfig;
+  mem_available: number;
+  mem_total: number;
+  mode: SwapMode;
+  page_cluster: number;
+  presets: SwapModePreset[];
+  recommended_mode: SwapMode;
+  recommended_swappiness: number;
+  swap_file?: SwapFile;
+  swap_total: number;
+  swap_used: number;
+  swappiness: number;
+  tuned_active: boolean;
+  tuned_profile: string;
+  unmanaged_fstab_swaps: UnmanagedFstabSwap[];
+  watermark_boost_factor: number;
+  watermark_scale_factor: number;
+  zram_available: boolean;
+  zram_devices: ZramDevice[];
+  zram_generator_devices: ZramGeneratorDevice[];
+  zram_planned_size: number;
+  zram_provider: ZramProvider;
+  zram_unavailable_reason: ZramUnavailableReason;
+  zswap: ZswapStatus;
+}
+
+export type SwapStep =
+  | "write_config"
+  | "start_swap_file"
+  | "start_zram"
+  | "stop_zram"
+  | "apply_sysctls"
+  | "disable_zswap"
+  | "enable_zswap"
+  | "stop_swap_file"
+  | "drain_device";
+
+export interface SwappinessRequest {
+  swappiness: number;
 }
 
 export interface SystemFailedLoginAlert {
@@ -3116,6 +3350,8 @@ export interface TaskHistoryEntry {
   reason?: string;
   unit?: string;
   output?: boolean;
+  summary?: string;
+  failures?: number;
 }
 
 export interface TaskHistoryRequest {
@@ -3236,7 +3472,6 @@ export type ThemeColorKey =
   | "chartTx"
   | "chartNeutral"
   | "fileBrowserSurface"
-  | "fileBrowserChrome"
   | "fileBrowserBreadcrumbBackground"
   | "fileBrowserBreadcrumbText";
 
@@ -3275,6 +3510,10 @@ export interface TrashListResponse {
 export interface TrashRestoreRequest {
   paths: string[];
   confirmedDestinations?: Record<string, string>;
+  destination?: string;
+  names?: Record<string, string>;
+  overwrite?: boolean;
+  keepBoth?: string[];
 }
 
 export interface TunedProfile {
@@ -3335,6 +3574,11 @@ export interface UnitInfo {
 
 export interface UnitNameRequest {
   unitName: string;
+}
+
+export interface UnmanagedFstabSwap {
+  reason: SwapFileUnmanagedReason;
+  source: string;
 }
 
 export interface Update {
@@ -3679,6 +3923,36 @@ export interface WireGuardUpdatePeerRequest {
   regenerateKeys?: boolean;
 }
 
+export interface ZramDevice {
+  compressed_size: number;
+  disksize: number;
+  mem_used: number;
+  name: string;
+  original_size: number;
+}
+
+export interface ZramGeneratorDevice {
+  device: string;
+  max_zram_size: string;
+  path: string;
+  zram_fraction: string;
+  zram_size: string;
+}
+
+export type ZramProvider = "" | "zram-tools" | "zram-generator";
+
+export type ZramUnavailableReason =
+  | ""
+  | "package_missing"
+  | "swap_partition_active";
+
+export interface ZswapStatus {
+  available: boolean;
+  compressor: string;
+  enabled: boolean;
+  max_pool_percent: number;
+}
+
 export interface LinuxIOSchema {
   accounts: {
     change_password: {
@@ -4005,6 +4279,7 @@ export interface LinuxIOSchema {
       result: ComposeProject[];
     };
     list_containers: { input: []; request: void; result: ContainerInfo[] };
+    list_host_ips: { input: []; request: void; result: DockerHostIPs };
     list_images: { input: []; request: void; result: DockerImage[] };
     list_networks: { input: []; request: void; result: DockerNetwork[] };
     list_volumes: { input: []; request: void; result: DockerVolume[] };
@@ -4064,7 +4339,7 @@ export interface LinuxIOSchema {
       result: void;
     };
     update_container: {
-      input: [containerId: string];
+      input: [request: DockerContainerUpdateRequest];
       request: DockerContainerUpdateRequest;
       result: DockerContainerUpdateResult;
       progress: TaskProgress<DockerContainerUpdateProgress>;
@@ -4200,6 +4475,11 @@ export interface LinuxIOSchema {
       result: FileBatchResult;
       progress: TaskProgress<CountProgress>;
     };
+    trash_size: {
+      input: [path: string];
+      request: PathRequest;
+      result: DirectorySizeData;
+    };
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
@@ -4257,6 +4537,27 @@ export interface LinuxIOSchema {
       input: [request: GeneralLogsPageRequest];
       request: GeneralLogsPageRequest;
       result: GeneralLogsPageResponse;
+    };
+  };
+
+  memory: {
+    drain_swap: {
+      input: [];
+      request: void;
+      result: SwapStatus;
+      progress: TaskProgress<SwapProgress>;
+    };
+    get_swap_status: { input: []; request: void; result: SwapStatus };
+    set_swap_mode: {
+      input: [request: SwapModeRequest];
+      request: SwapModeRequest;
+      result: SwapModeResult;
+      progress: TaskProgress<SwapProgress>;
+    };
+    set_swappiness: {
+      input: [swappiness: number];
+      request: SwappinessRequest;
+      result: SwapStatus;
     };
   };
 
@@ -4492,6 +4793,11 @@ export interface LinuxIOSchema {
   };
 
   storage: {
+    btrfs_auto_rebuild: {
+      input: [request: BtrfsAutoRebuildRequest];
+      request: BtrfsAutoRebuildRequest;
+      result: void;
+    };
     btrfs_balance: {
       input: [request: BtrfsBalanceRequest];
       request: BtrfsBalanceRequest;
@@ -4651,9 +4957,29 @@ export interface LinuxIOSchema {
       request: BtrfsSnapshotsRequest;
       result: BtrfsSnapshot[];
     };
+    btrfs_spare_clear: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: void;
+    };
+    btrfs_spare_delay: {
+      input: [request: BtrfsSpareDelayRequest];
+      request: BtrfsSpareDelayRequest;
+      result: void;
+    };
+    btrfs_spare_set: {
+      input: [request: BtrfsSpareSetRequest];
+      request: BtrfsSpareSetRequest;
+      result: void;
+    };
     btrfs_subvolume_create: {
       input: [request: BtrfsSubvolumeRequest];
       request: BtrfsSubvolumeRequest;
+      result: BtrfsSubvolume;
+    };
+    btrfs_subvolume_create_in: {
+      input: [request: BtrfsSubvolumeCreateInRequest];
+      request: BtrfsSubvolumeCreateInRequest;
       result: BtrfsSubvolume;
     };
     btrfs_subvolume_delete: {
@@ -5112,7 +5438,7 @@ export interface LinuxIOSchema {
   };
 }
 
-/** Type-only contracts for migrated Call routes. */
+/** Type-only contracts for Call routes. */
 export interface LinuxIOCallSchema {
   "accounts.get_user_details": {
     request: UsernameRequest;
@@ -5182,6 +5508,7 @@ export interface LinuxIOCallSchema {
   };
   "docker.list_compose_projects": { request: void; result: ComposeProject[] };
   "docker.list_containers": { request: void; result: ContainerInfo[] };
+  "docker.list_host_ips": { request: void; result: DockerHostIPs };
   "docker.list_images": { request: void; result: DockerImage[] };
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };
@@ -5217,6 +5544,7 @@ export interface LinuxIOCallSchema {
     result: SubfoldersResponse;
   };
   "filebrowser.trash_list": { request: void; result: TrashListResponse };
+  "filebrowser.trash_size": { request: PathRequest; result: DirectorySizeData };
   "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
   "indexer.get_config": { request: void; result: IndexerConfig };
   "indexer.get_status": { request: void; result: IndexerDaemonStatus };
@@ -5233,6 +5561,7 @@ export interface LinuxIOCallSchema {
     request: GeneralLogsPageRequest;
     result: GeneralLogsPageResponse;
   };
+  "memory.get_swap_status": { request: void; result: SwapStatus };
   "monitoring.check_database": {
     request: void;
     result: MonitoringDatabaseResult;

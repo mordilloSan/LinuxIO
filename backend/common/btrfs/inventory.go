@@ -30,6 +30,16 @@ type BtrfsFilesystem struct {
 	// HealthKnown is true only when both the device list and the error
 	// counters were read, so callers can tell "healthy" from "unknown".
 	HealthKnown bool `json:"-"`
+	// Spare is the pool's hot spare as it is now, nil when it has none (see
+	// spare.go). spareKnown is false when the designations could not be
+	// read, so a missing Spare does not resolve the spare alert.
+	Spare      *BtrfsSpare `json:"spare,omitzero"`
+	spareKnown bool
+	// AutoRebuild is set while LinuxIO rebuilds the pool onto a missing
+	// member's own disk when it comes back, and Rebuild is that rebuild, or
+	// the hot spare's, as it stands (see rebuild.go).
+	AutoRebuild bool          `json:"autoRebuild"`
+	Rebuild     *BtrfsRebuild `json:"rebuild,omitzero"`
 }
 
 // BtrfsAllocation is one block-group type (data, metadata, system) with
@@ -42,16 +52,23 @@ type BtrfsAllocation struct {
 }
 
 type BtrfsDevice struct {
-	ID        int               `json:"id"`
-	Path      string            `json:"path"`
-	SizeBytes uint64            `json:"sizeBytes"`
-	UsedBytes uint64            `json:"usedBytes"`
-	Missing   bool              `json:"missing"`
-	Errors    BtrfsDeviceErrors `json:"errors"`
+	ID        int    `json:"id"`
+	Path      string `json:"path"`
+	SizeBytes uint64 `json:"sizeBytes"`
+	UsedBytes uint64 `json:"usedBytes"`
+	Missing   bool   `json:"missing"`
+	// DroppedOut is set, with Missing, when the device's block device went
+	// away while the pool is mounted (see markDroppedOut): the kernel keeps
+	// the device, with its path, until the pool is mounted again.
+	DroppedOut bool              `json:"droppedOut,omitzero"`
+	Errors     BtrfsDeviceErrors `json:"errors"`
 	// PhysicalBytes is the block device's size; Growable is set when the
 	// filesystem has not grown into it, as after replacing with a bigger disk.
 	PhysicalBytes uint64 `json:"physicalBytes"`
 	Growable      bool   `json:"growable"`
+	// UUID is the device's own UUID, which a scrub's saved progress is
+	// matched against.
+	UUID string `json:"-"`
 }
 
 type BtrfsDeviceErrors struct {
@@ -76,10 +93,15 @@ type BtrfsScrubStatus struct {
 
 // add accumulates one device's kernel counters.
 func (s *BtrfsScrubStatus) add(p scrubProgress) {
-	s.BytesScrubbed += p.DataBytesScrubbed + p.TreeBytesScrubbed
-	s.ErrorCount += p.ReadErrors + p.CsumErrors + p.VerifyErrors + p.SuperErrors
-	s.UncorrectableErrors += p.UncorrectableErrors
-	s.CorrectedErrors += p.CorrectedErrors
+	s.addCounters(countersOf(p))
+}
+
+// addCounters accumulates counters a scrub record kept.
+func (s *BtrfsScrubStatus) addCounters(c scrubCounters) {
+	s.BytesScrubbed += c.BytesScrubbed
+	s.ErrorCount += c.ErrorCount
+	s.UncorrectableErrors += c.UncorrectableErrors
+	s.CorrectedErrors += c.CorrectedErrors
 }
 
 // growSlack is how much larger than the filesystem's view a block device
@@ -110,6 +132,10 @@ func ListFilesystems(ctx context.Context) ([]BtrfsFilesystem, error) {
 		fillFilesystem(fs)
 		filesystems = append(filesystems, *fs)
 	}
+	if err := attachSpares(filesystems); err != nil {
+		slog.Warn("failed to read btrfs hot spares", "path", SparePath, "error", err)
+	}
+	attachRebuilds(filesystems)
 	return filesystems, nil
 }
 
@@ -134,6 +160,8 @@ func fillFilesystem(fs *BtrfsFilesystem) {
 
 	fs.Devices, fs.HealthKnown = listDevices(mnt, info.MaxID, warn)
 	markUnopened(fs.UUID, fs.Devices)
+	fs.HealthKnown = markDroppedOut(fs.UUID, fs.Devices, warn) && fs.HealthKnown
+	readSizes(fs.Devices, warn)
 	var allocated uint64
 	for _, d := range fs.Devices {
 		fs.Degraded = fs.Degraded || d.Missing
@@ -180,9 +208,14 @@ func profileRatio(profile string, devices int) float64 {
 	return float64(max(profiles[profile].copies, 1))
 }
 
+// missingDiskName is the path DEV_INFO gives a device the kernel marked
+// missing (volumes.h btrfs_dev_name).
+const missingDiskName = "<missing disk>"
+
 // listDevices reads every device slot of the filesystem with its error
-// counters; a device the kernel knows but cannot find is Missing. The bool
-// is false when any read failed, so health stays unknown rather than clean.
+// counters; a device the kernel knows but cannot find is Missing, with no
+// path. The bool is false when any read failed, so health stays unknown
+// rather than clean.
 func listDevices(mnt string, maxID uint64, warn func(string, error)) ([]BtrfsDevice, bool) {
 	var devices []BtrfsDevice
 	known := true
@@ -196,16 +229,11 @@ func listDevices(mnt string, maxID uint64, warn func(string, error)) ([]BtrfsDev
 			known = false
 			continue
 		}
-		d := BtrfsDevice{ID: int(id), Path: cstring(info.Path[:]), SizeBytes: info.TotalBytes, UsedBytes: info.BytesUsed}
-		d.Missing = d.Path == ""
-		if !d.Missing {
-			if size, err := blockDeviceSize(d.Path); err != nil {
-				warn("device size", err)
-			} else {
-				d.PhysicalBytes = size
-				d.Growable = size > d.SizeBytes && size-d.SizeBytes >= growSlack
-			}
+		d := BtrfsDevice{ID: int(id), Path: cstring(info.Path[:]), SizeBytes: info.TotalBytes, UsedBytes: info.BytesUsed, UUID: formatUUID(info.UUID[:])}
+		if d.Path == missingDiskName {
+			d.Path = ""
 		}
+		d.Missing = d.Path == ""
 		stats := devStatsArgs{DevID: id, NrItems: 5}
 		if err := fsIoctl(mnt, iocGetDevStats, unsafe.Pointer(&stats)); err != nil {
 			warn("device stats", err)
@@ -216,6 +244,21 @@ func listDevices(mnt string, maxID uint64, warn func(string, error)) ([]BtrfsDev
 		devices = append(devices, d)
 	}
 	return devices, known
+}
+
+// readSizes reads the block device size of each present device.
+func readSizes(devices []BtrfsDevice, warn func(string, error)) {
+	for i, d := range devices {
+		if d.Missing {
+			continue
+		}
+		if size, err := blockDeviceSize(d.Path); err != nil {
+			warn("device size", err)
+		} else {
+			devices[i].PhysicalBytes = size
+			devices[i].Growable = size > d.SizeBytes && size-d.SizeBytes >= growSlack
+		}
+	}
 }
 
 // spaceInfos returns the kernel's space accounting per block-group type.
@@ -246,41 +289,71 @@ func lowMetadataSpace(allocation []BtrfsAllocation, unallocated uint64) bool {
 }
 
 // scrubStatus reports a running scrub from the kernel's per-device
-// progress, else the last scrub on record.
+// progress, else the last scrub on record. A scrub on record still running
+// whose process lives is running too, between kernel calls or waiting for a
+// thaw, though the kernel reports nothing.
 func scrubStatus(mnt, uuid string, devices []BtrfsDevice, usedBytes uint64, warn func(string, error)) BtrfsScrubStatus {
-	live := BtrfsScrubStatus{Status: "running"}
-	running := false
+	progress := scrubProgressOf(mnt, devices, warn)
+	rec, have := loadScrubRecord(uuid)
+	ours := have && rec.live()
+	if len(progress) > 0 || ours {
+		return liveScrub(rec, ours, progress, usedBytes)
+	}
+	if last, ok := lastScrub(uuid, rec, have); ok {
+		// No device is scrubbing, so a record still saying "running" was cut
+		// short by a crash or power loss.
+		if last.Status == "running" {
+			last.Status = "aborted"
+		}
+		return last
+	}
+	return BtrfsScrubStatus{Status: "none"}
+}
+
+// scrubProgressOf reads the kernel's progress of each present device being
+// scrubbed.
+func scrubProgressOf(mnt string, devices []BtrfsDevice, warn func(string, error)) map[int]scrubProgress {
+	progress := map[int]scrubProgress{}
 	for _, d := range devices {
 		if d.Missing {
 			continue
 		}
-		args := scrubArgs{DevID: uint64(d.ID)}
-		err := fsIoctl(mnt, iocScrubProgress, unsafe.Pointer(&args))
+		p, running, err := deviceScrubProgress(mnt, d.ID)
 		switch {
-		case err == nil:
-			running = true
-			live.add(args.Progress)
-		case errors.Is(err, unix.ENOTCONN): // no scrub on this device
-		default:
+		case err != nil:
 			warn("scrub progress", err)
+		case running:
+			progress[d.ID] = p
 		}
 	}
-	if running {
-		if usedBytes > 0 {
-			live.Percent = min(100, float64(live.BytesScrubbed)*100/float64(usedBytes))
-		}
-		if rec, ok := loadScrubRecord(uuid); ok && rec.Status == "running" {
-			live.StartedAt = rec.StartedAt
-		}
-		return live
+	return progress
+}
+
+// liveScrub is a running scrub from the kernel's progress. When it is ours,
+// the running scrub on record of a live process, it adds what that counted
+// before: earlier kernel calls, the part before a resume, and the saved
+// counters of a device whose call the kernel does not report. A record
+// still running without a live process, one a crash left or one whose
+// writer could not be identified, gives only the start, which the banner
+// keys the scrub on.
+func liveScrub(rec scrubRecord, ours bool, progress map[int]scrubProgress, usedBytes uint64) BtrfsScrubStatus {
+	live := BtrfsScrubStatus{Status: "running"}
+	if rec.Status == "running" {
+		live.StartedAt = rec.StartedAt
 	}
-	if rec, ok := lastScrub(uuid); ok {
-		// No device is scrubbing, so a record still saying "running" was cut
-		// short by a crash or power loss.
-		if rec.Status == "running" {
-			rec.Status = "aborted"
+	if ours {
+		live = rec.BtrfsScrubStatus
+		for id, d := range rec.Devices {
+			if _, reported := progress[id]; !reported {
+				live.addCounters(d.scrubCounters)
+			}
 		}
-		return rec
 	}
-	return BtrfsScrubStatus{Status: "none"}
+	for _, p := range progress {
+		live.add(p)
+	}
+	if usedBytes > 0 {
+		live.Percent = min(100, float64(live.BytesScrubbed)*100/float64(usedBytes))
+	}
+	return live
 }

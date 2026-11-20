@@ -340,44 +340,78 @@ async function followMutation<TResult, TProgress>(
   let sent = false;
   let resent = false;
   let reattached = false;
-  for (;;) {
-    try {
-      // Waiting for the transport is bounded; the job itself is not.
-      const mux = await ensureRequestMuxReady(
-        STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
-        handlers.signal,
-      );
-      const stream =
-        start && !started
-          ? mux.openStream(start.route, start.payload)
-          : mux.openStream(
-              "tasks.watch",
-              streamOpenPayload("tasks.watch", { taskId: id }),
-            );
-      if (!stream) throw connectionUnavailableError();
-      sent = true;
-      return await waitForStreamResult<TResult, unknown>(stream, {
-        closeMessage: "Connection closed before the mutation finished",
-        onProgress: (frame) => {
-          if (isTaskSnapshotFrame(frame)) {
-            // A watch of a stored job starts with its snapshot too: report one.
-            if (!started) handlers.onSnapshot?.(frame.task);
-            started = true;
-          } else {
-            handlers.onProgress?.(frame as TProgress);
-          }
-        },
-        signal: handlers.signal,
-        closeOnAbort: handlers.closeOnAbort,
-      });
-    } catch (error) {
-      if (!isMutationStreamLoss(error)) throw error;
-      if (started ? reattached : resent) {
-        throw sent ? outcomeUnknownError() : error;
+  // The stream's own abort never arrives while the transport is down or dead,
+  // so a job that was sent is also cancelled by id once it is reachable.
+  const cancelOnAbort = () => {
+    if (sent && handlers.closeOnAbort !== "close") void cancelJobById(id);
+  };
+  handlers.signal?.addEventListener("abort", cancelOnAbort, { once: true });
+  try {
+    for (;;) {
+      try {
+        // Waiting for the transport is bounded; the job itself is not.
+        const mux = await ensureRequestMuxReady(
+          STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
+          handlers.signal,
+        );
+        const stream =
+          start && !started
+            ? mux.openStream(start.route, start.payload)
+            : mux.openStream(
+                "tasks.watch",
+                streamOpenPayload("tasks.watch", { taskId: id }),
+              );
+        if (!stream) throw connectionUnavailableError();
+        sent = true;
+        return await waitForStreamResult<TResult, unknown>(stream, {
+          closeMessage: "Connection closed before the mutation finished",
+          onProgress: (frame) => {
+            if (isTaskSnapshotFrame(frame)) {
+              // A watch of a stored job starts with its snapshot too: report one.
+              if (!started) handlers.onSnapshot?.(frame.task);
+              started = true;
+            } else {
+              handlers.onProgress?.(frame as TProgress);
+            }
+          },
+          signal: handlers.signal,
+          closeOnAbort: handlers.closeOnAbort,
+        });
+      } catch (error) {
+        if (!isMutationStreamLoss(error)) throw error;
+        if (started ? reattached : resent) {
+          throw sent ? outcomeUnknownError() : error;
+        }
+        if (started) reattached = true;
+        else resent = true;
       }
-      if (started) reattached = true;
-      else resent = true;
     }
+  } finally {
+    handlers.signal?.removeEventListener("abort", cancelOnAbort);
+  }
+}
+
+// How long a cancel by id keeps waiting for the transport after an abort.
+const CANCEL_BY_ID_WINDOW_MS = 30_000;
+const CANCEL_BY_ID_RETRY_MS = 1_000;
+
+/**
+ * Cancel a job by id in the background, whatever happens to the stream that
+ * follows it: wait for the transport, bounded by CANCEL_BY_ID_WINDOW_MS, send
+ * tasks.cancel, and ignore the answer. tasks.cancel is idempotent, so a send
+ * whose outcome is unknown is sent again.
+ */
+async function cancelJobById(taskId: string): Promise<void> {
+  const deadline = Date.now() + CANCEL_BY_ID_WINDOW_MS;
+  for (let remaining = CANCEL_BY_ID_WINDOW_MS; remaining > 0;) {
+    try {
+      await request("tasks", "cancel", { taskId }, { timeout: remaining });
+      return;
+    } catch (error) {
+      if (!isConnectionLossError(error)) return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, CANCEL_BY_ID_RETRY_MS));
+    remaining = deadline - Date.now();
   }
 }
 

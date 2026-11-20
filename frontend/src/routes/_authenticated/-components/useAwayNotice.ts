@@ -46,11 +46,18 @@ export function useAwayNotice(): void {
     ...linuxio.alerts.list,
     enabled: freshSignIn && privileged,
   });
-  // The first page only, asked once: it is not needed after the notice. The
-  // history page reports its own failures.
+  // The first page only: it is not needed after the notice. The history page
+  // reports its own failures. Once it failed, which takes the mark, or has
+  // answered with jobs, no trigger asks for it again, such as an invalidation
+  // of every `tasks.history` query. An empty answer stays on: the wait for a
+  // LinuxIO update asks for it again.
   const history = useQuery({
     ...linuxio.tasks.history({}),
-    enabled: freshSignIn && !privileged,
+    enabled: ({ state }) =>
+      freshSignIn &&
+      !privileged &&
+      state.status !== "error" &&
+      !state.data?.entries.length,
     meta: { silent: true },
     staleTime: Number.POSITIVE_INFINITY,
   });

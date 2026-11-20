@@ -42,15 +42,17 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 			exit 1; \
 		fi
 	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) govulncheck"
-	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) ) 2>&1 \
+	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" run ./... --timeout 3m $(addprefix --build-tags=,$(nvml_go_tags)) $(GOLANGCI_LINT_OPTS) ) 2>&1 \
 		| sed 's/^/      /'
 	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) golangci-lint"
 	@$(PRINTC) "$(COLOR_GREEN)✅ Go linting passed!$(COLOR_RESET)"
 
+##@ Tests|green
 # See scripts/lanes.sh for the lane layout and why it is scheduled this way.
 test: setup dev-prep test-installation-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" test "$(test_timer_start)"
 
+##@ Quality checks|green
 check-frontend: ensure-node setup-frontend ## Run frontend lint + typecheck + unit tests
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" frontend
 
@@ -71,7 +73,7 @@ test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./p
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running Go unit tests with race detector (backend)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
-		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test $(GO_TEST_PKGS) -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test $(GO_TEST_PKGS) -race -tags "$(strip $(indexer_go_tags) $(nvml_go_tags))" $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
 		| grep --line-buffered -v '\[no test files\]' \
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
@@ -87,6 +89,11 @@ test-installation-scripts: ## Run host-independent installer fixture tests
 test-indexer-systemd-integration: ## Run the opt-in disposable-host indexer smoke test
 	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"
 
+# The updater and Docker update tests, here and in the test VM's updater and
+# docker suites (mk/vm.mk).
+UPDATER_RUN := ^TestInstallScriptDryRunWithSystemdSandbox$$
+DOCKER_UPDATE_RUN := ^TestDockerUpdateCompose
+
 test-updater: ensure-go ## Run the root-only updater systemd dry-run integration test
 	@echo "🔎 Running updater systemd dry-run integration test..."
 	@cd "$(backend_dir)" && \
@@ -94,14 +101,14 @@ test-updater: ensure-go ## Run the root-only updater systemd dry-run integration
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run TestInstallScriptDryRunWithSystemdSandbox -count=1 -v
+	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run '$(UPDATER_RUN)' -count=1 -v
 
 test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose update test
 	@echo "🐳 Running native Docker update integration test..."
 	@cd "$(backend_dir)" && \
 	  LINUXIO_RUN_DOCKER_INTEGRATION=1 \
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
-	  "$(GO_BIN)" test ./common/dockerupdate -run '^TestDockerUpdateCompose' -count=1 -v
+	  "$(GO_BIN)" test ./common/dockerupdate -run '$(DOCKER_UPDATE_RUN)' -count=1 -v
 
 test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install and launch of the assistant agents (needs Node.js and network)
 	@echo "🤖 Running assistant agent install integration test..."
@@ -112,11 +119,20 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 
 # The root btrfs and partition kernel tests, run on this host by
 # test-btrfs-integration and in the test VM by vm-test-btrfs-integration:
-# common/btrfs, and the bridge storage rules that decide which disks a pool
-# may take (TestBtrfsMemberIntegration) and destroy (TestBtrfsDestroyIntegration).
-BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume|Replicate|Member|AddWipe|Destroy)?|Partition)Integration$$
+# common/btrfs (TestBtrfsDropoutIntegration needs the scsi_debug module), and
+# the bridge storage rules that decide which disks a pool may take
+# (TestBtrfsMemberIntegration) and destroy (TestBtrfsDestroyIntegration) and
+# which members Format, Delete and Initialize erase (TestPartitionMemberIntegration).
+# TestBtrfsRebuildProofIntegration and TestBtrfsAutoRebuildIntegration pull
+# the VM's virtio data disks off the PCI bus, so they run only in the test VM
+# and skip on a host.
+BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Dropout|Unready|Resume|Replicate|Member|ArrayMember|AddWipe|Destroy|MountRecord|RebuildProof|AutoRebuild)?|Partition(Claim|Member)?)Integration$$
 BTRFS_INTEGRATION_PKGS := ./common/btrfs ./bridge/handlers/storage
 
+# -p 1: with two packages go test otherwise holds each one's output until it
+# has finished, which is minutes of silence for common/btrfs. The summary
+# script reads stdout only, so sudo's prompt and build errors are not held
+# back by it.
 test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kernel tests on loop devices
 	@echo "🧪 Running btrfs and partition kernel integration tests on loop devices (needs sudo)..."
 	@cd "$(backend_dir)" && \
@@ -124,7 +140,9 @@ test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kerne
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_BTRFS_INTEGRATION=1 \
-	    "$(GO_BIN)" test $(BTRFS_INTEGRATION_PKGS) -run '$(BTRFS_INTEGRATION_RUN)' -count=1 -v -timeout 20m
+	    "$(GO_BIN)" test $(BTRFS_INTEGRATION_PKGS) -run '$(BTRFS_INTEGRATION_RUN)' -p 1 -count=1 -v -timeout 20m \
+	  | awk -f "$(scripts_dir)/gotest-summary.awk"; \
+	  exit "$${PIPESTATUS[0]}"
 
 # The file browser tests that hand entries to other users or groups, which only
 # root can do; without root they skip or cover less.

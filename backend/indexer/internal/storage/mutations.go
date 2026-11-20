@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"strings"
 
-	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/indexing"
 )
 
@@ -73,15 +72,8 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 // updateParentDirectorySizes propagates size changes up the directory tree.
 // sizeDelta is the change in size (positive for additions, negative for deletions).
 func updateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int64, childPath string, sizeDelta int64) error {
-	return updateParentDirectorySizesThrough(ctx, db, indexID, childPath, sizeDelta, "")
-}
-
-func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, indexID int64, childPath string, sizeDelta int64, stopPath string) error {
 	if sizeDelta == 0 {
 		return nil
-	}
-	if stopPath != "" {
-		stopPath = indexerapi.NormalizePath(stopPath)
 	}
 
 	currentPath := parentDirKey(childPath)
@@ -99,7 +91,7 @@ func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, index
 		}
 
 		// Move to parent
-		if currentPath == "/" || currentPath == stopPath {
+		if currentPath == "/" {
 			break
 		}
 		currentPath = parentDirKey(currentPath)

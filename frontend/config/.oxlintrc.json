@@ -6,9 +6,7 @@
   // they are free in wall-clock terms when linting with --type-aware.
   "jsPlugins": [
     { "name": "@tanstack/query", "specifier": "@tanstack/eslint-plugin-query" },
-    "eslint-plugin-react-you-might-not-need-an-effect",
-    // "import-x" is a reserved native alias, hence the -js suffix.
-    { "name": "import-x-js", "specifier": "eslint-plugin-import-x" }
+    "eslint-plugin-react-you-might-not-need-an-effect"
   ],
   "env": {
     "browser": true,
@@ -107,25 +105,7 @@
     "react-you-might-not-need-an-effect/no-initialize-state": "error",
     "react-you-might-not-need-an-effect/no-external-store-subscription": "warn",
     "react-you-might-not-need-an-effect/no-pass-data-to-parent": "warn",
-    "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "warn",
-
-    // --- import ordering ---
-    "import-x-js/order": [
-      "warn",
-      {
-        "groups": [
-          "builtin",
-          "external",
-          "internal",
-          ["parent", "sibling", "index"]
-        ],
-        "newlines-between": "always",
-        "alphabetize": { "order": "asc", "caseInsensitive": true }
-      }
-    ]
-  },
-  "settings": {
-    "import-x/internal-regex": "^@/"
+    "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "warn"
   },
   "overrides": [
     {

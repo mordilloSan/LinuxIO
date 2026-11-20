@@ -61,6 +61,35 @@ describe("generated application router", () => {
     });
   });
 
+  it("keeps the Trash's sort beside trash and drops it from a folder", () => {
+    const validate =
+      router.routesById["/_authenticated/filebrowser/$"].options.validateSearch;
+    if (typeof validate !== "function")
+      throw new Error("Missing file browser search validation");
+    expect(validate({ order: "asc", sort: "name", trash: true })).toEqual({
+      order: "asc",
+      sort: "name",
+      trash: true,
+    });
+    expect(validate({ order: "up", sort: "owner", trash: true })).toEqual({
+      trash: true,
+    });
+    expect(validate({ order: "asc", sort: "name" })).toEqual({});
+  });
+
+  it("keeps only a dialog the dashboard knows in its search", () => {
+    const validate =
+      router.routesById["/_authenticated/"].options.validateSearch;
+    if (typeof validate !== "function")
+      throw new Error("Missing dashboard search validation");
+    expect(validate({ dialog: "memory-overflow" })).toEqual({
+      dialog: "memory-overflow",
+    });
+    for (const search of [{}, { dialog: "hostname" }, { dialog: true }]) {
+      expect(validate(search)).toEqual({});
+    }
+  });
+
   it("contains the complete generated route topology", () => {
     expect(
       applicationRoutes

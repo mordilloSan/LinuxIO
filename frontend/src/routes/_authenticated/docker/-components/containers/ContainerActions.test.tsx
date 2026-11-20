@@ -227,6 +227,68 @@ describe("ContainerActions", () => {
     ).toBeEnabled();
   });
 
+  it("offers Rebuild and update for a running container built on the host", async () => {
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
+    const { user } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerActions
+          container={{
+            Id: "built-id",
+            State: "running",
+            updateCheckState: "built",
+          }}
+          mode="menu"
+          name="example"
+          {...callbacks}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for example" }),
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "Rebuild and update" }),
+    );
+
+    expect(request).toHaveBeenCalledWith(
+      "docker",
+      "update_container",
+      { containerId: "built-id", rebuild: true },
+      expect.anything(),
+    );
+    expect(screen.getByText("Rebuilding example")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["a stopped built container", "exited", "built"],
+    ["a pulled container", "running", "current"],
+  ] as const)("offers no rebuild for %s", async (_, state, checkState) => {
+    const { user } = render(
+      <ContainerActions
+        container={{
+          Id: "container-id",
+          State: state,
+          updateCheckState: checkState,
+        }}
+        mode="menu"
+        name="example"
+        {...callbacks}
+      />,
+      { auth: { privileged: true } },
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for example" }),
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "Rebuild and update" }),
+    ).toBeNull();
+  });
+
   it("offers only logs and the app link without sudo", async () => {
     const container = {
       Id: "running-id",

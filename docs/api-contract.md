@@ -148,14 +148,20 @@ Mutation options:
 - A request field tagged `secret:"true"`, such as a password, is left out of
   the request the job record keeps. `TestMutationRequestsKeepTheirSecretsOutOfTheRecord`
   fails for a Mutation request field named like a password or key without it.
-- `.Resumable(apischema.ResumeHooks[Req, Res]{Suspend, Resume})` on the
-  binding lets a job continue after a shutdown or reboot. It panics unless the
-  route is `Privileged()` and has no secret fields. Four routes declare it:
-  `storage.btrfs_balance`, `storage.btrfs_scrub_start`,
-  `storage.btrfs_device_replace` and `storage.btrfs_device_remove`. On a
-  shutdown the host runs `Suspend`, stores its checkpoint in the record and
-  then cancels the context; at the next boot `Resume` runs once, and only for a
-  `shutdown` or `reboot` interruption.
+- `.Resumable(apischema.ResumeHooks[Req, Res]{Suspend, Resume, At})` on the
+  binding lets a job continue after a shutdown or reboot, or after its job
+  host died. It panics unless the route is `Privileged()` and has no secret
+  fields. Six routes declare it: `storage.btrfs_balance`,
+  `storage.btrfs_scrub_start`, `storage.btrfs_device_replace` and
+  `storage.btrfs_device_remove`, which resume after a reboot,
+  `packages.update`, which resumes in the same boot after a crash of its
+  host (`At: bridgeipc.ResumeAfterCrash`), and `storage.run_smart_test`,
+  which resumes after a reboot, a crash or a stop by hand. On a shutdown the
+  host runs `Suspend`, stores its
+  checkpoint in the record and then cancels the context; a handler can also
+  store one while it runs (`bridgeipc.SaveCheckpoint`). `Resume` runs once, at
+  the root host's start right after the interruption
+  ([Jobs](./jobs.md#host-start-and-boot)).
 
 ## Frontend Shape
 
@@ -254,7 +260,11 @@ Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for th
 
 The same guard file also fences the byte/mux-level transport primitives (`encodeString`, `bindStreamHandlers`, `getStreamMux`, …): feature code opens typed Channels with `openChannel(route, request)` and uses the stream lifecycle hooks (`useLiveStream`/`useLogStream`/`useStreamResult`). Only a short, shrink-only allowlist may import lower-level primitives from `@/api`.
 
-Call descriptors compose with normal React Query options, including `select` for transformed output data. `useCallMutation` and `useMutation` take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast metadata such as an action link), and `options` as a raw React Query options escape hatch.
+Call descriptors compose with normal React Query options, including `select` for transformed output data. `useCallMutation` and `useMutation` take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (the page the feedback belongs to; see [Toast links](#toast-links)), and `options` as a raw React Query options escape hatch.
+
+### Toast links
+
+A `ToastMeta` (`api/toast-meta.ts`) names the page a toast belongs to, such as `{ label: "Open Docker", to: "/docker" }`; for the dashboard it may also name a dialog to open in `search`, as the `zram` capability's `{ label: "Open Memory overflow", search: { dialog: "memory-overflow" }, to: "/" }` does. `useScopedToast(meta)`, the `toast` option above, the global task feedback in `tasks/terminalTaskFeedback.ts` and the few direct `toast.*` calls that carry one all pass it through `toastLinkOptions` when the toast fires, not when the work started, since the user may have moved on in between. If the user is then on another page, the toast gets a sonner action button labelled `label` (or "Open") that opens the page, and stays 10 seconds so the button can be reached. On the page itself or a page below it, the toast has no button; for the file browser that means the same folder, or anywhere in the file browser when `_splat` is empty. A meta without `to` never adds a button, and an `action` the caller passes (such as "Open the real folder") is kept, never replaced. `router/router.tsx` hands the app router to `registerToastLinkRouter`, because `@/api` cannot import the router: its route tree imports `@/api`.
 
 ### Choosing a member (decision table)
 
@@ -360,7 +370,85 @@ snapshot the client reattaches with `tasks.watch {taskId: id}` instead. Each is
 tried once, so a resend that reached the job still reattaches once; a further
 loss rejects with `outcome_unknown` (`connection_unavailable` when no stream
 could be opened at all). Aborting the caller's signal aborts the stream, which
-cancels the job. A resend of an `id` with a different route or request is `409`.
+cancels the job. The abort frame never arrives while the transport is down or
+dead, so an abort of a job whose request was sent also sends `tasks.cancel
+{taskId: id}` in the background, without delaying or changing the caller's
+`AbortError`: it waits up to 30 s for the transport (retrying every second
+while it is unavailable or the outcome is unknown), sends once, and ignores
+the answer. `tasks.cancel` is idempotent: a job that already ended answers its
+snapshot, and a failure (`404` for a job the bridge no longer holds) is
+dropped. `closeOnAbort: "close"` sends none, and neither does an abort before
+the request was sent. A resend of an `id` with a different route or request is
+`409`.
+
+### Routes that cut their own connection
+
+A few routes end the connection that carries them: `control.reboot`,
+`control.power_off`, and a `network.*` change on the interface the browser
+reaches the host through. A Mutation is sent as described above: the client may
+resend the same envelope once before the snapshot and reattach with
+`tasks.watch` after it, and the job `id` keeps either from running the route
+twice. What the client then reports follows one classifier,
+`classifyRequestOutcome` in `frontend/src/api/errors.ts`, and never claims
+success because the host went quiet:
+
+| Class | Errors | Shown as |
+| ---| ---| ---|
+| not sent | `connection_unavailable` | A failure: the request did not run. |
+| failed | The host answered that it did not do it: a numeric 400 to 599 code, except those below. A handler's plain error is a 500 (logind denying a reboot, NetworkManager rejecting a setting); a refusal such as `update_pending` is a 409. | A failure with the host's reason (an `update_pending:` prefix is stripped). |
+| unknown | Nothing says whether the host acted: `outcome_unknown`, `timeout`, `connection_closed` and other non-numeric codes, the 409 `job was interrupted`, the 503 `job host is stopping` / `job host unavailable`, the 504, and codes outside 400 to 599. | An outcome that is not known. |
+
+The unknown answers are the ones a host that is going away gives for work that
+may have run: a reboot that logind accepted can come back as `job was
+interrupted` (409), `job host is stopping` / `job host unavailable` (503) or a
+504 when the job host or bridge is gone before the record completes. An
+ordinary 500 is a handler that ran and failed, so it is a failure, not unknown.
+
+- **Reboot.** `control.reboot` returns once logind accepts the request. The page
+  shows its overlay at once, as "requested". A request that did not run takes
+  the overlay down and shows an error toast; an unknown outcome leaves it up.
+  The page polls `/api/version` every second and redirects to sign-in only
+  when a poll failed (no answer, or an error status) and a later poll
+  answered: the old webserver is still answering while it shuts down, so an
+  answer before a failed poll does not count, and neither does a poll that only
+  ran out of its 10 s. The app's own connection closing does not allow the
+  redirect on its own, because the host stops the bridge before the webserver
+  exits. It matters only at the bound (90 s, `REBOOT_CONFIRM_TIMEOUT_MS`; a poll
+  still in flight at that moment decides first). If the connection closed but
+  no poll ever failed, the session is gone either way, so the page redirects to
+  sign-in once the webserver answers. If a poll failed, the wait for the
+  webserver is not bounded. If neither a poll failed nor the connection closed,
+  the overlay says the reboot could not be confirmed and offers to close, with
+  no redirect. The client does not compare a boot identity (a boot id from the
+  host), which would need a backend route, so a reboot is confirmed only by the
+  webserver going away and coming back.
+- **Power-off.** `control.power_off` starts as "requested". Only an answer from
+  the route turns the overlay into "The system is shutting down". An unknown
+  outcome, or 90 s without an answer (`POWER_OFF_ANSWER_TIMEOUT_MS`, for a host
+  that goes silent without closing the connection: the stream has no
+  heartbeat), turns it into "not confirmed", saying the system may be shutting
+  down, with a close button. A request that did not run takes the overlay down
+  and shows an error toast. Nothing can confirm a power-off afterwards, because
+  the host is gone.
+- **Both overlays.** Each answer is tied to the request that started the
+  overlay: a late answer of an earlier request is ignored. While an overlay is
+  up, `AuthProvider` leaves a session-expired report of the stream to it, as it
+  does during a self-update, because the host stops the bridge before the
+  webserver exits.
+- **Network changes.** The interface editor's DHCP, manual address, MTU, enable
+  and disable mutations show a warning, not an error, for an unknown outcome:
+  the host did not confirm the change, check the interface once connected
+  again. One toast id keeps the requests of one Apply from stacking it. Not
+  sent and failed changes keep the normal failure toast with the host's reason. The warning
+  appears when the browser sees the connection close or the host answers
+  with an unknown error; a host that goes silent without closing the
+  connection leaves the request pending. The client does not read the change
+  back. The interface data refetches when the connection returns, because the
+  shared request transport going unavailable and available again is what
+  TanStack Query treats as the browser going offline and online. Only the host
+  bridge handoff (`network.start_bridge_handoff`) is verified, through its own
+  status route, which keeps its own rule (`outcome_unknown`, timeout or 5xx keep
+  the operation; anything else clears it).
 
 ## Backend Handler Shapes
 
@@ -488,7 +576,7 @@ any omitted UI field it resolves to the backend default on the next read; an
 invalid colour is refused, and a key that is not a theme colour is refused
 with 400 by the handler, because a map lets the request decoder accept any
 key. `ui.yaml` is read over the defaults: a key replaces that colour, a
-`null` key or scheme unsets it (the bridge itself never writes one), and an
+`null` key or scheme unsets it (the bridge itself never writes one), and any
 unknown key or scheme fails the strict decode.
 
 `system.get_capabilities` uses the same pattern: its result is a map from
@@ -537,6 +625,24 @@ configuration. The only theme state in the browser is the first-paint hint
 back. Concurrent UI replacements
 are serialized but not field-merged; the last complete snapshot committed
 wins.
+
+`ConfigProvider` shows a change before the bridge answers. When the bridge
+refuses a `config.set` or `config.set_ui`, the error toast reports it, and once
+the tab's save queue has no other save waiting, the provider reloads the
+refused store (`config.get` or `config.get_ui`) so the page shows what the
+bridge holds instead of what was typed. Waiting for the queue keeps a later
+change that is still being saved on the page. A change to the same store made
+while that reload is in flight cancels it and leaves the store marked, so the
+store is read back again after that change's save.
+
+Known limits:
+
+- `config.set_ui` takes the whole snapshot, so a UI save queued behind a
+  refused one carries the refused value too: a value the bridge rejects as
+  invalid takes the queued UI change down with it.
+- A read-back that fails is not retried by itself. The refused value stays on
+  the page until the next save reads the store back; for a functional setting
+  a reconnect does too.
 
 Tabs of one browser follow each other's UI saves. After `config.set_ui` is
 confirmed, `ConfigProvider` writes a timestamp to `linuxio.uiConfigSaved` in
@@ -772,17 +878,23 @@ interrupted` (`409`) as the stream's error, the host waiting up to 5 s for the
 bridge to close the stream before it closes the connection, and a resend of
 the envelope is answered from the record with the same error. The root host raises
 an alert (source `jobs`, key the job ID) for a root job that failed or was
-interrupted, except a resumable job it resumes after a reboot; a user host
-writes the record only. Successful and canceled jobs never alert.
+interrupted, except a resumable job it resumes; a user host writes the record
+only. Successful and canceled jobs never alert.
 
 The root host starts at boot and resumes each job of a `Resumable` route that
 the last shutdown or a power loss interrupted: a record `interrupted` with
 reason `shutdown` or `reboot`, still `Resumable`, with no `cancel_requested`,
-whose executor ran in an earlier boot. Every other `interrupted` record (a
-crash, a host stopped by hand in this boot, a cancel that overlapped a stop)
-loses `Resumable` when a host starts, so a job is resumed once and never at a
-later reboot. The outcome is written to the same record. There is no manual
-resume.
+whose executor ran in an earlier boot. A route that resumes in the boot
+(`packages.update` instead, `storage.run_smart_test` as well) is picked up at
+the root host's next start in the same boot after its host crashed (reason
+`crash`, an executor of this boot, and a run that was not itself a resume),
+or, for `storage.run_smart_test`, was stopped by hand (reason `shutdown`),
+before that host serves, so a client
+that reattaches finds the job running. Every other `interrupted` record loses
+`Resumable` when a host starts, so a job is resumed once and never at a
+later reboot. The outcome is written to the same record; a `Resume` that
+cannot tell what became of the work leaves the job `interrupted` with its
+reason and the cause as its error (`409`). There is no manual resume.
 
 ### Scheduled runs
 
@@ -791,7 +903,7 @@ runs it. Each run writes a record of its own from two hooks on its unit
 ([Process & Systemd Architecture](./process-systemd-architecture.md#scheduled-runs)):
 `/var/lib/linuxio/jobs/scheduled/<id>.json`, with a copy of its output beside
 it. The root job host reads those records, so the run shows in `tasks.list`
-and `tasks.events` while it runs. Six task types:
+and `tasks.events` while it runs. Seven task types:
 
 | Type | Unit | `metadata.label` | `metadata.identity` |
 | ---| ---| ---| ---|
@@ -799,6 +911,7 @@ and `tasks.events` while it runs. Six task types:
 | `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | `Snapshots` | none |
 | `scheduled.btrfs_replicate` | `linuxio-btrfs-replicate.service` | `Replication` | none |
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | `Pool resync` | `[<pool uuid>]` |
+| `scheduled.btrfs_rebuild` | `linuxio-btrfs-rebuild@<uuid>.service` | `Pool rebuild` | `[<pool uuid>]` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | `Container updates` | none |
 | `scheduled.system_update` | the distribution's automatic update service: `apt-daily-upgrade.service`, `dnf-automatic.service`, `dnf5-automatic.service` or `mintupdate-automation-upgrade.service` | `System updates` | none |
 
@@ -809,7 +922,7 @@ and `tasks.events` while it runs. Six task types:
 - **`tasks.events`** reads the scheduled store every 2 s while a client
   listens: a `task.snapshot` for each run that runs when the stream opens and
   for each run that begins, a `task.progress` when a run's progress file
-  changes (the btrfs timer program and the Docker update runner write one;
+  changes (the worker and the Docker updater write one;
   scripts report none, their feedback is their output), and the terminal
   event when it ends. It lists the store again after a record changes and at
   least every 30 s. A run shorter than one poll may never be sent.
@@ -821,8 +934,16 @@ and `tasks.events` while it runs. Six task types:
   `schedules.stop` and a timer's resync with `storage.btrfs_scrub_cancel`;
   both set `cancel_requested` on the record first, so the run ends `canceled`.
 - **Outcomes.** `completed`; `failed` with a message such as `exited with
-  status 3`, `killed by signal KILL` or `timed out`; `canceled`; `interrupted`
-  with reason `shutdown` when the system was stopping as the run ended. A
+  status 1`, `killed by signal KILL` or `timed out`; `canceled`; `interrupted`
+  with reason `shutdown` when the system was stopping as the run ended.
+- **`result`.** The worker or the Docker updater may store a summary of what its run did, which
+  `tasks.get` answers as the `result` of a completed run: `message` (one
+  line, such as `1 updated, 1 failed`), `failures` (how many of its items
+  failed with an alert of their own; absent when none) and `skipped` (set
+  when the run did no work). The Docker update pass, the timer's snapshot
+  pass, the replication run, the pool resync and the pool rebuild store one,
+  and complete also when their containers, rules, jobs or pool failed
+  ([Jobs](./jobs.md#scheduled-runs)); scripts and system updates store none. A
   `running` record counts only while systemd runs the record's invocation in
   this boot; otherwise the host marks it `interrupted`, `reboot` for a run of
   an earlier boot and `crash` for one whose end hook never ran.
@@ -850,12 +971,15 @@ open to every session.
 The answer holds `entries` and `more` (set when older entries remain). An
 entry (`TaskHistoryEntry`) is `task`, a slim `TaskSnapshot` of the ended job,
 `reason` (`shutdown`, `reboot` or `crash` for an interrupted job), `unit` (a
-scheduled run's unit) and `output` (set when the run's saved output exists).
+scheduled run's unit), `output` (set when the run's saved output exists), and
+`summary` and `failures`, the `message` and `failures` of a scheduled run's
+summary ([Scheduled runs](#scheduled-runs)).
 The slim snapshot keeps what a list of ended work shows (type, owner, times,
 state, error, the display members of `metadata`) and leaves out the rest, so
 a page of large records stays well inside a relay frame:
 
-- no entry carries `result` or `progress`;
+- no entry carries `result` or `progress`; a scheduled run's summary is in
+  the entry's `summary` and `failures` instead;
 - a host job's entry carries no `metadata.identity` and no
   `metadata.packageIds`; a scheduled run keeps `metadata.identity`, which
   names its schedule or pool;
@@ -931,8 +1055,8 @@ count, without jobs, or with the store unreadable). The three `BrowserBound()` M
 in the bridge and are not affected, nor are Calls and Channels that do not go
 to the job host. There is no
 fallback for a job host of the same protocol built before these three routes:
-it answers them `route not found`, and the last release (v0.52.0) has no job
-host.
+it answers them `route not found`, and no release has one: v0.52.0 has no job
+host, and v0.53.0 already keeps these routes in the bridge.
 
 ### Task lifetime, ownership, and activity
 
@@ -991,7 +1115,10 @@ Task UI every route shape.
 Retained progress reaches both `tasks.events` and `tasks.watch` in this envelope.
 `tasks.events` is the owner-wide discovery/lifecycle view and coalesces
 progress; `tasks.watch` follows one Task, replays its bounded progress window,
-and supplies its terminal result. Explicit transient output on `tasks.watch`
+and supplies its terminal result. The watch registers its subscriber, copies
+the replay and takes its first snapshot under one lock, so a progress frame is
+either in the replay or arrives live, and a terminal snapshot means the replay
+holds every frame. Explicit transient output on `tasks.watch`
 and payload-specific `tasks.data` flow-control frames remain route protocols;
 they are not stored as Task progress or published on `tasks.events`.
 

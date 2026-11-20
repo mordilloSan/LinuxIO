@@ -11,6 +11,7 @@ import {
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
+import { validateDashboardSearch } from "@/api/dashboard-search";
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
 import { Route as NetworkRoute } from "@/routes/_authenticated/network/index";
@@ -18,12 +19,12 @@ import { Route as StorageRoute } from "@/routes/_authenticated/storage/index";
 import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import { installTabNavigationIntent } from "@/utils/tabNavigation";
-
 // Register the app's generated icon sets so fixture pages draw icons
 // synchronously, as production does; fetching them from the Iconify API at
 // runtime lands mid-test and moves row geometry under the specs.
 import "@/icons/icons";
 import "@/icons/shell";
+
 import "@/theme/variables.css";
 
 import ProgramsFixtureLayout, {
@@ -48,10 +49,13 @@ const VolumesPage = lazy(() => import("./routes/VolumesPage"));
 const FileBrowserReadPathsPage = lazy(
   () => import("./routes/FileBrowserReadPathsPage"),
 );
+const PathPickerLargeFolderPage = lazy(
+  () => import("./routes/PathPickerLargeFolderPage"),
+);
 const FileBrowserDeleteFlowsPage = lazy(
   () => import("./routes/FileBrowserDeleteFlowsPage"),
 );
-const TrashDialogPage = lazy(() => import("./routes/TrashDialogPage"));
+const TrashPlacePage = lazy(() => import("./routes/TrashPlacePage"));
 const FileEditorHistoryPage = lazy(
   () => import("./routes/FileEditorHistoryPage"),
 );
@@ -73,6 +77,7 @@ const StorageDisksPage = lazy(() => import("./routes/StorageDisksPage"));
 const NetworkHandoffPage = lazy(() => import("./routes/NetworkHandoffPage"));
 const VMBridgePage = lazy(() => import("./routes/VMBridgePage"));
 const RsyncPage = lazy(() => import("./routes/RsyncPage"));
+const MemoryOverflowPage = lazy(() => import("./routes/MemoryOverflowPage"));
 
 const DARK_THEME = buildAppTheme("DARK");
 const LIGHT_THEME = buildAppTheme("LIGHT");
@@ -183,6 +188,11 @@ const assistantRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "assistant",
 });
+const pathPickerLargeFolderRoute = createRoute({
+  component: PathPickerLargeFolderPage,
+  getParentRoute: () => rootRoute,
+  path: "pathpicker/large-folder",
+});
 const fileBrowserReadPathsRoute = createRoute({
   component: FileBrowserReadPathsPage,
   getParentRoute: () => rootRoute,
@@ -199,7 +209,7 @@ const fileBrowserDeleteFlowsRoute = createRoute({
   path: "filebrowser/delete-flows",
 });
 const fileBrowserTrashRoute = createRoute({
-  component: TrashDialogPage,
+  component: TrashPlacePage,
   getParentRoute: () => rootRoute,
   path: "filebrowser/trash",
 });
@@ -293,6 +303,14 @@ const lightTopologyRoute = createRoute({
   path: "styling/light/topology",
   validateSearch: topologySearch,
 });
+// The dashboard's Memory card with the dashboard's search, so the dialog's
+// ?dialog= value opens and closes it as on the dashboard.
+const memoryOverflowRoute = createRoute({
+  component: MemoryOverflowPage,
+  getParentRoute: () => rootRoute,
+  path: "dashboard/memory",
+  validateSearch: validateDashboardSearch,
+});
 const storageDisksRoute = createRoute({
   component: StorageDisksPage,
   getParentRoute: () => authenticatedRoute,
@@ -370,6 +388,7 @@ const routeTree = rootRoute.addChildren([
   assistantRoute,
   containerActionsRoute,
   fileBrowserReadPathsRoute,
+  pathPickerLargeFolderRoute,
   fileEditorHistoryRoute,
   fileBrowserDeleteFlowsRoute,
   fileBrowserTrashRoute,
@@ -390,6 +409,7 @@ const routeTree = rootRoute.addChildren([
   dockerTopologyRoute,
   lightTopologyRoute,
   storageDisksRoute,
+  memoryOverflowRoute,
   programsLayoutRoute.addChildren([programsRoute]),
 ]);
 const router = createRouter({

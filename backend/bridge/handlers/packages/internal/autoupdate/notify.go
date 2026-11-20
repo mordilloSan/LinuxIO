@@ -45,7 +45,7 @@ func writeNotifyDropIn(host backendHost, service, provider string, policy AutoUp
 		return nil
 	}
 	// ExecStartPre only exists while the drop-in does, so "never" keeps removing the whole file.
-	body := fmt.Sprintf("[Service]\nExecStartPre=-%[1]s/linuxio-btrfs-timer snapshot pre-update\nExecStopPost=%[1]s/linuxio alert auto-update --provider %[2]s --policy %[3]s\n", version.BinDir, provider, policy)
+	body := fmt.Sprintf("[Service]\nExecStartPre=-%[1]s/linuxio-worker snapshot pre-update\nExecStopPost=%[1]s/linuxio-worker alert auto-update --provider %[2]s --policy %[3]s\n", version.BinDir, provider, policy)
 	if err := host.writeFileAtomic(path, []byte(body), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
@@ -57,9 +57,8 @@ func writeNotifyDropIn(host backendHost, service, provider string, policy AutoUp
 // reads as on_failure, which is what the host runs as without the drop-in:
 // the run-record hook on the update service reports a failed run where this
 // hook is not installed (scheduledrun). An on_change the backend does not
-// offer, which an older build wrote where only the service result is known,
-// reads as on_failure too; any other policy reads as stored, so a save cannot
-// quietly narrow it.
+// offer, because only the service result is known, reads as on_failure too;
+// any other policy reads as stored, so a save cannot quietly narrow it.
 func readNotifyPolicy(host backendHost, service string, offered []AutoUpdateNotify) AutoUpdateNotify {
 	data, err := host.readFile(notifyDropInPath(service))
 	if err != nil {
@@ -89,7 +88,7 @@ func writePendingDropIn(host backendHost, service, provider string, enabled bool
 		}
 		return nil
 	}
-	body := fmt.Sprintf("[Service]\nExecStopPost=%s/linuxio alert pending-updates --provider %s\n", version.BinDir, provider)
+	body := fmt.Sprintf("[Service]\nExecStopPost=%s/linuxio-worker alert pending-updates --provider %s\n", version.BinDir, provider)
 	if err := host.writeFileAtomic(path, []byte(body), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}

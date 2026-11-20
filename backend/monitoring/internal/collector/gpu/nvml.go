@@ -72,9 +72,11 @@ type nvmlProcessUtilization struct {
 	DecUtil   uint32
 }
 
-// nvmlPciInfo is the v3 nvmlPciInfo_t layout (68 bytes). Older ABIs write a
-// prefix of it (the v1/v2 struct ends in four reserved uints), so this buffer is
-// large enough for whichever nvmlDeviceGetPciInfo the library exports.
+// nvmlPciInfo is the v3 nvmlPciInfo_t layout (68 bytes) that
+// nvmlDeviceGetPciInfo_v3 fills. A library without it gets the unversioned
+// function, which may be an older ABI that writes a prefix of this struct (the
+// v1/v2 struct ends in four reserved uints); every layout starts with the
+// 16-byte legacy bus id read here.
 type nvmlPciInfo struct {
 	BusId          [16]byte
 	Domain         uint32
@@ -143,7 +145,9 @@ func (c *nvmlCollector) init() error {
 	purego.RegisterLibFunc(&nvmlDeviceGetUtilizationRates, lib, "nvmlDeviceGetUtilizationRates")
 	purego.RegisterLibFunc(&nvmlDeviceGetTemperature, lib, "nvmlDeviceGetTemperature")
 	purego.RegisterLibFunc(&nvmlDeviceGetPowerUsage, lib, "nvmlDeviceGetPowerUsage")
-	purego.RegisterLibFunc(&nvmlDeviceGetPciInfo, lib, "nvmlDeviceGetPciInfo")
+	purego.RegisterLibFunc(&nvmlDeviceGetPciInfo, lib, nvmlPciInfoSymbol(func(symbol string) bool {
+		return hasSymbol(lib, symbol)
+	}))
 	purego.RegisterLibFunc(&nvmlErrorString, lib, "nvmlErrorString")
 	registerNVMLProcessFunctions(lib)
 
@@ -181,6 +185,16 @@ func (c *nvmlCollector) init() error {
 	}
 
 	return nil
+}
+
+// nvmlPciInfoSymbol names the nvmlDeviceGetPciInfo entry point to register:
+// nvmlDeviceGetPciInfo_v3, which fills the nvmlPciInfo layout, or the
+// unversioned symbol of a library that does not export it.
+func nvmlPciInfoSymbol(exported func(symbol string) bool) string {
+	if exported("nvmlDeviceGetPciInfo_v3") {
+		return "nvmlDeviceGetPciInfo_v3"
+	}
+	return "nvmlDeviceGetPciInfo"
 }
 
 func hasNVMLProcessListingAPI() bool {
@@ -291,25 +305,7 @@ func (c *nvmlCollector) collect() {
 
 		// Memory: only poll if GPU is active to avoid leaving D3cold state (#1522)
 		if utilization.Gpu > 0 {
-			var usedMem, totalMem uint64
-			if c.isV2 {
-				var memory nvmlMemoryV2
-				memory.Version = 0x02000028 // (2 << 24) | 40 bytes
-				if ret := nvmlDeviceGetMemoryInfo(device, uintptr(unsafe.Pointer(&memory))); ret != nvmlReturn(nvmlSuccess) {
-					slog.Debug("memory info v2 failed", "component", "nvml", "bdf", bdf, "ret", ret)
-				} else {
-					usedMem = memory.Used
-					totalMem = memory.Total
-				}
-			} else {
-				var memory nvmlMemoryV1
-				if ret := nvmlDeviceGetMemoryInfo(device, uintptr(unsafe.Pointer(&memory))); ret != nvmlReturn(nvmlSuccess) {
-					slog.Debug("memory info failed", "component", "nvml", "bdf", bdf, "ret", ret)
-				} else {
-					usedMem = memory.Used
-					totalMem = memory.Total
-				}
-			}
+			usedMem, totalMem := c.readMemory(device, bdf)
 			if totalMem > 0 {
 				gpu.MemoryUsed = float64(usedMem) / 1024 / 1024 / mebibytesInAMegabyte
 				gpu.MemoryTotal = float64(totalMem) / 1024 / 1024 / mebibytesInAMegabyte
@@ -331,6 +327,26 @@ func (c *nvmlCollector) collect() {
 	c.gm.replaceGPUProcessSourceLocked(string(collectorSourceNVML), processesByDevice, true)
 }
 
+// readMemory returns the used and total memory of device in bytes, or zeros
+// when NVML cannot read them.
+func (c *nvmlCollector) readMemory(device nvmlDevice, bdf string) (used, total uint64) {
+	if c.isV2 {
+		var memory nvmlMemoryV2
+		memory.Version = 0x02000028 // (2 << 24) | 40 bytes
+		if ret := nvmlDeviceGetMemoryInfo(device, uintptr(unsafe.Pointer(&memory))); ret != nvmlReturn(nvmlSuccess) {
+			slog.Debug("memory info v2 failed", "component", "nvml", "bdf", bdf, "ret", ret)
+			return 0, 0
+		}
+		return memory.Used, memory.Total
+	}
+	var memory nvmlMemoryV1
+	if ret := nvmlDeviceGetMemoryInfo(device, uintptr(unsafe.Pointer(&memory))); ret != nvmlReturn(nvmlSuccess) {
+		slog.Debug("memory info failed", "component", "nvml", "bdf", bdf, "ret", ret)
+		return 0, 0
+	}
+	return memory.Used, memory.Total
+}
+
 func registerNVMLProcessFunctions(lib uintptr) {
 	nvmlDeviceGetComputeRunningProcessesV3 = nil
 	nvmlDeviceGetComputeRunningProcessesV2 = nil
@@ -339,18 +355,20 @@ func registerNVMLProcessFunctions(lib uintptr) {
 	nvmlDeviceGetGraphicsRunningProcessesV2 = nil
 	nvmlDeviceGetGraphicsRunningProcessesV1 = nil
 	nvmlDeviceGetProcessUtilization = nil
-	if hasSymbol(lib, "nvmlDeviceGetComputeRunningProcesses_v3") {
+	switch {
+	case hasSymbol(lib, "nvmlDeviceGetComputeRunningProcesses_v3"):
 		purego.RegisterLibFunc(&nvmlDeviceGetComputeRunningProcessesV3, lib, "nvmlDeviceGetComputeRunningProcesses_v3")
-	} else if hasSymbol(lib, "nvmlDeviceGetComputeRunningProcesses_v2") {
+	case hasSymbol(lib, "nvmlDeviceGetComputeRunningProcesses_v2"):
 		purego.RegisterLibFunc(&nvmlDeviceGetComputeRunningProcessesV2, lib, "nvmlDeviceGetComputeRunningProcesses_v2")
-	} else if hasSymbol(lib, "nvmlDeviceGetComputeRunningProcesses") {
+	case hasSymbol(lib, "nvmlDeviceGetComputeRunningProcesses"):
 		purego.RegisterLibFunc(&nvmlDeviceGetComputeRunningProcessesV1, lib, "nvmlDeviceGetComputeRunningProcesses")
 	}
-	if hasSymbol(lib, "nvmlDeviceGetGraphicsRunningProcesses_v3") {
+	switch {
+	case hasSymbol(lib, "nvmlDeviceGetGraphicsRunningProcesses_v3"):
 		purego.RegisterLibFunc(&nvmlDeviceGetGraphicsRunningProcessesV3, lib, "nvmlDeviceGetGraphicsRunningProcesses_v3")
-	} else if hasSymbol(lib, "nvmlDeviceGetGraphicsRunningProcesses_v2") {
+	case hasSymbol(lib, "nvmlDeviceGetGraphicsRunningProcesses_v2"):
 		purego.RegisterLibFunc(&nvmlDeviceGetGraphicsRunningProcessesV2, lib, "nvmlDeviceGetGraphicsRunningProcesses_v2")
-	} else if hasSymbol(lib, "nvmlDeviceGetGraphicsRunningProcesses") {
+	case hasSymbol(lib, "nvmlDeviceGetGraphicsRunningProcesses"):
 		purego.RegisterLibFunc(&nvmlDeviceGetGraphicsRunningProcessesV1, lib, "nvmlDeviceGetGraphicsRunningProcesses")
 	}
 	if hasSymbol(lib, "nvmlDeviceGetProcessUtilization") {

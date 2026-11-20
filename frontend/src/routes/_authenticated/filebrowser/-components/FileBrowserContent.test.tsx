@@ -1,5 +1,5 @@
-import { screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
 
@@ -8,6 +8,13 @@ import FileBrowserContent, {
 } from "./FileBrowserContent";
 
 const headerSearchRender = vi.hoisted(() => vi.fn());
+
+// The listing reports the card size it was given.
+vi.mock("./DirectoryListing", () => ({
+  default: ({ cardSize }: { cardSize: number }) => (
+    <div data-card-size={cardSize} data-testid="listing" />
+  ),
+}));
 
 vi.mock("@/components/ui/AppHeaderSearch", () => ({
   default: () => {
@@ -29,7 +36,9 @@ vi.mock("@/tasks/useBackgroundTaskActions", () => ({
 const contentProps: FileBrowserContentProps = {
   breadcrumbs: <div>Root</div>,
   chrome: {
+    cardSize: 6,
     editingPath: null,
+    onCardSizeChange: vi.fn(),
     isSavingFile: false,
     normalizedPath: "/",
     onDropItems: vi.fn(),
@@ -121,5 +130,93 @@ describe("FileBrowserContent render boundaries", () => {
 
     expect(screen.getByText("Search unavailable")).toBeInTheDocument();
     expect(screen.getByText("indexer request failed")).toBeInTheDocument();
+  });
+});
+
+describe("FileBrowserContent card size", () => {
+  const folder = {
+    items: [{ name: "a.txt", path: "/srv/a.txt", type: "file" }],
+    name: "srv",
+    path: "/srv",
+    type: "directory",
+  };
+  const cardView = (
+    overrides: Partial<FileBrowserContentProps["data"]> = {},
+  ): FileBrowserContentProps => ({
+    ...contentProps,
+    chrome: { ...contentProps.chrome, viewMode: "card" },
+    data: {
+      ...contentProps.data,
+      filteredResource: folder,
+      resource: folder,
+      ...overrides,
+    },
+    listing: { ...contentProps.listing, viewMode: "card" },
+  });
+
+  // jsdom lays nothing out: the area the listing fills is this wide.
+  let areaWidth = 1200;
+  beforeEach(() => {
+    areaWidth = 1200;
+    const width = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockImplementation(() => areaWidth);
+    return () => width.mockRestore();
+  });
+
+  it("puts the slider beside the view button and lists cards at its size", () => {
+    const onCardSizeChange = vi.fn();
+    const props = cardView();
+    render(
+      <FileBrowserContent
+        {...props}
+        chrome={{ ...props.chrome, onCardSizeChange }}
+      />,
+    );
+
+    const slider = screen.getByRole("slider", { name: "Card size" });
+    expect(slider).toHaveValue("6");
+    // In the header's actions, before the view button.
+    const actions = document.querySelector(".file-browser-header__actions");
+    const toggle = screen.getByRole("button", { name: "Switch to list view" });
+    expect(actions).toContainElement(slider);
+    expect(
+      slider.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByTestId("listing")).toHaveAttribute(
+      "data-card-size",
+      "6",
+    );
+
+    fireEvent.change(slider, { target: { value: "2" } });
+    expect(onCardSizeChange).toHaveBeenCalledWith(2);
+  });
+
+  it("offers the slider in an empty folder", () => {
+    const empty = { ...folder, items: [] };
+    render(
+      <FileBrowserContent
+        {...cardView({ filteredResource: empty, resource: empty })}
+      />,
+    );
+
+    expect(screen.getByRole("slider", { name: "Card size" })).toBeVisible();
+  });
+
+  it("has no slider in list view", () => {
+    render(<FileBrowserContent {...contentProps} />);
+
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  });
+
+  it("hides the slider and shows the default size where one card fills a row", () => {
+    areaWidth = 379;
+    render(<FileBrowserContent {...cardView()} />);
+
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    expect(screen.getByTestId("listing")).toHaveAttribute(
+      "data-card-size",
+      "3",
+    );
   });
 });

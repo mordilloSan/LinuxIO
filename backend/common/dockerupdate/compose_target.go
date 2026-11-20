@@ -60,14 +60,31 @@ func composeTargetForContainer(
 	if inspect.Config == nil {
 		return ComposeTarget{}, "", false, nil
 	}
-	labels := inspect.Config.Labels
-	projectName := strings.TrimSpace(labels["com.docker.compose.project"])
+	return composeTargetForLabels(ctx, cli, strings.TrimPrefix(inspect.Name, "/"), inspect.Config.Labels)
+}
+
+// composeTargetForLabels resolves the Compose project and service of the
+// container name from its labels. managed is false for a container Compose
+// does not manage.
+func composeTargetForLabels(
+	ctx context.Context,
+	cli *client.Client,
+	name string,
+	labels map[string]string,
+) (target ComposeTarget, service string, managed bool, err error) {
+	projectName := strings.TrimSpace(labels[composeProjectLabel])
 	if projectName == "" {
 		return ComposeTarget{}, "", false, nil
 	}
-	service := strings.TrimSpace(labels["com.docker.compose.service"])
+	service = strings.TrimSpace(labels[composeServiceLabel])
 	if service == "" {
-		return ComposeTarget{}, "", true, fmt.Errorf("compose-managed container %q has no service label", strings.TrimPrefix(inspect.Name, "/"))
+		return ComposeTarget{}, "", true, fmt.Errorf("compose-managed container %q has no service label", name)
+	}
+	// The service is an argument of every `docker compose` command run for
+	// the container, as root; a name that starts with a dash would be read
+	// as an option of the command (such as `config --output=<file>`).
+	if strings.HasPrefix(service, "-") {
+		return ComposeTarget{}, "", true, fmt.Errorf("compose-managed container %q has service label %q, which docker compose would read as an option", name, service)
 	}
 
 	workingDir := strings.TrimSpace(labels["com.docker.compose.project.working_dir"])

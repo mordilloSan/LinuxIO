@@ -185,6 +185,73 @@ describe("useTransferTasks batch results", () => {
     });
   });
 
+  it("offers the real folder for a refusal past the fifth failure", async () => {
+    const { hook, streamOptions } = setupTransfer();
+    const refusal =
+      "forbidden: /dst/docs is a link to /mnt/data/docs. Open that folder to make this change";
+    const failed = Array.from({ length: 8 }, (_, i) => ({
+      path: `/src/f${i}.txt`,
+      error: i === 5 ? refusal : "permission denied",
+    }));
+
+    await act(async () => {
+      await hook.result.current.startCopy({
+        sources: failed.map((item) => item.path),
+        destination: "/dst/docs",
+      });
+    });
+    act(() => {
+      streamOptions[0]?.onSuccess?.({ total: 8, succeeded: 0, failed });
+    });
+
+    const [message, opts] = toastMocks.error.mock.calls[0] as [
+      string,
+      {
+        action: { label: string; onClick: (event: unknown) => void };
+        description: string;
+      },
+    ];
+    expect(message).toBe("Copied 8 items with 8 failures");
+    expect(opts.description).toContain("and 3 more");
+    expect(opts.description.split("\n")).toEqual([
+      ...Array.from({ length: 5 }, (_, i) => `f${i}.txt: permission denied`),
+      "and 3 more",
+      `f5.txt: ${refusal}`,
+    ]);
+    expect(opts.action.label).toBe("Open the real folder");
+    opts.action.onClick({});
+    expect(routerMocks.navigate).toHaveBeenCalledWith({
+      to: "/filebrowser/$",
+      params: { _splat: "mnt/data/docs" },
+      search: {},
+    });
+  });
+
+  it("offers no action for a long batch without a refusal", async () => {
+    const { hook, streamOptions } = setupTransfer();
+    const failed = Array.from({ length: 8 }, (_, i) => ({
+      path: `/src/f${i}.txt`,
+      error: "permission denied",
+    }));
+
+    await act(async () => {
+      await hook.result.current.startCopy({
+        sources: failed.map((item) => item.path),
+        destination: "/dst",
+      });
+    });
+    act(() => {
+      streamOptions[0]?.onSuccess?.({ total: 8, succeeded: 0, failed });
+    });
+
+    const [, opts] = toastMocks.error.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(opts).not.toHaveProperty("action");
+    expect(opts).not.toHaveProperty("failures");
+  });
+
   it("sends keepBoth with the copy and move requests", async () => {
     const { hook } = setupTransfer();
 

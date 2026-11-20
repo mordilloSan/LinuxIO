@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -756,7 +757,7 @@ func TestResumeBalanceRefusesADegradedPool(t *testing.T) {
 	k.devices[2].path = ""
 	k.balanceProgress = func() (balanceArgs, error) { return balanceArgs{}, nil } // paused
 	stubKernel(t, k)
-	if err := ResumeBalance(context.Background(), dataUUID, BalanceOptions{}, true, func(float64) {}); err == nil || err.Error() != "pool "+dataUUID+" is degraded; balance not resumed" {
+	if err := ResumeBalance(context.Background(), dataUUID, BalanceOptions{}, true, func(float64) {}); !errors.Is(err, errDiskMissing) || err.Error() != "pool "+dataUUID+" is degraded; balance not resumed: a disk is missing" {
 		t.Fatalf("err = %v", err)
 	}
 	if calls := k.Calls(); len(calls) != 0 {
@@ -780,12 +781,108 @@ func TestBalanceResultRequiresConvertedProfiles(t *testing.T) {
 
 func TestReplaceResultRequiresNewDevice(t *testing.T) {
 	k := raid1Kernel()
+	replaceStates(k, replaceStateFinished)
 	stubKernel(t, k)
 	if _, err := ReplaceResult(context.Background(), dataUUID, 2, "/dev/sdb1"); err != nil {
 		t.Fatalf("installed: %v", err)
 	}
 	if _, err := ReplaceResult(context.Background(), dataUUID, 2, "/dev/sdd"); err == nil || !strings.Contains(err.Error(), "without installing /dev/sdd") {
 		t.Fatalf("not installed: err = %v", err)
+	}
+}
+
+// The kernel's word that a replace finished is not enough: in the test VM
+// a target that died during the copy was installed dead, the commit that
+// ended the replace aborted and forced the pool read-only, and the ioctl
+// still returned success with DEV_INFO naming the dead target. ReplaceResult
+// and ResumeReplace check the pool is writable and holds the new disk, and
+// the kernel says the replace finished.
+func TestReplaceResultRefusesAReplaceItCannotVerify(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(k *fakeKernel)
+		want  string
+	}{
+		{"read-only", func(k *fakeKernel) { k.readOnly = true }, "the pool went read-only"},
+		// Nothing holds the device behind the kernel's link: dropped out.
+		{"not held", func(*fakeKernel) { notBusy("/dev/sdb1", nil) }, "the new disk /dev/sdb1 is not working in the pool"},
+		{"gone", func(*fakeKernel) { notBusy("/dev/sdb1", os.ErrNotExist) }, "the pool does not hold the new disk /dev/sdb1"},
+		{"still running", func(k *fakeKernel) { replaceStates(k, replaceStateStarted) }, "the kernel reports it running, not finished"},
+		{"canceled", func(k *fakeKernel) { replaceStates(k, replaceStateCanceled) }, "the kernel reports it canceled, not finished"},
+	} {
+		k := raid1Kernel()
+		replaceStates(k, replaceStateFinished)
+		stubKernel(t, k)
+		c.setup(k)
+		_, err := ReplaceResult(context.Background(), dataUUID, 2, "/dev/sdb1")
+		if !errors.Is(err, ErrReplaceUnverified) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: ReplaceResult = %v, want %q", c.name, err, c.want)
+		}
+	}
+	// A dead target the kernel's link no longer reaches reads dropped out.
+	k := raid1Kernel()
+	replaceStates(k, replaceStateFinished)
+	stubKernel(t, k)
+	goneLink(t, "sdb1")
+	if _, err := ReplaceResult(context.Background(), dataUUID, 2, "/dev/sdb1"); !errors.Is(err, ErrReplaceUnverified) || !strings.Contains(err.Error(), "is not working in the pool") {
+		t.Errorf("dropped out: ReplaceResult = %v", err)
+	}
+	// ResumeReplace checks a finish the same way.
+	k = raid1Kernel()
+	k.readOnly = true
+	replaceStates(k, replaceStateFinished)
+	k.replaceStarted = 1_800_000_000
+	stubKernel(t, k)
+	if err := ResumeReplace(context.Background(), dataUUID, 2, time.Unix(1_800_000_000, 0), func(float64) {}); !errors.Is(err, ErrReplaceUnverified) {
+		t.Errorf("ResumeReplace on a read-only pool = %v, want %v", err, ErrReplaceUnverified)
+	}
+}
+
+// A source that is missing, one dropped out included, is read only when no
+// other copy exists (AVOID), as btrfs replace start -r asks; a present one
+// is read first, as btrfs replace start does by default.
+func TestReplaceAvoidsAMissingSource(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		gone func(t *testing.T, k *fakeKernel)
+		want uint64
+	}{
+		{"present", func(*testing.T, *fakeKernel) {}, 0},
+		{"missing", func(_ *testing.T, k *fakeKernel) { k.devices[2].path = "" }, replaceReadAvoid},
+		{"dropped out", func(t *testing.T, _ *fakeKernel) { goneLink(t, "sdb1") }, replaceReadAvoid},
+		// The disk in the slot is one an automatic rebuild left unverified: it
+		// may hold stale copies no checksum finds, which must not be copied on.
+		{"present, with a rebuild of it on record", func(t *testing.T, _ *fakeKernel) {
+			err := updatePoolStates(t.Context(), func(s map[string]poolState) {
+				s[dataUUID] = poolState{Rebuild: &rebuildRecord{ID: 2, Failed: "the kernel finished it unwatched"}}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}, replaceReadAvoid},
+		{"present, with a rebuild of another device on record", func(t *testing.T, _ *fakeKernel) {
+			err := updatePoolStates(t.Context(), func(s map[string]poolState) {
+				s[dataUUID] = poolState{Rebuild: &rebuildRecord{ID: 1, Failed: "failed"}}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}, 0},
+	} {
+		k := raid1Kernel()
+		var mode uint64
+		k.replaceStart = func(a *devReplaceArgs) error {
+			mode = getU64(a.Params[:], replaceContReading)
+			return nil
+		}
+		stubKernel(t, k)
+		c.gone(t, k)
+		if err := Replace(context.Background(), dataUUID, 2, "/dev/sdd", func(float64) {}); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if mode != c.want {
+			t.Errorf("%s: mode = %d, want %d", c.name, mode, c.want)
+		}
 	}
 }
 
@@ -811,7 +908,7 @@ func TestResumeReplaceFollowsAKernelRun(t *testing.T) {
 		wantErr string
 	}{
 		{"installed", false, ""},
-		{"missing", true, "the replace of device 1 finished, but the device is missing from pool " + dataUUID},
+		{"missing", true, "replace of device 1 of pool " + dataUUID + ": the device is missing from the pool: the replace did not leave a working disk"},
 	} {
 		k := raid1Kernel()
 		if c.missing {
@@ -955,7 +1052,7 @@ func TestResumeReplaceTrustsAFinishedReplaceItStarted(t *testing.T) {
 	replaceStates(k, replaceStateFinished)
 	k.replaceStarted = 1_800_000_000
 	stubKernel(t, k)
-	if err := ResumeReplace(context.Background(), dataUUID, 2, since, func(float64) {}); err == nil || !strings.Contains(err.Error(), "the device is missing") {
+	if err := ResumeReplace(context.Background(), dataUUID, 2, since, func(float64) {}); !errors.Is(err, ErrReplaceUnverified) || !strings.Contains(err.Error(), "the device is missing") {
 		t.Fatalf("missing device: err = %v", err)
 	}
 }

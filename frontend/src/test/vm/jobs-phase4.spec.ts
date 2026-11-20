@@ -277,7 +277,7 @@ test("control characters in the output are saved as written", async ({
 
 test("a broken hook does not stop the run", async ({ page }) => {
   test.setTimeout(120_000);
-  const cli = "/usr/local/bin/linuxio";
+  const cli = "/usr/local/bin/linuxio-worker";
   const aside = `${cli}.e2e-aside`;
   await signIn(page);
   const name = uniqueName("broken hook");
@@ -306,7 +306,9 @@ test("a broken hook does not stop the run", async ({ page }) => {
   const lines = await journal();
   console.log(lines);
   expect(
-    lines.match(/Unable to locate executable '\/usr\/local\/bin\/linuxio'/g),
+    lines.match(
+      /Unable to locate executable '\/usr\/local\/bin\/linuxio-worker'/g,
+    ),
     "both hooks failed to start",
   ).toHaveLength(2);
   expect(lines).toContain("Deactivated successfully");

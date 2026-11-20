@@ -15,6 +15,7 @@ import {
   toolEnded,
   type TranscriptBlock,
 } from "../transcript/transcript";
+import { commandName, shellStation } from "./shell";
 
 const ring = (x: number, y: number, r: number) =>
   `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
@@ -83,9 +84,17 @@ export interface StationTally {
   faults: number;
   /**
    * What LinuxIO saw happen (it carries a time), which is what the map
-   * animates: a chat that was loaded has none of it.
+   * animates: a chat that was loaded has none of it. At You, `prompts` of
+   * what came `back` and `answers` of what went `out` are the user's prompts
+   * and the agent's answers, which play apart from the station's calls.
    */
-  seen: { out: number; back: number; failed: number };
+  seen: {
+    out: number;
+    back: number;
+    failed: number;
+    prompts: number;
+    answers: number;
+  };
 }
 
 export interface WorkRow {
@@ -93,7 +102,11 @@ export interface WorkRow {
   station: StationId;
   label: string;
   status: "run" | "ok" | "err" | "switch";
-  /** How many finished calls in a row at one station the row stands for. */
+  /**
+   * How many calls the row stands for: finished calls in a row at one
+   * station, or, on the last of the calls still running past the list, those
+   * and the ones that still run beyond it.
+   */
   times: number;
   /**
    * How long it took, where that was seen happening; 0 for a moment, such as
@@ -118,20 +131,51 @@ export interface WorkSummary {
 }
 
 const ROWS = 16;
+// Calls still running past the last row take this many rows at most.
+const HELD = ROWS / 2;
 const ROUTE_STOPS = 7;
 
 // Claude Code's tool names, which the adapter passes beside the ACP kind.
 const NAMED: Record<string, StationId> = {
   Agent: "agents",
   Artifact: "network",
+  // Work kept on claude.ai: an artifact's checks, comments and data, a
+  // design, a shared guide, a published plugin.
+  ArtifactCheck: "network",
+  ArtifactComments: "network",
+  ArtifactData: "network",
   AskUserQuestion: "you",
+  // Work that runs later, apart from the turn: schedules and routines.
+  CronCreate: "agents",
+  CronDelete: "agents",
+  CronList: "agents",
+  DesignSync: "network",
+  // What is shown to or asked of the user: the plan, the task list, a
+  // notification, review findings.
+  EnterPlanMode: "you",
+  ExitPlanMode: "you",
   Glob: "files",
   Grep: "files",
+  ListAgents: "agents",
+  // Code intelligence from a language server.
+  LSP: "files",
+  PublishPlugin: "network",
+  PushNotification: "you",
+  RemoteTrigger: "agents",
+  ReportFindings: "you",
+  ScheduleWakeup: "agents",
   SendMessage: "agents",
   SendUserFile: "you",
+  SendUserMessage: "you",
+  ShareOnboardingGuide: "network",
   Skill: "skills",
   Task: "agents",
+  TaskCreate: "you",
+  TaskGet: "you",
+  TaskList: "you",
   TaskStop: "agents",
+  TaskUpdate: "you",
+  TodoWrite: "you",
   ToolSearch: "skills",
   WebFetch: "network",
   WebSearch: "network",
@@ -140,58 +184,26 @@ const NAMED: Record<string, StationId> = {
 };
 const FILE_TOOLS = new Set(["Read", "Write", "Edit", "NotebookEdit"]);
 const SHELL_TOOLS = new Set(["Bash", "PowerShell", "Monitor"]);
+// An MCP server's resources, which go where that server's tools go.
+const MCP_RESOURCE_TOOLS = new Set([
+  "ListMcpResourcesTool",
+  "ReadMcpResourceTool",
+]);
 
 const FILE_KINDS = new Set(["read", "edit", "delete", "move", "search"]);
 
-// Commands that work on files, reach the network, or do neither (and so do
-// not decide where a command line belongs).
-const FILE_WORDS = new Set(
-  "awk basename cat cmp cp cut diff dirname du file find grep head jq ln ls mkdir mv realpath rg rm rmdir sed sort stat tail tee touch tr tree uniq wc".split(
-    " ",
-  ),
-);
-const NETWORK_WORDS = new Set(
-  "curl dig ftp gh nc ncat nslookup ping rsync scp sftp ssh telnet wget".split(
-    " ",
-  ),
-);
-const NEUTRAL_WORDS = new Set(
-  "[ cd echo export printf pwd set sleep test true which".split(" "),
-);
-
-// The agent's own notes.
+// The agent's own notes: a file in the folder, or the folder named in a
+// command line.
 const MEMORY_PATH = /\/\.claude\/projects\/[^/]+\/memory\//;
+const MEMORY_FOLDER = /\/\.claude\/projects\/[^/\s]+\/memory(?![\w.-])/;
 const BROWSER_SERVERS = new Set(["Claude_Browser", "claude-in-chrome"]);
 
-/** The command names of a command line, one per piped or chained part. */
-function commandNames(command: string): string[] {
-  // Quoted text cannot split a command, so it is taken out first.
-  const plain = command.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "_");
-  return plain.split(/\|\||&&|[|;\n&]/).flatMap((part) => {
-    const words = part.trim().split(/\s+/).filter(Boolean);
-    while (
-      words.length > 0 &&
-      (/^\w+=/.test(words[0]) || words[0] === "sudo")
-    ) {
-      words.shift();
-    }
-    return words.length > 0 ? [words[0]] : [];
-  });
-}
-
-/**
- * A command line belongs to the network when any part of it reaches out, to
- * files when every part only handles files, and to the shell otherwise.
- */
-export function shellStation(command: string | null): StationId {
-  if (command === null) return "shell";
-  const names = commandNames(command).filter(
-    (name) => !NEUTRAL_WORDS.has(name),
-  );
-  if (names.some((name) => NETWORK_WORDS.has(name))) return "network";
-  return names.length > 0 && names.every((name) => FILE_WORDS.has(name))
-    ? "files"
-    : "shell";
+/** A command line that only handles files works on notes when it names them. */
+function commandStation(command: string | null): StationId {
+  const station = shellStation(command);
+  return station === "files" && command !== null && MEMORY_FOLDER.test(command)
+    ? "memory"
+    : station;
 }
 
 export const pathOf = (input: unknown) =>
@@ -207,6 +219,16 @@ const fileStation = (input: unknown): StationId => {
 export const mcpOf = (name: string) => {
   const match = /^mcp__([^_].*?)__(.+)$/.exec(name);
   return match ? { server: match[1], tool: match[2] } : null;
+};
+
+// A cloud session linked to the user's computer reaches the same browser
+// under `remote-devices`.
+const REMOTE_BROWSER = /^Claude_Browser__(.+)$/;
+const mcpCall = (name: string) => {
+  const mcp = mcpOf(name);
+  const remote =
+    mcp?.server === "remote-devices" ? REMOTE_BROWSER.exec(mcp.tool) : null;
+  return remote ? { server: "Claude_Browser", tool: remote[1] } : mcp;
 };
 
 function mcpStation(server: string): StationId {
@@ -225,17 +247,20 @@ export function stationOf(block: ToolBlock): StationId {
     if (SHELL_TOOLS.has(name)) {
       return name === "Monitor"
         ? "shell"
-        : shellStation(stringField(block.rawInput, "command"));
+        : commandStation(stringField(block.rawInput, "command"));
+    }
+    if (MCP_RESOURCE_TOOLS.has(name)) {
+      return mcpStation(stringField(block.rawInput, "server") ?? "");
     }
     if (name in NAMED) return NAMED[name];
-    const mcp = mcpOf(name);
+    const mcp = mcpCall(name);
     return mcp ? mcpStation(mcp.server) : "shell";
   }
   // An agent that sends no tool name is sorted by the ACP kind alone.
   if (FILE_KINDS.has(block.toolKind)) return fileStation(block.rawInput);
   switch (block.toolKind) {
     case "execute":
-      return shellStation(stringField(block.rawInput, "command"));
+      return commandStation(stringField(block.rawInput, "command"));
     case "fetch":
       return "network";
     case "think":
@@ -267,7 +292,7 @@ export function labelOf(block: ToolBlock): string {
   if (FILE_TOOLS.has(name)) return lastTwo(pathOf(input) ?? "") || name;
   if (SHELL_TOOLS.has(name)) {
     return (
-      described ?? commandNames(stringField(input, "command") ?? "")[0] ?? name
+      described ?? commandName(stringField(input, "command") ?? "") ?? name
     );
   }
   switch (name) {
@@ -289,7 +314,7 @@ export function labelOf(block: ToolBlock): string {
     case "AskUserQuestion":
       return "question for you";
   }
-  const mcp = mcpOf(name);
+  const mcp = mcpCall(name);
   if (!mcp) return name;
   return mcpStation(mcp.server) === "network"
     ? `${mcp.server}: ${spaced(mcp.tool)}`
@@ -302,11 +327,21 @@ const LABEL = Object.fromEntries(
 
 export const stationLabel = (id: StationId) => LABEL[id];
 
-/** 113 ms, 13.4 s, 2 min 5 s. */
+/**
+ * 113 ms, 13.4 s, 2 min 5 s, 1 h 5 min. The time is rounded before its unit
+ * is chosen, so no part reaches the size of the next unit: never `60.0 s` or
+ * `1 min 60 s`.
+ */
 export function formatMs(ms: number): string {
-  if (ms < 1000) return `${Math.max(1, Math.round(ms))} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
-  return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
+  const tenths = Math.round(ms / 100);
+  const seconds = Math.round(ms / 1000);
+  if (Math.round(ms) < 1000) return `${Math.max(1, Math.round(ms))} ms`;
+  if (tenths < 600) return `${(tenths / 10).toFixed(1)} s`;
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  }
+  const minutes = Math.round(ms / 60_000);
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
 const MARK = { switch: "◆", run: "●", ok: "·", err: "✕" } as const;
@@ -351,25 +386,60 @@ type Entry = WorkRow & {
   at: number | undefined;
   /** A subagent, or a call one made: not one of the chat's own blocks. */
   sub?: boolean;
+  /** The session of the subagent whose doing it is; none for the chat's. */
+  by?: string;
 };
 
-/** Finished calls in a row at one station read as one row, the newest. */
+/**
+ * Finished calls in a row at one station, by one session, read as one row,
+ * the newest: the calls of two subagents never share a row. A call still
+ * running is never pushed out by what came after it: past the last row it
+ * stays, in place of the oldest rows that no longer run, for half the list at
+ * most, the last of them standing for any more (`+N`).
+ */
 function fold(entries: readonly Entry[]): WorkRow[] {
   const rows: Entry[] = [];
+  const held: Entry[] = [];
+  // Once a row was left out, what comes after it is no neighbour of the last.
+  let cut = false;
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
     const last = rows[rows.length - 1];
-    if (last?.plain && entry.plain && last.station === entry.station) {
+    if (
+      !cut &&
+      last?.plain &&
+      entry.plain &&
+      last.station === entry.station &&
+      last.by === entry.by
+    ) {
       last.times++;
       if (entry.tookMs !== null) {
         last.tookMs = (last.tookMs ?? 0) + entry.tookMs;
       }
       continue;
     }
-    if (rows.length === ROWS) break;
+    if (rows.length === ROWS) {
+      cut = true;
+      if (entry.status !== "run") continue;
+      if (held.length < HELD) held.push({ ...entry });
+      else held[held.length - 1].times++;
+      continue;
+    }
     rows.push({ ...entry });
   }
-  return rows.map(({ plain: _plain, at: _at, sub: _sub, ...row }) => row);
+  // The held calls take the place of the oldest rows that no longer run;
+  // those that still find no room count on the last held row that does.
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows.length + held.length <= ROWS) break;
+    if (rows[i].status !== "run") rows.splice(i, 1);
+  }
+  const room = ROWS - rows.length;
+  for (const extra of held.splice(room)) {
+    if (room > 0) held[room - 1].times += extra.times;
+  }
+  return [...rows, ...held].map(
+    ({ plain: _plain, at: _at, sub: _sub, by: _by, ...row }) => row,
+  );
 }
 
 /**
@@ -432,7 +502,7 @@ export function summarize(
         count: 0,
         open: 0,
         faults: 0,
-        seen: { out: 0, back: 0, failed: 0 },
+        seen: { out: 0, back: 0, failed: 0, prompts: 0, answers: 0 },
       },
     ]),
   ) as Record<StationId, StationTally>;
@@ -469,8 +539,8 @@ export function summarize(
     if (at !== undefined) tally.model.seen.back++;
   };
 
-  // A call, the chat's or a subagent's (`sub`); `runs` says it still runs.
-  const call = (block: ToolBlock, runs: boolean, sub = false) => {
+  // A call, the chat's or a subagent's (`by`); `runs` says it still runs.
+  const call = (block: ToolBlock, runs: boolean, by?: string) => {
     const id = stationOf(block);
     const station = tally[id];
     const failed = block.status === "failed";
@@ -491,12 +561,14 @@ export function summarize(
       tookMs: span(block.startedAt, block.endedAt),
       plain: !runs && !failed,
       at: block.startedAt ?? block.endedAt,
-      sub,
+      sub: by !== undefined,
+      by,
     });
   };
 
   const drawn = new Set<Subagent>();
-  const subagent = (child: Subagent, at: number | undefined) => {
+  // A subagent, started by the chat or by the subagent `by`.
+  const subagent = (child: Subagent, at: number | undefined, by?: string) => {
     drawn.add(child);
     const station = tally.agents;
     const active = isActive(child.state);
@@ -525,6 +597,7 @@ export function summarize(
       plain: !active && !failed,
       at: child.runs[0]?.startedAt ?? at,
       sub: true,
+      by,
     });
   };
   // What a subagent did: its calls, and the subagents it started in turn.
@@ -536,23 +609,31 @@ export function summarize(
         // A subagent call with the id of a message was shown by a permission
         // request: the subagent it started stands for it.
         if (!sent.has(block.toolCallId)) {
-          call(block, !toolEnded(block.status) && active, true);
+          call(block, !toolEnded(block.status) && active, child.sessionId);
         }
       } else if (block.kind === "message" && block.outgoing) {
-        started(block.recipientSessionId, block.messageId, block.at, sent);
+        started(
+          block.recipientSessionId,
+          block.messageId,
+          block.at,
+          sent,
+          child.sessionId,
+        );
       }
     }
   };
-  // A message a session sent: to a subagent, it sets that subagent's work off.
+  // A message a session sent (the chat, or the subagent `by`): to a subagent,
+  // it sets that subagent's work off.
   const started = (
     recipient: string | null,
     messageId: string,
     at: number | undefined,
     sent: ReadonlySet<string>,
+    by?: string,
   ) => {
     const child = subagents.find((entry) => entry.sessionId === recipient);
     if (!child) return;
-    if (!drawn.has(child)) subagent(child, at);
+    if (!drawn.has(child)) subagent(child, at, by);
     work(child, workFor(child, messageId, sent));
   };
   const sent = sentIn(blocks);
@@ -565,7 +646,10 @@ export function summarize(
         handedAt = block.at;
         for (const station of STATIONS) tally[station.id].faults = 0;
         tally.you.count++;
-        if (block.at !== undefined) tally.you.seen.back++;
+        if (block.at !== undefined) {
+          tally.you.seen.back++;
+          tally.you.seen.prompts++;
+        }
         entries.push({
           id: block.id,
           station: "you",
@@ -573,7 +657,8 @@ export function summarize(
           status: "ok",
           times: 1,
           tookMs: 0,
-          plain: true,
+          // A prompt is a row of its own, never folded with a call at You.
+          plain: false,
           at: block.at,
         });
         const next = block.model?.toLowerCase();
@@ -623,7 +708,10 @@ export function summarize(
         break;
       case "turn":
         closeStep(block.at);
-        if (block.at !== undefined) tally.you.seen.out++;
+        if (block.at !== undefined) {
+          tally.you.seen.out++;
+          tally.you.seen.answers++;
+        }
         entries.push({
           id: block.id,
           station: "you",

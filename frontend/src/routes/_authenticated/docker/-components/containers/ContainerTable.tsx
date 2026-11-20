@@ -489,6 +489,7 @@ const ContainerTable = ({
               onOpenTerminal={openTerminal}
               pending={stoppingContainerIds.has(container.Id)}
               state={container.State}
+              updateCheckState={container.updateCheckState}
               url={container.url}
             />
           );
@@ -507,6 +508,7 @@ const ContainerTable = ({
             container.Id,
             getContainerName(container),
             container.State,
+            container.updateCheckState,
             container.url,
             getComposeProject(container),
             stoppingContainerIds.has(container.Id),

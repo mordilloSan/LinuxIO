@@ -1,7 +1,8 @@
 // Package dockerupdate is the Docker image-update engine: update checks, the
 // standalone and Compose replacement flows, the scheduled runner and its
 // systemd timer, and the files they persist. It is shared by the bridge (whose
-// docker.update_container job calls UpdateContainerWait) and the root-sandboxed
+// docker.update_container job calls UpdateContainerWait, or RebuildContainerWait
+// for a Compose service built on the host) and the root-sandboxed
 // linuxio-docker-update binary (which runs the scheduled pass), so it imports
 // only common packages. The bridge re-exports the wire types below from
 // bridge/apischema as aliases; the generated frontend contract names them by
@@ -15,6 +16,7 @@ const (
 	DockerUpdateCheckStateCurrent     DockerUpdateCheckState = "current"
 	DockerUpdateCheckStateAvailable   DockerUpdateCheckState = "available"
 	DockerUpdateCheckStateUncheckable DockerUpdateCheckState = "uncheckable"
+	DockerUpdateCheckStateBuilt       DockerUpdateCheckState = "built"
 	DockerUpdateCheckStateError       DockerUpdateCheckState = "error"
 )
 
@@ -60,8 +62,11 @@ type DockerContainerAutoUpdateState struct {
 }
 
 // DockerContainerUpdateRequest names the container one update replaces.
+// Rebuild asks for the image of its Compose service to be built again, with
+// fresh base images, instead of pulled (RebuildContainerWait).
 type DockerContainerUpdateRequest struct {
 	ContainerID string `json:"containerId"`
+	Rebuild     bool   `json:"rebuild,omitzero"`
 }
 
 // Target makes the container the job's target, so a second update of the
@@ -69,10 +74,18 @@ type DockerContainerUpdateRequest struct {
 func (r DockerContainerUpdateRequest) Target() []string { return []string{r.ContainerID} }
 
 type DockerUpdateCheckResult struct {
-	Checked     int `json:"checked"`
-	Errors      int `json:"errors"`
+	// Built counts the containers whose image a Compose service builds on
+	// this host (DockerUpdateCheckStateBuilt).
+	Built   int `json:"built"`
+	Checked int `json:"checked"`
+	Errors  int `json:"errors"`
+	// Rebuilds counts, among Updates, the built containers a base image of
+	// whose image has a newer version: a rebuild, not an update, takes them.
+	Rebuilds    int `json:"rebuilds"`
 	Uncheckable int `json:"uncheckable"`
-	Updates     int `json:"updates"`
+	// Updates counts every container with something waiting, Rebuilds
+	// included.
+	Updates int `json:"updates"`
 }
 
 type DockerContainerUpdateResult struct {

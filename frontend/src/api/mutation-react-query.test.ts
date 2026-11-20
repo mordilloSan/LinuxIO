@@ -82,6 +82,36 @@ async function whenBound(stream: Stream) {
   await vi.waitFor(() => expect(stream.onResult).not.toBeNull());
 }
 
+/** A mux wait that rejects with the signal's reason when it aborts. */
+function muxWaitUntilAborted(_timeoutMs: number, signal: AbortSignal) {
+  return new Promise<boolean>((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), {
+      once: true,
+    });
+  });
+}
+
+/** Let background work the test must not see happen get its turn. */
+const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** The call at `index` is tasks.cancel for the mutation's id; answer it. */
+async function expectCancelOpened(
+  mux: ReturnType<typeof installMux>,
+  index: number,
+  cancel: Stream,
+) {
+  await vi.waitFor(() =>
+    expect(mux.openStream.mock.calls.length).toBeGreaterThan(index),
+  );
+  const { id } = opened(mux, 0).envelope as { id: string };
+  expect(opened(mux, index)).toMatchObject({
+    type: "tasks.cancel",
+    envelope: { request: { taskId: id } },
+  });
+  await whenBound(cancel);
+  cancel.onResult?.({ status: "ok", data: runningTask(id) });
+}
+
 function renderQueryHook<T>(useHook: () => T) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -275,9 +305,10 @@ describe("mutationRequest", () => {
     expect(mux.openStream).toHaveBeenCalledTimes(2);
   });
 
-  it("aborts the stream when the signal fires", async () => {
+  it("aborts the stream and cancels the job by id when the signal fires", async () => {
     const stream = createStream();
-    installMux(stream);
+    const cancel = createStream();
+    const mux = installMux(stream, cancel);
     const controller = new AbortController();
 
     const pending = mutationRequest("docker", "update_container", REQUEST, {
@@ -288,11 +319,59 @@ describe("mutationRequest", () => {
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(stream.abort).toHaveBeenCalledTimes(1);
+    await expectCancelOpened(mux, 1, cancel);
+  });
+
+  it("cancels the job by id when the signal fires while the reattach waits for the mux", async () => {
+    const first = createStream();
+    const cancel = createStream();
+    const mux = installMux(first, cancel);
+    const controller = new AbortController();
+    muxMocks.waitForStreamMux
+      .mockResolvedValueOnce(true)
+      .mockImplementationOnce(muxWaitUntilAborted);
+
+    const pending = mutationRequest("docker", "update_container", REQUEST, {
+      signal: controller.signal,
+    });
+    await whenBound(first);
+    first.onProgress?.(snapshotFrame(runningTask("job-1")));
+    first.onClose?.();
+    await vi.waitFor(() =>
+      expect(muxMocks.waitForStreamMux).toHaveBeenCalledTimes(2),
+    );
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await expectCancelOpened(mux, 1, cancel);
+  });
+
+  it("sends the cancel by id once the transport is back when the abort lands while it is connecting", async () => {
+    vi.useFakeTimers();
+    const stream = createStream();
+    const cancel = createStream();
+    const mux = installMux(stream, cancel);
+    const controller = new AbortController();
+
+    const pending = mutationRequest("docker", "update_container", REQUEST, {
+      signal: controller.signal,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stream.onResult).not.toBeNull();
+    // The cancel's first wait finds the transport still connecting and failing.
+    muxMocks.waitForStreamMux.mockResolvedValueOnce(false);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mux.openStream).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expectCancelOpened(mux, 1, cancel);
   });
 
   it("closes the stream instead with closeOnAbort close, leaving the job running", async () => {
     const stream = createStream();
-    installMux(stream);
+    const mux = installMux(stream, createStream());
     const controller = new AbortController();
 
     const pending = mutationRequest("docker", "update_container", REQUEST, {
@@ -305,6 +384,51 @@ describe("mutationRequest", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(stream.close).toHaveBeenCalledTimes(1);
     expect(stream.abort).not.toHaveBeenCalled();
+    await settled();
+    expect(mux.openStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends no cancel when closeOnAbort close aborts while the reattach waits for the mux", async () => {
+    const first = createStream();
+    const mux = installMux(first, createStream());
+    const controller = new AbortController();
+    muxMocks.waitForStreamMux
+      .mockResolvedValueOnce(true)
+      .mockImplementationOnce(muxWaitUntilAborted);
+
+    const pending = mutationRequest("docker", "update_container", REQUEST, {
+      signal: controller.signal,
+      closeOnAbort: "close",
+    });
+    await whenBound(first);
+    first.onProgress?.(snapshotFrame(runningTask("job-1")));
+    first.onClose?.();
+    await vi.waitFor(() =>
+      expect(muxMocks.waitForStreamMux).toHaveBeenCalledTimes(2),
+    );
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await settled();
+    expect(mux.openStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends no cancel when the signal fires before the request was sent", async () => {
+    const mux = installMux(createStream());
+    const controller = new AbortController();
+    muxMocks.waitForStreamMux.mockImplementationOnce(muxWaitUntilAborted);
+
+    const pending = mutationRequest("docker", "update_container", REQUEST, {
+      signal: controller.signal,
+    });
+    await vi.waitFor(() =>
+      expect(muxMocks.waitForStreamMux).toHaveBeenCalledTimes(1),
+    );
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await settled();
+    expect(mux.openStream).not.toHaveBeenCalled();
   });
 });
 

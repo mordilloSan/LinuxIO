@@ -31,6 +31,7 @@ import {
   type AuthState,
   type AuthUser,
 } from "@/contexts/AuthContext";
+import { isPowerActionPending } from "@/contexts/powerActionPending";
 import { clearBootThemeHint } from "@/theme/bootThemeHint";
 import { clearFreshSignIn, markFreshSignIn } from "@/utils/freshSignIn";
 import { redirectToSignIn } from "@/utils/navigation";
@@ -304,7 +305,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // or WebSocket connection failed (session cookie invalid)
           // A self-update restarts the webserver, which drops every session.
           // The update dialog owns that exit so its output stays readable.
-          if (isAppUpdateInProgress()) return;
+          // A reboot or power-off ends the session the same way, and the
+          // power overlay owns that exit.
+          if (isAppUpdateInProgress() || isPowerActionPending()) return;
           console.log("[AuthContext] Session invalid or expired");
           sessionExpired();
         } else if (status === "closed") {

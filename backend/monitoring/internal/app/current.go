@@ -354,7 +354,7 @@ func (a *App) collectLiveContainerIdentities(ctx context.Context) ([]containermo
 	return identities, nil
 }
 
-func (a *App) collectProcessPluginPayloadsWithIdentities(ctx context.Context, identities []containermodel.Identity) (map[string]jsontext.Value, error) {
+func (a *App) collectProcessPluginPayloads(ctx context.Context, identities []containermodel.Identity) (map[string]jsontext.Value, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

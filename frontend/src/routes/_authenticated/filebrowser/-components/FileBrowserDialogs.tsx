@@ -1,6 +1,5 @@
 import { memo, type ChangeEvent, type RefObject } from "react";
 
-import type { CountProgress, TaskProgress } from "@/api";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import AppUnsavedChangesDialog from "@/components/ui/AppUnsavedChangesDialog";
 
@@ -11,7 +10,7 @@ import type {
   ConflictPrompt,
 } from "../-hooks/useFileConflicts";
 import type { PermissionsDialogState } from "../-hooks/useFileDialogs";
-import type { UploadSummary } from "../-hooks/useFileUpload";
+import type { UploadStatus, UploadSummary } from "../-hooks/useFileUpload";
 import type { FileResource, ResourceStatData, ViewMode } from "../-types";
 import CompressFormatDialog from "./CompressFormatDialog";
 import ContextMenu from "./ContextMenu";
@@ -26,6 +25,7 @@ import {
   type MultiItemsStats,
 } from "./FileBrowserPanels";
 import InputDialog from "./InputDialog";
+import NoTrashPrompt from "./NoTrashPrompt";
 import PermissionsDialog from "./PermissionsDialog";
 
 interface CompressFormatDialogState {
@@ -124,16 +124,13 @@ interface FileBrowserPermissionsDialogProps {
     owner?: string,
     group?: string,
   ) => Promise<void> | void;
-  isPending?: boolean;
   open: boolean;
-  progress?: TaskProgress<CountProgress> | null;
 }
 
 export interface FileBrowserUploadDialogProps {
   entries: DroppedEntry[];
   fileInputRef: RefObject<HTMLInputElement | null>;
   folderInputRef: RefObject<HTMLInputElement | null>;
-  isProcessing: boolean;
   normalizedPath: string;
   onChangeInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearSelection: () => void;
@@ -144,6 +141,7 @@ export interface FileBrowserUploadDialogProps {
   onStart: () => Promise<void> | void;
   open: boolean;
   ownUploads: boolean;
+  status: UploadStatus;
   summary: UploadSummary;
 }
 
@@ -164,7 +162,10 @@ interface FileBrowserDialogsProps {
   conflict: FileBrowserConflictDialogProps;
   contextMenu: FileBrowserContextMenuProps;
   create: FileBrowserCreateDialogsProps;
-  deleteDialog: FileBrowserDeleteDialogProps;
+  deleteDialog: FileBrowserDeleteDialogProps & {
+    /** Deletes for good the items a move to Trash could not take. */
+    onDeleteForGood: (paths: string[]) => Promise<unknown>;
+  };
   details: FileBrowserDetailsDialogsProps;
   editor: FileBrowserEditorDialogsProps;
   permissions: FileBrowserPermissionsDialogProps;
@@ -271,28 +272,30 @@ const FileBrowserDialogs = ({
       />
 
       <FileBrowserDeleteDialog
-        isPending={deleteDialog.isPending}
         mode={deleteDialog.mode}
         onClose={deleteDialog.onClose}
         onConfirm={deleteDialog.onConfirm}
         open={deleteDialog.open}
         pendingDeletePaths={deleteDialog.pendingDeletePaths}
-        progress={deleteDialog.progress}
       />
 
+      <NoTrashPrompt onDelete={deleteDialog.onDeleteForGood} />
+
+      {/* Keyed by its items: "Try again" in a toast can open the dialog for
+          other items while it is open, and its settings start over then. */}
       {permissions.dialog && (
         <PermissionsDialog
           currentMode={permissions.dialog.mode}
           group={permissions.dialog.group}
           isDirectory={permissions.dialog.isDirectory}
+          key={permissions.dialog.paths.join("\0")}
           onClose={permissions.onClose}
           onConfirm={permissions.onConfirm}
           onExited={permissions.onExited}
           open={permissions.open}
           owner={permissions.dialog.owner}
           pathLabel={permissions.dialog.pathLabel}
-          isPending={permissions.isPending}
-          progress={permissions.progress}
+          recursive={permissions.dialog.recursive}
           selectionCount={permissions.dialog.selectionCount}
         />
       )}
@@ -300,7 +303,6 @@ const FileBrowserDialogs = ({
       <FileBrowserUploadDialog
         fileInputRef={upload.fileInputRef}
         folderInputRef={upload.folderInputRef}
-        isUploadProcessing={upload.isProcessing}
         normalizedPath={upload.normalizedPath}
         onChangeUploadInput={upload.onChangeInput}
         onClearUploadSelection={upload.onClearSelection}
@@ -312,6 +314,7 @@ const FileBrowserDialogs = ({
         open={upload.open}
         ownUploads={upload.ownUploads}
         uploadEntries={upload.entries}
+        uploadStatus={upload.status}
         uploadSummary={upload.summary}
       />
 

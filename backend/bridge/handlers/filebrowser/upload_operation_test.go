@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -26,7 +26,7 @@ func TestUploadTaskRejectsChangedExpectedVersion(t *testing.T) {
 	target := filepath.Join(dir, "note.txt")
 	require.NoError(t, os.WriteFile(target, []byte("before"), 0o644))
 
-	opened, err := services.ReadEditorFile(context.Background(), target)
+	opened, err := services.ReadEditorFile(context.Background(), target, services.Owner{})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(target, []byte("after"), 0o644))
 
@@ -47,22 +47,20 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 	link := filepath.Join(dir, ".bashrc")
 	require.NoError(t, os.WriteFile(target, []byte("old"), 0o644))
 	require.NoError(t, os.Symlink(target, link))
-	opened, err := services.ReadEditorFile(context.Background(), link)
+	opened, err := services.ReadEditorFile(context.Background(), link, services.Owner{})
 	require.NoError(t, err)
 
 	root, err := fsroot.Open()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = root.Close() })
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, apischema.FileUploadRequest{TargetPath: link, Size: "3"}, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, apischema.FileUploadRequest{TargetPath: link, Size: "3"}, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	transfer := &uploadTransferTask{transferLifecycle: &transferLifecycle{task: task}, ctx: context.Background(), path: link, expectedSize: 3, expectedVersion: opened.Version, overwrite: true}
 	require.NoError(t, transfer.prepare(root))
 
-	file, err := root.Root.OpenFile(transfer.tempRel, os.O_WRONLY, 0)
+	_, err = transfer.buffer.Write([]byte("new"))
 	require.NoError(t, err)
-	_, err = file.Write([]byte("new"))
-	require.NoError(t, err)
-	code, err := transfer.commit(root, file, link, transfer.tempRel, transfer.finalRel)
+	code, err := transfer.commit(root, link, transfer.tempRel, transfer.finalRel)
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 
@@ -79,9 +77,9 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 func startOwnedUpload(t *testing.T, target, content string, overwrite bool) (net.Conn, <-chan ipc.ResultFrame) {
 	t.Helper()
 	req := apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(len(content)), Overwrite: &overwrite, Owner: uploadOwnerSession}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, selfOwner())
 	})
 	conn, results, _ := attachUploadBatchStream(t, task, "")
@@ -192,7 +190,7 @@ func commitTestUpload(t *testing.T, target, content string, overwrite bool, muta
 	root, err := fsroot.Open()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = root.Close() })
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(len(content))}, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(len(content))}, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	transfer := &uploadTransferTask{transferLifecycle: &transferLifecycle{task: task}, ctx: context.Background(), path: target, expectedSize: int64(len(content)), overwrite: overwrite}
 	require.NoError(t, transfer.prepare(root))
@@ -200,11 +198,9 @@ func commitTestUpload(t *testing.T, target, content string, overwrite bool, muta
 		mutate(transfer)
 	}
 
-	file, err := root.Root.OpenFile(transfer.tempRel, os.O_WRONLY, 0)
+	_, err = transfer.buffer.WriteString(content)
 	require.NoError(t, err)
-	_, err = file.WriteString(content)
-	require.NoError(t, err)
-	return transfer.commit(root, file, target, transfer.tempRel, transfer.finalRel)
+	return transfer.commit(root, target, transfer.tempRel, transfer.finalRel)
 }
 
 func TestUploadTaskCommitKeepsRestrictiveTargetMode(t *testing.T) {
@@ -307,11 +303,11 @@ func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 
 	registry := bridgeipc.NewTaskService()
 	req := apischema.FileUploadRequest{TargetPath: target, Size: "3"}
-	task, _, err := registry.ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 
@@ -352,11 +348,11 @@ func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
 	overwrite := true
 	req := apischema.FileUploadRequest{TargetPath: target, Size: "3", Overwrite: &overwrite}
-	task, _, err := registry.ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 

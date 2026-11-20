@@ -68,7 +68,12 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 		apischema.MutationTask("filebrowser.trash_restore", func(ctx context.Context, task *bridgeipc.Task, req apischema.TrashRestoreRequest) (FileBatchResult, error) {
 			return runTrashRestoreTask(ctx, task, store, req, owner)
 		}, apischema.Progress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.TrashRestoreRequest) bridgeipc.TaskMetadata {
-			return pathBatchMetadata(apischema.BatchPathRequest{Paths: req.Paths})
+			metadata := pathBatchMetadata(apischema.BatchPathRequest{Paths: req.Paths})
+			if req.Destination != "" {
+				metadata.Identity = append(metadata.Identity, req.Destination)
+				metadata.Path = req.Destination
+			}
+			return metadata
 		})),
 		apischema.MutationTask("filebrowser.trash_purge", func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
 			return runTrashPurgeTask(ctx, task, store, req, owner)
@@ -77,6 +82,11 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 		apischema.Call[apischema.NoRequest, apischema.TrashListResponse]("filebrowser.trash_list", apischema.RetrySafe()).Handle(
 			func(ctx context.Context, _ apischema.NoRequest) (apischema.TrashListResponse, error) {
 				return listTrash(ctx, owner)
+			},
+		),
+		apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.trash_size", apischema.RetrySafe()).Handle(
+			func(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {
+				return trashSize(ctx, owner, req)
 			},
 		),
 		apischema.MutationTask("filebrowser.index", runIndexerTask, apischema.Privileged(), apischema.Progress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgeipc.TaskMetadata {

@@ -28,8 +28,9 @@ const (
 	maxLinuxInterfaceNameBytes = 15
 )
 
-// BridgeCandidate describes one physical link that can safely be used by the
-// Stage 2a bridge flow. Reasons are populated for ineligible links.
+// BridgeCandidate describes one physical link that can safely be used as the
+// member of a bridge made over a spare NIC. Reasons are populated for
+// ineligible links.
 type BridgeCandidate struct {
 	Name            string
 	MAC             string

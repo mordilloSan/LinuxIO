@@ -6,14 +6,40 @@ import { promisify } from "node:util";
 import { expect, type Locator, type Page } from "@playwright/test";
 
 // Helpers for the specs in this directory. They reach the VM only through
-// packaging/vm/linuxio-vm.sh, which acts on the domain linuxio-e2e alone.
+// packaging/vm/linuxio-vm.sh, which acts on the linuxio-e2e domains alone.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const rigPath = path.resolve(here, "../../../../packaging/vm/linuxio-vm.sh");
 const execFileAsync = promisify(execFile);
 
+// make test-vm-browser and test-vm-browser-rerun list the VMs of the run in
+// LINUXIO_VM_NUMBERS, _URLS and _PASSWORDS, in one order. Playwright runs one
+// worker for each VM, and a worker keeps to the VM at its parallel index: the
+// config gives it that VM's
+// address, and LINUXIO_VM_INDEX sends every rig command it starts, here and
+// in the specs, to that VM.
+const slot = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
+const ofThisWorker = (list: string) =>
+  (process.env[list] ?? "").trim().split(/\s+/)[slot] ?? "";
+const vmNumber = ofThisWorker("LINUXIO_VM_NUMBERS");
+if (vmNumber === "") {
+  // A worker past the list (--workers) would send its reboots to another's VM.
+  throw new Error(
+    `worker ${slot} has no VM in LINUXIO_VM_NUMBERS: run the specs with make test-vm-browser or make test-vm-browser-rerun, without --workers`,
+  );
+}
+process.env.LINUXIO_VM_INDEX = vmNumber;
+const vmPassword = ofThisWorker("LINUXIO_VM_PASSWORDS");
+
+/**
+ * The distribution of the run's VMs: DISTRO on the Make target, which
+ * mk/vm.mk exports as LINUXIO_VM_DISTRO, the variable the rig itself reads to
+ * pick the domain. Empty means ubuntu, as in the rig.
+ */
+export const vmDistro = process.env.LINUXIO_VM_DISTRO || "ubuntu";
+
 export const fixture = (name: string) => path.join(here, "fixtures", name);
 
-/** Runs a rig subcommand (ssh, reboot, power-cut, throttle) and returns its stdout. */
+/** Runs a rig subcommand (ssh, reboot, power-cut, off-for, throttle) and returns its stdout. */
 export async function rig(
   args: string[],
   input?: string | Buffer,
@@ -89,14 +115,14 @@ export async function jobRecord(id: string): Promise<JobRecord | undefined> {
 
 /**
  * The jobs the root job host logged message for in this boot, with the
- * reason it logged (the journal holds it JSON-quoted).
+ * reason it logged.
  */
 export async function loggedJobs(
   message: string,
 ): Promise<{ id: string; reason: string }[]> {
   const out = await vmSsh(
     `sudo journalctl -b -u linuxio-jobs@0.service -o json | jq -c --arg m '${message}' ` +
-      `'select(.MESSAGE == $m) | {id: .LINUXIO_JOB_ID, reason: ((.LINUXIO_REASON // "") | ltrimstr("\\"") | rtrimstr("\\""))}'`,
+      `'select(.MESSAGE == $m) | {id: .LINUXIO_JOB_ID, reason: (.LINUXIO_REASON // "")}'`,
   );
   return out
     .split("\n")
@@ -169,9 +195,9 @@ export interface Login {
 /** Signs in as login, by default the VM's test user, who can sudo. */
 export async function signIn(page: Page, login?: Login) {
   const username = login?.username ?? process.env.LINUXIO_VM_USER ?? "";
-  const password = login?.password ?? process.env.LINUXIO_VM_PASSWORD ?? "";
+  const password = login?.password ?? vmPassword;
   expect(username, "LINUXIO_VM_USER").not.toBe("");
-  expect(password, "LINUXIO_VM_PASSWORD").not.toBe("");
+  expect(password, "LINUXIO_VM_PASSWORDS").not.toBe("");
 
   await page.goto("/sign-in");
   await page.locator('input[autocomplete="username"]').fill(username);
@@ -346,15 +372,18 @@ export async function ensurePool(page: Page): Promise<string> {
 /**
  * Signs in and starts a scrub of the test pool in the browser, with each
  * disk's scrub reads capped (a test knob of the kernel) so it lasts long
- * enough. Returns the pool's UUID and the running job.
+ * enough. prepare, if given, runs on the pool first. Returns the pool's UUID
+ * and the running job.
  */
 export async function startScrub(
   page: Page,
   before: Set<string>,
   bytesPerSecond: number,
+  prepare?: (uuid: string) => Promise<unknown>,
 ) {
   await signIn(page);
   const uuid = await ensurePool(page);
+  await prepare?.(uuid);
   await vmSsh(
     `sudo btrfs scrub cancel ${POOL_MOUNT} >/dev/null 2>&1; ` +
       `for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo ${bytesPerSecond} | sudo tee $f >/dev/null; done`,
@@ -388,6 +417,30 @@ export const scrubRunning = async () =>
   (await vmSsh(`sudo python3 -I - ${POOL_MOUNT}`, SCRUB_PROGRESS)).trim() ===
   "running";
 
+// Prints how many bytes the kernel's running scrub of the filesystem at
+// argv[1] has read on all devices (BTRFS_IOC_SCRUB_PROGRESS).
+const SCRUBBED_BYTES = `
+import errno, fcntl, os, struct, sys
+fd = os.open(sys.argv[1], os.O_RDONLY)
+total = 0
+for devid in range(1, 64):
+    args = bytearray(1024)
+    struct.pack_into("<Q", args, 0, devid)
+    try:
+        fcntl.ioctl(fd, (3 << 30) | (1024 << 16) | (0x94 << 8) | 29, args)
+    except OSError as e:
+        if e.errno not in (errno.ENOTCONN, errno.ENODEV):
+            raise
+        continue
+    data, tree = struct.unpack_from("<QQ", args, 48)
+    total += data + tree
+print(total)
+`;
+
+/** The bytes the kernel's running scrub of the test pool has read, 0 if none runs. */
+export const scrubbedBytes = async () =>
+  Number(await vmSsh(`sudo python3 -I - ${POOL_MOUNT}`, SCRUBBED_BYTES));
+
 /** The pool's exclusive operation as sysfs names it, such as "balance paused". */
 export const exclusiveOperation = async (uuid: string) =>
   (await vmSsh(`cat /sys/fs/btrfs/${uuid}/exclusive_operation`)).trim();
@@ -417,6 +470,58 @@ export const scheduleRow = (page: Page, name: string) =>
   page.getByRole("row").filter({ hasText: name });
 
 /**
+ * The schedule's row, scrolled into the table's rendered window. The table
+ * renders only the rows near its viewport, in the order of the definition
+ * files (by ID, so a new schedule lands anywhere), and the specs leave their
+ * schedules behind: scheduleRow alone finds the row only while few exist.
+ */
+async function revealScheduleRow(page: Page, name: string) {
+  const row = scheduleRow(page, name);
+  const scroller = page
+    .getByRole("table", { name: "Scheduled tasks" })
+    .locator(".app-dt__scroll");
+  await expect(scroller).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        await scroller.evaluate((el) => {
+          el.scrollTop = 0;
+        });
+        for (;;) {
+          if ((await row.count()) > 0) return true;
+          const moved = await scroller.evaluate((el) => {
+            const top = el.scrollTop;
+            el.scrollTop = top + el.clientHeight / 2;
+            return el.scrollTop !== top;
+          });
+          if (!moved) return (await row.count()) > 0;
+          await page.waitForTimeout(50);
+        }
+      },
+      { intervals: [500], message: `schedule row ${name}`, timeout: 20_000 },
+    )
+    .toBe(true);
+  return row;
+}
+
+/**
+ * Clicks what target picks in the schedule's row, finding the row again when
+ * the table has moved it out of its window since (opening a schedule shows
+ * its details under the table, which shrinks it). The click is dispatched to
+ * the element: the table's rows change height as they are measured, so a
+ * click that scrolls to its target first can miss it.
+ */
+export const clickInScheduleRow = (
+  page: Page,
+  name: string,
+  target: (row: Locator) => Locator,
+) =>
+  expect(async () => {
+    const row = await revealScheduleRow(page, name);
+    await target(row).dispatchEvent("click", undefined, { timeout: 3_000 });
+  }).toPass({ intervals: [500], timeout: 30_000 });
+
+/**
  * Opens the Schedules page's create dialog, fills it in to run script as the
  * test user, unsaved, and returns the dialog.
  */
@@ -437,21 +542,70 @@ export async function fillSchedule(page: Page, name: string, script: string) {
   return dialog;
 }
 
+export interface ScheduleChoices {
+  /** A calendar expression other than the one of 2099. */
+  calendar?: string;
+  /** Tick "Run after a missed activation" (`Persistent=`). */
+  persistent?: boolean;
+  /** The script's timeout in seconds (default 3600). */
+  timeoutSeconds?: number;
+}
+
 /**
  * Creates a schedule that runs script as the test user, selects it on the
  * Schedules page and returns its ID.
  */
-export async function createSchedule(page: Page, name: string, script: string) {
+export async function createSchedule(
+  page: Page,
+  name: string,
+  script: string,
+  choices: ScheduleChoices = {},
+) {
   const dialog = await fillSchedule(page, name, script);
+  if (choices.calendar) {
+    await dialog.getByLabel("Calendar expression").fill(choices.calendar);
+  }
+  if (choices.persistent) {
+    await dialog
+      .getByRole("checkbox", { name: "Run after a missed activation" })
+      .check();
+  }
+  if (choices.timeoutSeconds) {
+    await dialog
+      .getByLabel("Timeout seconds")
+      .fill(String(choices.timeoutSeconds));
+  }
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });
-  await scheduleRow(page, name).getByText(name, { exact: true }).click();
+  await clickInScheduleRow(page, name, (row) =>
+    row.getByText(name, { exact: true }),
+  );
   await expect(page).toHaveURL(/[?&]schedule=[0-9a-f-]{36}$/);
   return new URL(page.url()).searchParams.get("schedule")!;
 }
 
+/** Enables schedule id, named name, and waits until its timer is active. */
+export async function enableSchedule(page: Page, name: string, id: string) {
+  await clickInScheduleRow(page, name, (row) =>
+    row.getByRole("button", { name: "Enable", exact: true }),
+  );
+  await expect
+    .poll(
+      async () =>
+        (
+          await vmSsh(
+            `systemctl is-active linuxio-schedule-${id}.timer || true`,
+          )
+        ).trim(),
+      { intervals: [500], message: `timer of ${name}`, timeout: 30_000 },
+    )
+    .toBe("active");
+}
+
 export const runNow = (page: Page, name: string) =>
-  scheduleRow(page, name).getByRole("button", { name: "Run now" }).click();
+  clickInScheduleRow(page, name, (row) =>
+    row.getByRole("button", { name: "Run now" }),
+  );
 
 /** The runs of schedule id, oldest first. */
 export const runsOf = async (id: string) =>

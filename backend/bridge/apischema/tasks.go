@@ -81,6 +81,12 @@ type TaskHistoryEntry struct {
 	Unit *string `json:"unit,omitzero"`
 	// Output is set when a saved output of the run exists.
 	Output *bool `json:"output,omitzero"`
+	// Summary is what a scheduled worker said its run did, such as
+	// "1 updated, 1 failed".
+	Summary *string `json:"summary,omitzero"`
+	// Failures is how many items of a scheduled run failed with an alert of
+	// their own, in a run that still completed.
+	Failures *int `json:"failures,omitzero"`
 }
 
 type TaskHistory struct {

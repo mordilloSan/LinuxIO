@@ -39,6 +39,9 @@ test("types spaces in a container shell without dragging its card", async ({
   await page.locator(".sortable-card").focus();
   await page.keyboard.press("Space");
   await expect(page.locator(".sc-drag-overlay")).toBeVisible();
+  // dnd-kit listens for the drop key from a setTimeout queued at drag start,
+  // and Chromium runs input before timers: run that timer before Space.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   await page.keyboard.press("Space");
   await expect(page.locator(".sc-drag-overlay")).toHaveCount(0);
 });

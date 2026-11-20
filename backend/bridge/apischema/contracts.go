@@ -5,6 +5,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
@@ -47,12 +48,6 @@ func derefType(t reflect.Type) reflect.Type {
 		t = t.Elem()
 	}
 	return t
-}
-
-// Void reports whether this payload carries no result. Reads the reflect.Type
-// the route already materialized at construction — no extra reflection.
-func (t TypeSpec) Void() bool {
-	return IsVoidType(t.GoType)
 }
 
 // Common route contract fragments.
@@ -107,10 +102,11 @@ var StringEnums = map[string][]string{
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateNotify":            {"never", "on_failure", "on_change"},
-	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
+	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "built", "error"},
 	"ContainerMetricsStatus":        enumNames(ContainerMetricsStatusAvailable, ContainerMetricsStatusStale, ContainerMetricsStatusUnavailable, ContainerMetricsStatusNotRunning),
 	"ConfigStorageMode":             enumNames(userconfig.StorageModeHome, userconfig.StorageModeFallback, userconfig.StorageModeMemory),
 	"FileUploadOwner":               {"session"},
+	"FileBatchFailureReason":        enumNames(FileBatchFailureExists, FileBatchFailureNoTrash),
 	"TaskState":                     enumNames(bridgeipc.TaskStateQueued, bridgeipc.TaskStateRunning, bridgeipc.TaskStateCompleted, bridgeipc.TaskStateFailed, bridgeipc.TaskStateCanceled, bridgeipc.TaskStateInterrupted),
 	"MonitoringHistoryResolution":   monitoringapi.HistoryResolutions(),
 	// SensorReadingKind is defined by the shared monitoring API; keeping its
@@ -128,6 +124,18 @@ var StringEnums = map[string][]string{
 	"VMCPUMode":                 {"host-passthrough", "host-model", "default", "custom"},
 	"NetworkBridgeHandoffState": enumNames(NetworkBridgeHandoffApplying, NetworkBridgeHandoffAwaitingConfirmation, NetworkBridgeHandoffConfirmed, NetworkBridgeHandoffReverted, NetworkBridgeHandoffUnknown),
 	"WireGuardHookKind":         enumNames(WireGuardHookKinds...),
+	"SwapMode":                  enumNames(SwapModeDisk, SwapModeZswap, SwapModeZram, SwapModeNone, SwapModeMixed),
+	"SwapDeviceKind":            enumNames(SwapDeviceFile, SwapDevicePartition, SwapDeviceZram),
+	"SwapDiskHint":              enumNames("", SwapDiskHintMMC, SwapDiskHintRemovable),
+	"ZramProvider":              enumNames("", ZramProviderTools, ZramProviderGenerator),
+	"ZramUnavailableReason":     enumNames("", ZramPackageMissing, ZramSwapPartitionActive),
+	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainUnmanagedDevice, SwapDrainUnitHeldOff, SwapDrainOthersCanWrite),
+	"SwapFileUnmanagedReason":   enumNames("", SwapFileNotInFstab, SwapFileOthersCanWrite, SwapFileUnitUnusable),
+	"SwapStep":                  enumNames(SwapSteps...),
+	"SwapLeftWhat":              enumNames(SwapLeftSwapFile, SwapLeftZram, SwapLeftZramSize),
+	"BtrfsSpareState":           enumNames(btrfs.SpareReady, btrfs.SpareAbsent, btrfs.SpareTooSmall, btrfs.SpareInUse, btrfs.SpareUnknown),
+	"BtrfsRebuildState":         enumNames(btrfs.RebuildWaiting, btrfs.RebuildRunning, btrfs.RebuildFailed, btrfs.RebuildRefused),
+	"SwapLeftReason":            enumNames(SwapLeftNotEnoughMemory, SwapLeftZramNotSwapping, SwapLeftNotIdentified, SwapLeftOthersCanWrite, SwapLeftNotManaged, SwapLeftNoOtherSwap, SwapLeftOtherSize),
 }
 
 var ExtraTypes = []TypeSpec{

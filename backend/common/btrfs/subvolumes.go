@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -96,7 +96,7 @@ func ValidateSubvolumePath(p string) error {
 	}
 	// A comma or whitespace would break the subvol= mount option and fstab.
 	if strings.ContainsAny(p, "\x00,") || strings.ContainsFunc(p, unicode.IsSpace) {
-		return fmt.Errorf("invalid subvolume path %q", p)
+		return fmt.Errorf("invalid subvolume path %q: it may not contain a comma or a space", p)
 	}
 	for seg := range strings.SplitSeq(p, "/") {
 		if seg == "" || seg == "." || seg == ".." {
@@ -203,10 +203,70 @@ func CreateSubvolume(ctx context.Context, uuid, path string) (BtrfsSubvolume, er
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if err := subvolOps.create(filepath.Join(top, path)); err != nil {
+	if err := subvolOps.create(top, path); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("create subvolume %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)
+}
+
+// ErrNotOnFilesystem is a folder that is not on the filesystem an operation
+// names: one given to CreateSubvolumeIn, or one a top-level path leads to
+// through another filesystem mounted inside the pool (see openBelow).
+var ErrNotOnFilesystem = errors.New("not on this btrfs filesystem")
+
+// ErrInvalidSubvolume is a name, or the path it makes in the folder given to
+// CreateSubvolumeIn, that a subvolume may not have.
+var ErrInvalidSubvolume = errors.New("invalid subvolume")
+
+// CreateSubvolumeIn creates an empty subvolume called name in dir, an open
+// folder on the filesystem uuid, and returns it. It creates through dir's
+// handle, so the subvolume lands in the folder the caller opened even if a
+// folder on its path is swapped for a link meanwhile.
+func CreateSubvolumeIn(ctx context.Context, uuid string, dir *os.File, name string) (BtrfsSubvolume, error) {
+	if name == "" || len(name) > 255 || strings.Contains(name, "/") {
+		return BtrfsSubvolume{}, fmt.Errorf("%w: name %q", ErrInvalidSubvolume, name)
+	}
+	fsUUID, subvolID, rel, err := locateFolder(dir)
+	if err != nil {
+		return BtrfsSubvolume{}, err
+	}
+	if fsUUID != uuid {
+		return BtrfsSubvolume{}, ErrNotOnFilesystem
+	}
+	top, err := TopLevel(ctx, uuid)
+	if err != nil {
+		return BtrfsSubvolume{}, err
+	}
+	parent, err := subvolumePathByID(top, subvolID)
+	if err != nil {
+		return BtrfsSubvolume{}, err
+	}
+	// Joined by hand, not with path.Join, so a name of "." or ".." reaches
+	// the validation instead of being cleaned away.
+	path := name
+	for _, p := range []string{rel, parent} {
+		if p != "" {
+			path = p + "/" + path
+		}
+	}
+	if err = ValidateSubvolumePath(path); err != nil {
+		return BtrfsSubvolume{}, fmt.Errorf("%w: %w", ErrInvalidSubvolume, err)
+	}
+	// ListSubvolumes leaves Docker's layers out, by this same test, so one
+	// made here would be created and then reported missing.
+	if strings.Contains(path, dockerSubvolumes) {
+		return BtrfsSubvolume{}, fmt.Errorf("%w: %s is in Docker's layer store", ErrInvalidSubvolume, path)
+	}
+	if err = subvolOps.createIn(dir, name); err != nil {
+		return BtrfsSubvolume{}, fmt.Errorf("create subvolume %q: %w", path, err)
+	}
+	// Nothing is undone from here: the subvolume exists, and deleting it by
+	// name could delete whatever was moved to that name meanwhile.
+	sv, err := requireSubvolume(ctx, uuid, path)
+	if err != nil {
+		return sv, fmt.Errorf("subvolume %q was created, but reading it back failed: %w", path, err)
+	}
+	return sv, nil
 }
 
 // DeleteSubvolume deletes the subvolume at path. It refuses the default
@@ -248,7 +308,7 @@ func deleteUnmounted(ctx context.Context, uuid, path string) error {
 	if err != nil {
 		return err
 	}
-	if err := subvolOps.destroy(filepath.Join(top, path)); err != nil {
+	if err := subvolOps.destroy(top, path); err != nil {
 		return fmt.Errorf("delete subvolume %q: %w", path, err)
 	}
 	return nil
@@ -266,7 +326,7 @@ func SetSubvolumeReadOnly(ctx context.Context, uuid, path string, ro bool) (Btrf
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if err := subvolOps.readOnly(filepath.Join(top, path), ro); err != nil {
+	if err := subvolOps.readOnly(top, path, ro); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("set read-only on %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)

@@ -2,6 +2,7 @@ import { createRouter } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 
 import { appQueryClient } from "@/api/query-client";
+import { registerToastLinkRouter } from "@/api/toast-meta";
 import PageLoader from "@/components/loaders/PageLoader";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
 import type { LinuxIORouterContext } from "@/routes/-auth";
@@ -33,6 +34,14 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   routeTree,
   search: { strict: true },
+});
+
+// Toasts fired outside React (mutation callbacks, task feedback) read the
+// current page and open their own through this; see api/toast-meta.ts.
+registerToastLinkRouter({
+  navigate: ({ params, search, to }) =>
+    void router.navigate({ params, search, to }),
+  pathname: () => router.state.location.pathname,
 });
 
 declare module "@tanstack/react-router" {

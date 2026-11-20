@@ -3,6 +3,7 @@ package dockerupdate
 import (
 	"bufio"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -126,7 +128,62 @@ func humanizeComposeProgress(p *ComposeProgress) string {
 	return line
 }
 
-func composeCommandArgs(target ComposeTarget, args ...string) ([]string, error) {
+// composeLineLimit is how much of one line of `docker compose` output is
+// kept. Docker's progress events fit; the rest of a longer line, such as
+// one a build step prints, is dropped rather than failing the command.
+const composeLineLimit = 1024 * 1024
+
+// readComposeLines calls emit with each line of r, without its line ending,
+// cut to its first limit bytes.
+func readComposeLines(r io.Reader, limit int, emit func(line string)) error {
+	reader := bufio.NewReaderSize(r, 64*1024)
+	var line []byte
+	for {
+		fragment, more, err := reader.ReadLine()
+		if room := limit - len(line); room > 0 {
+			line = append(line, fragment[:min(len(fragment), room)]...)
+		}
+		if err != nil {
+			if len(line) > 0 {
+				emit(string(line))
+			}
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if !more {
+			emit(string(line))
+			line = line[:0]
+		}
+	}
+}
+
+// composeStopDelay is how long a cancelled `docker compose` has to stop what
+// it started before it is killed.
+const composeStopDelay = 10 * time.Second
+
+// composeCommand is the `docker` command with args (composeCommandArgs), run
+// in target's working folder and environment. A cancelled ctx sends it
+// SIGTERM, which Compose answers by stopping cleanly, as it did when
+// systemd's stop of the pass reached it directly (the unit now signals the
+// program alone, KillMode=mixed), and kills it after composeStopDelay.
+func composeCommand(ctx context.Context, target ComposeTarget, args []string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = composeStopDelay
+	if target.IsolateEnvironment {
+		cmd.Env = composeCommandEnvironment()
+	}
+	if target.WorkingDir != "" {
+		cmd.Dir = target.WorkingDir
+	}
+	return cmd
+}
+
+// composeCommandArgs is the docker command line for target; progress is
+// Compose's --progress mode.
+func composeCommandArgs(target ComposeTarget, progress string, args ...string) ([]string, error) {
 	if strings.TrimSpace(target.Name) == "" {
 		return nil, fmt.Errorf("compose project name is empty")
 	}
@@ -134,7 +191,7 @@ func composeCommandArgs(target ComposeTarget, args ...string) ([]string, error) 
 		return nil, fmt.Errorf("compose project %q has no config files", target.Name)
 	}
 
-	baseArgs := []string{"compose", "--progress=json", "--project-name", target.Name}
+	baseArgs := []string{"compose", "--progress=" + progress, "--project-name", target.Name}
 	if target.WorkingDir != "" {
 		baseArgs = append(baseArgs, "--project-directory", target.WorkingDir)
 	}
@@ -161,17 +218,23 @@ func RunComposeProject(ctx context.Context, target ComposeTarget, emitter Compos
 	// progress update (per-layer current/total/percent) instead of the
 	// humanized, TTY-less text dump. We parse those below into structured
 	// progress and a clean humanized line.
-	baseArgs, err := composeCommandArgs(target, args...)
+	baseArgs, err := composeCommandArgs(target, "json", args...)
 	if err != nil {
 		return err
 	}
+	return runComposeCommand(ctx, target, emitter, baseArgs)
+}
 
-	cmd := exec.CommandContext(ctx, "docker", baseArgs...)
-	if target.IsolateEnvironment {
-		cmd.Env = composeCommandEnvironment()
-	}
-	if target.WorkingDir != "" {
-		cmd.Dir = target.WorkingDir
+// runComposeCommand runs `docker` with args (composeCommandArgs) for target,
+// streaming each non-empty output line to emitter. env is added to the
+// command's environment.
+func runComposeCommand(ctx context.Context, target ComposeTarget, emitter ComposeLineEmitter, args []string, env ...string) error {
+	cmd := composeCommand(ctx, target, args)
+	if len(env) > 0 {
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = append(cmd.Env, env...)
 	}
 
 	// Merge stdout and stderr so we capture all output in order.
@@ -187,21 +250,15 @@ func RunComposeProject(ctx context.Context, target ComposeTarget, emitter Compos
 		return fmt.Errorf("start docker compose: %w", err)
 	}
 
-	scanner := bufio.NewScanner(pipe)
-	// Docker can emit long lines (large progress events); raise the buffer cap.
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		if emitter == nil {
-			continue
+	readErr := readComposeLines(pipe, composeLineLimit, func(line string) {
+		line = strings.TrimSpace(line)
+		if line == "" || emitter == nil {
+			return
 		}
 		// Try to decode a structured --progress=json event first.
 		if evt, ok := parseComposeProgress(line); ok {
 			emitter("progress", humanizeComposeProgress(evt), evt)
-			continue
+			return
 		}
 		// Fall back to plain text (warnings, errors, build logs).
 		msgType := "stdout"
@@ -210,12 +267,11 @@ func RunComposeProject(ctx context.Context, target ComposeTarget, emitter Compos
 			msgType = "stderr"
 		}
 		emitter(msgType, line, nil)
-	}
-
-	if scanErr := scanner.Err(); scanErr != nil {
+	})
+	if readErr != nil {
 		// Drain so the child cannot block on a full pipe, then reap it.
 		_, _ = io.Copy(io.Discard, pipe)
-		return errors.Join(fmt.Errorf("scanner error: %w", scanErr), cmd.Wait())
+		return errors.Join(fmt.Errorf("read docker compose output: %w", readErr), cmd.Wait())
 	}
 
 	return cmd.Wait()
@@ -248,7 +304,9 @@ func composePullAndUpServicesValidated(ctx context.Context, target ComposeTarget
 	if err := composePullServices(ctx, target, normalized, emitter); err != nil {
 		return fmt.Errorf("pull compose services %q: %w", normalized, err)
 	}
-	upArgs := append([]string{"up", "-d", "--no-deps"}, normalized...)
+	// The image is the one just pulled: an update never builds, also for a
+	// service with pull_policy: build.
+	upArgs := append([]string{"up", "-d", "--no-deps", "--no-build"}, normalized...)
 	if err := RunComposeProject(ctx, target, emitter, upArgs...); err != nil {
 		return fmt.Errorf("reconcile compose services %q: %w", normalized, err)
 	}
@@ -278,6 +336,75 @@ func composePullServices(ctx context.Context, target ComposeTarget, services []s
 			return err
 		}
 	}
+}
+
+// composeUpFromLocalImages brings services up on the images the host holds
+// and pulls or builds none, whatever their pull_policy says: a rollback must
+// not fetch or build again the image it undoes, and a rebuild brings a
+// service up on the image it has just built.
+func composeUpFromLocalImages(ctx context.Context, target ComposeTarget, services []string, emitter ComposeLineEmitter) error {
+	return RunComposeProject(ctx, target, emitter, append([]string{"up", "-d", "--no-deps", "--pull", "never", "--no-build"}, services...)...)
+}
+
+// composeBuildAttestations is the environment of a rebuild's build. With the
+// attestations BuildKit adds by default, two builds that come entirely from
+// the cache give two image IDs for the same layers, configuration and
+// creation time (seen with Docker 29 and the containerd image store); without
+// them the second gives the first one's ID, so a rebuild that changed
+// nothing is seen as such.
+var composeBuildAttestations = []string{"BUILDX_NO_DEFAULT_ATTESTATIONS=1"}
+
+// composeBuildService builds the image of service again, pulling its base
+// images first (`build --pull`), without default attestations
+// (composeBuildAttestations). The build runs with --progress=plain, which
+// writes the log of the build's steps as lines of text, and emitter gets each
+// line; with --progress=json Compose passes BuildKit's raw status objects
+// through instead.
+func composeBuildService(ctx context.Context, target ComposeTarget, service string, emitter ComposeLineEmitter) error {
+	args, err := composeCommandArgs(target, "plain", "build", "--pull", service)
+	if err != nil {
+		return err
+	}
+	return runComposeCommand(ctx, target, emitter, args, composeBuildAttestations...)
+}
+
+// composeServiceSettingsOf reads services of target as Compose resolves them
+// from the project's files, environment files and overrides
+// (`docker compose config --format json <services>`). The services are named,
+// since Compose leaves out a service of a profile that is not active unless it
+// is named. Compose writes its warnings to stderr, so only stdout is read as
+// the configuration.
+func composeServiceSettingsOf(ctx context.Context, target ComposeTarget, services []string) (map[string]composeServiceSettings, error) {
+	args, err := composeCommandArgs(target, "json", append([]string{"config", "--format", "json"}, services...)...)
+	if err != nil {
+		return nil, err
+	}
+	cmd := composeCommand(ctx, target, args)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("read Compose project %q configuration: %w: %s", target.Name, err, strings.TrimSpace(stderr.String()))
+	}
+	var config struct {
+		Services map[string]struct {
+			Image      string         `json:"image"`
+			PullPolicy string         `json:"pull_policy"`
+			Build      jsontext.Value `json:"build"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal(out, &config); err != nil {
+		return nil, fmt.Errorf("decode Compose project %q configuration: %w", target.Name, err)
+	}
+	settings := make(map[string]composeServiceSettings, len(config.Services))
+	for name, service := range config.Services {
+		settings[name] = composeServiceSettings{
+			Image:      service.Image,
+			PullPolicy: service.PullPolicy,
+			Build:      len(service.Build) > 0 && string(service.Build) != "null",
+		}
+	}
+	return settings, nil
 }
 
 func validateComposeUpdateInputs(ctx context.Context, target ComposeTarget, emitter ComposeLineEmitter) error {

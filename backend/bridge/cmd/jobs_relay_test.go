@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -33,14 +34,22 @@ const (
 	hostJobFour  = "00000000-0000-4000-8000-0000000000f4"
 )
 
+// dialRelayTestHost connects to the in-process test host at hostSocket without
+// starting its socket unit, which jobsclient.Connect does as root through
+// systemd.
+func dialRelayTestHost(ctx context.Context, _ uint32, hello bridgeipc.HelloSession, hostSocket string) (*jobsclient.Client, error) {
+	return jobsclient.Dial(ctx, hello, hostSocket)
+}
+
 // relayTestSockets points the relay at hostSocket, and at an empty store
 // standing for its host's, for the rest of the test: no test reads the records
-// of this machine's job host.
+// of this machine's job host. The relay dials the host without starting a
+// socket unit, so the tests run as root too.
 func relayTestSockets(t *testing.T, hostSocket string) {
 	t.Helper()
-	if os.Geteuid() == 0 {
-		t.Skip("as root jobsclient.Connect starts the host's socket unit through systemd; that StartUnit seam is internal to jobsclient, whose tests cover the root path with it stubbed")
-	}
+	oldConnect := jobsConnect
+	jobsConnect = dialRelayTestHost
+	t.Cleanup(func() { jobsConnect = oldConnect })
 	oldHost := jobsHostSocket
 	jobsHostSocket = func(uint32) string { return hostSocket }
 	t.Cleanup(func() { jobsHostSocket = oldHost })
@@ -83,7 +92,7 @@ func gateRelayConnect(t *testing.T) (connecting <-chan struct{}, release chan<- 
 		}
 		select {
 		case <-gate:
-			return jobsclient.Connect(ctx, uid, hello, hostSocket)
+			return dialRelayTestHost(ctx, uid, hello, hostSocket)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -147,7 +156,7 @@ func repeatTargetInMetadata(t *testing.T, store *jobs.Store, id, label string) {
 func startHostJob(t *testing.T, socket, id string) {
 	t.Helper()
 	uid := uint32(os.Getuid())
-	c, err := jobsclient.Connect(context.Background(), uid, bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "other-bridge"}, socket)
+	c, err := jobsclient.Dial(context.Background(), bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "other-bridge"}, socket)
 	if err != nil {
 		t.Fatalf("connect another bridge: %v", err)
 	}
@@ -416,6 +425,69 @@ func TestBridgeForwardsMutationToHost(t *testing.T) {
 	}
 }
 
+// relaySpeedRounds is how many no-op mutations TestRelayRoundTripSpeed times.
+const relaySpeedRounds = 300
+
+// relaySpeedMedianBound bounds the median round trip of a no-op mutation
+// through the relay. The median observed on a developer machine over five runs
+// was 0.52 to 0.61 ms with the race detector (make test-go) and 0.22 to
+// 0.29 ms without it; the bound is about 80 times the first, well over the 20
+// times that keeps a loaded machine from tripping it, and still under the
+// 250 ms of a polling or sleeping step, which any call that waited would pay.
+// It is a bound, not a baseline.
+const relaySpeedMedianBound = 50 * time.Millisecond
+
+// TestRelayRoundTripSpeed sends a no-op mutation through the relay to the
+// in-process host relaySpeedRounds times, each as a job of its own, and fails
+// when the median of the round trips (dispatch to the result frame) exceeds
+// relaySpeedMedianBound. The median, not the mean or the maximum, so that one
+// slow call on a loaded machine does not fail the run; the median, p95 and
+// maximum are logged to read a slow run from.
+func TestRelayRoundTripSpeed(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "host.sock")
+	startRelayTestHost(t, socket, false)
+	relayTestSockets(t, socket)
+	router, jr, sess := newRelayTestBridge(t)
+	waitRelay(t, jr, func(err error) bool { return err == nil })
+
+	roundTrip := func(id string) time.Duration {
+		start := time.Now()
+		client := dispatchMutation(t, router, sess, id)
+		for {
+			frame, err := relay.ReadRelayFrame(client)
+			if err != nil {
+				t.Fatalf("ReadRelayFrame of %s: %v", id, err)
+			}
+			if frame.Opcode == relay.OpStreamResult {
+				elapsed := time.Since(start)
+				var result relay.ResultFrame
+				if err := json.Unmarshal(frame.Payload, &result); err != nil || result.Status != "ok" {
+					t.Fatalf("result of %s = %+v (%v), want ok", id, result, err)
+				}
+				_ = client.Close()
+				return elapsed
+			}
+		}
+	}
+
+	// A few unmeasured calls first: the connection, the goroutines and the
+	// caches are warm in a bridge that has run a while.
+	for i := range 10 {
+		roundTrip(fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x5000+i))
+	}
+	times := make([]time.Duration, relaySpeedRounds)
+	for i := range times {
+		times[i] = roundTrip(fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x6000+i))
+	}
+	slices.Sort(times)
+	median, p95, maxTime := times[len(times)/2], times[len(times)*95/100], times[len(times)-1]
+	t.Logf("%d no-op mutations through the relay: median %v, p95 %v, max %v (bound on the median %v)",
+		len(times), median, p95, maxTime, relaySpeedMedianBound)
+	if median > relaySpeedMedianBound {
+		t.Fatalf("median round trip %v exceeds %v", median, relaySpeedMedianBound)
+	}
+}
+
 func TestBridgeFailsMutationWhenHostUnavailable(t *testing.T) {
 	oldConnect := jobsConnect
 	jobsConnect = func(context.Context, uint32, bridgeipc.HelloSession, string) (*jobsclient.Client, error) {
@@ -615,7 +687,7 @@ func TestPrivilegedBridgeUsesRootHost(t *testing.T) {
 	}
 	jobsConnect = func(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, hostSocket string) (*jobsclient.Client, error) {
 		connects <- connectArgs{uid: uid, hostSocket: hostSocket, hello: hello}
-		return jobsclient.Connect(ctx, uid, hello, hostSocket)
+		return dialRelayTestHost(ctx, uid, hello, hostSocket)
 	}
 
 	alice := &session.Session{SessionID: "alice-session", User: session.User{Username: "alice", UID: 1000}, Privileged: true}

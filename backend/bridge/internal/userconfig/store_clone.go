@@ -51,6 +51,7 @@ func cloneNameLists(in map[string][]string) map[string][]string {
 func cloneDocker(in Docker) Docker {
 	out := in
 	out.Folders = slices.Clone(in.Folders)
+	out.HostIPs = slices.Clone(in.HostIPs)
 	return out
 }
 

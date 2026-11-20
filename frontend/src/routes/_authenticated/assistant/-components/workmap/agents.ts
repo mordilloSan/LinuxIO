@@ -485,9 +485,15 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000).toFixed(1)}M`;
 }
 
-/** 0 s, 45 s, 1 min 18 s: whole seconds, for a clock that ticks. */
+/**
+ * 0 s, 45 s, 1 min 18 s, 1 h 15 min: whole seconds, for a clock that ticks,
+ * and from an hour on hours and whole minutes. It counts what has passed in
+ * full, where `formatMs` rounds the time of work that ended.
+ */
 export function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   if (seconds < 60) return `${seconds} s`;
-  return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ${seconds % 60} s`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }

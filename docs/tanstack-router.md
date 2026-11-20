@@ -58,7 +58,7 @@ Two files in `frontend/src/router/`, plus the shared client in `api/`:
 
 | File | Role |
 |------|------|
-| `router/router.tsx` | Creates the singleton router, sets every global default, declares the two type augmentations. |
+| `router/router.tsx` | Creates the singleton router, sets every global default, declares the two type augmentations, and registers the router for toast links (`registerToastLinkRouter`, see [API Contract](./api-contract.md#toast-links)). |
 | `router/provider.tsx` | Injects live auth/capability context and keeps it fresh. |
 | `api/query-client.ts` | Creates QueryClient instances (`createQueryClient`) and owns the browser singleton `appQueryClient`. |
 
@@ -529,6 +529,7 @@ loader: (loaderArgs) =>
 Splat — `filebrowser/$.tsx`, the one loader that passes per-call query options:
 
 ```ts
+loaderDeps: ({ search }) => ({ trash: search.trash === true }),
 context: ({ params }) => {
   const path = params._splat ? `/${params._splat}` : "/";
   return {
@@ -539,11 +540,20 @@ context: ({ params }) => {
 loader: (loaderArgs) => {
   return loadRouteQueries(
     loaderArgs,
-    [loaderArgs.context.fileBrowserListingQueryOptions],
+    loaderArgs.deps.trash
+      ? []
+      : [loaderArgs.context.fileBrowserListingQueryOptions],
     LOADER_FRESHNESS.BACKGROUND,
   );
 },
 ```
+
+With `?trash=true` the page shows the Trash ([Trash](./trash.md#the-trash-view))
+instead of the folder in the path, which it keeps as the folder to return to;
+the loader lists no folder then, and the Trash reads its own list. Beside
+`trash` the search keeps the Trash's sort, `sort` and `order`, validated by
+`validateTrashSort` (`filebrowser/-trashEntries.ts`) and dropped from a URL
+without `trash`; a sort is not a loader dependency.
 
 `createFileBrowserListingQueryOptions` gives the loader and observer the exact
 same path, query function, key, and two-second `staleTime`. That short grace
@@ -592,7 +602,7 @@ inherits its ancestor's.
 |-------|------|--------|------|--------|-------|
 | `/sign-in` | `sign-in/route.tsx` | — | — | `redirect` | `requireGuest` |
 | *(pathless)* | `_authenticated.tsx` | — | — | — | `requireAuthentication` |
-| `/` | `_authenticated/index.tsx` | transport + deferred ×16 +cond | — | — | — |
+| `/` | `_authenticated/index.tsx` | transport + deferred ×16 +cond | — | `dialog` | — |
 | `/accounts` | `accounts/route.tsx` | — | — | — | — |
 | `/accounts/` | `accounts/index.tsx` | `loadRouteQueries` ×3 +cond | `user` | `user` +3 | — |
 | `/accounts/groups` | `accounts/groups.tsx` | `loadRouteQueries` ×1 | — | — | — |
@@ -603,7 +613,7 @@ inherits its ancestor's.
 | `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | `image` | — |
 | `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | `network` | — |
 | `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | `volume` | — |
-| `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
+| `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 +cond | *params*, `trash` | `edit`, `enabled`, `redirect`, `tail`, `trash`, `sort`, `order` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | `unit`, `invocationId` | — |
 | `/network` | `network/route.tsx` | — | — | — | — |
@@ -613,7 +623,7 @@ inherits its ancestor's.
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
-| `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | — | — |
+| `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | `tab` | — |
 | `/storage` | `storage/route.tsx` | — | — | — | — |
 | `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `pool` | — |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
@@ -713,7 +723,7 @@ external-redirect rejection.
 
 ## Search Parameters
 
-No schema library. Thirteen routes validate search using three generic helpers from
+No schema library. Routes validate search with the generic helpers from
 `routes/-search.ts`:
 
 ```ts
@@ -728,6 +738,13 @@ Each helper returns `{ key: value }` when the value has the right type, and `{}`
 otherwise. Spreading means an absent or invalid param yields **no key at all**
 rather than an explicit `undefined` — which, combined with
 `search: { strict: true }`, keeps URLs free of empty params.
+
+A param that takes one of a few fixed values has a validator of its own, kept
+in a module of its own so the route can import it eagerly: Settings' `tab`
+(`settings/-components/settingsTabs.ts`) and the dashboard's `dialog`
+(`api/dashboard-search.ts`, below the routes because a toast links to a
+dialog by it), which opens the Memory overflow dialog
+(`?dialog=memory-overflow`). Both drop a value they do not know.
 
 Read and write search through the route's own API, using a functional update so
 you never clobber sibling params:
