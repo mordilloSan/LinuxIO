@@ -355,24 +355,50 @@ func heldFstabPools(ctx context.Context) ([]fstabPool, error) {
 // objects, and as it is when only a replace target holds it back, unless a
 // disk missed writes. A pool it objects to stays unmounted and its offline
 // alert says why. The kernel itself refuses a pool missing more disks than
-// its profiles survive.
+// its profiles survive. First, and again for disks that came while it
+// waited, a complete pool whose device systemd did not find gets its members
+// evaluated again by udev (see bringUpUnready).
 func MountDegradedPools(ctx context.Context, grace time.Duration) error {
 	recordDegradedMounts(ctx)
 	deadline := time.Now().Add(grace)
+	settle := min(grace, udevSettle)
+	err := bringUpUnready(ctx, settle)
+	if ctx.Err() != nil {
+		// Stopped while it waited: LinuxIO mounts nothing degraded after
+		// that, though systemd may still finish a mount the bring-up
+		// started.
+		if err == nil {
+			err = ctx.Err()
+		}
+		return err
+	}
+	waited, heldErr := mountHeldAfter(ctx, deadline)
+	err = errors.Join(err, heldErr)
+	if waited && ctx.Err() == nil {
+		err = errors.Join(err, bringUpUnready(ctx, settle))
+	}
+	return err
+}
+
+// mountHeldAfter waits until deadline for the disks of the pools udev holds
+// back, then mounts those still held. It reports whether it found any.
+func mountHeldAfter(ctx context.Context, deadline time.Time) (bool, error) {
+	waited := false
 	for {
 		pools, err := heldFstabPools(ctx)
 		if err != nil {
-			return err
+			return waited, err
 		}
 		if len(pools) == 0 {
-			return nil
+			return waited, nil
 		}
 		if !time.Now().Before(deadline) {
-			return mountHeld(ctx, pools)
+			return true, mountHeld(ctx, pools)
 		}
+		waited = true
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return true, ctx.Err()
 		case <-time.After(degradedPoll):
 		}
 	}

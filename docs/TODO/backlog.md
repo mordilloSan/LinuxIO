@@ -42,30 +42,35 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
-## Visible bugs
+- The degraded path of the boot check counts and registers devices by their
+  raw superblocks: `FindOfflinePools` (`backend/common/btrfs/pool.go:348`)
+  groups every block device whose btrfs superblock matches, which includes a
+  leg of an md 0.90 or 1.0 array, a multipath path and an LVM mirror image,
+  and `MountOfflinePool` (`pool.go:228`) registers every one with `SCAN_DEV`
+  before it mounts. md binds a leg as soon as incremental assembly adds it,
+  even before the array runs, and an active LVM image is held by its LV, so
+  in those cases btrfs's exclusive open fails and the degraded mount fails
+  rather than opening the leg; btrfs opens a leg under its array only when
+  nothing has claimed it (no auto-assembly), or a multipath path before its
+  map exists. `missingDisks` (`degraded.go:280`) counts devices, not distinct
+  devids, so two such paths can hide a missing member, and the degraded path
+  then skips a pool that really lacks one, which gets the wrong "complete but
+  not mounted" alert. The bring-up of a complete pool udev left unready
+  (`unready.go`, `udevMembers`) takes only disks udev's btrfs rule scanned,
+  nothing holds and no md or LVM signature marks; the degraded path and the
+  pool listings need the same rule, with a root test of their own, since a
+  filter in `FindOfflinePools` also changes what the bridge shows and which
+  disks `deviceInUse` treats as members.
 
-- A complete two-disk pool can stay unmounted after a boot. In the test VM
-  (Ubuntu 26.04, kernel 7.0.0-44) udev scanned both members within 30 µs
-  at 2 of 5 boots after a power cut (none of 10 other boots with the pool),
-  and systemd never found `/dev/disk/by-uuid/<pool>`; the fstab mount
-  failed on its 90 s device timeout. The boots that mounted found the
-  device 0.1 s after the scan.
-  This is likely the race in `64-btrfs.rules` between two members' `btrfs
-  ready`. The boot check leaves a complete pool to systemd, so the pool
-  stays unmounted, and a job the root host resumes at that boot fails with
-  "btrfs filesystem … not found", which fails the scrub power-cut check of
-  `jobs-phase3.spec.ts` whenever the race hits (the resync check mounts the
-  pool by hand then), since `linuxio-jobs@.service` is ordered after
-  `local-fs.target`, which a `nofail` mount is not part of. The owner
-  decides whether the boot check also mounts a complete fstab pool whose
-  device systemd did not find, and whether resumes wait for those mounts.
+## Visible bugs
 
 - On a kernel without `btrfs_remove_bdev` (before 6.19, and 6.19 or 7.0
   built without `CONFIG_BTRFS_EXPERIMENTAL`, as Ubuntu's 7.0.0-44 is; 7.1
   always has it), a disk that drops out of a mounted pool stays listed and
   in use, so LinuxIO opens no episode while the pool stays mounted, and none
-  at all, with no resync, when the disk is back before the next mount. Data written during the dropout has a
-  single good copy, on the other disks, until someone scrubs: a second disk
+  at all, with no resync, when the disk is back before the next mount. Data
+  written during the dropout has a single good copy, on the other disks,
+  until someone scrubs: a second disk
   failure then loses it while the pool reads raid1 and whole, and a file
   without checksums (`nodatacow`) can read stale data from the returned
   disk. The test VM showed it on 7.0.0-44: a disk unplugged from the guest's

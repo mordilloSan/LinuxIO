@@ -44,6 +44,7 @@ const (
 	iocScrubProgress   = ioRW | unsafe.Sizeof(scrubArgs{})<<16 | iocMagic<<8 | 29
 	iocDevInfo         = ioRW | unsafe.Sizeof(devInfoArgs{})<<16 | iocMagic<<8 | 30
 	iocSend            = ioWrite | unsafe.Sizeof(sendArgs{})<<16 | iocMagic<<8 | 38
+	iocDevicesReady    = ioRead | unsafe.Sizeof(volArgs{})<<16 | iocMagic<<8 | 39 // _IOR in the header
 	iocQuotaCtl        = ioRW | unsafe.Sizeof(quotaCtlArgs{})<<16 | iocMagic<<8 | 40
 	iocQgroupLimit     = ioRead | unsafe.Sizeof(qgroupLimitArgs{})<<16 | iocMagic<<8 | 43 // _IOR in the header
 	iocFSInfo          = ioRead | unsafe.Sizeof(fsInfoArgs{})<<16 | iocMagic<<8 | 31
@@ -424,25 +425,32 @@ func rmDevCancel(mountpoint string) error {
 // controlIoctl sends one device path to /dev/btrfs-control; a var so tests
 // can record calls.
 var controlIoctl = func(req uintptr, device string) error {
+	_, err := controlCall(req, device)
+	return err
+}
+
+// controlCall sends one device path to /dev/btrfs-control and returns what
+// the ioctl returned.
+func controlCall(req uintptr, device string) (uintptr, error) {
 	var args volArgs
 	if len(device) >= len(args.Name) {
-		return fmt.Errorf("device path too long: %s", device)
+		return 0, fmt.Errorf("device path too long: %s", device)
 	}
 	copy(args.Name[:], device)
 	f, err := os.OpenFile(controlDevice, os.O_RDWR, 0)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("%s is missing; is the btrfs kernel module loaded? (%w)", controlDevice, err)
+			return 0, fmt.Errorf("%s is missing; is the btrfs kernel module loaded? (%w)", controlDevice, err)
 		}
-		return err
+		return 0, err
 	}
 	defer f.Close()
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), req, uintptr(unsafe.Pointer(&args)))
+	r, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), req, uintptr(unsafe.Pointer(&args)))
 	runtime.KeepAlive(&args)
 	if errno != 0 {
-		return errno
+		return 0, errno
 	}
-	return nil
+	return r, nil
 }
 
 // blockDeviceSize reads the size of a block device; a var so tests can stub it.

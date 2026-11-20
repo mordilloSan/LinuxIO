@@ -57,6 +57,11 @@ func newLoopDisk(t *testing.T, file string, size int64) *loopDisk {
 // the filesystem is unmounted, and detaches it.
 func (d *loopDisk) unplug() {
 	d.t.Helper()
+	if d.dev == "" {
+		// Unplugged already. An empty path would make the kernel forget
+		// every unmounted btrfs device of the host.
+		d.t.Fatal("unplug of a disk that is not plugged in")
+	}
 	if err := controlIoctl(iocForgetDev, d.dev); err != nil && !errors.Is(err, unix.ENOENT) {
 		d.t.Fatalf("forget %s: %v", d.dev, err)
 	}
@@ -805,7 +810,12 @@ func newFlakyMirror(t *testing.T, dir string) *flakyMirror {
 	p.uuid = uuid
 	t.Cleanup(func() {
 		for _, dev := range []string{a.dev, f.flaky.dev} {
-			_ = controlIoctl(iocForgetDev, dev)
+			// a is unplugged by then (flakyDiskHoldsEverything), which
+			// forgot it and left its path empty; an empty path would make
+			// the kernel forget every unmounted btrfs device of the host.
+			if dev != "" {
+				_ = controlIoctl(iocForgetDev, dev)
+			}
 		}
 	})
 	p.must("mount", MountPool(p.ctx, a.dev, p.mnt, []string{"noatime"}, false))

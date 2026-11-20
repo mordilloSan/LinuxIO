@@ -446,7 +446,10 @@ connects, and never resumes: resumable routes are privileged.
 
 `linuxio-jobs@.service` is ordered after `local-fs.target` and
 `linuxio-btrfs-degraded.service`, so pools are mounted, degraded if they must
-be, before the root host resumes anything.
+be, before the root host resumes anything. A `nofail` mount is not part of
+`local-fs.target`; the boot check waits for those of a complete pool udev left
+unready, which systemd mounts once the check had udev evaluate its disks again
+([Btrfs](./btrfs.md#missing-disks)).
 
 ### Resume hooks
 

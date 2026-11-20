@@ -24,6 +24,7 @@ func TestIoctlNumbersMatchKernel(t *testing.T) {
 		"DEFAULT_SUBVOL":   {iocDefaultSubvol, 0x40089413},
 		"SNAP_CREATE_V2":   {iocSnapCreateV2, 0x50009417},
 		"SEND":             {iocSend, 0x40489426},
+		"DEVICES_READY":    {iocDevicesReady, 0x90009427},
 		"QUOTA_CTL":        {iocQuotaCtl, 0xC0109428},
 		"QGROUP_LIMIT":     {iocQgroupLimit, 0x8030942B},
 		"TREE_SEARCH_V2":   {iocTreeSearchV2, 0xC0709411},

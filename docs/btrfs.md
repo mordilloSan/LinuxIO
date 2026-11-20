@@ -131,6 +131,59 @@ without `degraded`, unless its disks disagree on their generation, and the
 kernel continues the replace (a pool also missing a disk takes the degraded
 path above).
 
+udev can also leave a complete pool unready. Its rule asks the kernel
+whether a disk's pool is complete (`BTRFS_IOC_DEVICES_READY`) and marks a
+disk scanned before the others not ready (`SYSTEMD_READY=0`); the disk that
+completes the pool then has udev evaluate those again (`udevadm trigger -p
+ID_BTRFS_READY=0`, matched against udev's database). When two disks are
+scanned at the same moment that trigger can miss the first, which stays not
+ready. Every disk of the pool claims `/dev/disk/by-uuid/<uuid>` at the same
+priority and the last one processed owns it (`udev-node.c` `link_update`),
+systemd counts the device as found only when the disk the link points to is
+ready (`device.c` `device_setup_devlink_unit_one`), and the kernel sends no
+event when a pool becomes complete. When the link points at the disk left
+behind, the fstab mount gives up after its 90 second device timeout, with
+nothing said. In the test VM (systemd 259, kernel 7.0) that happened at
+about one boot in ten, after power cuts and orderly reboots alike: the
+first open of `/dev/btrfs-control` loads the btrfs module, and the udev
+workers of both disks, which wait for that load, scan within microseconds of
+each other. So the boot check first looks for unmounted pools that fstab
+mounts at boot, with no disk missing by their superblocks and no replace
+target, whose mount unit systemd generated from that fstab (its `SourcePath`,
+not masked) and has not started, and whose `/dev/disk/by-uuid/<uuid>` device
+it has not found. Ten seconds after it starts it acts on such a pool only
+through the disks udev's rule itself scanned: those udev's database
+(`/run/udev/data`) names btrfs of this pool with the `ID_BTRFS_READY` only
+the rule sets, and that nothing holds. A leg of an md array with its metadata
+at the end, a multipath path or an LVM mirror image shows the btrfs
+superblock too, but udev probes it as what it belongs to, and registering it
+would let btrfs open it under its array. Those disks must be one for each
+devid of the pool, at least one of them left not ready, none with an md or
+LVM signature when read (an exclusive open, which nothing holding the disk
+allows), and the kernel must then call them complete
+(`BTRFS_IOC_DEVICES_READY`, asked of them only, which counts the registered
+disks against the superblock's `num_devices`). It then writes `change` to
+`/sys/class/block/<disk>/uevent` of each disk udev left not ready, which is
+what the rule's trigger does for them, and asks systemd to start the pool's
+fstab mounts: that joins the boot's own mount job, or starts it again when
+the job already gave up. systemd then mounts the pool with its own options
+and ordering. The check waits up to 30 seconds for those mounts and logs
+`btrfs pool mounted after udev evaluated its disks again`, then updates the
+pool's alerts. A pool whose device systemd has found or is still mounting by
+then is left to it without an alert; the offline alert is raised only for a
+pool known not mounted, and a pool whose mounts cannot be listed gets none.
+The health run two minutes after the boot raises it for any pool still
+unmounted, so a pool the check left alone is not silent. A pool whose device
+systemd found is left to systemd, whatever its mount then
+does, and so is one missing a disk or holding a replace target, which takes
+the paths above. As on any boot where systemd mounts a pool itself, the
+degraded path's refusal of disks that missed writes does not run for a
+complete pool. This runs before those paths, whose 30 seconds count from the
+check's start, and once more after their wait, for a pool whose disks came
+meanwhile. Such a pool is up 16 to 18 seconds after the boot in the test
+VM (the check starts at about 6) instead of not at all, and the root job
+host, which starts after the boot check, resumes its jobs on it.
+
 The record lives in `/var/lib/linuxio/btrfs-pools.json`: every mount LinuxIO
 makes and every health run notes each pool's generation, and while a pool runs
 degraded, which disks take its writes and which miss them. A disk that dies while the pool is
@@ -332,6 +385,28 @@ once it is fixed repairs what it missed.
 
 ### Known limits
 
+- A complete pool udev left unready is mounted only once the boot check has
+  udev evaluate its disks again, ten seconds after the check starts: until
+  then a service not ordered after `linuxio-btrfs-degraded.service`, or a
+  script that reads the pool as soon as the host answers, finds it
+  unmounted. When a pool never mounts, the check and what is ordered after
+  it (Docker, the root job host) wait up to about 80 seconds: 10 to settle
+  and 30 for the mounts, twice when a pool missing a disk was waited for.
+- The boot check acts only on pools fstab names by `UUID=`, at a mountpoint
+  that is not a symlink (systemd names the unit after the path the link
+  resolves to); one mounted by `LABEL=`, a device path or through a link
+  stays unmounted. An `x-systemd.automount` line it brings up is mounted at
+  once rather than on first access. A line without `nofail` is never
+  helped: its mount is required by `local-fs.target`, which fails first and
+  sends the boot into emergency mode before the check runs. A pool whose
+  disks appear after the check's first look is looked at again only when a
+  pool missing a disk was waited for (`MountDegradedPools`). A mountpoint
+  whose unit name is too long for systemd, which then names the unit by a
+  hash of it (`unit_name_from_path`, since systemd 248), is never brought
+  up: the check asks for the unhashed name, which systemd refuses.
+- While the check reads a disk's md and LVM signature, through an exclusive
+  open, a mount of the pool by an fstab line that itself carries `degraded`
+  could start in that instant and proceed without that disk.
 - Writes made with a disk missing that LinuxIO does not record are not seen:
   a degraded mount it did not make (by hand, or on another system) written
   to and made whole again before a health run sees it, the moment between a

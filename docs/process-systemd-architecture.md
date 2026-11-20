@@ -122,7 +122,9 @@ Outside `linuxio.target`, so restarting LinuxIO never cancels them:
 ```
 linuxio-btrfs-degraded.service       boot oneshot, WantedBy=multi-user.target, enabled only on hosts
                                      with btrfs; mounts fstab pools with a missing disk degraded, and
-                                     pools udev holds back for a device replace target normally
+                                     pools udev holds back for a device replace target normally;
+                                     has udev evaluate again the disks of a complete fstab pool it
+                                     left unready, and waits for systemd to mount it
                                      (`linuxio-worker degraded`)
 linuxio-btrfs-resync@<uuid>.service  started by the health check once a returned disk is back;
                                      runs `linuxio-worker resync <uuid>` (scrub, then soft convert);

@@ -160,6 +160,7 @@ test("a balance a host stop paused is resumed by the kernel at boot and complete
     expect(await exclusiveOperation(uuid)).toBe("balance paused");
 
     await rig(["reboot"]);
+    await mountedAtBoot(uuid);
     expect(await kernelLog("balance: resume")).toMatch(/balance: resume/);
     const done = await waitForJob(BALANCE, before, "completed", {
       timeout: 300_000,
@@ -240,6 +241,7 @@ test("a balance canceled just before the host stops ends canceled and is not res
     await page.close();
 
     await rig(["reboot"]);
+    await mountedAtBoot(uuid);
     expect(await jobRecord(job.id)).toMatchObject({
       cancel_requested: true,
       state: "canceled",
@@ -576,7 +578,7 @@ test("a replace cut by a power loss is resumed by the kernel and followed to the
 test("a scrub canceled before a reboot is not resumed", async ({ page }) => {
   test.setTimeout(300_000);
   const before = await jobIds();
-  const { job } = await startScrub(page, before, 4 * MiB);
+  const { job, uuid } = await startScrub(page, before, 4 * MiB);
   // The banner's Stop check cancels the scrub's job, as the tray's cancel does.
   const stop = page.getByRole("button", { name: "Stop check" });
   await expect(stop).toBeVisible({ timeout: 30_000 });
@@ -595,6 +597,7 @@ test("a scrub canceled before a reboot is not resumed", async ({ page }) => {
   await page.close();
 
   await rig(["reboot"]);
+  await mountedAtBoot(uuid);
   expect(await jobRecord(job.id)).toMatchObject({ state: "canceled" });
   expect((await loggedJobs("job resumed")).map((j) => j.id)).not.toContain(
     job.id,
@@ -607,7 +610,7 @@ test("a scrub whose host crashed is not resumed by the next reboot", async ({
 }) => {
   test.setTimeout(300_000);
   const before = await jobIds();
-  const { job } = await startScrub(page, before, 4 * MiB);
+  const { job, uuid } = await startScrub(page, before, 4 * MiB);
   expect(
     await scrubRunning(),
     "the scrub ended before the kill: raise the data size",
@@ -623,6 +626,7 @@ test("a scrub whose host crashed is not resumed by the next reboot", async ({
   await page.close();
 
   await rig(["reboot"]);
+  await mountedAtBoot(uuid);
   const after = await jobRecord(job.id);
   expect(after).toMatchObject({ reason: "crash", state: "interrupted" });
   expect(after?.resumable).toBeFalsy();
@@ -733,8 +737,12 @@ async function holdHealthChecks() {
 }
 
 /**
- * Waits until systemd mounted the test pool at boot, or gave up on it, and
- * says whether it mounted it.
+ * Waits until systemd mounted the test pool at boot, and fails when it gave
+ * up on it. udev can leave a complete pool unready when it scans both disks
+ * at once; the boot check then has udev evaluate them again 10 s after it
+ * starts, and systemd mounts the pool a moment later (docs/btrfs.md, Missing
+ * disks), so a check that reads the pool right after a boot waits for this.
+ * The boot check's line is printed when it did so.
  */
 async function mountedAtBoot(uuid: string) {
   let seen = "";
@@ -755,7 +763,11 @@ async function mountedAtBoot(uuid: string) {
       },
     )
     .toBe(true);
-  return seen === uuid;
+  const broughtUp = await vmSsh(
+    "sudo journalctl -b -o short-monotonic --no-pager -u linuxio-btrfs-degraded.service | grep 'udev evaluated its disks again' || true",
+  );
+  if (broughtUp.trim()) console.log(broughtUp.trim());
+  expect(seen, "systemd gave up mounting the pool at boot").toBe(uuid);
 }
 
 /** The SHA-256 of each file of the check, or the error reading them. */
@@ -938,18 +950,7 @@ btrfs filesystem df ${POOL_MOUNT}
     expect(recordedBytes(saved)).toBeGreaterThanOrEqual(
       recordedBytes(cut.saved!),
     );
-    // udev can leave a complete pool's by-uuid device unready when both
-    // disks are scanned at once, and the fstab mount then gives up after
-    // 90 s (docs/TODO/backlog.md). That race is not this check's subject:
-    // the pool is mounted here, and its health check started by hand.
-    if (!(await mountedAtBoot(uuid))) {
-      console.log(
-        "systemd did not mount the complete pool at boot; mounting it and starting the health check by hand",
-      );
-      await vmSsh(
-        `sudo mount ${POOL_MOUNT} && sudo systemctl start ${HEALTH_SERVICE}`,
-      );
-    }
+    await mountedAtBoot(uuid);
     await expect
       .poll(
         async () =>

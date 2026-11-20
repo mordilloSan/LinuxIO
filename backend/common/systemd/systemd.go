@@ -208,6 +208,55 @@ func UnitRunsInvocation(ctx context.Context, unit, invocationID string) (bool, e
 	return runs, nil
 }
 
+// UnitState is a unit as the manager knows it.
+type UnitState struct {
+	LoadState   string
+	ActiveState string
+	// SourcePath is the file a generator made the unit from, such as
+	// /etc/fstab for the mount units of systemd-fstab-generator.
+	SourcePath string
+}
+
+// GetUnitStates reads each of names, loading a unit the manager has not
+// loaded, as one it collected after it stopped: a unit no file defines then
+// reads LoadState "not-found". A name the manager refuses as no valid unit
+// name, such as one longer than it allows, is left out.
+func GetUnitStates(ctx context.Context, names []string) (map[string]UnitState, error) {
+	units := map[string]UnitState{}
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		for _, name := range names {
+			path, err := UnitObjectPath(session, name)
+			if invalidArgs(err) {
+				slog.Debug("systemd refused a unit name", "unit", name, "error", err)
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("load unit %s: %w", name, err)
+			}
+			obj := session.ObjectAt(path)
+			var u UnitState
+			for prop, dst := range map[string]*string{"LoadState": &u.LoadState, "ActiveState": &u.ActiveState, "SourcePath": &u.SourcePath} {
+				if *dst, err = dbusclient.GetProperty[string](session, obj, dbusclient.SystemdUnitIface, prop); err != nil {
+					return fmt.Errorf("get %s of %s: %w", prop, name, err)
+				}
+			}
+			units[name] = u
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return units, nil
+}
+
+// invalidArgs reports whether err is the manager's answer for a unit name it
+// does not accept (manager_load_unit_prepare).
+func invalidArgs(err error) bool {
+	var busErr godbus.Error
+	return errors.As(err, &busErr) && busErr.Name == "org.freedesktop.DBus.Error.InvalidArgs"
+}
+
 // SocketState is a socket unit as the manager reports it.
 type SocketState struct {
 	// JobPending is true while a job is queued or running for the socket;

@@ -353,12 +353,15 @@ func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	supers := map[string]Superblock{"sdb": member(1), "sdc": {}}
 	stubDisks(t, supers)
 	writeFstab(t, "UUID="+dataUUID+" /srv/data btrfs defaults 0 0\n")
+	stubBootSystemd(t, nil) // systemd mounts nothing here: no unready pool to bring up
 	old := readSuperblock
 	polls := 0
 	readSuperblock = func(device string) (Superblock, error) {
 		if device == "/dev/sdb" {
-			if polls++; polls == 2 {
-				supers["sdc"] = member(2) // the slow disk shows up on the second look
+			// The bring-up's look, the wait's first, then the slow disk shows
+			// up, and the bring-up looks once more.
+			if polls++; polls == 3 {
+				supers["sdc"] = member(2)
 			}
 		}
 		return old(device)
@@ -367,7 +370,7 @@ func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	if err := MountDegradedPools(context.Background(), time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if len(*calls) != 0 || polls != 2 {
+	if len(*calls) != 0 || polls != 4 {
 		t.Fatalf("calls = %v after %d polls; the complete pool is systemd's to mount", *calls, polls)
 	}
 }
