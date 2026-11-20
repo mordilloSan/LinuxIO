@@ -747,7 +747,10 @@ func TestTrashedFolderSizeOfAFolderItCannotRead(t *testing.T) {
 
 	size, err := TrashedFolderSize(t.Context(), filepath.Join(files, "open"), home, testTrashUID)
 	require.NoError(t, err)
-	assert.Equal(t, FolderSize{Size: sizeOnDisk(t, filepath.Join(files, "open", "b.txt")), Files: 1, Folders: 1}, size)
+	// The folder listed counts its own blocks (none on tmpfs and btrfs, a
+	// block or more on ext4 and xfs); the one it cannot open counts none.
+	listed := sizeOnDisk(t, filepath.Join(files, "open")) + sizeOnDisk(t, filepath.Join(files, "open", "b.txt"))
+	assert.Equal(t, FolderSize{Size: listed, Files: 1, Folders: 1}, size)
 }
 
 // sizeOnDisk is what path takes on disk, as `du` counts it.

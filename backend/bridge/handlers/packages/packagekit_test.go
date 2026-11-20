@@ -32,7 +32,11 @@ type fakePackageKit struct {
 	prepared    bool
 	termLogPath string
 
-	mu              sync.Mutex
+	mu sync.Mutex
+	// emitting counts the emitLater calls still to run, and emitted wakes
+	// the cleanup that waits for them.
+	emitting        int
+	emitted         *sync.Cond
 	nextTransaction int
 	updates         []fakePackage
 	details         map[string][]any
@@ -146,6 +150,17 @@ func setupFakePackageKit(t *testing.T, prepared bool) *fakePackageKit {
 		installStarted: make(chan *fakeTransaction, 16),
 		exits:          make(map[string]uint32),
 	}
+	service.emitted = sync.NewCond(&service.mu)
+	// A transaction ends for its caller at ErrorCode, before the Finished
+	// that follows: what is still to be sent goes out before the connection
+	// closes, which was registered earlier and so closes after this.
+	t.Cleanup(func() {
+		service.mu.Lock()
+		defer service.mu.Unlock()
+		for service.emitting > 0 {
+			service.emitted.Wait()
+		}
+	})
 
 	path := godbus.ObjectPath(dbusclient.PackageKitPath)
 	if err := conn.Export(service, path, dbusclient.PackageKitIface); err != nil {
@@ -621,7 +636,17 @@ func (tx *fakeTransaction) emit(member string, values ...any) {
 }
 
 func (tx *fakeTransaction) emitLater(fn func()) {
+	s := tx.service
+	s.mu.Lock()
+	s.emitting++
+	s.mu.Unlock()
 	go func() {
+		defer func() {
+			s.mu.Lock()
+			s.emitting--
+			s.mu.Unlock()
+			s.emitted.Broadcast()
+		}()
 		time.Sleep(10 * time.Millisecond)
 		fn()
 	}()
