@@ -1167,7 +1167,12 @@ So the health run makes the option count (`unbindPoolMounts` in
 `fstab_bound.go`), for every mounted pool. The line of `/` is never touched
 (systemd ties no mount of the root to a device), and the filesystem `/` is
 on is left alone altogether when it is on one disk, where its other mounts
-go with the system; on more than one, they are kept like any pool's.
+go with the system; on more than one, they are kept like any pool's. A data
+pool on one disk gets the option too: when that disk goes, the pool stays
+mounted and what writes to it gets I/O errors, where systemd would unmount it
+and the writes would land in the folder under the mountpoint, on the system
+disk. A pool can also gain a second disk later, and its line is then right
+already.
 
 1. Every btrfs line of `/etc/fstab` that names the pool by `UUID=` and says
    nothing about `x-systemd.device-bound` has

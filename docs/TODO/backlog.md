@@ -150,6 +150,11 @@ Without sudo:
 
 Storage and jobs:
 
+- Leaving a data pool on one disk to systemd's unmount, without
+  `x-systemd.device-bound=false` on its line ([Pools](../btrfs.md#pools)).
+  Decided 2026-11-20: no. With the disk gone, I/O errors on a dead mount are
+  safer than writes that land unnoticed on the system disk, and one rule for
+  every pool keeps the line right when a second disk is added.
 - A signal ending a scrub by itself: since kernel 6.19 a signal pending on
   the calling thread does end `BTRFS_IOC_SCRUB` with `EINTR`, but
   `blockingIoctl` (`backend/common/btrfs/ioctl.go`) issues it on a locked
