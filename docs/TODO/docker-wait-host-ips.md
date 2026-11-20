@@ -46,13 +46,40 @@ Why the line is built this way:
   quotes, spaces or newlines; `net/netip` validation guarantees that and a test
   proves it.
 
+## Network handoff
+
+The VM bridge handoff ([VM bridge networking](../vm-bridge-networking.md),
+Phase 2b) moves the host's addresses from a network card to a new bridge, so
+anything that names the card stops matching. A hand-written drop-in that waited
+on `enp2s0:routable` cost 30 s at every boot after the handoff put the address
+on `br-enp2s0`. This setting has to survive the handoff with no rewrite:
+
+- **The drop-in names addresses only**, never a card or a bridge, so the
+  handoff does not touch it and there is nothing to rewrite on confirm or
+  revert.
+- **IPv4 always follows the handoff.** The handoff is confirmed only when every
+  original IPv4 address is on the bridge (`handoffVerifiedAddresses`), and
+  rolls back otherwise. Netplan handoffs hold every non-link-local IPv6
+  address to the same check.
+- **A NetworkManager handoff may change the host's dynamic global IPv6 address
+  once.** A listed IPv6 address is then never assigned again: Docker waits the
+  full 30 s at every boot and the container that publishes on it cannot bind
+  either. LinuxIO does not rewrite the list, because it cannot tell which new
+  address replaces the old one and the container's own port binding needs the
+  same edit. The settings block shows it instead: every listed or detected IP
+  that no host interface holds now is marked, and is never pre-filled.
+- **The handoff bridge does not slow the wait.** NetworkManager handoff bridges
+  are created with STP off, so the address is not held back by a forwarding
+  delay; the wait needs the address assigned, not the port forwarding.
+
 ## Decisions
 
-1. **IP addresses only.** Waiting for a network card instead was considered:
-   it covers a later IP on the same card without editing the list, but the
-   card has to be picked by name, a rename breaks it, and a card name is a
-   second, free-text value in the shell line. It can be added later as a field
-   beside the IP list.
+1. **IP addresses only, and no network card field later.** Waiting for a
+   network card was considered: it covers a later IP on the same card without
+   editing the list, but the card is picked by name, a card name is a second,
+   free-text value in the shell line, and the bridge handoff moves the address
+   off the card (see "Network handoff"). A card field would need the handoff
+   to rewrite the drop-in inside the network manager's rollback window.
 2. **Toggle and list in their own block, one Save.** The block sits below the
    Docker Folders block. The toggle and the list are a draft and Save sends
    both fields together. Switching off and saving keeps the stored list.
@@ -76,6 +103,10 @@ Why the line is built this way:
 8. **Suggestions read `HostConfig.PortBindings` from an inspect of every
    container**, running or not. The container list's `Ports` is empty for a
    container that failed to start, which is the case this feature is for.
+9. **An unassigned IP is marked, not refused.** Save accepts an IP that no
+   interface holds now, because an address can be legitimately absent (a card
+   that is down, a VPN that is not up yet). The mark is the only signal, and it
+   is what catches an address a handoff left behind.
 
 ## Backend
 
@@ -101,6 +132,10 @@ Model everything on `RequireMountsForFolders`
   and `HostIPs []string` (`omitempty`; a non-nil empty list clears it).
 - [ ] `docker.go` `DockerSettings`: `WaitForHostIPs bool` and
   `HostIPs []string` (always a non-nil array).
+- [ ] `docker.go`: `DockerHostIPs` with `Published []string` (host IPs that
+  containers publish ports on) and `Assigned []string` (addresses the host's
+  interfaces hold now), both always non-nil arrays in the canonical form the
+  config stores.
 
 `backend/bridge/handlers/config`:
 
@@ -124,12 +159,17 @@ Model everything on `RequireMountsForFolders`
   `applyDaemonStorage` does. `renderDockerHostIPWaitDropIn(ips)` re-parses
   with `ParseDockerHostIPs` and errors on an empty list. No log line of its
   own, like `SyncDaemonMountOrdering`.
-- [ ] `ListPublishedHostIPs(ctx)` and a pure
+- [ ] `ListHostIPs(ctx)` and a pure
   `publishedHostIPs([]container.InspectResponse) []string`: skip invalid,
   unspecified, loopback and zoned addresses, unmap, de-duplicate, sort.
-- [ ] `handlers.go`: `docker.list_published_host_ips`, a `Call` from
-  `NoRequest` to `[]string` with `RetrySafe()`, unprivileged like
-  `docker.list_containers`, which already shows the same host IPs.
+- [ ] A pure `assignedHostIPs([]net.Addr) []string` fed from
+  `net.InterfaceAddrs()`, with the same filter plus link-local, so the two
+  lists compare as plain strings. It reads the addresses and not the
+  interfaces, so it is the same before and after a bridge handoff.
+- [ ] `handlers.go`: `docker.list_host_ips`, a `Call` from `NoRequest` to
+  `DockerHostIPs` with `RetrySafe()`, unprivileged like
+  `docker.list_containers` and `network.get_network_info`, which already show
+  the same addresses.
 - [ ] `backend/bridge/handlers/import_boundary_test.go`: reword the
   `config → docker` edge reason to cover both startup drop-ins.
 
@@ -148,6 +188,8 @@ Docker Folders
 
 [Wait for published host IPs]         toggle (draft)
   192.168.1.66                              x
+  2001:db8::66                              x
+    Not assigned on this host now. Docker waits 30 s for it at every boot.
   + Add IP address
   Detected, not in the list: 192.168.1.67  [Add]
   [Reset] [Save]
@@ -174,11 +216,16 @@ Docker Folders
     `updateConfig({ docker: { waitForHostIPs, hostIPs } })` with the same toast
     and error handling as the folder save. On with no valid IP shows a row
     error and does not save.
-  - Suggestions come from the generated `linuxio.docker.list_published_host_ips`
-    query, fetched only while the draft toggle is on. With an empty stored list
-    the draft is pre-filled from them, derived and not copied into state by an
-    Effect. Detected IPs missing from the list are offered as a one-click Add.
-    Nothing is stored until Save.
+  - Suggestions come from the generated `linuxio.docker.list_host_ips` query,
+    fetched only while the draft toggle is on. With an empty stored list the
+    draft is pre-filled from the published IPs that are also assigned, derived
+    and not copied into state by an Effect. Detected IPs missing from the list
+    are offered as a one-click Add. Nothing is stored until Save.
+  - A row whose valid IP is not in `assigned` shows *Not assigned on this host
+    now. Docker waits 30 s for it at every boot.* as a warning under the row; it
+    does not block Save. A detected IP that is not assigned carries the same
+    note beside its Add. This is what shows an address that a bridge handoff
+    replaced.
 - [ ] `DockerSettingsSection.tsx`: move the "Add Docker folder" card directly
   under the folder rows, and render the new component after the folders'
   Reset/Save row, before the daemon section.
@@ -194,7 +241,10 @@ Backend, table-driven, following `daemon_mount_ordering_test.go`:
   and several IPs with stubbed tool paths; a failed tool lookup; sync off
   removes the file and is a no-op, with no daemon-reload, when it is missing;
   sync on writes mode 0644 in `t.TempDir()`, never real `/etc`; on with an
-  empty list errors; `publishedHostIPs` filtering from fake inspect results.
+  empty list errors; `publishedHostIPs` filtering from fake inspect results;
+  `assignedHostIPs` drops loopback and link-local, unmaps, and returns the
+  same strings for an address whether a card or a bridge holds it; the
+  rendered drop-in holds no interface name.
 - [ ] `userconfig/rules_test.go`: rejects `0.0.0.0`, `::`, `127.0.0.1`, `::1`,
   `::ffff:127.0.0.1`, `fe80::1%eth0`, `""`, duplicates (including
   `2001:DB8::1` against `2001:db8:0::1`) and `1.2.3.4; rm -rf /`. Every
@@ -215,7 +265,9 @@ Frontend:
 - [ ] `hostIp.test.ts`.
 - [ ] `DockerHostIPWaitSetting.test.tsx`: off hides the list; switching on
   with an empty stored list pre-fills from the suggestions and Save sends both
-  fields; a detected IP not in the list can be added; an invalid row shows its
+  fields; a detected IP not in the list can be added; a published IP that is
+  not assigned is not pre-filled; a listed IP that is not assigned shows the
+  warning and still saves; an invalid row shows its
   error and does not save; switching off and saving sends
   `waitForHostIPs: false` only; a session that is not privileged gets a
   disabled block.
@@ -229,13 +281,21 @@ Frontend:
   root-only Docker fields in the handler, not one.
 - [ ] [Bridge handler patterns](../bridge_handler_patterns.md): the wording of
   the `config → docker` edge.
+- [ ] [VM bridge networking](../vm-bridge-networking.md): Docker's startup
+  wait names addresses, so a handoff leaves it alone; after a NetworkManager
+  handoff that changed the global IPv6 address, the Docker settings mark the
+  old one. Add the boot check below to its pending Netplan-with-Docker run.
 - [ ] Delete this file and its line in [TODO](./README.md).
 
 ## Backlog items to add when it lands
 
 - IPs wait one after another, so N missing IPs delay Docker by up to
   N × 30 s.
-- Waiting for a network card instead of an IP is not built.
+- Under Rejected: waiting for a network card instead of an IP, because the
+  bridge handoff moves the address off the card.
+- An IPv6 address that a NetworkManager handoff replaced is marked in the
+  settings, not rewritten; the list and the container's port binding are
+  edited by hand.
 - The setting is per user while the drop-in is host-wide, so the last save
   wins. The mount setting has the same limit.
 - Boot behaviour on a real netplan host is not covered by an automated test.
@@ -253,3 +313,11 @@ Frontend:
   then reboot with the IP assigned late and confirm the container starts. A
   hand-written drop-in that does the same job is not touched by LinuxIO and is
   removed by hand afterwards.
+- On a real host with the address already on a handoff bridge (the owner's
+  server, `192.168.1.66` on `br-enp2s0`): reboot and confirm with
+  `systemd-analyze blame` that `docker.service` no longer waits 30 s and the
+  container that publishes on the address is up.
+- In the VM, with the setting on and a container publishing on the host IP:
+  run the bridge handoff and confirm it. `systemctl cat docker.service` is
+  unchanged, the port answers without restarting Docker, and both still hold
+  after a reboot. Then revert a second handoff and check the same.
