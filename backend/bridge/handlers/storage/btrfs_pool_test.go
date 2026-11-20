@@ -283,23 +283,29 @@ func TestCreateBtrfsPoolUndoesOnFailure(t *testing.T) {
 }
 
 // systemd stops an fstab mount when the disk the mount names as its source
-// goes away, which for a pool is one member among several.
+// goes away, which for a pool is one member among several. The option that
+// says not to is written only where systemd reads it as written.
 func TestCreateBtrfsPoolLineKeepsThePoolMountedWithoutADisk(t *testing.T) {
-	stubPoolCreate(t)
-	var options []string
-	addPoolFstab = func(_, _, _ string, o []string) error {
-		options = o
-		return nil
-	}
-	req := apischema.BtrfsPoolCreateRequest{
-		Label: "tank", Mountpoint: filepath.Join(t.TempDir(), "tank"), DataProfile: "raid1", MetadataProfile: "raid1",
-		Devices: []string{"/dev/sdb", "/dev/sdc"},
-	}
-	if _, err := CreateBtrfsPool(context.Background(), req, func(string, float64) {}); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(options, "x-systemd.device-bound=false") {
-		t.Fatalf("fstab options = %q, want x-systemd.device-bound=false among them", options)
+	for _, honoured := range []bool{true, false} {
+		stubPoolCreate(t)
+		old := unboundMountsHonoured
+		unboundMountsHonoured = func(context.Context) bool { return honoured }
+		t.Cleanup(func() { unboundMountsHonoured = old })
+		var options []string
+		addPoolFstab = func(_, _, _ string, o []string) error {
+			options = o
+			return nil
+		}
+		req := apischema.BtrfsPoolCreateRequest{
+			Label: "tank", Mountpoint: filepath.Join(t.TempDir(), "tank"), DataProfile: "raid1", MetadataProfile: "raid1",
+			Devices: []string{"/dev/sdb", "/dev/sdc"},
+		}
+		if _, err := CreateBtrfsPool(context.Background(), req, func(string, float64) {}); err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(options, "x-systemd.device-bound=false") != honoured {
+			t.Fatalf("fstab options = %q with a systemd that reads the option as written: %t", options, honoured)
+		}
 	}
 }
 

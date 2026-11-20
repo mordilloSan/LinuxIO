@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
@@ -248,6 +249,49 @@ func GetUnitStates(ctx context.Context, names []string) (map[string]UnitState, e
 		return nil, err
 	}
 	return units, nil
+}
+
+// UnitStopPropagatedFrom returns the units whose stop the manager propagates
+// to unit name (StopPropagatedFrom=, since systemd 249), as the device of a
+// mount made from /etc/fstab. A manager without the property is an error.
+func UnitStopPropagatedFrom(ctx context.Context, name string) ([]string, error) {
+	var units []string
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		path, err := UnitObjectPath(session, name)
+		if err != nil {
+			return fmt.Errorf("load unit %s: %w", name, err)
+		}
+		units, err = dbusclient.GetProperty[[]string](session, session.ObjectAt(path), dbusclient.SystemdUnitIface, "StopPropagatedFrom")
+		if err != nil {
+			return fmt.Errorf("get StopPropagatedFrom of %s: %w", name, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return units, nil
+}
+
+// ManagerVersion returns systemd's version as the manager reports it, such
+// as 259 for "259.9-0ubuntu0.1".
+func ManagerVersion(ctx context.Context) (int, error) {
+	var version int
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		text, err := dbusclient.GetProperty[string](session, session.ObjectAt(dbusclient.ObjectPath(dbusclient.SystemdPath)), dbusclient.SystemdManagerIface, "Version")
+		if err != nil {
+			return fmt.Errorf("get systemd's version: %w", err)
+		}
+		digits := text
+		if i := strings.IndexFunc(text, func(r rune) bool { return r < '0' || r > '9' }); i >= 0 {
+			digits = text[:i]
+		}
+		if version, err = strconv.Atoi(digits); err != nil {
+			return fmt.Errorf("systemd reports version %q", text)
+		}
+		return nil
+	})
+	return version, err
 }
 
 // invalidArgs reports whether err is the manager's answer for a unit name it

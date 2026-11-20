@@ -44,15 +44,6 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- A pool whose `/etc/fstab` line lacks `x-systemd.device-bound=false` (every
-  pool recorded before LinuxIO wrote the option, and any line written by
-  hand) is unmounted by systemd when the disk the mount names as its source
-  is pulled, whatever its profile ([Pools](../btrfs.md#pools)); what was
-  writing to it then writes to the folder under the mountpoint. New lines
-  carry the option, and an edited line counts from the pool's next mount.
-  Whether LinuxIO adds it to an existing line by itself, offers it on the
-  pool page, or only raises an alert is the owner's call.
-
 ## Tests that are missing
 
 ## Needs a real machine or a measurement

@@ -19,13 +19,24 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
-// btrfsPoolFstabOptions are the mount options of a pool LinuxIO records in
+// unboundMountsHonoured is swapped by tests.
+var unboundMountsHonoured = btrfs.UnboundMountsHonoured
+
+// poolFstabOptions are the mount options of a pool LinuxIO records in
 // /etc/fstab; nofail keeps a pool with a missing device from blocking boot.
 // systemd stops an fstab mount when the device the mount names as its source
 // goes away, and a pool names one member among several, so pulling that disk
 // unmounted a pool that had its other copies; x-systemd.device-bound=false
-// (systemd 255) leaves the pool mounted for btrfs to carry on without it.
-var btrfsPoolFstabOptions = []string{"defaults", "noatime", "nofail", "x-systemd.device-bound=false"}
+// says to leave the mount, on a systemd that reads it so (255: an older one
+// binds the mount harder for it). The health run makes systemd apply it to
+// the mounts there are (docs/btrfs.md, "Pools").
+func poolFstabOptions(ctx context.Context) []string {
+	options := []string{"defaults", "noatime", "nofail"}
+	if unboundMountsHonoured(ctx) {
+		options = append(options, "x-systemd.device-bound=false")
+	}
+	return options
+}
 
 // CreateBtrfsPool validates the request, formats the member devices, mounts the
 // new pool and records it in /etc/fstab, reporting each step and, while it
@@ -74,11 +85,12 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
 	report("Mounting at "+req.Mountpoint, 0)
-	if err = mountBtrfsPool(ctx, made.members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
+	options := poolFstabOptions(ctx)
+	if err = mountBtrfsPool(ctx, made.members[0], req.Mountpoint, options, false); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s: %w", made.uuid, err)
 	}
 	made.mounted = req.Mountpoint
-	if err = addPoolFstab("UUID="+made.uuid, req.Mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
+	if err = addPoolFstab("UUID="+made.uuid, req.Mountpoint, "btrfs", options); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("add btrfs pool %s to /etc/fstab: %w", made.uuid, err)
 	}
 	made.committed = true
@@ -382,7 +394,8 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 	}
 	mountpoint := pool.Mountpoint
 	persist := mountpoint == ""
-	options := btrfsPoolFstabOptions
+	recorded := poolFstabOptions(ctx)
+	options := recorded
 	if persist {
 		devices, err := ListBlockDevices(ctx)
 		if err != nil {
@@ -400,7 +413,7 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 		return btrfs.BtrfsFilesystem{}, conflictIfBusy(fmt.Errorf("mount btrfs pool %s at %s: %w", pool.UUID, mountpoint, err))
 	}
 	if persist {
-		if err := addToFstab("UUID="+pool.UUID, mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
+		if err := addToFstab("UUID="+pool.UUID, mountpoint, "btrfs", recorded); err != nil {
 			return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s is mounted but could not be added to /etc/fstab: %w", pool.UUID, err)
 		}
 	}

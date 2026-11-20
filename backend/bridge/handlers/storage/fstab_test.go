@@ -15,6 +15,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// No test takes the machine's fstab lock, which root alone can create, or
+// asks its systemd what it is.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "linuxio-storage-test")
+	if err != nil {
+		panic(err)
+	}
+	fstabLockFile = filepath.Join(dir, "fstab.lock")
+	unboundMountsHonoured = func(context.Context) bool { return false }
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 func useTempFstab(t *testing.T, content string) {
 	t.Helper()
 	oldPath, oldLock := fstabPath, fstabLockFile

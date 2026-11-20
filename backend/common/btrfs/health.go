@@ -17,7 +17,7 @@ import (
 const AlertSource = "btrfs"
 
 // alertKinds are the per-filesystem alert key prefixes CheckHealth owns.
-var alertKinds = []string{"health", "scrub", "space", "offline", "resync", "resynced"}
+var alertKinds = []string{"health", "scrub", "space", "offline", "resync", "resynced", "bound"}
 
 func poolName(label, uuid string) string {
 	if label != "" {
@@ -227,6 +227,7 @@ func CheckHealth(ctx context.Context) ([]string, error) {
 		// generation record wait for a readable state file.
 		slog.Warn("failed to record btrfs pool state", "path", PoolStatePath, "error", err)
 	}
+	unbindPoolMounts(ctx, filesystems)
 	live := map[string]bool{}
 	var resync []string
 	for _, fs := range filesystems {
@@ -244,6 +245,8 @@ func CheckHealth(ctx context.Context) ([]string, error) {
 			blocked = refusal(pool, states[pool.UUID])
 		}
 		RaiseOfflineAlert(ctx, pool, blocked)
+		// What systemd does with a mount ends with the mount.
+		resolve(ctx, "bound-"+pool.UUID)
 		live[pool.UUID] = true
 	}
 	resolveStale(ctx, live)

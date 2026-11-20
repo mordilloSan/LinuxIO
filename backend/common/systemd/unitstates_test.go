@@ -81,3 +81,60 @@ func TestGetUnitStates(t *testing.T) {
 		t.Fatal("a unit the manager did not answer for was not an error")
 	}
 }
+
+// UnitStopPropagatedFrom reads the units a mount stops with, and a manager
+// older than the property is an error rather than "none".
+func TestUnitStopPropagatedFrom(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	manager := loadManager{loaded: map[string]godbus.ObjectPath{
+		"data.mount":  "/org/freedesktop/systemd1/unit/data_2emount",
+		"free.mount":  "/org/freedesktop/systemd1/unit/free_2emount",
+		"older.mount": "/org/freedesktop/systemd1/unit/older_2emount",
+	}}
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
+		t.Fatalf("export manager: %v", err)
+	}
+	const prop = dbusclient.SystemdUnitIface + ".StopPropagatedFrom"
+	units := map[godbus.ObjectPath]unitProperties{
+		"/org/freedesktop/systemd1/unit/data_2emount":  {prop: godbus.MakeVariant([]string{"dev-sdb.device"})},
+		"/org/freedesktop/systemd1/unit/free_2emount":  {prop: godbus.MakeVariant([]string{})},
+		"/org/freedesktop/systemd1/unit/older_2emount": {},
+	}
+	for path, props := range units {
+		if err := conn.Export(props, path, dbusclient.PropertiesIface); err != nil {
+			t.Fatalf("export unit %s: %v", path, err)
+		}
+	}
+
+	if got, err := UnitStopPropagatedFrom(t.Context(), "data.mount"); err != nil || !reflect.DeepEqual(got, []string{"dev-sdb.device"}) {
+		t.Fatalf("data.mount stops with %v, %v; want dev-sdb.device", got, err)
+	}
+	if got, err := UnitStopPropagatedFrom(t.Context(), "free.mount"); err != nil || len(got) != 0 {
+		t.Fatalf("free.mount stops with %v, %v; want nothing", got, err)
+	}
+	if _, err := UnitStopPropagatedFrom(t.Context(), "older.mount"); err == nil {
+		t.Fatal("a manager without the property read as a mount that stops with nothing")
+	}
+}
+
+// ManagerVersion reads the number a distribution's version string starts
+// with, and a string that starts with none is an error.
+func TestManagerVersion(t *testing.T) {
+	for text, want := range map[string]int{"259.9-0ubuntu0.1": 259, "255": 255, "252.39-1~deb12u1": 252, "v-next": 0} {
+		t.Run(text, func(t *testing.T) {
+			bus := testdbus.Start(t)
+			bus.SetSystemBus(t)
+			conn := bus.OwnName(t, dbusclient.SystemdBusName)
+			props := unitProperties{dbusclient.SystemdManagerIface + ".Version": godbus.MakeVariant(text)}
+			if err := conn.Export(props, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.PropertiesIface); err != nil {
+				t.Fatalf("export manager: %v", err)
+			}
+			got, err := ManagerVersion(t.Context())
+			if (err != nil) != (want == 0) || got != want {
+				t.Fatalf("ManagerVersion = %d, %v; want %d", got, err, want)
+			}
+		})
+	}
+}

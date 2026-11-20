@@ -84,6 +84,7 @@ filesystems, covering pools created after install.
 | `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
 | `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing or the boot check refused to mount it, and then says why) | the pool is mounted |
+| `btrfs/bound-<uuid>` | warning | by the health run only: systemd still stops a mount of the pool with the disk it names, though its `/etc/fstab` line says `x-systemd.device-bound=false`: LinuxIO recorded the mount under its source and systemd keeps the dependency, or the record could not be written (see [Pools](#pools)) | no mount of the pool stops with a device, or the pool is no longer mounted; left as it was when systemd could not be asked |
 | `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
 | `btrfs/resynced-<uuid>` | info; a warning when its scrub found uncorrectable errors, which it counts in its title, or while a device of the pool still counts errors, for which it says why | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default); it names the returned disks whose error counters it reset or kept | dismissed, or the next resync starts |
 
@@ -612,6 +613,19 @@ once it is fixed repairs what it missed.
   frozen copy of the root test keeps every completed write, and so does the
   test VM's power cut, since the host keeps what the virtual disk wrote; the
   order of flush and save is unit-tested only.
+- systemd unmounts a pool with the disk its mount names (see
+  [Pools](#pools)) on a systemd older than 255, whatever its line says, and
+  on a newer one when its `/etc/fstab` line names it by `LABEL=`, a device
+  path or a quoted `UUID="..."`, has the type `auto`, binds it on purpose or
+  gives `x-systemd.device-bound` a value systemd cannot read; when its
+  mountpoint in fstab is a symlink (the mount is then at another path), or
+  so long that systemd names the unit by a hash; and for a folder of a
+  subvolume bind-mounted on the line's mountpoint. Otherwise it does so only
+  until the health run has seen the mount: two minutes after boot, and ten
+  minutes at most after a mount, or after a replace or a removal changed
+  which disk the kernel names as the mount's source. Each such change leaves
+  one more line in `/run/mount/utab` until the next boot, and so does a
+  mount LinuxIO unmounts.
 
 ## Top-level access
 
@@ -814,20 +828,81 @@ and metadata profiles chosen from `single`, `dup`, `raid0`, `raid1`,
 `raid1c3`, `raid1c4` and `raid10` (`raid5` and `raid6` are refused),
 registers the disks with the kernel, mounts the pool and records it in
 `/etc/fstab` as
-`UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail,x-systemd.device-bound=false 0 0`.
+`UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail,x-systemd.device-bound=false 0 0`,
+without the last option on a systemd older than 255.
 systemd stops a mount that comes from `/etc/fstab` when the device the mount
 names as its source goes away (`StopPropagatedFrom=` on that device's unit,
 `mount_add_device_dependencies` in systemd's `mount.c`, since 249), and a
 pool names one of its disks: pulling that disk of a raid1 pool unmounted the
-whole pool in the test VM (systemd 259), where pulling the other did not.
-`x-systemd.device-bound=false` (systemd 255; an older one reads the option's
-mere presence as bound) leaves the pool mounted, so that btrfs carries on
-with the disks it has and [Missing disks](#missing-disks) applies. A line
-without the option, written by hand or by a LinuxIO older than the option,
-keeps systemd's rule; LinuxIO does not rewrite it. Adding the option to the
-line of a pool that is mounted changes nothing until the pool is mounted
-again, as at the next boot: after `systemctl daemon-reload` the mount still
-stopped with its disk in the test VM.
+whole pool in the test VM (systemd 259), where pulling the other did not, and
+what was writing to the pool went on writing to the folder under the
+mountpoint. `x-systemd.device-bound=false` tells systemd to leave the mount,
+so that btrfs carries on with the disks it has and
+[Missing disks](#missing-disks) applies. The boolean is read since systemd
+255. An older one takes the option's mere presence as bound and ties the
+mount to its device with `BindsTo=`, harder than without the option, so
+there LinuxIO neither writes the option nor does any of what follows
+(`btrfs.UnboundMountsHonoured`, from the manager's `Version`; a manager that
+does not say counts as older).
+
+The line alone does not do it. Once a filesystem is mounted, systemd reads
+its options from the mount table as libmount gives it
+(`get_mount_parameters`), where an `x-` option exists only in libmount's own
+record, `/run/mount/utab`. mount(8) writes that record under the device
+`/dev/disk/by-uuid/<uuid>` named when it mounted, the kernel names any member
+as the mount's source, and libmount joins a record to a mount only when
+source, mountpoint and root are the same. In the test VM (util-linux 2.41)
+the record said `/dev/vdc` and the mount `/dev/vdb` on six boots out of
+eight; the mount then kept `StopPropagatedFrom=dev-vdb.device` with the
+option on its line, and pulling `vdb` unmounted the pool. A mount LinuxIO
+makes with `mount(2)` has no record at all.
+
+So the health run makes the option count (`unbindPoolMounts` in
+`fstab_bound.go`), for every mounted pool. The line of `/` is never touched
+(systemd ties no mount of the root to a device), and the filesystem `/` is
+on is left alone altogether when it is on one disk, where its other mounts
+go with the system; on more than one, they are kept like any pool's.
+
+1. Every btrfs line of `/etc/fstab` that names the pool by `UUID=` and says
+   nothing about `x-systemd.device-bound` has
+   `,x-systemd.device-bound=false` appended to its options, under the lock
+   every LinuxIO edit of the file takes (`/run/linuxio-fstab.lock`, in a
+   folder root alone writes) and with the rest of the file left byte for
+   byte; systemd is then reloaded and one Info line names the mountpoints.
+   Lines are read as mount(8) reads them, fields apart by blanks and tabs. A
+   line that carries the option already is left as written: one that says
+   true, or the bare option, is an administrator's to keep, here and in
+   step 2. When the lock cannot be taken or the file cannot be replaced, the
+   lines stay as they are, a warning is logged, and step 2 still runs.
+2. For each mount of the pool whose line says false (`false`, `no`, `0`,
+   `off`, as systemd's `parse_boolean` reads them), it asks systemd whether
+   the mount still stops with a device (the mount unit's
+   `StopPropagatedFrom`, over D-Bus). If it does, and libmount's record does
+   not hold the mount under its source and subvolume with the option yet,
+   it has mount(8) write that record, with the options mount(8) itself
+   records for a mount it makes: the line's `x-` options and `_netdev`,
+   without the `x-mount.` ones, which are mount(8)'s own to act on:
+   `mount --fake --internal-only --no-canonicalize -t btrfs -o subvolid=<id>,<options> -- <source> <mountpoint>`.
+   `--fake` makes no `mount(2)` call and writes only the record;
+   `--no-canonicalize` keeps the source as the kernel names it, where
+   mount(8) would write `/dev/mapper/<name>` for `/dev/dm-0`; and the
+   subvolume gives the record its root (without it the record of a subvolume
+   mount says `ROOT=/` and joins nothing). libmount gives the mount its
+   newest record whole, so one that joined at boot without the option is
+   replaced by this one, `_netdev` and all. systemd reads the record at
+   once: in the test VM the dependency was gone within three seconds, with
+   no remount, and pulling the source disk then left the pool and a
+   subvolume mount of it mounted. One Info line says what was recorded. A
+   mount is recorded once: where systemd keeps the dependency, the same
+   record again would change nothing. That libmount joins the record, for
+   the top level and a subvolume, is checked by the root test
+   `TestBtrfsMountRecordIntegration`; that systemd then drops the dependency
+   is seen in the test VM only.
+3. A mount that stops with a device all the same, whose record could not be
+   written, or that names no device path to record it under, raises
+   `btrfs/bound-<uuid>`, which goes when no mount of the pool stops with a
+   device, or with the mount.
+
 Which disks it may take is decided as for every device operation (see
 [Which disks a pool may take](#which-disks-a-pool-may-take)). The mount point
 must be an unused, empty path
@@ -1352,8 +1427,9 @@ btrfsmaintenance timers.
 | `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, whether and on which disks it ran degraded, when the episode began, the disks it ran without with their error counters as the pool was last seen whole or as they went missing, each device's error counters as a health run or the end of an episode last saw the pool whole, and the run of the episode's resync scrub (`resyncRun`) |
 | `/var/lib/linuxio/btrfs-label.lock` | root | Lock taken around every label change, the resync's commit of a counter reset included |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
-| `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
-| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
+| `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries; `x-systemd.device-bound=false` on the `UUID=` lines of mounted pools (the health run, see [Pools](#pools)) |
+| `/run/mount/utab` | root | libmount's record of mounts' userspace options, written through `mount --fake` by the health run for a pool mount systemd would stop with its disk; gone at the next boot |
+| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/bound-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
 
 ## Not implemented
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 )
@@ -107,8 +108,9 @@ func isFstabComment(line string) bool {
 }
 
 // fstabLockFile serialises every fstab read-modify-write so concurrent adds
-// cannot drop each other's entry; a var so tests can use a temp path.
-var fstabLockFile = "/run/lock/linuxio-fstab.lock"
+// cannot drop each other's entry, the health run's edit of a pool's line
+// among them (btrfs.FstabLockPath); a var so tests can use a temp path.
+var fstabLockFile = btrfs.FstabLockPath
 
 // withFstabLock runs fn under the fstab lock. It also runs in the rollback
 // paths of a failed mount, which must complete after the request ctx is

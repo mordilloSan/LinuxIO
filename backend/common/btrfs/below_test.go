@@ -1,6 +1,7 @@
 package btrfs
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,6 +18,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("LINUXIO_RUN_BTRFS_INTEGRATION") != "1" {
 		fsidOf = func(int) ([16]byte, error) { return [16]byte{1}, nil }
 	}
+	// No test asks the machine's systemd what it is: without a version, the
+	// health run leaves /etc/fstab and the mounts as they are.
+	managerVersion = func(context.Context) (int, error) { return 0, errors.New("no systemd in unit tests") }
 	os.Exit(m.Run())
 }
 
