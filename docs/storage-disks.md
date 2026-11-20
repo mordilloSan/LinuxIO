@@ -142,7 +142,12 @@ disabled states are only hints. A device is in use when:
 
 1. it, or for a disk one of its partitions, is mounted or an active swap;
 2. it has holders (LVM, md, dm-crypt, multipath);
-3. it is a member of a btrfs filesystem, mounted or not;
+3. it is a member of a btrfs filesystem, mounted or not; a leg of an md
+   array, a multipath path or an LVM image that shows a pool's superblock is
+   no member ([Missing disks](./btrfs.md#missing-disks)), and is refused by
+   rule 2 while held and otherwise as the md, LVM or multipath member it is,
+   which Format, Delete and Initialize erase only once the request confirms
+   it (below), naming its array, not the pool;
 4. `/etc/fstab` names it by path, `/dev/disk/by-*` link, `UUID=`,
    `PARTUUID=`, `LABEL=` or `PARTLABEL=`.
 

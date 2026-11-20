@@ -55,6 +55,7 @@ var (
 	devicesReady    = kernelDevicesReady
 	startMountUnit  = systemd.StartUnit
 	memberSignature = ReadMemberSignature
+	peekSignature   = peekMemberSignature
 )
 
 // udevDataDir is udev's database of the devices it processed; a var so tests
@@ -271,6 +272,17 @@ func bringUp(ctx context.Context, pools []unreadyPool) error {
 // pool it leaves alone is logged; an error is a re-evaluation or a start
 // that failed.
 func bringUpOne(ctx context.Context, p unreadyPool) (bool, error) {
+	// A second device on one devid that udev did not scan leaves the
+	// scanned ones whole, so the pool's every device is looked at first.
+	reason, readErr := unclearDisks(p.pool, peekSignature)
+	if readErr != nil {
+		slog.Warn("btrfs pool left alone because the signature of a disk could not be read", "uuid", p.pool.UUID, "error", readErr)
+		return false, nil
+	}
+	if reason != "" {
+		slog.Warn("btrfs pool left alone because its disks cannot be told apart", "uuid", p.pool.UUID, "reason", reason)
+		return false, nil
+	}
 	members, whole := udevMembers(p.pool)
 	var devices, stale []string
 	for _, m := range members {
@@ -324,6 +336,105 @@ func checkNoMemberSignature(devices []string) error {
 		}
 	}
 	return nil
+}
+
+// partOfAnother says what makes device, which shows a btrfs superblock, part
+// of another device rather than a disk of that filesystem, or returns "".
+// md binds a leg of an array (md.c bind_rdev_to_array) and device-mapper
+// each device under a map, an LVM volume, a multipath disk or dm-crypt
+// (dm.c open_table_device): both claim it and link it as their holder, so
+// btrfs could not open it and it is no disk; nor is a partition of a disk
+// something holds, which the kernel lets nothing claim (bdev.c
+// bd_may_claim), such as a path's partition under a multipath map. Nothing
+// holds a leg of an array that has not been assembled or a path of a
+// multipath disk whose map does not exist yet; libblkid reports their md,
+// LVM or multipath membership instead of the btrfs superblock
+// (superblocks.c superblocks_safeprobe stops at a RAID or LVM signature;
+// multipath's rule names a path mpath_member), which udev's database
+// records, so udev's 64-btrfs.rules never registers them, and neither does
+// btrfs-progs' device scan, which registers only what libblkid calls btrfs.
+// A device udev has no entry for, not processed yet or under a disk lock
+// LinuxIO holds, is judged by its own md and LVM signature, read as libblkid
+// reads it, through a plain open that claims nothing. A device udev probed
+// as anything else stays a disk: every write refuses a disk of a pool, and
+// what is left out here is refused as held or as the member it is
+// (docs/btrfs.md, "Which disks a pool may take").
+func partOfAnother(device string) string {
+	name := filepath.Base(device)
+	holders, err := os.ReadDir(filepath.Join(sysBlockDir, name, "holders"))
+	if len(holders) > 0 {
+		return "is held by /dev/" + holders[0].Name()
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Warn("failed to read the holders of a block device", "device", device, "error", err)
+	}
+	// A partition's sysfs directory sits in its disk's.
+	if _, statErr := os.Stat(filepath.Join(sysBlockDir, name, "partition")); statErr == nil {
+		if dir, linkErr := filepath.EvalSymlinks(filepath.Join(sysBlockDir, name)); linkErr == nil {
+			disk := filepath.Dir(dir)
+			if holders, _ := os.ReadDir(filepath.Join(disk, "holders")); len(holders) > 0 {
+				return "is a partition of /dev/" + filepath.Base(disk) + ", held by /dev/" + holders[0].Name()
+			}
+		}
+	}
+	props, err := udevProperties(name)
+	if err != nil {
+		slog.Warn("failed to read the udev database entry of a block device", "device", device, "error", err)
+		return ""
+	}
+	if props != nil {
+		if fsType := props["ID_FS_TYPE"]; strings.HasSuffix(fsType, "_member") {
+			return "udev probed as " + fsType
+		}
+		return ""
+	}
+	sig, err := peekSignature(device)
+	if err != nil {
+		slog.Warn("failed to read the md and LVM signature of a block device", "device", device, "error", err)
+		return ""
+	}
+	if sig.Kind != "" {
+		return "carries an " + sig.Kind + " signature"
+	}
+	return ""
+}
+
+// unclearDisks says why LinuxIO cannot tell that each present device of
+// pool is a disk of it, or returns "", with read for each device's md and
+// LVM signature, whose error it returns. Two devices that carry one devid
+// are two paths of one disk before multipath maps them, or a disk and a copy
+// of it, and the kernel keeps whichever it scanned last or whose generation
+// is newer (volumes.c device_list_add). A path of a multipath disk, which
+// udev marks with DM_MULTIPATH_DEVICE_PATH, is skipped by btrfs-progs'
+// device scan (device-scan.c is_multipath_path_device). And a device whose
+// md or LVM signature shows is a member that udev probed before its array
+// or label was written.
+func unclearDisks(pool BtrfsOfflinePool, read func(string) (MemberSignature, error)) (string, error) {
+	for i, d := range pool.Devices {
+		if j := slices.Index(pool.devids, pool.devids[i]); j < i {
+			return fmt.Sprintf("%s and %s both carry disk %d of the pool, so LinuxIO cannot tell which one is the pool's", pool.Devices[j], d, pool.devids[i]), nil
+		}
+	}
+	for _, d := range pool.Devices {
+		props, err := udevProperties(filepath.Base(d))
+		if err != nil {
+			slog.Warn("failed to read the udev database entry of a block device", "device", d, "error", err)
+			continue
+		}
+		if v := props["DM_MULTIPATH_DEVICE_PATH"]; v != "" && v != "0" {
+			return "udev marks " + d + " a path of a multipath disk, which only its multipath device may use", nil
+		}
+	}
+	for _, d := range pool.Devices {
+		sig, err := read(d)
+		if err != nil {
+			return "", err
+		}
+		if sig.Kind != "" {
+			return fmt.Sprintf("%s carries an %s signature", d, sig.Kind), nil
+		}
+	}
+	return "", nil
 }
 
 // mountState is what the check found of a pool it started the mounts of.

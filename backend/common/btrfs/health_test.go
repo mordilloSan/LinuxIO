@@ -234,6 +234,33 @@ func TestOfflineAlertSaysWhyThePoolWasNotMountedDegraded(t *testing.T) {
 	}
 }
 
+// A pool that shows only on parts of other devices, as on the legs of an md
+// array that is not running, lacks no disk an administrator could reconnect
+// and has none to mount degraded: its alert says where it shows.
+func TestOfflineAlertSaysWhereAPoolWithoutDisksShows(t *testing.T) {
+	stubAlerts(t)
+	pool := BtrfsOfflinePool{UUID: dataUUID, Label: "data", NumDevices: 1, legs: []poolLeg{
+		{device: "/dev/sdb", devid: 1, why: "carries an md signature"},
+		{device: "/dev/sdc", devid: 1, why: "carries an md signature"},
+	}}
+	for _, c := range []struct{ blocked, severity string }{
+		{"", alerts.SeverityWarning},
+		{"disk 1 of the pool shows only on /dev/sdb, which carries an md signature", alerts.SeverityError},
+	} {
+		RaiseOfflineAlert(context.Background(), pool, c.blocked)
+		doc, err := alerts.Load()
+		if err != nil || len(doc.Alerts) != 1 {
+			t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
+		}
+		a := doc.Alerts[0]
+		if a.Severity != c.severity || a.Title != "Pool data is not mounted" ||
+			!strings.Contains(a.Message, "shows only on /dev/sdb, which carries an md signature") ||
+			strings.Contains(a.Message, "degraded") || strings.Contains(a.Message, "Reconnect") {
+			t.Fatalf("blocked %q: alert = %s %q: %q", c.blocked, a.Severity, a.Title, a.Message)
+		}
+	}
+}
+
 func TestHealthAlertSaysAPoolRunsWithoutADisk(t *testing.T) {
 	fs := BtrfsFilesystem{UUID: dataUUID, Degraded: true, Devices: []BtrfsDevice{{ID: 1, Path: "/dev/sda"}, {ID: 2, Missing: true}}}
 	obs := healthObservation(fs, "data", "missing")

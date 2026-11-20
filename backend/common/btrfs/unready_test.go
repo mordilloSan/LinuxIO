@@ -99,6 +99,20 @@ func stubMemberSignatures(t *testing.T, kinds map[string]string) *[]string {
 	return &read
 }
 
+// stubPeekSignatures is stubMemberSignatures for the plain read a listing
+// makes of a device udev has no entry for.
+func stubPeekSignatures(t *testing.T, kinds map[string]string) *[]string {
+	t.Helper()
+	var read []string
+	old := peekSignature
+	peekSignature = func(device string) (MemberSignature, error) {
+		read = append(read, device)
+		return MemberSignature{Device: device, Kind: kinds[device]}, nil
+	}
+	t.Cleanup(func() { peekSignature = old })
+	return &read
+}
+
 // udevDisk is a block device of the stubbed sysfs as udev's database shows
 // it: props are its E: properties, nil when udev never processed it.
 type udevDisk struct {
@@ -233,7 +247,8 @@ func TestBootCheckEvaluatesTheDisksOfAPoolSystemdDidNotFind(t *testing.T) {
 // end shows the btrfs superblock too), one something holds, one udev never
 // processed, or one with an md or LVM signature is neither counted, asked
 // about, read nor sent a change, and two disks with one devid do not make a
-// pool complete. Such a pool is left as it is.
+// pool complete, whether udev scanned both or one. Such a pool is left as it
+// is.
 func TestBootCheckTouchesOnlyDisksUdevScannedAsBtrfs(t *testing.T) {
 	member := func(devid uint64) Superblock {
 		return Superblock{UUID: dataUUID, Label: "data", DevID: devid, NumDevices: 2, Generation: 90}
@@ -270,6 +285,11 @@ func TestBootCheckTouchesOnlyDisksUdevScannedAsBtrfs(t *testing.T) {
 			name:   "two disks with one devid beside the other",
 			supers: map[string]Superblock{"sdb": member(1), "sdc": member(2), "sdd": member(1)},
 			disks:  []udevDisk{{name: "sdb", devnum: "8:16", props: scanned("0")}, {name: "sdc", devnum: "8:32", props: scanned("1")}, {name: "sdd", devnum: "8:48", props: scanned("1")}},
+		},
+		{
+			name:   "a second device on one disk that udev has not processed",
+			supers: map[string]Superblock{"sdb": member(1), "sdc": member(2), "sdd": member(1)},
+			disks:  []udevDisk{{name: "sdb", devnum: "8:16", props: scanned("0")}, {name: "sdc", devnum: "8:32", props: scanned("1")}, {name: "sdd", devnum: "8:48"}},
 		},
 		{
 			name:   "an md signature on a disk udev calls btrfs",

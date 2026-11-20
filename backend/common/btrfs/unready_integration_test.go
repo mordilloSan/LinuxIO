@@ -2,6 +2,7 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -214,9 +215,11 @@ func (r *unreadyRig) bootCheckHasSystemdMountIt() {
 // mdLegIsLeftAlone builds a pool on an md 1.0 array, whose metadata sits at
 // the end so its leg shows the btrfs superblock at the start, and on c, then
 // stops the array: by superblocks the leg and c are the whole pool, but udev
-// probes the leg as an md member. With c left unready and a mount unit
-// waiting, the boot check must leave the pool alone: no registration of the
-// leg (the kernel logs each device it registers), no change event, no mount.
+// probes the leg as an md member, so the listing leaves it out and counts
+// the array's disk missing. With c left unready and a mount unit waiting,
+// the boot check must leave the pool alone, since the disk it lacks shows on
+// the leg: no registration of the leg (the kernel logs each device it
+// registers), no change event, no mount.
 func (r *unreadyRig) mdLegIsLeftAlone() {
 	t := r.t
 	mdadm, err := exec.LookPath("mdadm")
@@ -228,10 +231,19 @@ func (r *unreadyRig) mdLegIsLeftAlone() {
 	c := newLoopDisk(t, filepath.Join(r.dir, "c.img"), 1<<30)
 	const array = "/dev/md/linuxio-unready-it"
 	// Registered before the create, so an array a failed command left is
-	// stopped too, and before the loop disks are detached.
+	// stopped too, and before the loop disks are detached. Once its md
+	// superblock is zeroed, udev probes the leg as btrfs and its rule
+	// registers it, so the leg and c are forgotten after udev is done, each
+	// by its own path.
 	t.Cleanup(func() {
 		_ = exec.Command(mdadm, "--stop", array).Run()
 		_ = exec.Command(mdadm, "--zero-superblock", leg.dev).Run()
+		_ = exec.Command("udevadm", "settle").Run()
+		for _, d := range []string{leg.dev, c.dev} {
+			if forgetErr := controlIoctl(iocForgetDev, d); forgetErr != nil && !errors.Is(forgetErr, unix.ENOENT) {
+				t.Errorf("forget %s: %v", d, forgetErr)
+			}
+		}
 	})
 	runTool(t, mdadm, "--create", array, "--run", "--force", "--level=1", "--raid-devices=1", "--metadata=1.0", leg.dev)
 	md, err := filepath.EvalSymlinks(array)
@@ -260,8 +272,8 @@ func (r *unreadyRig) mdLegIsLeftAlone() {
 	}
 	pools, err := FindOfflinePools(r.ctx, []string{leg.dev, c.dev})
 	r.must("offline pools", err)
-	if len(pools) != 1 || len(pools[0].Devices) != 2 || missingDisks(pools[0]) != 0 {
-		t.Fatalf("by superblocks the leg and c are not the whole pool: %+v", pools)
+	if len(pools) != 1 || !slices.Equal(pools[0].Devices, []string{c.dev}) || pools[0].Missing != 1 || len(pools[0].legs) != 1 {
+		t.Fatalf("the listing does not leave the leg out: %+v", pools)
 	}
 	r.must("forget c", controlIoctl(iocForgetDev, c.dev))
 	runTool(t, "udevadm", "trigger", "--action=change", "--settle", c.dev)

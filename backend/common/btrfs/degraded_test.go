@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -223,20 +225,24 @@ func TestMarkUnopened(t *testing.T) {
 }
 
 // stubDisks makes BlockDevices list names and readSuperblock answer from
-// supers, which a test may change between polls.
+// supers, which a test may change between polls. Each disk has a device
+// number of its own (259:n), udev has processed none of them (writeUdevDisks
+// adds entries) and none carries an md or LVM signature.
 func stubDisks(t *testing.T, supers map[string]Superblock) {
 	t.Helper()
 	dir := t.TempDir()
-	for name := range supers {
-		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name, "size"), []byte("1000\n"), 0o644); err != nil {
-			t.Fatal(err)
+	for i, name := range slices.Sorted(maps.Keys(supers)) {
+		for file, content := range map[string]string{"size": "1000\n", "dev": fmt.Sprintf("259:%d\n", i)} {
+			if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, name, file), []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	oldDir, oldRead, oldPoll := sysBlockDir, readSuperblock, degradedPoll
-	sysBlockDir, degradedPoll = dir, time.Millisecond
+	oldDir, oldRead, oldPoll, oldUdev := sysBlockDir, readSuperblock, degradedPoll, udevDataDir
+	sysBlockDir, degradedPoll, udevDataDir = dir, time.Millisecond, t.TempDir()
 	readSuperblock = func(device string) (Superblock, error) {
 		sb, ok := supers[strings.TrimPrefix(device, "/dev/")]
 		if !ok || sb.UUID == "" {
@@ -244,11 +250,13 @@ func stubDisks(t *testing.T, supers map[string]Superblock) {
 		}
 		return sb, nil
 	}
-	t.Cleanup(func() { sysBlockDir, readSuperblock, degradedPoll = oldDir, oldRead, oldPoll })
+	t.Cleanup(func() { sysBlockDir, readSuperblock, degradedPoll, udevDataDir = oldDir, oldRead, oldPoll, oldUdev })
+	stubMemberSignatures(t, nil)
+	stubPeekSignatures(t, nil)
 }
 
-// stubMountCalls records mounts and device registrations, with no
-// filesystem mounted beforehand.
+// stubMountCalls records mounts and device registrations and forgets, with
+// no filesystem mounted beforehand and nothing registered.
 func stubMountCalls(t *testing.T) *[]string {
 	t.Helper()
 	var calls []string
@@ -258,7 +266,11 @@ func stubMountCalls(t *testing.T) *[]string {
 		calls = append(calls, "mount "+source+" "+target+" "+data)
 		return nil
 	}
-	controlIoctl = func(_ uintptr, device string) error {
+	controlIoctl = func(req uintptr, device string) error {
+		if req == iocForgetDev {
+			calls = append(calls, "forget "+device)
+			return unix.ENOENT
+		}
 		calls = append(calls, "register "+device)
 		return nil
 	}
@@ -287,9 +299,10 @@ func TestMountDegradedPoolsMountsWhatFstabMounts(t *testing.T) {
 	if err := MountDegradedPools(context.Background(), 0); err != nil {
 		t.Fatal(err)
 	}
+	// The first mount registers the disks; the pool is open from then on.
 	want := []string{
 		"register /dev/sdb", "register /dev/sdc", "mount /dev/sdb " + mnt + " subvol=@data,degraded",
-		"register /dev/sdb", "register /dev/sdc", "mount /dev/sdb " + mnt + "/docker subvol=@docker,degraded",
+		"mount /dev/sdb " + mnt + "/docker subvol=@docker,degraded",
 	}
 	if !reflect.DeepEqual(*calls, want) {
 		t.Fatalf("calls = %v, want %v", *calls, want)
@@ -297,6 +310,108 @@ func TestMountDegradedPoolsMountsWhatFstabMounts(t *testing.T) {
 	states, err := loadPoolStates()
 	if err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 91, Degraded: true, Present: []uint64{1, 2}, Missing: []missingDisk{{ID: 3, UUID: "00000000-0000-0000-0000-000000000000"}}, Since: states[dataUUID].Since}) || states[dataUUID].Since == 0 {
 		t.Fatalf("state = %+v, %v", states, err)
+	}
+}
+
+// Disk 1 of a two-disk mirror is the md 1.0 array md127, whose legs show the
+// pool's superblock too, and disk 2 is gone. The boot check counts the one
+// disk missing, registers the array alone and mounts the pool degraded
+// through it.
+func TestMountDegradedPoolsMountsThroughTheArray(t *testing.T) {
+	stubPoolGeneration(t, dataUUID, 91, "/dev/md127", "")
+	calls := stubMountCalls(t)
+	member := Superblock{UUID: dataUUID, Label: "data", DevID: 1, NumDevices: 2, Generation: 90}
+	stubDisks(t, map[string]Superblock{"md127": member, "sdb": member, "sdc": member})
+	writeUdevDisks(t,
+		udevDisk{name: "md127", devnum: "9:127", props: scanned("0")},
+		udevDisk{name: "sdb", devnum: "8:16", props: raidLeg, holders: []string{"md127"}},
+		udevDisk{name: "sdc", devnum: "8:32", props: raidLeg, holders: []string{"md127"}},
+	)
+	stubBootSystemd(t, nil)
+	mnt := filepath.Join(t.TempDir(), "data")
+	writeFstab(t, "UUID="+dataUUID+" "+mnt+" btrfs defaults,nofail 0 0\n")
+
+	if err := MountDegradedPools(context.Background(), 0); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"forget /dev/sdb", "forget /dev/sdc", "register /dev/md127", "mount /dev/md127 " + mnt + " degraded"}; !slices.Equal(*calls, want) {
+		t.Fatalf("calls = %q, want %q", *calls, want)
+	}
+}
+
+// A pool missing a disk whose disks LinuxIO cannot tell is left unmounted,
+// with nothing registered, and its offline alert says why: the disk it lacks
+// shows on a leg of an array that has not started (stopped, so udev probed
+// the legs, or holding legs it has not run yet), two devices carry one disk
+// (two paths of one disk before multipath maps them, or a disk and its copy,
+// of which the kernel would take the newer or the last one scanned), udev
+// marks a device a path of a multipath disk, or a device udev probed as btrfs
+// shows an md signature since.
+func TestMountDegradedPoolsLeavesAPoolItCannotTell(t *testing.T) {
+	disk := func(devid uint64) Superblock {
+		return Superblock{UUID: dataUUID, Label: "data", DevID: devid, NumDevices: 2, Generation: 90}
+	}
+	for _, tc := range []struct {
+		name  string
+		udev  []udevDisk
+		peek  map[string]string
+		alert string
+	}{
+		{
+			"the disk it lacks shows only on the legs of a stopped array",
+			[]udevDisk{{name: "sdb", devnum: "8:16", props: raidLeg}, {name: "sdc", devnum: "8:32", props: raidLeg}, {name: "sdd", devnum: "8:48", props: scanned("0")}},
+			nil, "disk 1 of the pool shows only on /dev/sdb, which udev probed as linux_raid_member",
+		},
+		{
+			"every disk it has shows only on the legs of a stopped array",
+			[]udevDisk{{name: "sdb", devnum: "8:16", props: raidLeg}, {name: "sdc", devnum: "8:32", props: raidLeg}},
+			nil, "disk 1 of the pool shows only on /dev/sdb, which udev probed as linux_raid_member",
+		},
+		{
+			"the disk it lacks shows only on legs an array holds before it runs",
+			[]udevDisk{{name: "sdb", devnum: "8:16", props: raidLeg, holders: []string{"md127"}}, {name: "sdc", devnum: "8:32", props: raidLeg, holders: []string{"md127"}}, {name: "sdd", devnum: "8:48", props: scanned("0")}},
+			nil, "disk 1 of the pool shows only on /dev/sdb, which is held by /dev/md127",
+		},
+		{
+			"two devices carry one disk",
+			[]udevDisk{{name: "sdb", devnum: "8:16", props: scanned("0")}, {name: "sdc", devnum: "8:32", props: scanned("0")}},
+			nil, "/dev/sdb and /dev/sdc both carry disk 1 of the pool",
+		},
+		{
+			"a path of a multipath disk",
+			[]udevDisk{{name: "sdb", devnum: "8:16", props: map[string]string{"ID_FS_TYPE": "btrfs", "ID_FS_UUID": dataUUID, "DM_MULTIPATH_DEVICE_PATH": "1"}}},
+			nil, "udev marks /dev/sdb a path of a multipath disk",
+		},
+		{
+			"an md signature udev has not probed yet",
+			[]udevDisk{{name: "sdb", devnum: "8:16", props: scanned("0")}},
+			map[string]string{"/dev/sdb": "md"}, "/dev/sdb carries an md signature",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stubPoolGeneration(t, dataUUID, 0)
+			calls := stubMountCalls(t)
+			supers := map[string]Superblock{}
+			for _, d := range tc.udev {
+				supers[d.name] = disk(1)
+			}
+			if _, ok := supers["sdd"]; ok {
+				supers["sdd"] = disk(2)
+			}
+			stubDisks(t, supers)
+			writeUdevDisks(t, tc.udev...)
+			stubPeekSignatures(t, tc.peek)
+			stubBootSystemd(t, nil)
+			writeFstab(t, "UUID="+dataUUID+" "+filepath.Join(t.TempDir(), "data")+" btrfs defaults,nofail 0 0\n")
+
+			if err := MountDegradedPools(context.Background(), 0); err != nil {
+				t.Fatal(err)
+			}
+			if len(*calls) != 0 {
+				t.Fatalf("calls = %q, want nothing registered or mounted", *calls)
+			}
+			wantRefusal(t, tc.alert)
+		})
 	}
 }
 

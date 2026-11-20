@@ -46,11 +46,24 @@ const (
 // For a whole disk, a 0.90 superblock in its last partition is the
 // partition's, as for libblkid.
 func ReadMemberSignature(device string) (MemberSignature, error) {
+	return deviceSignature(device, func() (*os.File, error) { return openExclusive(device, os.O_RDONLY) })
+}
+
+// peekMemberSignature reads device's md or LVM2 signature as
+// ReadMemberSignature does, but through a plain read-only open, which claims
+// nothing: a listing that opened a device exclusively, however briefly,
+// would make a mount or an md assembly that claims it in that instant fail.
+func peekMemberSignature(device string) (MemberSignature, error) {
+	return deviceSignature(device, func() (*os.File, error) { return os.Open(device) })
+}
+
+// deviceSignature reads the md or LVM2 signature of device, opened by open.
+func deviceSignature(device string, open func() (*os.File, error)) (MemberSignature, error) {
 	parts, err := kernelPartitions(device)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return MemberSignature{}, err
 	}
-	f, err := openExclusive(device, os.O_RDONLY)
+	f, err := open()
 	if err != nil {
 		return MemberSignature{}, err
 	}

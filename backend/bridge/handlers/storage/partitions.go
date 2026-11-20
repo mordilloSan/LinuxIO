@@ -23,6 +23,7 @@ var (
 	storageBlockDevices = ListBlockDevices
 	btrfsFilesystems    = btrfs.ListFilesystems
 	offlinePools        = ListOfflinePools
+	scanOfflinePools    = btrfs.FindOfflinePools
 	createPartition     = btrfs.CreatePartition
 	deletePartition     = btrfs.DeletePartition
 	initializeDisk      = btrfs.InitializeDisk
@@ -186,10 +187,11 @@ func lockDiskForCall(ctx context.Context, disk string) (func(), error) {
 
 // conflictIfBusy marks an error of the btrfs layer as a conflict when the
 // kernel found the device in use, Format found data udev had not reported,
-// the kernel's partition table is older than the disk's, or a disk to
-// partition whole has partitions.
+// the kernel's partition table is older than the disk's, a disk to
+// partition whole has partitions, or the devices of an unmounted pool are
+// not all disks it can tell are the pool's.
 func conflictIfBusy(err error) error {
-	if errors.Is(err, unix.EBUSY) || errors.Is(err, btrfs.ErrDeviceHasData) || errors.Is(err, btrfs.ErrStaleTable) || errors.Is(err, btrfs.ErrHasPartitions) {
+	if errors.Is(err, unix.EBUSY) || errors.Is(err, btrfs.ErrDeviceHasData) || errors.Is(err, btrfs.ErrStaleTable) || errors.Is(err, btrfs.ErrHasPartitions) || errors.Is(err, btrfs.ErrUnclearDisks) {
 		return fmt.Errorf("%w: %w", bridgeipc.ErrConflict, err)
 	}
 	return err

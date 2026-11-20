@@ -124,6 +124,63 @@ check. The kernel itself refuses a pool missing more disks than its profiles
 survive. A mount that fails leaves the entries inside its mountpoint
 unmounted.
 
+**Which devices are disks of the pool.** A leg of an md array with its
+metadata at the end (0.90 or 1.0), a path of a multipath disk and an image
+of an LVM mirror show the pool's superblock as well, and the kernel keeps one
+device for each disk of a pool, the one with the newest generation or, at
+the same generation, the last one registered (`device_list_add` in
+`fs/btrfs/volumes.c`): registering a leg would make the mount open the leg
+instead of its array, or fail when md holds it. So the unmounted pools are
+listed (`FindOfflinePools`, which the boot check, the health run, the
+overview and the bridge's device checks share) without a device that is
+part of another one: one something holds (md binds a leg it assembles and
+device-mapper each device under a map, LVM, multipath or dm-crypt, and both
+claim it), a partition of a disk something holds, which the kernel lets
+nothing claim (`bd_may_claim` in `block/bdev.c`), such as a path's
+partition under a multipath map, one udev probed as a member of another set
+(an `ID_FS_TYPE` ending in `_member`: libblkid reports an md, LVM or
+firmware RAID signature before any filesystem, and multipath's rule names a
+path `mpath_member`), and, for a device udev has no entry for yet, one whose
+own md or LVM signature shows (`ReadMemberSignature`'s read, through a plain
+open that claims nothing, since an exclusive one could fail a mount or an
+md assembly in that instant). That is what upstream registers: udev's
+`64-btrfs.rules` and btrfs-progs' `device scan` take only what libblkid
+calls btrfs, and the scan skips a multipath path
+(`is_multipath_path_device`). A device udev probed as anything else stays a
+disk, the safe side for the device checks. The pool's label and size come
+from a disk, since a leg is read through its own page cache, which the
+array's writes bypass. Missing disks are counted by device ID (devid), so
+two devices on one disk count once. A pool that shows only on parts of
+other devices has no disk present: the boot check and the health run see
+it, and its alert says where it shows, but the overview does not list it,
+since it has nothing to mount or wipe. The boot check leaves a pool
+unmounted, and its offline alert says why, when it cannot tell which
+devices are the pool's disks: two present devices carry one devid (two
+paths of one disk before multipath maps them, or a disk and a copy of it;
+LinuxIO does not pick one), udev marks one a path of a multipath disk
+(`DM_MULTIPATH_DEVICE_PATH`), or one shows an md or LVM signature udev has
+not probed yet. The bring-up of a complete pool applies the same rule to
+every present device, not only the ones udev scanned. A pool missing a disk
+is also left unmounted when that disk shows on a part of another device:
+its array or map is there but has not started, as when mdadm's last-resort
+timer has yet to start an array missing a leg, and a degraded mount would
+open an episode for a disk that is present. **Mount degraded** on the
+overview is a person's decision and does not apply this last rule. Right
+before it registers anything, a mount of an unmounted pool, the boot
+check's or **Mount** on the overview, reads every device's md and LVM
+signature again, through an exclusive open that also refuses a device
+something claims, and refuses the pool (a 409) when it cannot tell its
+disks. It then has the kernel forget each part of another device that shows
+the pool's superblock (`BTRFS_IOC_FORGET_DEV`, by its path), so one
+registered before by other means, such as `btrfs device scan` naming a
+leg, is not opened in place of its array or as a disk its array lacks, and
+registers the disks. The boot check mounts a pool's further fstab lines
+without registering again, since the first mount holds the disks. `make
+test-btrfs-integration` mounts a pool whose disk is an md 1.0 mirror,
+another disk gone, degraded through the array without registering a leg,
+then, with the array stopped and a leg registered by hand, degraded through
+the other disk alone (`TestBtrfsArrayMemberIntegration`).
+
 udev also holds back a complete pool whose device replace a power loss cut,
 because the kernel's ready check counts the replace target as an extra disk;
 after the same 30 seconds the service mounts it with its fstab options and
@@ -404,9 +461,21 @@ once it is fixed repairs what it missed.
   whose unit name is too long for systemd, which then names the unit by a
   hash of it (`unit_name_from_path`, since systemd 248), is never brought
   up: the check asks for the unhashed name, which systemd refuses.
-- While the check reads a disk's md and LVM signature, through an exclusive
-  open, a mount of the pool by an fstab line that itself carries `degraded`
-  could start in that instant and proceed without that disk.
+- While the check, or a mount of an unmounted pool, reads a disk's md and
+  LVM signature through an exclusive open, a mount of the pool by an fstab
+  line that itself carries `degraded` could start in that instant and
+  proceed without that disk.
+- A path of a multipath disk that udev has not processed yet, or that
+  multipath's rule does not mark, is a disk to LinuxIO, as it is to
+  btrfs-progs; two such paths are refused as two devices on one disk. Until
+  multipath maps the disk, a pool on it or on its partitions is mounted
+  neither by the boot check nor from the overview.
+- A leg of an array that has not started is erased by Format, Delete or
+  Initialize on a confirmation that names its array (a multipath path, one
+  that names `mpath_member`), as any member of a stopped array is; the
+  confirmation does not name the pool whose superblock the leg shows.
+- **Destroy pool** on an unmounted pool wipes the disks present; a disk under
+  an array that has not started keeps its superblock.
 - Writes made with a disk missing that LinuxIO does not record are not seen:
   a degraded mount it did not make (by hand, or on another system) written
   to and made whole again before a health run sees it, the moment between a
@@ -709,11 +778,14 @@ a permanent top-level mount are offered.
 `nofail` keeps a pool with a missing disk from blocking boot. Such a pool is
 not mounted, since btrfs refuses that without `degraded`, so the overview
 lists it from the disks' superblocks as an unmounted pool with its missing
-disk count. The backend computes that count (`missing`) and leaves out an
-interrupted device replace's target, which the kernel scans as devid 0 but is
-no member. **Mount** mounts a complete pool and **Mount degraded** one with
-missing disks, so its data stays reachable until the disk is replaced; both
-use the pool's fstab options, so `subvol=` and `compress=` apply. A pool
+disk count. The backend computes that count (`missing`) by devid and leaves
+out an interrupted device replace's target, which the kernel scans as devid
+0 but is no member, and every device that is part of another one, such as a
+leg of an md array (see [Missing disks](#missing-disks)). **Mount** mounts a
+complete pool and **Mount degraded** one with missing disks, so its data
+stays reachable until the disk is replaced; both use the pool's fstab
+options, so `subvol=` and `compress=` apply, and both refuse, with a 409, a
+pool whose devices LinuxIO cannot tell are its disks. A pool
 without an fstab entry is mounted at `/mnt/<label>` and recorded. Pools in
 fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
@@ -740,7 +812,11 @@ Create pool, Add device and Replace device refuse a device that is:
 
 1. mounted, an active swap, or held (LVM, md, dm-crypt, multipath);
 2. a member of a btrfs pool, mounted or not, by the kernel's list of mounted
-   pools and the superblocks of unmounted ones;
+   pools and the superblocks of unmounted ones; a device that shows a pool's
+   superblock as part of another one, such as a leg of an md array, is no
+   member (see [Missing disks](#missing-disks)) and is refused by rule 1
+   while held and by rule 5 as the member it is otherwise
+   (`TestALegLeftOutOfAPoolIsStillRefused` runs every write on one);
 3. named in `/etc/fstab`;
 4. partitioned, or the parent of another device;
 5. a member of a btrfs pool, an md array, an LVM volume group or any other

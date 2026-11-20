@@ -788,6 +788,75 @@ func TestWholeDeviceChecksReadTheSignature(t *testing.T) {
 	}
 }
 
+// TestALegLeftOutOfAPoolIsStillRefused covers /dev/sdb1, a leg of an md
+// array whose metadata sits at the end, so it shows the btrfs superblock of
+// the pool on the array: the pool listing leaves it out (btrfs
+// partOfAnother), so no write refuses it as a disk of that pool. Every write
+// still refuses it, as held while the array runs, and as an md member while
+// the array is stopped or udev has not probed it: Format, Delete, Initialize
+// of its disk, Mount, md add and replace, and btrfs add, replace and pool
+// create, whose device check ensureBtrfsDeviceFree is. As for any member of
+// a stopped array, Format, Delete and Initialize erase it once the request
+// confirms that md member (TestFormatAndDeleteConfirmMembers); the
+// confirmation names the array, not the pool on it.
+func TestALegLeftOutOfAPoolIsStillRefused(t *testing.T) {
+	ctx := context.Background()
+	writes := []struct {
+		name string
+		run  func() error
+	}{
+		{"format", func() error {
+			return FormatPartition(ctx, apischema.PartitionFormatRequest{Device: "/dev/sdb1", FSType: "ext4", Overwrite: true}, func(string, float64) {})
+		}},
+		{"delete", func() error {
+			_, err := DeletePartition(ctx, apischema.PartitionDeleteRequest{Device: "/dev/sdb1"})
+			return err
+		}},
+		{"initialize", func() error {
+			_, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb"})
+			return err
+		}},
+		{"mount", func() error {
+			_, err := MountPartition(ctx, apischema.PartitionMountRequest{Device: "/dev/sdb1", Mountpoint: filepath.Join(t.TempDir(), "leg")})
+			return err
+		}},
+		{"md add or replace", func() error { return mdDeviceFree(ctx, "/dev/sdb1") }},
+		{"btrfs add, replace or pool create", func() error { return ensureBtrfsDeviceFree(ctx, "/dev/sdb1", true) }},
+	}
+	legs := []struct {
+		name, want string
+		set        func(env *partitionEnv)
+	}{
+		{"held by the running array", "Used by /dev/md127", func(env *partitionEnv) {
+			env.devices[1].FSType, env.devices[1].UUID, env.devices[1].Busy = "linux_raid_member", "a1", "Used by /dev/md127"
+		}},
+		{"of a stopped array", "md array", func(env *partitionEnv) {
+			env.devices[1].FSType, env.devices[1].UUID = "linux_raid_member", "a1"
+		}},
+		{"udev has not probed", "md array a9", func(env *partitionEnv) {
+			env.devices[1].FSType, env.devices[1].UUID = "", ""
+			env.signatures = map[string]btrfs.MemberSignature{"/dev/sdb1": {Device: "/dev/sdb1", Kind: "md", UUID: "a9"}}
+		}},
+	}
+	for _, leg := range legs {
+		for _, w := range writes {
+			t.Run(w.name+" a leg "+leg.name, func(t *testing.T) {
+				env := stubPartitions(t, "")
+				env.offline = []btrfs.BtrfsOfflinePool{{UUID: "p1", Label: "data", NumDevices: 2, Devices: []string{"/dev/md127"}, Missing: 1}}
+				leg.set(env)
+				err := w.run()
+				if err == nil || slices.ContainsFunc(env.calls, func(c string) bool { return memberWrite(c) || strings.HasPrefix(c, "mount ") }) {
+					t.Fatalf("err = %v, calls = %q; want a refusal and nothing written", err, env.calls)
+				}
+				// Mount refuses what is no filesystem before it looks at use.
+				if w.name != "mount" && (!errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), leg.want)) {
+					t.Fatalf("err = %v, want a conflict naming %q", err, leg.want)
+				}
+			})
+		}
+	}
+}
+
 // TestAMemberOfAnotherKindStays covers a device udev reports as a member of
 // a firmware RAID that also carries an LVM2 label: libblkid stops at the
 // first RAID signature, so the outer set is its membership, and the read

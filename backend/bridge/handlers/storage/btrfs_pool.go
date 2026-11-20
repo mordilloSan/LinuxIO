@@ -385,7 +385,7 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 		options = strings.Split(getFstabEntries()[mountpoint].options, ",")
 	}
 	if err := mountOfflinePool(ctx, pool, mountpoint, options, req.Degraded); err != nil {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s at %s: %w", pool.UUID, mountpoint, err)
+		return btrfs.BtrfsFilesystem{}, conflictIfBusy(fmt.Errorf("mount btrfs pool %s at %s: %w", pool.UUID, mountpoint, err))
 	}
 	if persist {
 		if err := addToFstab("UUID="+pool.UUID, mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
@@ -406,12 +406,16 @@ func defaultPoolMountpoint(pool btrfs.BtrfsOfflinePool) string {
 }
 
 // ListOfflinePools finds the unmounted btrfs filesystems by their
-// superblocks and attaches their fstab mountpoints.
+// superblocks and attaches their fstab mountpoints. A pool with no disk
+// present, which shows only on parts of other devices such as the legs of
+// an md array that has not started, is left out: it has nothing to mount,
+// wipe or refuse, and its alert says where it shows.
 func ListOfflinePools(ctx context.Context) ([]btrfs.BtrfsOfflinePool, error) {
-	pools, err := btrfs.FindOfflinePools(ctx, btrfs.BlockDevices())
+	pools, err := scanOfflinePools(ctx, btrfs.BlockDevices())
 	if err != nil {
 		return nil, err
 	}
+	pools = slices.DeleteFunc(pools, func(p btrfs.BtrfsOfflinePool) bool { return len(p.Devices) == 0 })
 	fstab := getFstabEntries()
 	for i := range pools {
 		pools[i].Mountpoint = fstabMountpointFor(fstab, pools[i].UUID)

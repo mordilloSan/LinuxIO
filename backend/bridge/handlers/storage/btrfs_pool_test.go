@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -382,6 +385,45 @@ func TestMountBtrfsPoolNeedsDegradedWhenMissing(t *testing.T) {
 	_, err = MountBtrfsPool(ctx, apischema.BtrfsPoolMountRequest{UUID: "cold-uuid", Degraded: true})
 	if !errors.Is(err, errStep) || !slices.Equal(mounts, []bool{true}) {
 		t.Fatalf("degraded mount: err = %v, mounts = %v; want one degraded mount", err, mounts)
+	}
+}
+
+// A pool whose devices LinuxIO cannot tell are its disks, or one of whose
+// disks something claims, is refused as a conflict that says why.
+func TestMountBtrfsPoolRefusesDisksItCannotTell(t *testing.T) {
+	useTempFstab(t, "UUID=cold-uuid /mnt/cold btrfs noatime 0 0\n")
+	oldOffline, oldMount := offlinePools, mountOfflinePool
+	t.Cleanup(func() { offlinePools, mountOfflinePool = oldOffline, oldMount })
+	pool := btrfs.BtrfsOfflinePool{UUID: "cold-uuid", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, Mountpoint: "/mnt/cold"}
+	offlinePools = func(context.Context) ([]btrfs.BtrfsOfflinePool, error) { return []btrfs.BtrfsOfflinePool{pool}, nil }
+	for _, refusal := range []error{
+		fmt.Errorf("%w: /dev/sdc and /dev/sdd both carry disk 1 of the pool", btrfs.ErrUnclearDisks),
+		&os.PathError{Op: "open", Path: "/dev/sdd", Err: unix.EBUSY},
+	} {
+		mountOfflinePool = func(context.Context, btrfs.BtrfsOfflinePool, string, []string, bool) error { return refusal }
+		_, err := MountBtrfsPool(context.Background(), apischema.BtrfsPoolMountRequest{UUID: "cold-uuid"})
+		if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, refusal) {
+			t.Errorf("err = %v, want a conflict wrapping %v", err, refusal)
+		}
+	}
+}
+
+// A pool that shows only on parts of other devices, such as the legs of an md
+// array that has not started, has no disk to mount, wipe or refuse: the
+// bridge does not list it.
+func TestListOfflinePoolsLeavesOutAPoolWithoutDisks(t *testing.T) {
+	useTempFstab(t, "UUID=warm-uuid /mnt/warm btrfs noatime 0 0\n")
+	old := scanOfflinePools
+	t.Cleanup(func() { scanOfflinePools = old })
+	scanOfflinePools = func(context.Context, []string) ([]btrfs.BtrfsOfflinePool, error) {
+		return []btrfs.BtrfsOfflinePool{
+			{UUID: "cold-uuid", NumDevices: 2, Missing: 2},
+			{UUID: "warm-uuid", NumDevices: 1, Devices: []string{"/dev/sdc"}},
+		}, nil
+	}
+	pools, err := ListOfflinePools(context.Background())
+	if want := []btrfs.BtrfsOfflinePool{{UUID: "warm-uuid", NumDevices: 1, Devices: []string{"/dev/sdc"}, Mountpoint: "/mnt/warm"}}; err != nil || !reflect.DeepEqual(pools, want) {
+		t.Fatalf("pools = %+v, %v; want %+v", pools, err, want)
 	}
 }
 

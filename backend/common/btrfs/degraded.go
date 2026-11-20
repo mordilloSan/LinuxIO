@@ -301,24 +301,58 @@ func staleDisks(pool BtrfsOfflinePool) string {
 // finishes (BTRFS_DEV_REPLACE_DEVID); the target is no member.
 const replaceTargetDevID = 0
 
-// missingDisks counts the members pool lacks; a replace target is no member.
+// missingDisks counts the members pool lacks, by devid: two devices that
+// carry one devid are one disk, and a replace target is none.
 func missingDisks(pool BtrfsOfflinePool) int {
-	missing := pool.NumDevices - len(pool.Devices)
+	present := map[uint64]bool{}
 	for _, id := range pool.devids {
-		if id == replaceTargetDevID {
-			missing++
+		if id != replaceTargetDevID {
+			present[id] = true
 		}
 	}
-	return missing
+	return pool.NumDevices - len(present)
+}
+
+// lackedOnLeg says why pool, missing disks, is not mounted without one that
+// shows on a leg (pool.legs), or returns "": the disk is there, under an md
+// array or a multipath disk that has not started, as when mdadm's own
+// last-resort timer has yet to start an array with a leg missing. Only a
+// leg that shows the superblock is seen: one of an md 0.90 or 1.0 array or
+// a multipath path, not a leg of an md 1.2 array or an LVM volume, whose
+// data starts further in. A pool with no disk present is never mounted
+// either.
+func lackedOnLeg(pool BtrfsOfflinePool) string {
+	for _, l := range pool.legs {
+		if l.devid != replaceTargetDevID && !slices.Contains(pool.devids, l.devid) {
+			return fmt.Sprintf("disk %d of the pool shows only on %s, which %s", l.devid, l.device, l.why)
+		}
+	}
+	if len(pool.Devices) == 0 {
+		return "no disk of the pool is present"
+	}
+	return ""
 }
 
 // refusal says why the boot check leaves pool, held back by udev, unmounted,
-// or returns "": for a pool missing disks, degradedMountBlocker's objection;
-// for one held back only by a replace target, a disk that missed writes.
-// The health run asks too, so the offline alert says the same either way.
+// or returns "": devices it cannot tell are the pool's disks (unclearDisks);
+// for a pool missing disks, one of them showing on a leg, or
+// degradedMountBlocker's objection; for one held back only by a replace
+// target, a disk that missed writes. The health run asks too, so the
+// offline alert says the same either way. The signature read here claims
+// nothing; MountOfflinePool reads again, exclusively, before it registers.
 func refusal(pool BtrfsOfflinePool, state poolState) string {
+	reason, err := unclearDisks(pool, peekSignature)
+	if err != nil {
+		return fmt.Sprintf("the signatures of its disks could not be read (%v)", err)
+	}
+	if reason != "" {
+		return reason
+	}
 	switch {
 	case missingDisks(pool) > 0:
+		if reason := lackedOnLeg(pool); reason != "" {
+			return reason
+		}
 		return degradedMountBlocker(pool, state)
 	case slices.Contains(pool.devids, replaceTargetDevID):
 		return staleDisks(pool)
@@ -441,17 +475,19 @@ func mountHeld(ctx context.Context, pools []fstabPool) error {
 			continue
 		}
 		var failed []string
+		open := false
 		for _, m := range p.mounts {
 			// Mounting inside a mountpoint that failed would land on the
 			// filesystem underneath and be hidden later.
 			if slices.ContainsFunc(failed, func(f string) bool { return strings.HasPrefix(m.mountpoint, f+"/") }) {
 				continue
 			}
-			if err := MountOfflinePool(ctx, p.pool, m.mountpoint, m.options, missing > 0); err != nil {
+			if err := mountLine(ctx, p.pool, m, missing > 0, open); err != nil {
 				failed = append(failed, m.mountpoint)
 				errs = append(errs, fmt.Errorf("mount btrfs pool %s at %s (degraded: %t): %w", p.pool.UUID, m.mountpoint, missing > 0, err))
 				continue
 			}
+			open = true
 			if missing > 0 {
 				slog.Info("btrfs pool mounted degraded", "uuid", p.pool.UUID, "mountpoint", m.mountpoint, "missing", missing)
 			} else {
@@ -465,6 +501,16 @@ func mountHeld(ctx context.Context, pools []fstabPool) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// mountLine mounts pool as fstab line m says. The first line registers the
+// pool's disks (MountOfflinePool); once one is mounted, open, the pool holds
+// its disks, and a further line mounts what is open.
+func mountLine(ctx context.Context, pool BtrfsOfflinePool, m fstabMount, degraded, open bool) error {
+	if open {
+		return MountPool(ctx, pool.Devices[0], m.mountpoint, m.options, degraded)
+	}
+	return MountOfflinePool(ctx, pool, m.mountpoint, m.options, degraded)
 }
 
 // markUnopened marks Missing a device the kernel found again after the pool

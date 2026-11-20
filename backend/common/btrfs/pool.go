@@ -224,8 +224,33 @@ func MountPool(ctx context.Context, device, mountpoint string, options []string,
 }
 
 // MountOfflinePool registers the present devices of pool with the kernel and
-// mounts it at mountpoint with options.
+// mounts it at mountpoint with options. It registers nothing, with
+// ErrUnclearDisks, when no disk is present or it cannot tell that each
+// device is a disk of the pool (unclearDisks), reading each device's md and
+// LVM signature through an exclusive open, which also refuses a device
+// something claims. That open refuses the disks of a pool already mounted
+// too, so a further mount of a pool goes through MountPool. A leg something
+// else registered before is forgotten first: the kernel keeps one device
+// for each devid (volumes.c device_list_add), and with its array not
+// registered the mount would open the leg.
 func MountOfflinePool(ctx context.Context, pool BtrfsOfflinePool, mountpoint string, options []string, degraded bool) error {
+	if len(pool.Devices) == 0 {
+		return fmt.Errorf("%w: no disk of the pool is present", ErrUnclearDisks)
+	}
+	reason, err := unclearDisks(pool, memberSignature)
+	if err != nil {
+		return err
+	}
+	if reason != "" {
+		return fmt.Errorf("%w: %s", ErrUnclearDisks, reason)
+	}
+	for _, l := range pool.legs {
+		// ENOENT: the kernel never registered it. A path is never empty
+		// here; an empty one would forget every unmounted btrfs device.
+		if err := controlIoctl(iocForgetDev, l.device); err != nil && !errors.Is(err, unix.ENOENT) {
+			return fmt.Errorf("forget %s: %w", l.device, err)
+		}
+	}
 	for _, d := range pool.Devices {
 		if err := RegisterDevice(d); err != nil {
 			return err
@@ -340,11 +365,31 @@ type BtrfsOfflinePool struct {
 	// devids and generations hold each of Devices' superblock devid and
 	// generation.
 	devids, generations []uint64
+	// legs are the devices that show the pool's superblock as part of
+	// another device (see partOfAnother), which are none of its disks.
+	legs []poolLeg
 }
+
+// poolLeg is a device that shows a pool's superblock, carrying devid, as
+// part of another device: a leg of an md array with its metadata at the end,
+// a path of a multipath disk or an image of an LVM mirror. Why says what
+// makes it one, such as "is held by /dev/md127".
+type poolLeg struct {
+	device string
+	devid  uint64
+	why    string
+}
+
+// ErrUnclearDisks refuses to register the devices of a pool when LinuxIO
+// cannot tell that each is a disk of the pool (see unclearDisks).
+var ErrUnclearDisks = errors.New("LinuxIO cannot tell which devices are the pool's disks")
 
 // FindOfflinePools reads the superblocks of candidates and groups the
 // devices of every filesystem that is not mounted, in first-seen order. A
-// candidate that cannot be read is logged and skipped.
+// device that shows the superblock as part of another device is kept apart
+// from the disks (partOfAnother), and a pool that shows only on such devices
+// is returned without disks. A candidate that cannot be read is logged and
+// skipped.
 func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflinePool, error) {
 	mounts, err := listMounts(ctx)
 	if err != nil {
@@ -372,11 +417,22 @@ func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflineP
 		if !ok {
 			i = len(pools)
 			byUUID[sb.UUID] = i
-			pools = append(pools, BtrfsOfflinePool{UUID: sb.UUID, Label: sb.Label, NumDevices: int(sb.NumDevices), TotalBytes: sb.TotalBytes})
+			pools = append(pools, BtrfsOfflinePool{UUID: sb.UUID})
 		}
-		pools[i].Devices = append(pools[i].Devices, device)
-		pools[i].devids = append(pools[i].devids, sb.DevID)
-		pools[i].generations = append(pools[i].generations, sb.Generation)
+		p := &pools[i]
+		why := partOfAnother(device)
+		// The label and size are a disk's: a leg is read through its own
+		// page cache, which the array's writes bypass.
+		if !ok || (why == "" && len(p.Devices) == 0) {
+			p.Label, p.NumDevices, p.TotalBytes = sb.Label, int(sb.NumDevices), sb.TotalBytes
+		}
+		if why != "" {
+			p.legs = append(p.legs, poolLeg{device, sb.DevID, why})
+			continue
+		}
+		p.Devices = append(p.Devices, device)
+		p.devids = append(p.devids, sb.DevID)
+		p.generations = append(p.generations, sb.Generation)
 	}
 	for i := range pools {
 		pools[i].Missing = missingDisks(pools[i])
