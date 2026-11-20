@@ -225,6 +225,18 @@ describe("formatMs", () => {
     [113, "113 ms"],
     [13_400, "13.4 s"],
     [125_000, "2 min 5 s"],
+    // No part reaches the size of the next unit.
+    [999.6, "1.0 s"],
+    [59_960, "1 min 0 s"],
+    [119_500, "2 min 0 s"],
+    // From an hour on, hours and whole minutes.
+    [3_599_400, "59 min 59 s"],
+    [3_599_600, "1 h 0 min"],
+    [3_900_000, "1 h 5 min"],
+    [86_400_000, "24 h 0 min"],
+    // Rounded once: 60.49 minutes is an hour, not an hour and a minute.
+    [3_629_500, "1 h 0 min"],
+    [5_369_500, "1 h 29 min"],
   ])("writes %d as %s", (ms, text) => {
     expect(formatMs(ms)).toBe(text);
   });

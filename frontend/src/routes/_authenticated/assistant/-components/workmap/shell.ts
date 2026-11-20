@@ -20,7 +20,7 @@ const FILE_WORDS = set(
 );
 // Commands that say nothing either way.
 const NEUTRAL_WORDS = set(
-  ":, ., [, [[, cd, echo, export, false, printf, pwd, read, set, sleep, source, test, true, unset, which",
+  ":, ., [, [[, cd, declare, echo, export, false, local, printf, pwd, read, readonly, set, sleep, source, test, true, typeset, unset, which",
 );
 // Commands that reach the network whatever they are asked.
 const NETWORK_WORDS = set(
@@ -164,7 +164,10 @@ const DELIMITER =
 const BEFORE_A_COMMAND = set("do, then, else, elif, if, while, until, !, {");
 // Words that open or close a construct and run nothing: `for u in a b`, `done`.
 const NO_COMMAND = set("for, select, case, done, fi, esac, }");
-const ASSIGNMENT = /^[A-Za-z_]\w*=/;
+// `a=1`, `a+=1`, and an array's element, `a[0]=1`.
+const ASSIGNMENT = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/;
+// The word a list stands behind: the name and its `=` or `+=`, no more.
+const BEFORE_A_LIST = /^[A-Za-z_]\w*(?:\[.*\])?\+?=$/;
 // How much of a line is read: a longer one is a script written inline, and
 // what counts stands at its start.
 const READ = 8000;
@@ -327,11 +330,71 @@ function closing(line: string, start: number) {
 }
 
 /**
+ * The list of an array that opens at `start`: where it closes, and what the
+ * `$(…)`, backticks and `<(…)` in it run. It is read past its quotes, its
+ * comments and `${…}`, over as many lines as it takes. Nothing for what only
+ * looks like a list, one cut by `;`, `|` or `&` or never closed, so that what
+ * it holds is split by the caller alone, once.
+ */
+function listAt(line: string, start: number) {
+  const runs: string[] = [];
+  let quote = "";
+  let brackets = 0;
+  let braces = 0;
+  // Where the character a backslash escaped last stands.
+  let escaped = -1;
+  for (let i = start; i < line.length; i++) {
+    const c = line[i];
+    if (quote === "'") {
+      if (c === "'") quote = "";
+    } else if (c === "\\") {
+      escaped = ++i;
+    } else if (quote === "$") {
+      if (c === "'") quote = "";
+    } else if (
+      c === "`" ||
+      (c === "$" && line[i + 1] === "(") ||
+      (/[<>]/.test(c) && line[i + 1] === "(" && quote === "")
+    ) {
+      const open = c === "`" ? i : i + 1;
+      const end = closing(line, open);
+      if (c === "`" || line[open + 1] !== "(") {
+        runs.push(line.slice(open + 1, end));
+      }
+      i = end;
+    } else if (quote === '"') {
+      if (c === '"') quote = "";
+    } else if (c === "'" || c === '"') {
+      quote = c;
+    } else if (c === "$" && line[i + 1] === "'") {
+      quote = "$";
+      i++;
+    } else if (c === "$" && line[i + 1] === "{") {
+      braces++;
+      i++;
+    } else if (braces > 0) {
+      if (c === "}") braces--;
+    } else if (c === "#" && escaped !== i - 1 && /[\s(]/.test(line[i - 1])) {
+      while (i + 1 < line.length && line[i + 1] !== "\n") i++;
+    } else if (c === "(") {
+      brackets++;
+    } else if (c === ")") {
+      if (--brackets === 0) return { end: i, runs };
+    } else if (brackets === 1 && ";|&".includes(c)) {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
  * The commands of a line, each as its words with their quotes kept. The line
  * is cut at `;`, `&`, `|`, new lines and brackets outside quotes, so a quoted
  * `;` cuts nothing, `2>&1` is a redirection and a `#` comment is skipped. What
- * `$(…)` or backticks run comes after the command they stand in; `$((…))`,
- * `((…))` and `a=(…)` run nothing.
+ * `$(…)` or backticks run comes after the command they stand in; `$((…))`
+ * and `((…))` run nothing, and the list of an array, `a=(…)` or `a+=(…)`, is
+ * values read to its closing bracket: only what `$(…)` or backticks run
+ * inside it is a command (`listAt`).
  */
 function split(line: string): string[][] {
   const commands: string[][] = [];
@@ -388,7 +451,12 @@ function split(line: string): string[][] {
       quote = "$";
       i++;
     } else if (c === "(" && (word.endsWith("=") || line[i + 1] === "(")) {
-      const end = closing(line, i);
+      const list =
+        BEFORE_A_LIST.test(word) && !words.includes("[[")
+          ? listAt(line, i)
+          : undefined;
+      for (const run of list?.runs ?? []) inner.push(...split(run));
+      const end = list?.end ?? closing(line, i);
       word += line.slice(i, end + 1);
       i = end;
     } else if (c === "#" && !word) {
@@ -418,8 +486,9 @@ function split(line: string): string[][] {
 
 /**
  * A command without the assignments, construct words and `function NAME`
- * before it. Arithmetic, `((…))`, runs nothing, and a command named by what
- * `$(…)` prints is known only by what that runs, which is read already.
+ * before it. Arithmetic, `((…))`, runs nothing, nor does a file read with
+ * `$(< file)` or the `<` before `<(…)`, and a command named by what `$(…)`
+ * prints is known only by what that runs, which is read already.
  */
 function own(words: string[]) {
   let i = 0;
@@ -430,7 +499,7 @@ function own(words: string[]) {
     else break;
   }
   const head = words[i] ?? "";
-  return NO_COMMAND.has(head) || /^(?:\(\(|\$\(|`)/.test(head)
+  return NO_COMMAND.has(head) || /^(?:\(\(|\$\(|`|<)/.test(head)
     ? []
     : words.slice(i);
 }

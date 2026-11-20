@@ -120,6 +120,52 @@ describe("shellStation", () => {
     // Arithmetic and arrays run nothing.
     ["ls src; n=$((n+1))", "files"],
     ['files=(a b); cat "${files[@]}"', "files"],
+    ["files+=(c d); ls", "files"],
+    ["n+=1; ls", "files"],
+    ["LANG=C files=(a b) cat f.txt", "files"],
+    // ...but what `$(…)` or backticks run inside an array's list runs.
+    ["hosts=($(curl -s x)); ls", "network"],
+    ['hosts=("$(curl -s x)" b); ls', "network"],
+    ["hosts=(`wget -qO- x`); ls", "network"],
+    ["hosts=('$(curl -s x)'); ls", "files"],
+    // A bracket or a `;` in a list's quotes ends nothing.
+    ['marks=("a)" "b; curl x"); ls', "files"],
+    ["files=(a \\\n  b); ls", "files"],
+    // A comment in a list is not read, whatever stands in it.
+    [
+      'pkgs=(\n  curl  # don\'t drop\n  git\n)\napt-get install "${pkgs[@]}"',
+      "network",
+    ],
+    ["pkgs=(\n  jq  # needs `curl` too\n  git\n)\nls", "files"],
+    ["pkgs=(jq # see $(curl x)\n)\nls", "files"],
+    ["urls=(a#b c); ls", "files"],
+    // ...but a `#` in `${…}` or after an escaped space is no comment.
+    ["f=(${l% #*})\ncurl x\ncase $y in k) ls ;; esac", "network"],
+    ["f=(a \\ #b c)\ncurl x\ncase $y in k) ls ;; esac", "network"],
+    // What only looks like a list, a `(` after `=` that never closes as
+    // one, is read past its bracket.
+    ['[[ $u =~ v=([^"]+) ]] && curl x', "network"],
+    ["[[ $u =~ id=([^& #]+) ]] && curl x", "network"],
+    ['if [[ $l =~ ^k=("[^"]*")$ ]]; then curl x; fi', "network"],
+    [
+      "[[ $c =~ color=(#[0-9a-f]+) ]] || exit 1\ncase $x in\n  a) curl x ;;\nesac",
+      "network",
+    ],
+    ['[[ $u =~ v=([^"]+) ]] && echo "ok)"; curl x', "network"],
+    // A file read into a list runs nothing; a process substitution does.
+    ["lines=($(< hosts.txt)); cat x", "files"],
+    ["text=$(< notes.txt); ls", "files"],
+    ["rows=( <(curl -s x) ); ls", "network"],
+    ["diff <(sort a) <(sort b)", "files"],
+    // A pattern's alternatives are no pipe.
+    ["files=(*.@(jpg|png)); ls", "files"],
+    // An array's element, and an array declared with a builtin.
+    ["files[0]=a; ls", "files"],
+    ["files[n]+=(b c); ls", "files"],
+    ["files[${#files[@]}]=a; ls", "files"],
+    ["declare -a files=(a b); ls", "files"],
+    ["local files=(a b); readonly n=1; typeset -i m=2; ls", "files"],
+    ["local page=$(curl -s x)", "network"],
     ["((n++)); ls", "files"],
     ['echo "$((n+1))"; ls', "files"],
     // A backslash escapes in `$'…'`.
@@ -188,6 +234,15 @@ describe("shellStation", () => {
     expect(shellStation(null)).toBe("shell");
   });
 
+  it("reads what only looks like a list once, however deep it nests", () => {
+    const depth = 22;
+    const line = `${'v=([^"]+) $( '.repeat(depth)}curl x${" )".repeat(depth)}`;
+    const start = performance.now();
+    expect(shellStation(line)).toBe("network");
+    // Read twice at each level, this takes seconds.
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
   it("reads a long line only to its first 8,000 characters", () => {
     // Ten characters a command, so that the cut falls between two.
     const script = (padding: number) => `${"sleep 10; ".repeat(padding)}curl x`;
@@ -215,6 +270,16 @@ describe("commandName", () => {
     ["sudo --user postgres psql", "psql"],
     ["watch -d -n 2 'ss -tunap'", "ss"],
     ["case $ID in debian) echo deb ;; fedora) dnf -y install x ;; esac", "dnf"],
+    // An array's list is values, not the command.
+    ["files=(a b c); ls", "ls"],
+    ["files+=(d e); ls", "ls"],
+    ['marks=("a)" b); wc -l f', "wc"],
+    ["pkgs=(\n  curl  # don't drop\n)\napt-get install x", "apt-get"],
+    ["files[0]=a; ls", "ls"],
+    ["files[${#files[@]}]=a; ls", "ls"],
+    ['[[ $u =~ v=([^"]+) ]] && curl x', "curl"],
+    ["lines=($(< hosts.txt)); cat x", "cat"],
+    ["declare -a files=(a b); ls", "ls"],
   ])("names %j %s", (command, name) => {
     expect(commandName(command)).toBe(name);
   });

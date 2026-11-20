@@ -210,11 +210,12 @@ advertises the matching capability.
   double quotes still counts. This is presentation only and errs towards
   "acting"; permissions stay with the agent.
 - **Turn footer.** A turn that ran in this page ends in a footer showing how
-  long it took and, when the agent's `session/prompt` response carries
-  `usage`, the output tokens (`14 s · 2.1k tokens`), with input and cache
-  counts in the tooltip. The store appends a `turn` block when the prompt
-  resolves; a failed prompt gets none, and replayed history has no footer,
-  since the agent does not replay the numbers.
+  long it took (in hours and minutes from an hour on) and, when the agent's
+  `session/prompt` response carries `usage`, the output tokens
+  (`14 s · 2.1k tokens`), with input and cache counts in the tooltip. The
+  store appends a `turn` block when the prompt resolves; a failed prompt
+  gets none, and replayed history has no footer, since the agent does not
+  replay the numbers.
 - **Reading column.** The transcript scrolls across the page, but its rows,
   the permission card, the status line and the prompt share one centred
   860 px column. The user's prompt is a bubble sized to its text on the
@@ -332,9 +333,11 @@ advertises the matching capability.
     last says how many more still run, wherever they are (`+3`). Each row
     and the line above them are one line, cut at the card's edge, with the
     time in a column at the right, so a long label neither wraps nor moves
-    the rows while the work goes on. A row whose label is longer than 28
-    characters has a `▸` that shows it whole and closes it again; one row
-    is open at a time.
+    the rows while the work goes on. A time is rounded before its unit is
+    chosen (`113 ms`, `13.4 s`, `2 min 5 s`, never `1 min 60 s`), and from
+    an hour on it reads in hours and minutes (`1 h 5 min`). A row whose
+    label is longer than 28 characters has a `▸` that shows it whole and
+    closes it again; one row is open at a time.
   - *What it knows.* A call is sorted by Claude Code's tool name when the
     adapter sends one (`_meta.claudeCode.toolName`) and by its ACP kind
     otherwise. A shell command line (`workmap/shell.ts`) goes to Network
@@ -350,12 +353,18 @@ advertises the matching capability.
     after `do`, `then` or `!`, inside `$(…)` or a function's body, in the
     line handed to `bash -c`, `su -c`, `eval` or `watch`, and by
     `find -exec`. A `;` or `|` in quotes splits nothing, a comment is not
-    read, the text of a here-document is not run unless a shell reads it
+    read, the list of an array (`a=(…)`, `a+=(…)`, also after `declare` or
+    `local`) is values and only what `$(…)` or `<(…)` runs inside it is a
+    command (a `(` after `=` in `[[ … ]]` is a regex, not a list),
+    the text of a here-document is not run unless a shell reads it
     (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`
     are text, `sudo bash <<EOF` is read as commands), and only the first
     8,000 characters of a line are read. A row with no description is
     named by the first command that says something (`make` for
-    `cd /srv && make`).
+    `cd /srv && make`). Known limits: a command kept in an array and run
+    later (`cmd=(curl …); "${cmd[@]}"`) lands on Shell, where lot-map shows
+    Network, and an array element whose index holds a space (`m[a b]=1`)
+    is read as a command.
     A line of file commands that names `.claude/projects/*/memory/` goes to
     Memory, as does a file under it; an MCP tool goes by its server
     (`Claude_Browser` and `claude-in-chrome` to Browser, `terminal`
@@ -459,8 +468,10 @@ advertises the matching capability.
     messaged again runs again in the same session.
   - *Time.* Each run is timed from when LinuxIO saw it start to when it saw
     it end, and the time shown is the sum of the runs, not the time between
-    the first start and the last end. The agent gives no time or tokens of
-    its own for a subagent, so a chat that was loaded shows no time.
+    the first start and the last end. A run still going counts in whole
+    seconds, and from an hour on in hours and whole minutes. The agent
+    gives no time or tokens of its own for a subagent, so a chat that was
+    loaded shows no time.
   - *Reports.* A report is the subagent's own message to its parent. One
     that handed nothing back answered with its last text, which the parent
     got as a reply; that reply is then its report, and the same text is not

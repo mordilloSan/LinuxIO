@@ -416,6 +416,8 @@ describe("formatting", () => {
     [-5, "0 s"],
     [45_900, "45 s"],
     [78_000, "1 min 18 s"],
+    [3_599_900, "59 min 59 s"],
+    [4_559_000, "1 h 15 min"],
   ])("writes %d ms on a clock as %s", (ms, text) => {
     expect(formatElapsed(ms)).toBe(text);
   });

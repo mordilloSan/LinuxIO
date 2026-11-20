@@ -327,11 +327,21 @@ const LABEL = Object.fromEntries(
 
 export const stationLabel = (id: StationId) => LABEL[id];
 
-/** 113 ms, 13.4 s, 2 min 5 s. */
+/**
+ * 113 ms, 13.4 s, 2 min 5 s, 1 h 5 min. The time is rounded before its unit
+ * is chosen, so no part reaches the size of the next unit: never `60.0 s` or
+ * `1 min 60 s`.
+ */
 export function formatMs(ms: number): string {
-  if (ms < 1000) return `${Math.max(1, Math.round(ms))} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
-  return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
+  const tenths = Math.round(ms / 100);
+  const seconds = Math.round(ms / 1000);
+  if (Math.round(ms) < 1000) return `${Math.max(1, Math.round(ms))} ms`;
+  if (tenths < 600) return `${(tenths / 10).toFixed(1)} s`;
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  }
+  const minutes = Math.round(ms / 60_000);
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
 const MARK = { switch: "◆", run: "●", ok: "·", err: "✕" } as const;
