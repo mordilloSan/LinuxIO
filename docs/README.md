@@ -22,6 +22,7 @@ marks a doc that covers none), or when a named path no longer exists.
 | Doc | Code | Use |
 |-----|------|-----|
 | [Development targets and overrides](./development.md) | `Makefile`, `mk`, `scripts`, `packaging/vm`, `packaging/debian`, `packaging/rpm`, `packaging/scripts/package-root.sh`, `packaging/scripts/package-deb.sh`, `packaging/scripts/package-rpm.sh`, `packaging/scripts/package-version.sh`, `packaging/scripts/repo-apt.sh`, `packaging/scripts/repo-rpm.sh`, `packaging/scripts/tests/package-contents.sh`, `packaging/scripts/tests/repo-fixtures.sh`, `frontend/src/test/vm`, `.vscode` | Repository setup, checks, builds, the DEB and the RPM, the test VM, and configurable Make inputs. |
+| [Releases](./releases.md) | `.github/workflows/release.yml`, `packaging/build`, `scripts/update-build-pins.sh` | What a release is built from (the pins and the two images), the release workflow and its gates, how the repositories are assembled and trimmed, the signing keys, and the owner's one-time setup. |
 
 ## API And Bridge
 

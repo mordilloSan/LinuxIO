@@ -107,8 +107,14 @@ GO_VERSION ?= $(go_version)
 ifneq ($(words $(subst ., ,$(go_version))),3)
 $(error GO_VERSION must be a full release like 1.27.3, got '$(go_version)')
 endif
-node_version := $(if $(NODE_VERSION),$(NODE_VERSION),$(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('$(frontend_dir)/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null))
+# Node and the Go check tools come from the build pins (make update-build-pins).
+build_pins_file := $(repo_root)/packaging/build/pins.env
+build_pin = $(shell sed -n 's/^$(1)=//p' "$(build_pins_file)")
+node_version := $(if $(NODE_VERSION),$(NODE_VERSION),$(call build_pin,NODE_VERSION))
 NODE_VERSION ?= $(node_version)
+ifneq ($(words $(subst ., ,$(node_version))),3)
+$(error NODE_VERSION must be a full release like 26.13.1, got '$(node_version)')
+endif
 CC ?= cc
 
 # Helpers
@@ -270,7 +276,7 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 # placeholder assets, the auth frame tool) are deliberately not phony.
 .PHONY: default help help-full help-overrides $(quiet_aliases)
 .PHONY: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck
-.PHONY: setup setup-frontend update-deps update-go-deps ci-frontend-deps
+.PHONY: setup setup-frontend update-deps update-go-deps update-build-pins ci-frontend-deps
 .PHONY: lint lint-only lint-ci lint-ci-only tsc tsc-only tsc-ci golint golint-only
 .PHONY: test check-actions check-docs check-systemd check-frontend check-backend
 .PHONY: test-frontend test-frontend-only test-frontend-ci setup-frontend-browser test-frontend-browser update-frontend-screenshots

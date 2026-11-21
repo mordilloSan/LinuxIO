@@ -608,7 +608,7 @@ State on 2026-11-21:
 | Go check tools (golangci-lint, modernize, deadcode, govulncheck) | no, `latest` | `mk/toolchain.mk` |
 | GitHub Actions | 2 by commit, 5 by major tag | `.github/workflows` |
 
-- [ ] Name the two images in one file of the repository, each as a
+- [x] Name the two images in one file of the repository, each as a
       distribution release and its image digest: the one that compiles the
       programs and assembles the DEB, and the Fedora one that assembles the
       RPM. Releases are built only in them (`container:` in the workflow).
@@ -617,15 +617,15 @@ State on 2026-11-21:
       compatible. Decided 2026-11-21: the images are the distributions' own,
       named by digest; an image of LinuxIO's own with the build libraries
       already in it, which would pin those too, is not built.
-- [ ] Stop building releases on `ubuntu-latest`.
-- [ ] Pin Node to a full version, the Go check tools to versions, and every
+- [x] Stop building releases on `ubuntu-latest`.
+- [x] Pin Node to a full version, the Go check tools to versions, and every
       GitHub Action to a commit.
-- [ ] Add one Make target (working name `make update-build-pins`) that moves
+- [x] Add one Make target (working name `make update-build-pins`) that moves
       the image digests, Node, the check tools and the action commits to
       their newest, shows what changed and prints a commit message, as
       `make update-deps` does for npm. Go modules and npm keep their own
       targets.
-- [ ] `make localinstall` and the test VMs build on the developer's machine
+- [x] `make localinstall` and the test VMs build on the developer's machine
       and are not pinned; only a release is.
 
 ## 3. Publish signed static repositories
@@ -790,19 +790,19 @@ one compile
   -> GitHub release publish
 ```
 
-- [ ] Make the workflow call repository Make targets instead of invoking Go,
+- [x] Make the workflow call repository Make targets instead of invoking Go,
       Node, or their linters/test runners directly.
 - [x] Add `make test-packages-quiet`, `make repo-apt`, and `make repo-rpm`
       (`mk/package.mk`; `REPO_DIR`, `REPO_SIGNING_KEY`, `REPO_BASE_URL`).
-- [ ] Compile once in the pinned compile image, then assemble the DEB there
+- [x] Compile once in the pinned compile image, then assemble the DEB there
       and the RPM in the pinned Fedora image (see "Pinned build
       environment").
-- [ ] Test both artifacts before importing signing credentials.
-- [ ] Sign only immutable release-tag artifacts.
-- [ ] Assemble and validate both repositories before deployment.
-- [ ] Deploy the complete repository tree as one Pages artifact.
-- [ ] Publish the GitHub release only after repository deployment succeeds.
-- [ ] Make either packaging platform's failure block the entire release.
+- [x] Test both artifacts before importing signing credentials.
+- [x] Sign only immutable release-tag artifacts.
+- [x] Assemble and validate both repositories before deployment.
+- [x] Deploy the complete repository tree as one Pages artifact.
+- [x] Publish the GitHub release only after repository deployment succeeds.
+- [x] Make either packaging platform's failure block the entire release.
 
 ## Release gates
 

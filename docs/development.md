@@ -754,7 +754,7 @@ an intentional user-local tool directory.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GO_VERSION` | `go.mod` version | Go version used for builds; Go fetches it when the installed one differs. |
-| `NODE_VERSION` | `frontend/package.json` engine | Node version installed by `ensure-node`. |
+| `NODE_VERSION` | the pin in `packaging/build/pins.env` | Node version installed by `ensure-node`, a full `x.y.z` release. |
 | `NVM_VERSION` | `0.40.2` | NVM installer release. |
 | `GOOS` | `linux` | Go target operating system; LinuxIO validates this as `linux`. |
 | `GOARCH` | Host architecture | Go target architecture (`amd64` or `arm64`). |
@@ -765,13 +765,13 @@ an intentional user-local tool directory.
 | `sha256_cmd` | `sha256sum` | SHA-256 command; use `shasum -a 256` where required by a host. |
 | `setsid_cmd` | `setsid` | Session launcher used to terminate complete validation process groups. |
 | `GOLANGCI_LINT` | `$(GO_TOOLS_DIR)/bin/golangci-lint` | golangci-lint executable. |
-| `GOLANGCI_LINT_VERSION` | `latest` | golangci-lint version installed by Make. |
+| `GOLANGCI_LINT_VERSION` | the pin in `packaging/build/pins.env` | golangci-lint version installed by Make. |
 | `MODERNIZE` | `$(GO_TOOLS_DIR)/bin/modernize` | modernize executable. |
-| `MODERNIZE_VERSION` | `latest` | modernize version installed by Make. |
+| `MODERNIZE_VERSION` | the pin in `packaging/build/pins.env` | modernize version installed by Make. |
 | `DEADCODE` | `$(GO_TOOLS_DIR)/bin/deadcode` | deadcode executable. |
-| `DEADCODE_VERSION` | `latest` | deadcode version installed by Make. |
+| `DEADCODE_VERSION` | the pin in `packaging/build/pins.env` | deadcode version installed by Make. |
 | `GOVULNCHECK` | `$(GO_TOOLS_DIR)/bin/govulncheck` | govulncheck executable. |
-| `GOVULNCHECK_VERSION` | `latest` | govulncheck version installed by Make. |
+| `GOVULNCHECK_VERSION` | the pin in `packaging/build/pins.env` | govulncheck version installed by Make. |
 | `GOLANGCI_LINT_OPTS` | `--modules-download-mode=mod` | Additional golangci-lint options. |
 
 Go is not installed by Make: any Go 1.21 or newer on PATH works (linux-toolbox
@@ -932,6 +932,12 @@ same shape as `make update-deps`: `chore(deps): update module <path> to
 subject with one line per direct module, Go version or toolchain change.
 Indirect-only changes give `chore(deps): update indirect Go modules`.
 
+Run `make update-build-pins` to move what a release is built from: the two
+build images' digests, Node, the Go check tools and the commit each GitHub
+Action is pinned to (`packaging/build/pins.env`, `.github/workflows`). It
+shows what changed and prints a commit message, and changes nothing when all
+are current ([Releases](./releases.md)).
+
 ## Distro and WireGuard icons
 
 The existing icon generator bundles the literal IDs in
@@ -949,7 +955,7 @@ The full index groups the supported targets as follows:
 
 - setup: `setup`, `setup-frontend`, `ensure-node`, `ensure-go`,
   `ensure-golint`, `ensure-modernize`, `ensure-deadcode`, `ensure-govulncheck`,
-  `update-deps`, `update-go-deps`
+  `update-deps`, `update-go-deps`, `update-build-pins`
 - frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
   `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,
