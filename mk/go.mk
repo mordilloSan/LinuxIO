@@ -86,6 +86,9 @@ build-bridge: go_binary_label := bridge
 build-bridge: go_binary_package := ./bridge
 build-bridge: go_binary_output := $(bridge_binary)
 build-bridge: go_binary_ldflags := $(go_version_ldflags)
+# os/user finds SSSD and LDAP users only through cgo. Without the pin a host
+# with no C compiler would quietly build a bridge that sees /etc/passwd alone.
+build-bridge: go_binary_extra_env := CGO_ENABLED=1
 build-bridge: ## Build Go bridge binary
 
 build-cli: go_binary_label := CLI

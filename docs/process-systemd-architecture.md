@@ -131,9 +131,11 @@ The words of `linuxio-worker` are:
 - `alert raise|resolve|auto-update|pending-updates`: the alert hooks
   ([Alerts](./alerts.md#hook-commands)).
 
-User lookup in the job host goes through `os/user`, which
-resolves SSSD/LDAP users only in a cgo build (the default native build); a
-`CGO_ENABLED=0` bridge sees only `/etc/passwd` users.
+The bridge and its job host look users up through `os/user`, which finds
+SSSD and LDAP users only through cgo. The bridge is therefore always built
+with `CGO_ENABLED=1` (`mk/go.mk`): on a host with no C compiler the build
+fails, where Go's default would quietly produce a bridge that sees
+`/etc/passwd` alone.
 
 The private indexer modes are an implementation protocol between the daemon and
 its systemd units, not alternate administration paths. Indexer status,
@@ -505,7 +507,7 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 |--------|--------|-------|
 | `make build-cli` | `linuxio` | Go |
 | `make build-backend` | `linuxio-webserver` | Go; embeds version + **bridge SHA-256** |
-| `make build-bridge` | `linuxio-bridge` | Go |
+| `make build-bridge` | `linuxio-bridge` | Go; `CGO_ENABLED=1`, so `os/user` finds SSSD and LDAP users |
 | `make build-auth` | `linuxio-auth` | C; hardened flags (RELRO, PIE, FORTIFY, stack-clash, LTO), links `libpam` + `libsystemd` |
 | `make build-docker-update` | `linuxio-docker-update` | Go; scheduled Docker updater |
 | `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled |
