@@ -302,9 +302,12 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
    account first (GitHub Settings, Pages, "Add a domain": one `TXT` record)
    keeps anyone else's Pages site from taking the name.
 
-7. **Releases that cannot change**: turn on release immutability (Settings,
-   General, Releases), and add a tag ruleset for `v*` that blocks updates and
-   deletions, so a published release's tag and assets stay what was signed.
+7. **Releases that cannot change**, once the first release has gone
+   through: turn on release immutability (Settings, General, Releases), and
+   add a tag ruleset for `v*` that blocks updates and deletions, so a
+   published release's tag and assets stay what was signed. Not before: a
+   release run that fails after its tag is pushed is tried again by deleting
+   the tag, which the ruleset refuses, and the version would then be lost.
 
 8. **A dry run**: `gh workflow run release.yml --ref main` builds both
    packages in the pinned images and tests them, and stops before the key.
