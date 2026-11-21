@@ -61,6 +61,24 @@ const MAX_FONT = 28;
 // cannot learn it from the output.
 let shellTakesPastes = false;
 
+// How long a shell gets to show its prompt before a command is typed anyway.
+const PROMPT_WAIT_MS = 1500;
+// When this page started each shell. A stream that already exists is not
+// proof of a prompt: the terminal can be set up again, or the page left and
+// opened again, while the shell it started a moment ago is still not reading.
+const shellStartedAt = new WeakMap<object, number>();
+
+function hadTimeForPrompt(stream: object) {
+  const startedAt = shellStartedAt.get(stream) ?? -Infinity;
+  return Date.now() - startedAt >= PROMPT_WAIT_MS;
+}
+
+function startShell(cols: number, rows: number) {
+  const stream = openTerminalStream(cols, rows);
+  if (stream) shellStartedAt.set(stream, Date.now());
+  return stream;
+}
+
 const TERMINAL_FONT = "JetBrains Mono";
 const TERMINAL_FONT_STACK = `"${TERMINAL_FONT}", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
 
@@ -203,13 +221,14 @@ const TerminalXTerm = () => {
 
       const existing = login ? null : getStream("terminal.open");
       const pasteKnown = existing !== null && shellTakesPastes;
+      const atPrompt = existing !== null && hadTimeForPrompt(existing);
       // Types the Assistant's command once that cannot run it: one line at
       // once, several lines when the shell takes them as a single paste.
       // A shell started just now is not reading yet: the terminal would echo
       // the command above the prompt and the shell would show it again after
       // it. Turning bracketed paste on is the shell saying its prompt is up;
       // `settled` is for the shell that never does.
-      const typePending = (settled = existing !== null) => {
+      const typePending = (settled = atPrompt) => {
         const pending = pendingCommand.current;
         if (pending === null) return;
         const takesPastes = pasteKnown || terminal.modes.bracketedPasteMode;
@@ -228,7 +247,7 @@ const TerminalXTerm = () => {
         open: () =>
           login
             ? openTerminalLoginStream(terminal.cols, terminal.rows, login)
-            : (existing ?? openTerminalStream(terminal.cols, terminal.rows)),
+            : (existing ?? startShell(terminal.cols, terminal.rows)),
         onData: (data) => {
           writeData(data);
           // After xterm has parsed the output, which may be the prompt that
@@ -262,7 +281,7 @@ const TerminalXTerm = () => {
           terminal.write(
             "\r\n[The command from the Assistant has several lines. It is typed, not run, once the shell shows a prompt that takes a paste.]\r\n",
           );
-        }, 1500);
+        }, PROMPT_WAIT_MS);
       }
 
       return () => {
@@ -305,7 +324,7 @@ const TerminalXTerm = () => {
 
     // Open fresh stream (creates new PTY)
     openStream({
-      open: () => openTerminalStream(terminal.cols, terminal.rows),
+      open: () => startShell(terminal.cols, terminal.rows),
       onData: writeData,
     });
 

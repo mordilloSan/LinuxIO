@@ -192,6 +192,46 @@ describe("Terminal command from the Assistant", () => {
     }
   });
 
+  it("waits for the prompt of a shell it started a moment ago and finds again", () => {
+    const fresh = mocks.fakeStream();
+    mocks.getStream.mockImplementation(() => null);
+    mocks.openTerminalStream.mockImplementation(() => fresh);
+    render(<Terminal />).unmount();
+
+    // Set up again before the prompt is up: the stream exists now, and the
+    // shell behind it is still not reading.
+    mocks.getStream.mockImplementation(() => fresh);
+    mocks.location = { state: { terminalCommand: "uptime" } };
+    render(<Terminal />);
+    expect(mocks.terminal.input).not.toHaveBeenCalled();
+
+    mocks.terminal.modes.bracketedPasteMode = true;
+    act(() => fresh.onData?.(new Uint8Array()));
+
+    expect(mocks.terminal.input).toHaveBeenCalledTimes(1);
+    expect(mocks.terminal.input).toHaveBeenCalledWith("uptime");
+  });
+
+  it("types at once into a shell it started longer ago", () => {
+    vi.useFakeTimers();
+    try {
+      const fresh = mocks.fakeStream();
+      mocks.getStream.mockImplementation(() => null);
+      mocks.openTerminalStream.mockImplementation(() => fresh);
+      render(<Terminal />).unmount();
+      vi.advanceTimersByTime(1500);
+
+      mocks.getStream.mockImplementation(() => fresh);
+      mocks.location = { state: { terminalCommand: "uptime" } };
+      render(<Terminal />);
+
+      expect(mocks.terminal.input).toHaveBeenCalledTimes(1);
+      expect(mocks.terminal.input).toHaveBeenCalledWith("uptime");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("types nothing into an agent login", () => {
     const loginStream = mocks.fakeStream();
     mocks.openTerminalLoginStream.mockReturnValue(loginStream);

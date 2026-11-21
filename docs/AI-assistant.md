@@ -520,7 +520,9 @@ advertises the matching capability.
   so until then the terminal waits and says so. Into a shell the page has
   just started, one line waits the same way, for up to 1.5 s: typed before
   the shell reads, the terminal echoes it above the prompt and the shell
-  shows it again after it. The command is removed from
+  shows it again after it. That holds for the shell's first 1.5 s however
+  the terminal comes to it, a second setup or a return to the page included.
+  The command is removed from
   history state once taken, so a reload does not type it again, and nothing
   is typed into an agent login PTY. Code in a plugin pane or a side question
   has Copy only.
