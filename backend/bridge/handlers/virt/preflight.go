@@ -12,10 +12,12 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
 )
 
 var runPreflight = Preflight
 var findOVMFCodePath = detectOVMFCodePath
+var bridgeHookWarnings = network.BridgeHookWarnings
 var firmwareDescriptorDirs = []string{"/etc/qemu/firmware", "/usr/share/qemu/firmware"}
 
 type qemuFirmwareDescriptor struct {
@@ -51,6 +53,8 @@ func Preflight(ctx context.Context, req apischema.VMPreflightRequest) (apischema
 		out.Warnings = append(out.Warnings, "OVMF firmware not found; VM creation will fall back to BIOS")
 	}
 	collectSourcePreflight(ctx, req, &out)
+	// A warning only: a VM on the default NAT network is unaffected.
+	out.Warnings = append(out.Warnings, bridgeHookWarnings(ctx)...)
 	if out.Firmware.Detected == "" {
 		out.Firmware.Detected = vmFirmwareBIOS
 		if out.Firmware.UEFIAvailable {

@@ -207,6 +207,23 @@ func TestPreflightWithoutNetworkDoesNotRequireDefaultNAT(t *testing.T) {
 	}
 }
 
+func TestPreflightWarnsAboutBridgeFirewall(t *testing.T) {
+	withFakeLibvirt(t, newFakeConn())
+	const warning = "bridged VM traffic will be dropped"
+	bridgeHookWarnings = func(context.Context) []string { return []string{warning} }
+
+	out, err := Preflight(context.Background(), apischema.VMPreflightRequest{Network: "br-lan"})
+	if err != nil {
+		t.Fatalf("Preflight: %v", err)
+	}
+	if !slices.Contains(out.Warnings, warning) {
+		t.Fatalf("warnings = %#v, want bridge firewall warning", out.Warnings)
+	}
+	if slices.Contains(out.Errors, warning) {
+		t.Fatalf("errors = %#v, bridge firewall warning must not be an error", out.Errors)
+	}
+}
+
 func TestCreateVMWithConnRevalidatesBridgeBeforeStorage(t *testing.T) {
 	root := t.TempDir()
 	makeBridgeFixture(t, root, "br-down", "down")

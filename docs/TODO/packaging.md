@@ -203,6 +203,62 @@ Use this common layout:
       exists): a package update runs through dpkg, after which Ubuntu's
       needrestart would restart the job hosts and their jobs
       ([Jobs](../jobs.md#updates)).
+- [ ] Ship the Avahi announcement
+      (`packaging/etc/avahi/services/linuxio.service`) as
+      `/etc/avahi/services/linuxio.service` in every install, as a
+      configuration file, whether or not Avahi is installed: Avahi is a
+      capability people add later, and it reads the file whenever it starts.
+      Today the installer skips the file when Avahi's folder is missing.
+      Decided 2026-11-21. Cockpit ships no such file. The file names port
+      8090, so a port changed in a drop-in is changed here by hand too: one
+      line under Known limits and in the port-change instructions. On the
+      Debian family `apt remove` leaves the file, so the announcement stays
+      until `apt purge`.
+- [ ] Ship the libvirt hook
+      (`packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter`) as
+      `/etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter`, mode 0755, in
+      every install, as the installer does today; libvirt reads hooks only
+      from `/etc`. Decided 2026-11-21. Cockpit ships no hook.
+      - It is a plain file, marked as configuration in both packages
+        (`%config(noreplace)` in the RPM, a conffile in the DEB), so the two
+        behave alike: an untouched copy is replaced at an upgrade, and a copy
+        an administrator edited is kept, without that upgrade's fix.
+      - libvirt finds its hooks only when its daemon starts, so the
+        package's post-install step runs `systemctl try-restart
+        libvirtd.service virtqemud.service` after the file is in place, as
+        the installer does today.
+      - Its first line exits when `/usr/bin/linuxio` is missing. `apt remove`
+        leaves the file until `apt purge`, and libvirt would otherwise go on
+        running it; with the line, removal stops the hook on both families.
+      - Removing LinuxIO removes the fix: a bridged VM on a host with Docker
+        can lose its network at its next start, as after the uninstaller
+        today. One line in the removal instructions.
+      - Considered and not chosen: the script under `/usr` with a link in
+        `/etc` made at first install, the pattern of the banner links. It
+        would deliver every fix and honour a deleted link on both families,
+        but a program started through a link runs under the SELinux label of
+        the file it points to, not of `/etc/libvirt/hooks`, and checking that
+        needs a Fedora VM running a bridged VM beside Docker.
+- [ ] Ship a second, untouched copy of the hook under
+      `/usr/share/linuxio/libvirt/` and give the hook warning a Restore
+      button in place of "reinstall LinuxIO". Decided 2026-11-21. On the
+      Debian family a reinstall does not bring back a file deleted under
+      `/etc` (from memory, to be checked in the Ubuntu VM), so the advice the
+      warning gives today stops being true there.
+      - The warning is the one in bridge options and in the VM preflight
+        ([VM Bridge Networking](../vm-bridge-networking.md)). It is offered a
+        Restore in the two cases it reports: the hook is missing, or it is
+        not an executable regular file.
+      - Restore is a new privileged mutation that takes no path from the
+        request: it copies the fixed file under `/usr/share/linuxio` to the
+        fixed hook path, mode 0755 and owned by root, through a temporary
+        file and a rename, restarts the two libvirt daemons the same way so
+        libvirt finds the hook, and logs one Info line.
+      - The warning is a plain string in `warnings` today. A button needs the
+        hook's state as a field of its own in the answers of `virt.preflight`
+        and `network.get_bridge_options`, so the contract changes
+        (`make generate`), and the Virtual Machines page and the two bridge
+        dialogs change with it.
 - [ ] Keep `/var/lib/linuxio` across package removal.
 - [ ] Install licenses using each distribution's native locations:
   - DEB: `/usr/share/doc/linuxio/copyright` and third-party notices.

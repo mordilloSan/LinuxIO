@@ -2,6 +2,7 @@ package hostbridge
 
 import (
 	"context"
+	"io/fs"
 	"os"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/ifconfig"
@@ -13,6 +14,7 @@ type Environment struct {
 	ifconfig.Environment
 	RemoveFile          func(path string) error
 	ReadFile            func(path string) ([]byte, error)
+	StatFile            func(path string) (fs.FileInfo, error)
 	InterfaceProbes     func(ctx context.Context) ([]InterfaceProbe, error)
 	ManagerForInterface func(ctx context.Context, iface string) (string, error)
 	VerifyBridge        func(ctx context.Context, bridge, member string) (bool, error)

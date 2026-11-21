@@ -26,7 +26,7 @@ var allowedHandlerEdges = map[string]map[string]string{
 	"memory":      {"power": "the swap status says whether a TuneD profile manages swappiness"},
 	"packages":    {"capabilities": "capability registry (CapabilitySpec, InstallSpec)", "docker": "Docker capability probe"},
 	"system":      {"packages": "the health summary counts pending updates", "systemd": "the health summary lists services"},
-	"virt":        {"docker": "excludes Docker-owned bridges from VM bridge candidates"},
+	"virt":        {"docker": "excludes Docker-owned bridges from VM bridge candidates", "network": "the VM preflight warns when the host firewall drops bridged VM traffic"},
 }
 
 // TestImportBoundaries keeps the layering docs/bridge_handler_patterns.md

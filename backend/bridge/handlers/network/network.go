@@ -60,6 +60,13 @@ func GetBridgeOptions(ctx context.Context) (apischema.NetworkBridgeOptions, erro
 	return mapBridgeOptions(options), nil
 }
 
+// BridgeHookWarnings reports, for the VM preflight, that the traffic of VMs
+// attached to a host bridge will be dropped because libvirt does not run the
+// LinuxIO hook.
+func BridgeHookWarnings(ctx context.Context) []string {
+	return hostbridge.HookWarnings(ctx, bridgeEnv)
+}
+
 func CreateBridge(ctx context.Context, req apischema.NetworkBridgeCreateRequest) (apischema.NetworkBridgeCreateResult, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {

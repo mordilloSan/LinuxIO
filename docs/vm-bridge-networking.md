@@ -85,8 +85,27 @@ which drops VM↔LAN frames on any Linux bridge. The installers ship
 `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` into
 `/etc/libvirt/hooks/qemu.d/`; on every domain start it inserts
 `FORWARD -i <bridge> -o <bridge> -j ACCEPT` (IPv4 and IPv6) for each host bridge
-the domain attaches to, skipping libvirt's own `virbr*`. Bridge options only
-warn about the `DROP` policy when that hook is not installed.
+the domain attaches to, skipping libvirt's own `virbr*`. libvirt runs a hook
+only when it is an executable regular file, and finds its hooks only when its
+daemon starts, which is why the installer restarts `libvirtd.service` and
+`virtqemud.service` after it installs the hook.
+
+When `bridge-nf-call-iptables` is `1` and the `FORWARD` policy is `DROP`,
+LinuxIO warns if the hook is missing, or if it exists but is not an executable
+regular file; that warning names the fix, `chmod 755` on the hook and then a
+restart of the two libvirt daemons. The warning appears in the bridge options
+of the create-bridge and hand-off dialogs, and in the VM preflight shown on the
+Virtual Machines page, so a hook removed after the bridge exists is still
+reported. It is a warning only and never blocks creating a bridge or a VM.
+Bridge options also say when the `FORWARD` policy could not be read
+(`iptables -S FORWARD` failed); the VM preflight, which the page asks for every
+few seconds, says nothing then.
+
+Known limits:
+
+- The check reads the hook's file, not what libvirt loaded. A hook made
+  executable or put back while the libvirt daemon runs passes the check, and
+  libvirt runs it only after that daemon restarts.
 
 The current request performs one inventory and ownership scan. The selected
 backend then rechecks its mutation boundary and owns persistence:

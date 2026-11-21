@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -642,6 +644,13 @@ func readEnvironmentFile(env Environment, path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+func statEnvironmentFile(env Environment, path string) (fs.FileInfo, error) {
+	if env.StatFile != nil {
+		return env.StatFile(path)
+	}
+	return os.Stat(path)
+}
+
 func isLinkLocalAddress(value string) bool {
 	ip, _, err := net.ParseCIDR(strings.TrimSpace(value))
 	return err == nil && ip.IsLinkLocalUnicast()
@@ -659,25 +668,64 @@ func validateBridgeName(name string) error {
 	return nil
 }
 
-func firewallWarnings(ctx context.Context, env Environment) []string {
+// forwardDropsBridgedTraffic reports whether bridge netfilter hands bridged
+// frames to an iptables FORWARD chain whose policy is DROP, as on a host with
+// Docker. An error means the policy could not be read.
+func forwardDropsBridgedTraffic(ctx context.Context, env Environment) (bool, error) {
 	data, err := readEnvironmentFile(env, "/proc/sys/net/bridge/bridge-nf-call-iptables")
 	if err != nil || strings.TrimSpace(string(data)) != "1" || env.Runner == nil {
-		return nil
+		return false, nil
 	}
 	output, err := env.Runner.Run(ctx, "iptables", "-S", "FORWARD")
 	if err != nil {
+		return false, err
+	}
+	return strings.Contains(string(output), "-P FORWARD DROP"), nil
+}
+
+// firewallWarnings is what the bridge dialogs show before a bridge is made:
+// the hook warnings, or that the FORWARD policy could not be read.
+func firewallWarnings(ctx context.Context, env Environment) []string {
+	drops, err := forwardDropsBridgedTraffic(ctx, env)
+	if err != nil {
 		return []string{"bridge netfilter is enabled, but the iptables FORWARD policy could not be inspected"}
 	}
-	if !strings.Contains(string(output), "-P FORWARD DROP") {
+	if !drops {
 		return nil
 	}
-	// The packaged libvirt hook accepts intra-bridge forwarding for every
-	// bridge a VM attaches to, so the DROP policy (Docker's default) is only a
-	// problem when the hook is missing.
-	if _, err := readEnvironmentFile(env, libvirtBridgeNetfilterHook); err == nil {
+	return hookWarnings(env)
+}
+
+// HookWarnings reports that VM traffic on a host bridge will be dropped
+// because the LinuxIO libvirt hook is missing or is not something libvirt
+// runs. It is for a page that asks again and again, so a FORWARD policy that
+// cannot be read gives no warning here.
+func HookWarnings(ctx context.Context, env Environment) []string {
+	drops, err := forwardDropsBridgedTraffic(ctx, env)
+	if err != nil {
+		slog.Debug("iptables forward policy unavailable for the libvirt hook check", "error", err)
 		return nil
 	}
-	return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP (Docker does this) and the LinuxIO libvirt hook that allows bridged VM traffic is not installed; reinstall LinuxIO or VM traffic on the bridge will be dropped"}
+	if !drops {
+		return nil
+	}
+	return hookWarnings(env)
+}
+
+// hookWarnings assumes the FORWARD policy drops bridged traffic. The packaged
+// libvirt hook accepts intra-bridge forwarding for every bridge a VM attaches
+// to, so that policy (Docker's default) is only a problem when libvirt does
+// not run the hook: it runs an executable regular file, and finds its hooks
+// only when its daemon starts.
+func hookWarnings(env Environment) []string {
+	info, err := statEnvironmentFile(env, libvirtBridgeNetfilterHook)
+	if err != nil {
+		return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP (Docker does this) and the LinuxIO libvirt hook that allows bridged VM traffic is not installed; reinstall LinuxIO or VM traffic on the bridge will be dropped"}
+	}
+	if mode := info.Mode(); mode.IsRegular() && mode.Perm()&0o111 != 0 {
+		return nil
+	}
+	return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP (Docker does this) and the LinuxIO libvirt hook " + libvirtBridgeNetfilterHook + " is not an executable regular file, so libvirt will not run it and VM traffic on the bridge will be dropped; run chmod 755 " + libvirtBridgeNetfilterHook + " and then systemctl try-restart libvirtd.service virtqemud.service, since libvirt finds its hooks only when its daemon starts"}
 }
 
 func verifyBridge(ctx context.Context, env Environment, bridge, member string) (bool, error) {
