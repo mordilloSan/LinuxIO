@@ -3,7 +3,7 @@
 # LinuxIO Full Installer
 # Downloads and installs LinuxIO binaries, systemd services, PAM, and config.
 # With --local it installs from a local checkout instead (binaries from the
-# build directory, packaging assets from the repo); localinstall.sh wraps that.
+# build directory, packaging assets from the repo).
 # This file must stay self-contained: it is piped to bash from main and run by
 # the bridge updater with --defer-restart.
 #  2025 Miguel Mariz (mordilloSan)
@@ -77,7 +77,7 @@ release_architecture_supported() {
 
 require_release_architecture() {
 	if ! release_architecture_supported; then
-		Show 1 "Release binaries support amd64 (x86_64) only; use localinstall.sh for a host-built install"
+		Show 1 "Release binaries support amd64 (x86_64) only; use --local for a host-built install"
 	fi
 }
 

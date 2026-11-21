@@ -71,7 +71,7 @@ else
 fi
 
 installed=1
-if ! bash "${REPO_ROOT}/packaging/scripts/localinstall.sh" --build-dir "$BIN_SRC_DIR" >"${SMOKE_DIR}/install.log" 2>&1; then
+if ! bash "${REPO_ROOT}/packaging/scripts/install-linuxio-binaries.sh" --local --build-dir "$BIN_SRC_DIR" >"${SMOKE_DIR}/install.log" 2>&1; then
 	tail -n 40 "${SMOKE_DIR}/install.log" >&2 || true
 	fail "local installer failed; full log is ${SMOKE_DIR}/install.log"
 fi

@@ -98,7 +98,7 @@ vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud
 	@$(call vm_lock,$(vm_one),lock)
 	@"$(vm_script)" create
 
-vm-install: build-nocheck ## Build LinuxIO and install it in the test VMs
+vm-install: build-nocheck ## Build LinuxIO, package it in the test VMs and install the package (PACKAGE_VERSION=... for another version)
 	@$(call vm_lock,$(vm_numbers),lock)
 	@trap '$(vm_stop_all)' EXIT
 	@$(vm_all) install "$(bin_dir)"
@@ -150,6 +150,8 @@ export LINUXIO_VM_UPDATER_RUN := $(UPDATER_RUN)
 export LINUXIO_VM_DOCKER_RUN := $(DOCKER_UPDATE_RUN)
 export LINUXIO_VM_ZRAM_PROVIDER := $(ZRAM_PROVIDER)
 export LINUXIO_VM_BUILD_DIR := $(bin_dir)
+# The version of the package install assembles in the VM (mk/package.mk).
+export LINUXIO_VM_PACKAGE_VERSION := $(PACKAGE_VERSION)
 # $(call vm_test_build,NAME,PACKAGE) builds PACKAGE's tests as NAME.test.
 # Each build is a command of its own, ended by ;, so set -e stops at a failed
 # one: it would let a failure early in an && list pass. It builds to a name of

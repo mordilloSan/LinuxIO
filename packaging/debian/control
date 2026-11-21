@@ -1,0 +1,23 @@
+Source: linuxio
+Section: admin
+Priority: optional
+Maintainer: LinuxIO <packages@linuxio.invalid>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/mordilloSan/LinuxIO
+Rules-Requires-Root: no
+
+Package: linuxio
+Architecture: amd64
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libpam0g,
+         packagekit,
+         polkitd | policykit-1,
+         systemd
+Description: web dashboard to administer a Linux server
+ LinuxIO manages a Linux host from the browser: storage and btrfs pools,
+ Docker, virtual machines, networking, users, shares, updates, sensors and
+ files, behind one PAM sign-in.
+ .
+ It listens on port 8090 (linuxio-webserver.socket).

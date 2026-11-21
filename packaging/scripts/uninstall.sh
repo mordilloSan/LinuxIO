@@ -16,6 +16,18 @@ readonly GREY='\e[90m'
 readonly RED='\e[91m'
 readonly YELLOW='\e[33m'
 readonly DATA_DIR="/var/lib/linuxio"
+
+# This script removes what the script installer put in. A LinuxIO installed
+# as a package is the package manager's to remove: deleting its files here
+# would leave dpkg or rpm believing they are still installed.
+if dpkg-query -W -f='${db:Status-Status}' linuxio 2>/dev/null | grep -qx installed; then
+	echo "LinuxIO is installed as a package; remove it with: sudo apt remove linuxio" >&2
+	exit 1
+fi
+if command -v rpm >/dev/null 2>&1 && rpm -q linuxio >/dev/null 2>&1; then
+	echo "LinuxIO is installed as a package; remove it with: sudo dnf remove linuxio" >&2
+	exit 1
+fi
 REMOVE_DATA=0
 
 if [[ "${1:-}" == "--remove-data" ]]; then

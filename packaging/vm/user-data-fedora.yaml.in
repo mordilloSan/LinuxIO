@@ -24,6 +24,12 @@ packages:
   - docker-compose
   - docker-buildx
   - btrfs-progs
+  # What assembles LinuxIO's RPM in the VM (linuxio-vm.sh install): rpmbuild,
+  # the spec's systemd and SELinux macros and what they ask rpmbuild for.
+  - rpm-build
+  - systemd-rpm-macros
+  - selinux-policy-devel
+  - systemd-devel
 runcmd:
   # The metadata refresh holds dnf's lock while a suite installs a package.
   - systemctl disable --now dnf-makecache.timer

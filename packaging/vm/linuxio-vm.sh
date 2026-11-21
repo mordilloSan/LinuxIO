@@ -43,7 +43,9 @@ fedora/) readonly RELEASE=45 VERSION=45-1.4 FIRST_DOMAIN=linuxio-e2e-fedora SEED
 	;;
 esac
 # The profile: where the cloud image and its checksum file are published, the
-# first-boot seed, the package manager and the packages the suites add.
+# first-boot seed, the package manager, the packages the suites add, and the
+# script that assembles LinuxIO's package with the tools it needs (in the seed
+# too; install adds them to a VM made before they were).
 # Neither checksum file's signature is checked: it comes over HTTPS from the
 # distribution's own server, and Fedora's image from one of its mirrors.
 case $DISTRO in
@@ -55,6 +57,7 @@ ubuntu)
 	# zram-tools is LinuxIO's first choice where it exists.
 	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator
 	readonly COMPOSE_PACKAGE=docker-compose-v2 BUILDX_PACKAGE=docker-buildx
+	readonly PACKAGE_SCRIPT=package-deb.sh PACKAGE_TOOLS=debhelper
 	;;
 fedora)
 	readonly IMAGE_NAME="Fedora-Cloud-Base-Generic-${VERSION}.x86_64.qcow2"
@@ -64,6 +67,9 @@ fedora)
 	# Fedora has no zram-tools; the image comes with zram-generator.
 	readonly ZRAM_DEFAULT=zram-generator GENERATOR_PACKAGE=zram-generator
 	readonly COMPOSE_PACKAGE=docker-compose BUILDX_PACKAGE=docker-buildx
+	# The spec's systemd and SELinux macros, and what its %selinux_requires_min
+	# asks rpmbuild for.
+	readonly PACKAGE_SCRIPT=package-rpm.sh PACKAGE_TOOLS="rpm-build systemd-rpm-macros selinux-policy-devel systemd-devel"
 	;;
 esac
 readonly INDEX="${LINUXIO_VM_INDEX:-1}"
@@ -495,23 +501,87 @@ prepare() {
 	[[ -z $build_dir ]] || step install install "$build_dir"
 }
 
-# install BUILD_DIR [REF] installs the build in BUILD_DIR with the installer
-# and packaging of this checkout, or of the git REF when given: a release's
-# binaries need that release's packaging (its units start the programs and
-# words it has), so jobs-update.spec.ts installs v0.53.0 with REF v0.53.0.
+# install BUILD_DIR installs the build in BUILD_DIR as a package: the VM
+# assembles the profile's package (DEB or RPM) from it with this checkout's
+# packaging, as a release's image does, checks it against the build
+# (package-contents.sh) and installs it with apt or dnf, over any LinuxIO
+# package already there. The package's version is LINUXIO_VM_PACKAGE_VERSION
+# (mk/vm.mk exports make's PACKAGE_VERSION), or this checkout's. LinuxIO runs
+# when it is done.
+#
+# install BUILD_DIR REF installs with the installer and packaging of the git
+# REF instead: a release's binaries need that release's packaging (its units
+# start the programs and words it has), so jobs-update.spec.ts installs
+# v0.53.0 with REF v0.53.0.
 install() {
 	local build_dir=${1:-} ref=${2:-}
 	[[ -n $build_dir && -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
 	connect
 	push_checkout "$build_dir" "$ref"
-	vm_ssh 'sudo ~/linuxio/packaging/scripts/install-linuxio-binaries.sh --local --build-dir ~/linuxio/build'
+	if [[ -n $ref ]]; then
+		vm_ssh 'sudo ~/linuxio/packaging/scripts/install-linuxio-binaries.sh --local --build-dir ~/linuxio/build' </dev/null
+	else
+		install_package
+	fi
 	: >"${STATE}/installed"
 }
 
-# push_checkout BUILD_DIR [REF] puts what the installer reads in ~/linuxio,
-# from the checkout or from the git REF, and the build in ~/linuxio/build:
-# --local reads packaging/, LICENSE and docs/THIRD_PARTY_NOTICES.md, and finds
-# the checkout by its Makefile.
+install_package() {
+	local version=${LINUXIO_VM_PACKAGE_VERSION:-}
+	if [[ -z $version ]]; then
+		version="$("${REPO_ROOT}/packaging/scripts/package-version.sh")" ||
+			die "cannot tell this checkout's package version; give PACKAGE_VERSION"
+	fi
+	# shellcheck disable=SC2086 # one package a word
+	if ! vm_has_packages $PACKAGE_TOOLS; then
+		say "installing the tools that assemble the package (${PACKAGE_TOOLS})"
+		vm_install "$PACKAGE_TOOLS"
+	fi
+	say "assembling LinuxIO ${version} with ${PACKAGE_SCRIPT}"
+	vm_ssh "bash -s -- $(printf '%q ' "$PKG" "$PACKAGE_SCRIPT" "$version")" <<'INSTALL'
+set -euo pipefail
+pkg=$1 script=$2 version=$3
+cd ~/linuxio
+rm -rf packages
+file="$(packaging/scripts/"$script" --build-dir build --version "$version" --out-dir packages 2>packages.log)" || {
+	tail -n 40 packages.log >&2
+	exit 1
+}
+bash packaging/scripts/tests/package-contents.sh "$file" build
+case $pkg in
+apt)
+	# --reinstall replaces the programs when the version is the one
+	# installed; an administrator's change to a configuration file stays.
+	sudo env DEBIAN_FRONTEND=noninteractive apt-get install --reinstall --allow-downgrades -y \
+		-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+		"$file" </dev/null
+	;;
+dnf)
+	if [[ "$(rpm -q --qf '%{VERSION}' linuxio 2>/dev/null)" == "$version" ]]; then
+		sudo dnf reinstall -y "$file" </dev/null
+	else
+		sudo dnf install -y "$file" </dev/null
+	fi
+	;;
+esac
+# The package restarts LinuxIO only if it ran; a test VM is left running it.
+sudo systemctl start linuxio.target
+INSTALL
+}
+
+# vm_has_packages PACKAGE...: whether the VM has every PACKAGE installed.
+vm_has_packages() {
+	case $PKG in
+	apt) vm_ssh "for p in $*; do dpkg-query -W -f='\${db:Status-Status}' \"\$p\" 2>/dev/null | grep -qx installed || exit 1; done" </dev/null ;;
+	dnf) vm_ssh "rpm -q $* >/dev/null" </dev/null ;;
+	esac
+}
+
+# push_checkout BUILD_DIR [REF] puts what the package scripts and the
+# installer read in ~/linuxio, from the checkout or from the git REF, and the
+# build in ~/linuxio/build: packaging/, LICENSE and
+# docs/THIRD_PARTY_NOTICES.md, and the Makefile, by which the installer's
+# --local finds the checkout.
 push_checkout() {
 	local -a files=(Makefile LICENSE docs/THIRD_PARTY_NOTICES.md packaging)
 	if [[ -n ${2:-} ]]; then
@@ -519,7 +589,8 @@ push_checkout() {
 	else
 		tar -C "$REPO_ROOT" -cf - "${files[@]}"
 	fi | vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
-	tar -C "$1" -cf - . | vm_ssh 'tar -C linuxio/build -xf -'
+	# Not the packages make put beside the programs (PACKAGES_DIR).
+	tar -C "$1" --exclude=./packages -cf - . | vm_ssh 'tar -C linuxio/build -xf -'
 }
 
 # The root test suites of the vm-test-* targets and test-vm-backend, one
@@ -1127,7 +1198,7 @@ update() {
 	say "upgrading the packages of ${DOMAIN} (several minutes)"
 	case $PKG in
 	apt)
-		vm_ssh sudo bash -s <<'UPGRADE'
+		vm_ssh sudo bash -s -- "$PACKAGE_TOOLS" <<'UPGRADE'
 set -euo pipefail
 systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
 # A run the boot started holds the dpkg lock; let it end by itself.
@@ -1137,10 +1208,14 @@ done
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o DPkg::Lock::Timeout=600 -qq update
 apt-get -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -y -qq dist-upgrade
+# The tools that assemble LinuxIO's package, for a VM made before the seed had
+# them.
+# shellcheck disable=SC2086 # one package a word
+apt-get -o DPkg::Lock::Timeout=600 -y -qq install $1
 sync
 UPGRADE
 		;;
-	dnf) vm_ssh 'sudo dnf upgrade -y -q --refresh && sync' </dev/null ;;
+	dnf) vm_ssh "sudo dnf upgrade -y -q --refresh && sudo dnf install -y -q ${PACKAGE_TOOLS} && sync" </dev/null ;;
 	esac
 	v shutdown "$DOMAIN" >/dev/null
 	wait_for_shut_off 180

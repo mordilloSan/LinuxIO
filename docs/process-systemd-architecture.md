@@ -542,7 +542,7 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
 | `make build-worker` | `linuxio-worker` | Go; the timer jobs and unit hooks systemd starts with a word |
 
-`make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and installer tests read. Only `common/version.Version` is stamped into the binaries that report a version. Install via `make localinstall`, which runs `packaging/scripts/localinstall.sh` (a wrapper for `install-linuxio-binaries.sh --local --build-dir build/`):
+`make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and installer tests read. Only `common/version.Version` is stamped into the binaries that report a version. Install via `make localinstall`, which assembles the DEB or the RPM for the host's family and installs it with `apt` or `dnf` ([Development](./development.md)). The script installer (`install-linuxio-binaries.sh --local --build-dir build/`), which the packages replace, places:
 
 - `linuxio` → `/usr/bin/`, the other programs → `/usr/libexec/linuxio/` (created root:root 0755); the copies of all nine and of `linuxio-btrfs-timer` that earlier releases installed in `/usr/local/bin/` are removed by name, since a `linuxio` left there would come first on `PATH`, and the saved units and drop-ins that name `/usr/local/bin/linuxio-<program>` are rewritten to `/usr/libexec/linuxio/` (`rewrite_saved_unit_commands`)
 - units → `/etc/systemd/system/linuxio*`
@@ -786,7 +786,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | libvirt QEMU hook (bridged VM forwarding past Docker's FORWARD DROP) | `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` → `/etc/libvirt/hooks/qemu.d/` |
 | needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, only where `/etc/needrestart` exists |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
-| Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout); `packaging/scripts/localinstall.sh` is a wrapper for it |
+| Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout) |
 | SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → the policy store, loaded by `install_selinux_module` in the install script and removed by `packaging/scripts/uninstall.sh`; `packaging/scripts/update-issue` relabels the banner |
 | CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
 | Worker (timer jobs and unit hooks) | `backend/worker/` (`main.go` dispatch; `snapshot.go`, `replicate.go`, `health.go`, `degraded.go`; `scheduled_run.go`, `alert.go`) |

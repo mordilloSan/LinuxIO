@@ -8,7 +8,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-LOCAL_WRAPPER="${SCRIPT_DIR}/../localinstall.sh"
 RELEASE_INSTALLER="${SCRIPT_DIR}/../install-linuxio-binaries.sh"
 UNINSTALLER="${SCRIPT_DIR}/../uninstall.sh"
 # Sourcing the installer creates its staging directory; its EXIT trap removes
@@ -120,13 +119,6 @@ run_release_integrity_fixtures
 printf '   \033[1;32m✓\033[0m %s\n' "release checksum verification"
 run_atomic_replacement_fixture "$RELEASE_INSTALLER"
 printf '   \033[1;32m✓\033[0m %s\n' "atomic replacement"
-
-grep -Fq -- 'install-linuxio-binaries.sh" --local "$@"' "$LOCAL_WRAPPER" ||
-	fail "localinstall.sh must be a thin wrapper around install-linuxio-binaries.sh --local"
-if [[ $(wc -l <"$LOCAL_WRAPPER") -gt 12 ]]; then
-	fail "localinstall.sh must stay a thin wrapper"
-fi
-printf '   \033[1;32m✓\033[0m %s\n' "local installer is a thin wrapper"
 
 installer="$RELEASE_INSTALLER"
 doc_dir=$(bash -c "source '$installer'; printf '%s\\n' \"\$DOC_DIR\"")

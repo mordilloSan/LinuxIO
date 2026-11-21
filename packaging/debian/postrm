@@ -1,0 +1,17 @@
+#!/bin/sh
+# After removal systemd forgets the units that went. /var/lib/linuxio, the
+# application's data, stays even on a purge; dpkg purges the configuration
+# files under /etc it installed.
+set -e
+
+case "$1" in
+remove | purge)
+	if [ -d /run/systemd/system ]; then
+		systemctl --system daemon-reload >/dev/null || true
+	fi
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0

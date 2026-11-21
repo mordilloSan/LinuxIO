@@ -35,20 +35,39 @@ dev-status-uninstall: ## Remove the VS Code dev-server status bar extension
 		echo "  Not installed in $(VSCODE_EXTENSIONS_DIR)"; \
 	fi
 
-# sudo wrapper for localinstall; the VS Code reinstall command overrides it with "sudo -A".
+# sudo wrapper for localinstall; the VS Code install command overrides it with "sudo -A".
 SUDO ?= sudo
 
 ##@ Install / Uninstall|red
-localinstall: ## Install from local build
-	@echo ""
-	@echo "📦 Installing LinuxIO from local build..."
-	@$(SUDO) "$(packaging_scripts_dir)/localinstall.sh" --build-dir "$(bin_dir)"
+# The package of this host's family (/etc/os-release), assembled as the build
+# user from the fastbuild programs; only apt or dnf and the start run through
+# SUDO. The package restarts LinuxIO if it ran, so the start only brings up
+# one that was stopped.
+localinstall: fastbuild ## Build, package as a DEB or RPM for this host, and install it with apt or dnf
+	@set -e
+	. /etc/os-release
+	case " $${ID:-} $${ID_LIKE:-} " in
+	*" debian "* | *" ubuntu "*) family=deb ;;
+	*" fedora "* | *" rhel "*) family=rpm ;;
+	*) echo "❌ localinstall knows the Debian and RHEL families; /etc/os-release says $${ID:-nothing}" >&2; exit 1 ;;
+	esac
+	echo ""
+	echo "📦 Packaging LinuxIO $(PACKAGE_VERSION) as a $$family..."
+	file="$$("$(packaging_scripts_dir)/package-$$family.sh" --build-dir "$(bin_dir)" --version "$(PACKAGE_VERSION)" --out-dir "$(packages_dir)")"
+	echo "📦 Installing $$file..."
+	if [ "$$family" = deb ]; then
+	  $(SUDO) apt-get install --reinstall --allow-downgrades -y "$$file"
+	elif [ "$$(rpm -q --qf '%{VERSION}' linuxio 2>/dev/null)" = "$(PACKAGE_VERSION)" ]; then
+	  $(SUDO) dnf reinstall -y "$$file"
+	else
+	  $(SUDO) dnf install -y "$$file"
+	fi
+	$(SUDO) systemctl start linuxio.target
+	echo "✅ LinuxIO $(PACKAGE_VERSION) installed"
 
-reinstall: fastbuild localinstall ## Fastbuild + install (no uninstall)
-	@echo "LinuxIO reinstalled successfully!"
-	@echo "  WARNING: Quick & dirty build - no tests executed!"
-
-uninstall: ## Remove LinuxIO installation
+# For a LinuxIO the script installer put in, which the package refuses to
+# install over.
+uninstall: ## Remove a LinuxIO installed by the install script
 	@echo ""
 	@echo "🗑️  Uninstalling LinuxIO..."
 	@sudo "$(packaging_scripts_dir)/uninstall.sh"
@@ -56,6 +75,8 @@ uninstall: ## Remove LinuxIO installation
 ##@ Run / Clean|red
 clean: ## Remove binaries, node_modules, and generated assets
 	@for bin in $(shipped_binaries); do rm -f "$(bin_dir)/$$bin"; done
+	@rm -f "$(packages_dir)"/linuxio_*.deb "$(packages_dir)"/linuxio-*.rpm
+	@rmdir "$(packages_dir)" 2>/dev/null || true
 	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(frontend_dir)/tsconfig.tsbuildinfo" || true
 	@rm -rf "$(cache_dir)" "$(frontend_node_modules_dir)" || true
 	@find "$(backend_frontend_dir)" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true

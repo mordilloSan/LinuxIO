@@ -22,15 +22,16 @@ import {
 // docs/jobs.md, Updates: on Ubuntu, apt runs needrestart after each
 // dpkg run, and needrestart restarts every service still running a binary
 // that was replaced. An update replaces the binaries and leaves the job hosts
-// running, so the installer ships an override,
+// running, so the package ships an override,
 // packaging/etc/needrestart/conf.d/linuxio.conf, that exempts them. This check
-// installs the build `make vm-install` installed a second time, under a
-// running scrub, and runs `needrestart -u NeedRestart::UI::stdio -l` itself as
-// root, in list mode (-r l, which restarts nothing) and in automatic mode
-// (-r a). apt's hook runs `apt-pinvoke -m u` instead, which this check does
-// not run; in needrestart's source -m u selects automatic mode, which decides
-// the restarts by the same override. -l checks libraries only, so that a
-// pending kernel asks for nothing.
+// installs the package of the build `make vm-install` installed a second time
+// (apt-get install --reinstall), under a running scrub, and runs
+// `needrestart -u NeedRestart::UI::stdio -l` itself as root, in list mode
+// (-r l, which restarts nothing) and in automatic mode (-r a). apt's hook runs
+// `apt-pinvoke -m u` instead, which this check does not run; in needrestart's
+// source -m u selects automatic mode, which decides the restarts by the same
+// override. -l checks libraries only, so that a pending kernel asks for
+// nothing.
 //
 // It leaves the apt timers stopped until the next boot, the e2e pool on vdb
 // and vdc that ensurePool creates on a fresh VM (with its 1 GiB fill.bin), the
@@ -41,7 +42,7 @@ import {
 
 const OVERRIDE = "/etc/needrestart/conf.d/linuxio.conf";
 const HOST = "linuxio-jobs@0.service";
-/** A daemon the override does not exempt: the installer restarts it. */
+/** A daemon the override does not exempt: the package restarts it. */
 const DAEMON = "linuxio-monitoring.service";
 const DAEMON_BINARY = "/usr/libexec/linuxio/linuxio-monitoring";
 /** The build directory `make vm-install` builds (the Makefile's default BIN_DIR). */
@@ -138,7 +139,11 @@ test("needrestart leaves a job host that runs a replaced binary alone", async ({
       "the scrub ended before the install: lower its speed",
     ).toBe(true);
     const installed = await rig(["install", BUILD]);
-    expect(installed).toContain(`Installed ${OVERRIDE}`);
+    expect(installed).toMatch(/^Setting up linuxio /m);
+    expect(
+      await vmSsh(`dpkg -S ${OVERRIDE}`),
+      "the package installed the override",
+    ).toBe(`linuxio: ${OVERRIDE}\n`);
     expect(await mainPid(HOST), "the install left the job host running").toBe(
       host,
     );
@@ -147,8 +152,8 @@ test("needrestart leaves a job host that runs a replaced binary alone", async ({
     );
     expect((await jobRecord(job.id))?.state).toBe("running");
 
-    // The install restarted the daemons. Replace one daemon's binary as the
-    // installer does (a new file renamed over it) and leave it running.
+    // The install restarted the daemons. Replace one daemon's binary as dpkg
+    // does (a new file renamed over it) and leave it running.
     await vmSsh(
       `sudo cp -p ${DAEMON_BINARY} ${DAEMON_BINARY}.e2e && sudo mv -f ${DAEMON_BINARY}.e2e ${DAEMON_BINARY}`,
     );

@@ -1,0 +1,30 @@
+#!/bin/sh
+# On removal (not on an upgrade): stop LinuxIO, the job hosts with it, and
+# disable what the package enabled. /var/lib/linuxio is left as it is.
+set -e
+
+# What the postinst may have enabled through deb-systemd-helper, and LinuxIO
+# itself (the btrfs units); the root job host is enabled with systemctl.
+enabled_units="linuxio.target linuxio-indexer-index.timer linuxio-monitoring.service linuxio-btrfs-health.timer linuxio-btrfs-degraded.service"
+
+if [ "$1" = remove ]; then
+	if [ -d /run/systemd/system ]; then
+		# Every job host and its socket, one per uid that signed in.
+		hosts=$(systemctl list-units --all --plain --no-legend --full 'linuxio-jobs@*' 2>/dev/null | grep -o 'linuxio-jobs@[^ ]*' || true)
+		# shellcheck disable=SC2086 # one unit a word
+		deb-systemd-invoke stop linuxio.target linuxio-webserver.socket linuxio-auth.socket \
+			linuxio-indexer.socket linuxio-indexer-index.timer linuxio-btrfs-health.timer \
+			linuxio-monitoring.service linuxio-issue.service $hosts >/dev/null || true
+	fi
+	# Disabled while the unit files are still there, and forgotten by
+	# deb-systemd-helper, so a later install enables them again.
+	# shellcheck disable=SC2086
+	systemctl --no-reload disable $enabled_units linuxio-jobs@0.service >/dev/null 2>&1 || true
+	for unit in $enabled_units; do
+		deb-systemd-helper purge "$unit" >/dev/null || true
+	done
+fi
+
+#DEBHELPER#
+
+exit 0

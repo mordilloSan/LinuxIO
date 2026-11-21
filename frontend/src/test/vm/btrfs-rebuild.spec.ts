@@ -313,10 +313,10 @@ async function dropAndRebuild(uuid: string, disk: string, page?: Page) {
     message: expect.stringContaining(`/dev/${back}`),
   });
   expect(await storedAlert(`btrfs/health-${uuid}`)).toBeNull();
-  // The unit ran as the installer put it.
+  // The unit ran as the package installs it.
   expect(
     (await vmSsh(`systemctl show -P FragmentPath ${rebuildUnit}`)).trim(),
-  ).toBe("/etc/systemd/system/linuxio-btrfs-rebuild@.service");
+  ).toBe("/usr/lib/systemd/system/linuxio-btrfs-rebuild@.service");
   return back;
 }
 

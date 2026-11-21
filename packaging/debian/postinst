@@ -1,0 +1,72 @@
+#!/bin/sh
+# First install: enable LinuxIO and start it. Upgrade: restart it if it runs,
+# so a stopped LinuxIO stays stopped. The job hosts (linuxio-jobs@*) are
+# outside linuxio.target and are never restarted here: their jobs run on, the
+# package update that started this among them (docs/jobs.md, Updates). The
+# RPM's scriptlets do the same (packaging/rpm/linuxio.spec).
+set -e
+
+# debhelper's part comes first: it creates LinuxIO's folders (tmpfiles.d)
+# before anything starts.
+#DEBHELPER#
+
+# The units enabled on a first install: linuxio.target pulls in the sockets
+# and timers. The root job host and the btrfs units are enabled apart, below.
+enabled_units="linuxio.target linuxio-indexer-index.timer linuxio-monitoring.service"
+
+# The units started now and restarted at an upgrade: the target restarts
+# what is PartOf it, and monitoring is restarted too. The login banner
+# (linuxio-issue.service) has no [Install] section, which deb-systemd-invoke
+# reads as "do not start"; the webserver socket starts it, and an upgrade
+# restarts it with systemctl below.
+started_units="linuxio.target linuxio-monitoring.service"
+
+if [ "$1" = configure ]; then
+	# A first install, or one after the package was removed (not purged),
+	# whose prerm forgot what it had enabled: deb-systemd-helper has no
+	# record of linuxio.target in either case.
+	first=0
+	if [ -z "$2" ] || ! deb-systemd-helper debian-installed linuxio.target; then
+		first=1
+	fi
+
+	# Enabled on the first install and kept as the administrator left them
+	# after it: deb-systemd-helper enables a unit again only while all the
+	# links it made for it are still there.
+	for unit in $enabled_units; do
+		deb-systemd-helper unmask "$unit" >/dev/null || true
+		if deb-systemd-helper --quiet was-enabled "$unit"; then
+			deb-systemd-helper enable "$unit" >/dev/null || true
+		else
+			deb-systemd-helper update-state "$unit" >/dev/null || true
+		fi
+	done
+	# The root job host starts at boot to mark, alert and resume the jobs a
+	# reboot interrupted. deb-systemd-helper cannot read a template's
+	# instance, so systemctl enables it, on the first install only. The
+	# btrfs units too, where a btrfs filesystem exists: LinuxIO enables them
+	# itself for a pool made later, with no record deb-systemd-helper could
+	# tell an administrator's later disable from.
+	if [ "$first" = 1 ]; then
+		systemctl --no-reload enable linuxio-jobs@0.service >/dev/null 2>&1 || true
+		if lsblk -nro FSTYPE 2>/dev/null | grep -qx btrfs; then
+			systemctl --no-reload enable linuxio-btrfs-health.timer linuxio-btrfs-degraded.service >/dev/null 2>&1 || true
+		fi
+	fi
+
+	if [ -d /run/systemd/system ]; then
+		systemctl --system daemon-reload >/dev/null || true
+		if [ "$first" = 1 ]; then
+			# shellcheck disable=SC2086 # one unit a word
+			deb-systemd-invoke start $started_units >/dev/null || true
+		else
+			# shellcheck disable=SC2086
+			deb-systemd-invoke try-restart $started_units >/dev/null || true
+			systemctl try-restart linuxio-issue.service >/dev/null 2>&1 || true
+		fi
+		# libvirt finds its hooks only when its daemon starts.
+		deb-systemd-invoke try-restart libvirtd.service virtqemud.service >/dev/null 2>&1 || true
+	fi
+fi
+
+exit 0

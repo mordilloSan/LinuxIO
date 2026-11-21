@@ -49,9 +49,9 @@ until the last step lands.
 
 1. [x] The new folders: the compiled paths, the units' command lines, the
    SELinux file context, and `make package-root` with its test.
-2. [ ] The DEB, and `make localinstall` installing it.
-3. [ ] The RPM, with the SELinux module.
-4. [ ] The test VMs install packages.
+2. [x] The DEB, and `make localinstall` installing it.
+3. [x] The RPM, with the SELinux module.
+4. [x] The test VMs install packages.
 5. [ ] The login banner, the job units in the package, removal, the hook's
    Restore button.
 6. [ ] LinuxIO's own update through the Updates page; the app updater
@@ -73,15 +73,18 @@ The branch merges into `main` only with step 8, never part-way:
   would leave every service naming a program that is not there.
 - This branch's installer, run without `--local`, would download a release
   built for `/usr/local/bin` into the new folders, where its `linuxio-auth`
-  finds no bridge. On this branch it is run with `--local` only
-  (`make localinstall`, the test VMs).
+  finds no bridge. On this branch it is run with `--local` only: by the test
+  VMs' install of an older release (`linuxio-vm.sh install BUILD_DIR REF`)
+  and by the indexer smoke test.
 
 Not working on this branch from step 1 to step 6:
 
 - The in-app updater. Its sandbox does not let the installer write
   `/usr/bin`, and it was not widened for a component that step 6 deletes.
   `jobs-update.spec.ts`, `jobs-phase5a.spec.ts` and the updater suite fail
-  with it.
+  with it. `jobs-update.spec.ts` also installs the update build as a package
+  over the release its installer put in, which the package's pre-install
+  guard refuses.
 - A sudoers rule that grants web administration by naming
   `/usr/local/bin/linuxio-bridge`, and an administrator's own unit that
   names `/usr/local/bin/linuxio-worker`: both need the new path.
@@ -182,23 +185,31 @@ make localinstall
   -> select DEB or RPM from /etc/os-release
   -> build the native package for the current distribution
   -> install or reinstall that exact package with apt or dnf
-  -> restart linuxio.target after the package transaction
+  -> start linuxio.target after the package transaction
 ```
 
-- [ ] Make package construction consume the exact outputs from `fastbuild`, so
+- [x] Make package construction consume the exact outputs from `fastbuild`, so
       all installed binaries carry the same build version.
-- [ ] Run the build and package construction unprivileged; elevate only the
-      package-manager install and the post-transaction service restart.
+- [x] Run the build and package construction unprivileged; elevate only the
+      package-manager install and the post-transaction start.
+      - A start, not a restart: the package restarts a running LinuxIO
+        itself, so a restart would restart it twice; the start brings up one
+        that was stopped.
+      - Not yet run on a host: the machine this was written on has no
+        debhelper. The same scripts assemble and install in the test VMs.
 - [ ] Keep `make dev` as the frontend hot-reload workflow against the installed
       systemd backend.
-- [ ] Use `make localinstall` for the first development install and after
+- [x] Use `make localinstall` for the first development install and after
       backend changes. Individual build targets only build; they do not
       install.
-- [ ] Delete `packaging/scripts/localinstall.sh` (today a thin wrapper over
+- [x] Delete `packaging/scripts/localinstall.sh` (today a thin wrapper over
       `install-linuxio-binaries.sh --local`) after the package-based target
       replaces it.
-- [ ] Remove `make reinstall` and the custom uninstall target. Native package
-      managers own reinstall and removal.
+- [x] Remove `make reinstall`. The VS Code reinstall key runs
+      `make localinstall`.
+- [ ] Remove `make uninstall` with the installer (step 8). It stays until
+      then: the package refuses to install over a script install, which
+      `make uninstall` removes.
 - [ ] Implement package tooling and the package-based `make localinstall`
       before simplifying version reporting; the one-version assumption is
       valid only after every supported install path installs one complete
@@ -207,14 +218,19 @@ make localinstall
 ### Test VMs
 
 The rig (`packaging/vm/linuxio-vm.sh`, `mk/vm.mk`) builds on the developer's
-machine, copies the build and `packaging/` into the VM and runs the installer
-there with `--local`. With the installer deleted it installs a package
-instead. Decided 2026-11-21.
+machine, copies the build and `packaging/` into the VM, and the VM assembles
+and installs the package. Decided 2026-11-21.
 
-- [ ] `install` copies the DEB or the RPM made from the developer's build
-      into the VM and installs it with `apt` or `dnf`. It is the package
-      `make localinstall` builds, and the same shape as a release, which
-      also puts one compile in both packages.
+- [x] `install` assembles the DEB or the RPM inside the VM from the
+      developer's build, with the script `make localinstall` and a release
+      run (`package-deb.sh` on Ubuntu, `package-rpm.sh` on Fedora), checks it
+      with `package-contents.sh` and installs it with `apt` or `dnf`. A
+      Debian-family host cannot assemble an RPM, and the VM's own release
+      then assembles it as a release's image does; one compile goes in both
+      packages, as in a release.
+      - The VMs' `clean` snapshots made before the seed had the assembling
+        tools lack them; `install` adds them each time (about 30 s) until
+        `make vm-update` takes the snapshot again with them.
 - [ ] The specs that install an older release with its own installer and
       update it (`jobs-update.spec.ts`, `jobs-phase5a.spec.ts`,
       `vm-update-build` in `mk/vm.mk`) install package A and update to
@@ -255,23 +271,26 @@ Use this common layout:
 - [x] Update the C authentication helper's bridge path.
 - [x] Update package-owned systemd units to execute binaries from
       `/usr/libexec/linuxio`.
-- [ ] Keep the five programs systemd runs as root (`linuxio-worker`,
+- [x] Keep the five programs systemd runs as root (`linuxio-worker`,
       `linuxio-docker-update`, `linuxio-auth`, `linuxio-indexer`,
       `linuxio-monitoring`) at mode 0700, owned by root, as the installer's
       `binary_mode` sets them today; the other programs stay 0755. Decided
       2026-11-21. Cockpit installs every helper 0755; LinuxIO is stricter on
       purpose, so no other local user can run a private word or flag.
-      - RPM: `%attr(0700,root,root)` on each of the five.
+      - RPM: `%attr(0700,root,root)` on each of the five. The spec's file
+        list is made from the staged tree, so the five are the ones
+        `package-root.sh` makes 0700.
       - DEB: `dh_fixperms` resets every program to 0755, so the rules set
-        0700 again after it.
-      - The package-content test checks the nine modes.
-      - The `AGENTS.md` rule then names the packages in place of
+        0700 again after it, on the files `package-root.sh` made 0700.
+      - The package-content test (`package-contents.sh`) checks the nine
+        modes.
+      - [ ] The `AGENTS.md` rule then names the packages in place of
         `binary_mode` in the installer.
       - What each program answers to `--help` and `--version`, and to a
         user who is not root, is one rule since v0.55
         ([Binary invocation map](../process-systemd-architecture.md#binary-invocation-map)):
         a root-only program answers "Permission denied" to another user.
-- [ ] Ship the SELinux module (`packaging/selinux/linuxio.cil`) in the RPM
+- [x] Ship the SELinux module (`packaging/selinux/linuxio.cil`) in the RPM
       and load it from the package, with its file context changed to the
       installed path of `linuxio-auth`, `/usr/libexec/linuxio/linuxio-auth`
       ([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)).
@@ -281,13 +300,27 @@ Use this common layout:
         planned in
         [SELinux module in in-app updates](./selinux-module-in-app-update.md),
         which is not built. Decided 2026-11-21.
-      - When it lands, delete that file and its link in `README.md` here,
-        delete the Known limits line "An in-app update cannot load a module
-        that is new or changed", and reword the `AGENTS.md` rule that says
-        the installer loads the module and relabels the binary.
-- [ ] Install package-owned units under `/usr/lib/systemd/system`.
-- [ ] Continue using `/etc/systemd/system` only for administrator or
-      runtime-generated drop-ins.
+      - It is `/usr/share/selinux/packages/targeted/linuxio.cil`, loaded in
+        the post-install step by Fedora's `%selinux_modules_install`
+        (`semodule -n -X 200 -i`, then `load_policy` where SELinux is on;
+        neither fails the transaction), then `restorecon` on
+        `linuxio-auth`, all before any unit is enabled or started. On a first
+        install rpm writes `linuxio-auth` before the module names its type,
+        so the relabel is what gives it `linuxio_auth_exec_t`; at an upgrade
+        rpm writes it with the type already. `%selinux_modules_uninstall`
+        removes the module in the post-uninstall step on an erase only,
+        after the files. The requirements are `%selinux_requires_min`:
+        `selinux-policy` at Fedora's stable floor, not at the version of the
+        machine that assembled the RPM.
+      - [ ] When the in-app updater is deleted (step 6), delete that file and
+        its link in `README.md` here, delete the Known limits line "An in-app
+        update cannot load a module that is new or changed", and reword the
+        `AGENTS.md` rule that says the installer loads the module and
+        relabels the binary.
+- [x] Install package-owned units under `/usr/lib/systemd/system`.
+- [x] Continue using `/etc/systemd/system` only for administrator or
+      runtime-generated drop-ins. The packages put only the links of the
+      units they enable there.
 - [ ] Ship the three job units whose text is the same on every host as
       package units, as `linuxio-btrfs-health.timer` and
       `linuxio-btrfs-degraded.service` already are:
@@ -306,19 +339,24 @@ Use this common layout:
         (`backend/common/verbosemode`) and the alert drop-ins on the
         distribution's update services
         (`backend/bridge/handlers/packages/internal/autoupdate/notify.go`).
-- [ ] Ship the run-record drop-in (`packaging/systemd/linuxio-run-record.conf`)
+- [x] Ship the run-record drop-in (`packaging/systemd/linuxio-run-record.conf`)
       as a package file in each of the eight folders of the installer's
       `run_record_dropin_dirs`, under `/usr/lib/systemd/system`, with the
       program's new path. It is the same file everywhere and depends on no
       setting, so it updates and is removed with the package.
-- [ ] Treat `/etc/linuxio`, `/etc/pam.d/linuxio`, and other administrator
-      configuration as preserved package configuration.
-- [ ] Carry the needrestart override that the script installer installs
+- [x] Treat `/etc/linuxio`, `/etc/pam.d/linuxio`, and other administrator
+      configuration as preserved package configuration: every file under
+      `/etc` is a conffile in the DEB and `%config(noreplace)` in the RPM.
+      - An RPM erase removes the ones nobody changed and keeps a changed one
+        as `.rpmsave`, so `/etc/linuxio` goes with an untouched install; the
+        DEB keeps them all until `apt purge`.
+- [x] Carry the needrestart override that the script installer installs
       today (`packaging/etc/needrestart/conf.d/linuxio.conf` as
-      `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart`
-      exists): a package update runs through dpkg, after which Ubuntu's
-      needrestart would restart the job hosts and their jobs
-      ([Jobs](../jobs.md#updates)).
+      `/etc/needrestart/conf.d/linuxio.conf`): a package update runs through
+      dpkg, after which Ubuntu's needrestart would restart the job hosts and
+      their jobs ([Jobs](../jobs.md#updates)). The DEB ships it whether or
+      not needrestart is installed, which reads it when it is; the RPM has
+      none.
 - [ ] Ship the Avahi announcement
       (`packaging/etc/avahi/services/linuxio.service`) as
       `/etc/avahi/services/linuxio.service` in every install, as a
@@ -375,17 +413,20 @@ Use this common layout:
         and `network.get_bridge_options`, so the contract changes
         (`make generate`), and the Virtual Machines page and the two bridge
         dialogs change with it.
-- [ ] Keep `/var/lib/linuxio` across package removal.
-- [ ] Install licenses using each distribution's native locations:
+- [x] Keep `/var/lib/linuxio` across package removal, on a purge too.
+- [x] Install licenses using each distribution's native locations:
   - DEB: `/usr/share/doc/linuxio/copyright` and third-party notices.
   - RPM: `%license LICENSE` and `%doc THIRD_PARTY_NOTICES.md`.
 - [ ] Stop rewriting the package-owned socket unit during installation. Use
       port `8090` by default and document a systemd socket drop-in for changing
       it.
 - [ ] Remove installer behavior that adds the invoking user to journal groups.
-- [ ] Add a minimal pre-install guard for exact legacy sentinels such as
+- [x] Add a minimal pre-install guard for exact legacy sentinels such as
       `/usr/local/bin/linuxio` or `/etc/systemd/system/linuxio.target`.
       Refuse the install with a clean-install message; do not remove them.
+      The DEB's `preinst` checks on every install (also one after
+      `apt remove`), the RPM's `%pre` on a first install; the message names
+      the uninstall script.
 
 ### Login banner
 
@@ -435,11 +476,27 @@ Checks, each in the VM as the package installs it and again after a reboot:
 
 ## 2. Build native DEB and RPM packages
 
-- [ ] Add native Debian packaging metadata using debhelper/dpkg tooling.
-- [ ] Add `packaging/rpm/linuxio.spec` using `rpmbuild`.
-- [ ] Make both formats consume the shared package-root target instead of
+- [x] Add native Debian packaging metadata using debhelper/dpkg tooling
+      (`packaging/debian`, debhelper compat 13, one binary package `linuxio`
+      for amd64, assembled by `packaging/scripts/package-deb.sh`).
+- [x] Add `packaging/rpm/linuxio.spec` using `rpmbuild`
+      (`packaging/scripts/package-rpm.sh`; `ExclusiveArch: x86_64`,
+      `Release: 1` with no distribution tag, one RPM for every Fedora
+      release).
+- [x] Make both formats consume the shared package-root target instead of
       maintaining two file-copy implementations.
-- [ ] Compile the programs once and put the same programs in both packages.
+- [x] Neither package changes a byte of a program, since the webserver
+      checks the SHA-256 of the bridge recorded at build time: the DEB's
+      rules leave out `dh_strip` and `dh_dwz`; the spec has no debuginfo
+      package, no build-id links and no `__os_install_post` (no `brp-strip`,
+      no shebang rewrite, no `add-det`). `package-contents.sh` compares the
+      nine programs' SHA-256 with the build's.
+- [x] Both carry one version (`packaging/scripts/package-version.sh`,
+      `PACKAGE_VERSION`): `X.Y.Z` on a commit tagged `vX.Y.Z`,
+      `X.Y.Z+devN.gSHA` after it.
+- [ ] The DEB's maintainer and changelog address is the placeholder
+      `packages@linuxio.invalid` until the owner names one.
+- [x] Compile the programs once and put the same programs in both packages.
       Decided 2026-11-21; it replaces "build the RPM on Fedora and never
       package Ubuntu-built programs for Fedora". Releases already ship one
       build to both families through the installer, and the test VMs run it
@@ -462,14 +519,38 @@ Checks, each in the VM as the package installs it and again after a reboot:
         names on both families today. Each package lists the libraries it
         needs, so a family that lacks one refuses the install, which the
         Fedora release gate would show before a release.
-- [ ] Let native tooling derive shared-library requirements.
-- [ ] Declare PackageKit, PAM, polkit, systemd, and other runtime dependencies
-      with the correct distribution-specific package names.
-- [ ] Mark Debian configuration as conffiles and RPM configuration as
+- [x] Let native tooling derive shared-library requirements
+      (`dh_shlibdeps`: `libc6`, `libpam0g`, `libsystemd0`; rpm's ELF
+      dependencies: `libc.so.6`, `libpam.so.0`, `libsystemd.so.0`).
+- [x] Declare PackageKit, PAM, polkit, systemd, and other runtime dependencies
+      with the correct distribution-specific package names: the DEB depends
+      on `libpam0g`, `packagekit`, `polkitd | policykit-1` and `systemd`, the
+      RPM requires `pam`, `polkit`, `PackageKit` and `systemd`, the mandatory
+      set of `install-dependencies.sh`. That script installs nothing
+      optional, so neither package recommends or suggests anything; the
+      RPM's one weak dependency, a newer `selinux-policy`, comes from
+      `%selinux_requires_min`.
+- [x] Mark Debian configuration as conffiles and RPM configuration as
       `%config(noreplace)`.
-- [ ] On first install, create runtime directories, reload systemd, enable and
+- [x] On first install, create runtime directories, reload systemd, enable and
       start `linuxio.target`, and enable the indexer timer.
-- [ ] On upgrade, reload systemd and restart `linuxio.target` if it is
+      - Enabled as the installer does: `linuxio.target`,
+        `linuxio-indexer-index.timer`, `linuxio-monitoring.service`,
+        `linuxio-jobs@0.service`, and `linuxio-btrfs-health.timer` with
+        `linuxio-btrfs-degraded.service` where a btrfs filesystem exists;
+        started: `linuxio.target`, monitoring and the login banner. The root
+        job host is enabled, not started, and starts at boot or at a sign-in.
+      - The DEB enables through `deb-systemd-helper`, so an administrator's
+        disable holds at an upgrade, except the job host's template
+        instance, which it cannot read: `systemctl` enables that on a first
+        install only. It starts and restarts through `deb-systemd-invoke`, so
+        `policy-rc.d` and chroots are respected. Its first install is one
+        with no `deb-systemd-helper` record of `linuxio.target`, which
+        includes an install after `apt remove`.
+      - debhelper's own unit handling (`dh_installsystemd`) is left out:
+        it would stop or restart the units it finds, the job hosts among
+        them. `dh_installtmpfiles` stays and creates the folders first.
+- [x] On upgrade, reload systemd and restart `linuxio.target` if it is
       running: `deb-systemd-invoke try-restart` in the DEB's post-install
       script and `%systemd_postun_with_restart` in the RPM, as Cockpit's
       packages do for `cockpit.service`. A stopped LinuxIO stays stopped.
@@ -478,9 +559,14 @@ Checks, each in the VM as the package installs it and again after a reboot:
         ([Jobs](../jobs.md#updates)).
       - `linuxio-auth@.service` is `PartOf=linuxio.target`, so every session
         ends and its user signs in again.
-      - The restart comes when LinuxIO's own package is done, which in a
-        larger upgrade is before the transaction ends.
-- [ ] On removal, stop and disable services while preserving application data.
+      - The DEB restarts when LinuxIO's own package is configured, which in
+        a larger upgrade is before the transaction ends. The RPM's
+        `%systemd_postun_with_restart` marks the units, and systemd restarts
+        them when the dnf transaction ends.
+      - Monitoring and the login banner are restarted the same way.
+- [x] On removal, stop and disable services while preserving application data.
+      The target, the sockets, monitoring, the banner and every job host and
+      job socket stop; what the install enabled is disabled.
 - [ ] On removal, also delete what LinuxIO itself wrote under
       `/etc/systemd/system` while it ran, as `uninstall.sh` does today; a
       package manager removes only the files it installed. Decided
@@ -497,8 +583,9 @@ Checks, each in the VM as the package installs it and again after a reboot:
         distribution's own schedule returns.
       - After a removal and a new install these settings are switched on
         again by hand, as after the uninstaller today.
-- [ ] Add `make package-deb` and `make package-rpm`.
-- [ ] Replace the current `make localinstall` implementation with the
+- [x] Add `make package-deb` and `make package-rpm`. Each fails, naming the
+      package to install, on a host without its tool.
+- [x] Replace the current `make localinstall` implementation with the
       package-based development workflow above.
 
 ### Pinned build environment
@@ -660,7 +747,7 @@ Browser
       a command line LinuxIO writes on save rewrites the saved copies in the
       package's post-install step.
 - [ ] Delete `packaging/scripts/install-dependencies.sh`.
-- [ ] Delete `packaging/scripts/localinstall.sh`.
+- [x] Delete `packaging/scripts/localinstall.sh`.
 - [ ] Delete `packaging/scripts/uninstall.sh`.
 - [ ] Delete or replace their installer fixture tests.
 - [ ] Keep `packaging/scripts/tests/systemd-indexer-smoke.sh`: it tests the

@@ -244,7 +244,7 @@ include $(mk_dir)/vm.mk
 # `make help` lists only help_common; `make help-full` (or `make help FULL=1`)
 # lists every annotated target. `make --full` is not possible: Make parses
 # dashed words itself and rejects unknown ones.
-help_common := setup dev dev-stop generate test test-vm-backend test-vm-browser build fastbuild localinstall reinstall uninstall clean help-overrides
+help_common := setup dev dev-stop generate test test-vm-backend test-vm-browser build fastbuild localinstall uninstall clean help-overrides
 help_awk = awk -v blue='$(COLOR_BLUE)' -v cyan='$(COLOR_CYAN)' -v green='$(COLOR_GREEN)' \
 	  -v yellow='$(COLOR_YELLOW)' -v red='$(COLOR_RED)' -v reset='$(COLOR_RESET)' \
 	  -v go='$(GO_VERSION)' -v node='$(NODE_VERSION)' -v bin='$(bin_dir)' \
@@ -280,5 +280,5 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: deadcode deadcode-only analyze analyze-auth bundle-metrics compiler-coverage check-c-build-deps
 .PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-worker build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
-.PHONY: localinstall reinstall uninstall package-root clean cloc
+.PHONY: localinstall uninstall package-root package-deb package-rpm clean cloc
 .PHONY: vm-create vm-install vm-ssh vm-stop vm-reset vm-update vm-update-build vm-destroy test-vm-browser vm-test-btrfs-integration vm-test-memory-integration vm-test-filebrowser-root vm-test-relay-root test-vm-browser-rerun test-vm-backend

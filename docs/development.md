@@ -55,20 +55,25 @@ For Debian/Ubuntu, install the development libraries and optional analysis/test
 tools with:
 
 ```sh
-sudo apt install -y build-essential libpam0g-dev libsystemd-dev cppcheck \
-  clang-tools clang-tidy bear libpam-wrapper libnss-wrapper libuid-wrapper
+sudo apt install -y build-essential libpam0g-dev libsystemd-dev debhelper \
+  cppcheck clang-tools clang-tidy bear libpam-wrapper libnss-wrapper \
+  libuid-wrapper
 ```
 
 For Fedora/RHEL/CentOS, use:
 
 ```sh
-sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra \
-  clang-tidy bear pam_wrapper nss_wrapper uid_wrapper
+sudo dnf install -y gcc pam-devel systemd-devel rpm-build systemd-rpm-macros \
+  selinux-policy-devel cppcheck clang-tools-extra clang-tidy bear \
+  pam_wrapper nss_wrapper uid_wrapper
 ```
 
-The static-analysis tools are only needed by `analyze-auth`. The wrapper
-libraries are needed by `test-auth-pam`; that target skips when they are not
-installed.
+`debhelper` assembles the DEB (`make package-deb`, and `make localinstall` on
+the Debian family); `rpm-build` with the systemd and SELinux macro packages
+assembles the RPM (`make package-rpm`, and `make localinstall` on the RHEL
+family). The static-analysis tools are only needed by `analyze-auth`. The
+wrapper libraries are needed by `test-auth-pam`; that target skips when they
+are not installed.
 
 The runtime bootstrap script installs only PAM, PolicyKit, and PackageKit.
 Docker and the other optional host capabilities are installed after sign-in
@@ -114,17 +119,27 @@ real Vite build; run `make dev-prep` or `make build-vite` before
 
 For frontend hot reload, start the backend through systemd and run `make dev`.
 Vite serves on port `3000` by default and proxies backend requests to port
-`8090`. Go/backend or bridge changes can be rebuilt with `make fastbuild` and
-installed with `make localinstall`.
+`8090`. Go/backend or bridge changes are rebuilt and installed with
+`make localinstall`.
 
 Built binaries land in `build/` (`BIN_DIR`). `make build-go-binaries` builds
 every Go binary (embedding the bridge SHA-256 in the webserver),
 `make build-binaries` adds the C authentication helper, and
 `make print-binaries` lists the shipped-binary names that the release workflow
-and installer tests consume. `make localinstall` runs
-`packaging/scripts/localinstall.sh`, a wrapper for
-`install-linuxio-binaries.sh --local --build-dir build/`. Only
-`common/version.Version` is stamped into binaries at link time.
+and installer tests consume. Only `common/version.Version` is stamped into
+binaries at link time.
+
+`make localinstall` installs this checkout as a package, the way a release
+installs: it runs `make fastbuild`, picks the DEB or the RPM from
+`/etc/os-release` (the Debian or the RHEL family), assembles it as you from
+those programs (below) and installs it with `apt-get install --reinstall` or
+`dnf install` (`dnf reinstall` for the version already installed). Only the
+package manager and a closing `systemctl start linuxio.target` run through
+`SUDO` (`sudo` unless overridden). The package restarts LinuxIO when it was
+running and leaves a stopped one stopped; the start brings that one up. The
+package refuses to install over LinuxIO put in by the install script
+(`/usr/local/bin/linuxio` or `/etc/systemd/system/linuxio.target` there):
+`make uninstall` removes that install first and keeps `/var/lib/linuxio`.
 
 `make package-root DESTDIR=<empty folder>` lays the built programs and the
 files under `packaging/` out as the tree a package installs
@@ -138,6 +153,39 @@ module, the needrestart override, the login banner hooks and the licences.
 `packaging/scripts/tests/package-root-fixtures.sh`, part of
 `make test-installation-scripts`, checks every path and mode of the tree
 against a written list, and that every program a unit starts is in it.
+
+`make package-deb` and `make package-rpm` assemble the two packages from the
+programs in `build/` into `build/packages/` (`PACKAGES_DIR`), and build nothing
+themselves. Each runs a script that needs only `packaging/`, `LICENSE` and
+`docs/THIRD_PARTY_NOTICES.md` beside it, so a test VM or a release image runs
+it from a copy of those: `packaging/scripts/package-deb.sh` (debhelper, the
+metadata and maintainer scripts in `packaging/debian`) and
+`packaging/scripts/package-rpm.sh` (rpmbuild, `packaging/rpm/linuxio.spec`).
+Both take the tree from `package-root.sh`, run as the build user and fail with
+the name of the package to install when their tool is missing; a
+Debian-family host has no rpmbuild, so its RPM is assembled in a Fedora test
+VM. Neither changes a byte of a program: no strip, no debug split, no build-ID
+rewrite, since the webserver checks the SHA-256 of the bridge recorded at
+build time. Both packages are for amd64 only (`Architecture: amd64`,
+`ExclusiveArch: x86_64`), so `make localinstall` does not work on another
+architecture.
+
+Both packages carry one version, `PACKAGE_VERSION`
+(`packaging/scripts/package-version.sh`): `X.Y.Z` on a commit tagged
+`vX.Y.Z`, and `X.Y.Z+devN.gSHA` on a commit `N` after the last such tag,
+which sorts after that release and before the next in dpkg and rpm.
+`PACKAGE_VERSION=...` on the command line gives another, such as a higher one
+to try an upgrade with. `packaging/scripts/tests/package-version-fixtures.sh`,
+part of `make test-installation-scripts`, checks it in a throwaway repository.
+
+`packaging/scripts/tests/package-contents.sh PACKAGE BUILD_DIR` checks a
+`.deb` or a `.rpm` before it is installed: its files and links are exactly the
+tree `package-root.sh` stages from the build, at the same modes, with what
+that family adds, all owned by root; everything under `/etc` is a
+configuration file (a conffile, `%config(noreplace)`); nothing is under
+`/usr/local`; and the nine programs have the build's SHA-256. What each
+package does when it is installed, upgraded and removed is in
+[Packaging](./TODO/packaging.md), until that plan becomes a doc.
 
 ## Test VM
 
@@ -380,8 +428,8 @@ and the packages they install. Fedora's is:
   it ships, so a new release is a new version in the profile.
 - `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
   passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
-  `docker-compose` and `docker-buildx`, `btrfs-progs`,
-  `install-dependencies.sh`, every package upgraded, and
+  `docker-compose` and `docker-buildx`, `btrfs-progs`, the RPM tools
+  above, `install-dependencies.sh`, every package upgraded, and
   `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
   filesystem is btrfs.
 - `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
@@ -399,7 +447,7 @@ make test-vm-browser        # everything below that a browser run needs, in one 
 make test-vm-backend        # the same for the root suites, shared out between the VMs
 make vm-create              # download and check the image, first boot, snapshot "clean"
 make vm-create VM=2         # one more VM
-make vm-install             # make build-nocheck, then install this build in the VMs
+make vm-install             # make build-nocheck, then package this build in the VMs and install it
 make vm-ssh CMD='systemctl is-active linuxio.target'
 make test-vm-browser-rerun  # the Playwright specs in frontend/src/test/vm, on the VMs as they are
 make vm-test-btrfs-integration
@@ -410,6 +458,20 @@ make vm-update-build        # this tree with jobs.Protocol one higher, for the u
 make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 
+- `vm-install` (and the install of `test-vm-browser`) copies the build,
+  `packaging/`, `LICENSE` and `docs/THIRD_PARTY_NOTICES.md` into the VM, which
+  assembles the profile's package from them, as a release's image does: the
+  DEB with `package-deb.sh` on Ubuntu, the RPM with `package-rpm.sh` on
+  Fedora, at `PACKAGE_VERSION`. It runs `package-contents.sh` on it, fails
+  there when the check does, and installs it with `apt-get install
+  --reinstall` or `dnf install` (`dnf reinstall` for the version installed),
+  over a LinuxIO package of the same or an older version; then it starts
+  `linuxio.target`, so LinuxIO runs. The tools that assemble a package
+  (`debhelper`; `rpm-build`, `systemd-rpm-macros`, `selinux-policy-devel` and
+  `systemd-devel`) come with the seed, `vm-update` adds them to `clean`, and
+  the install adds them to a VM that lacks them. `jobs-update.spec.ts`
+  installs an older release with its own installer instead
+  (`linuxio-vm.sh install BUILD_DIR REF`).
 - `vm-create` downloads the cloud image (checked against the release's
   `SHA256SUMS`, Fedora's `CHECKSUM`), and boots it once with
   `packaging/vm/user-data.yaml.in` (`user-data-fedora.yaml.in` on Fedora).
@@ -419,7 +481,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   run at once) that runs only during that boot. It creates the user
   `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
   Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
-  `btrfs-progs` and the LinuxIO dependencies, and upgrades every package. The
+  `btrfs-progs`, `debhelper` and the LinuxIO dependencies, and upgrades every
+  package. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
   to the seed's packages reaches a VM only when it is created again
   (`vm-destroy`, then `vm-create`); `vm-update` upgrades what `clean` already
@@ -437,7 +500,7 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   down. `vm-reset` leaves it stopped, without
   LinuxIO; run `vm-install` again after a reset.
 - A change to a systemd unit or socket, a PAM file or SELinux policy counts
-  as working only when it is seen as the installer puts it and again after a
+  as working only when it is seen as the package installs it and again after a
   reboot, so that every socket and service starts with it. Every target
   shuts the VM down when it ends (not with `VM_KEEP=1`), so the next one
   (`make vm-ssh CMD=...`) boots it afresh under its lock. The script's own `reboot`
@@ -642,6 +705,7 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `BACKEND_DIR` | Auto-detected `backend/` or repository root | Go module directory. |
 | `CACHE_DIR` | `$(REPO_ROOT)/.cache` | Make caches, logs, and analysis artifacts. |
 | `BIN_DIR` | `$(REPO_ROOT)/build` | Built binary output directory. |
+| `PACKAGES_DIR` | `$(BIN_DIR)/packages` | Where `package-deb`, `package-rpm` and `localinstall` put the packages; `make clean` removes the LinuxIO packages in it. |
 | `GO_TOOLS_DIR` | `$(HOME)/.go` | Installed Go tool binaries. |
 | `NVM_DIR` | `$(HOME)/.nvm` | Node Version Manager installation. |
 | `VITE_DEV_LOG` | `$(FRONTEND_DIR)/.vite-dev.log` | Vite log file. |
@@ -749,11 +813,11 @@ a binding of the same key in the user's own `keybindings.json` wins over them.
 | --- | --- | --- |
 | `Ctrl+Shift+1` | `linuxioDevStatus.start` | Runs the `make dev` task. |
 | `Ctrl+Shift+2` | `linuxioDevStatus.stop` | Runs the `make dev-stop` task. |
-| `Ctrl+Shift+3` | `linuxioDevStatus.reinstall` | Asks for the sudo password in a masked prompt, then runs `make reinstall` in a visible terminal. |
+| `Ctrl+Shift+3` | `linuxioDevStatus.reinstall` | Asks for the sudo password in a masked prompt, then runs `make localinstall` in a visible terminal. |
 
-`make reinstall` calls `sudo` from the Makefile, and `sudo` caches credentials
+`make localinstall` calls `sudo` from the Makefile, and `sudo` caches credentials
 per terminal, so priming it first would not help. The reinstall command instead
-runs `make reinstall SUDO='sudo -A'` (`SUDO` defaults to `sudo` in
+runs `make localinstall SUDO='sudo -A'` (`SUDO` defaults to `sudo` in
 `mk/install.mk`) with `SUDO_ASKPASS` pointing at
 `.vscode/dev-status/askpass.sh`, which prints `$LINUXIO_SUDO_PASSWORD`. That
 variable is set only in the task's environment: the password is never written
@@ -768,6 +832,9 @@ reload, because the symlink name carries the version.
 These are consumed by particular targets rather than global defaults:
 
 - `BRIDGE_SHA256` supplies the bridge digest embedded by `build-backend`.
+- `PACKAGE_VERSION` is the version `package-deb`, `package-rpm`,
+  `localinstall` and the test VMs' install give the package; from git unless
+  given.
 - `LINUXIO_CWRAP_LIBDIR` points `test-auth-pam` at wrapper libraries installed
   outside standard system library directories.
 - `CFLAGS`, `LDFLAGS`, `GOOS`, and `GOARCH` remain standard toolchain
@@ -863,7 +930,8 @@ The full index groups the supported targets as follows:
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
-- installation: `localinstall`, `reinstall`, `uninstall`, `package-root`
+- installation: `localinstall`, `uninstall`, `package-root`, `package-deb`,
+  `package-rpm`
 - test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-update-build`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,

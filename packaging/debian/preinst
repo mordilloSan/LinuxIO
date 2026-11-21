@@ -1,0 +1,26 @@
+#!/bin/sh
+# Refuse to install over LinuxIO put in by the script installer, which the
+# package would fight over units and programs: it is removed first. Exact
+# paths only, and nothing is removed here.
+set -e
+
+case "$1" in
+install)
+	for sentinel in /usr/local/bin/linuxio /etc/systemd/system/linuxio.target; do
+		# A mask (a link to /dev/null) is an administrator's, not the script's.
+		if [ "$(readlink "$sentinel" 2>/dev/null)" = /dev/null ]; then
+			continue
+		fi
+		if [ -e "$sentinel" ] || [ -L "$sentinel" ]; then
+			echo "linuxio: ${sentinel} is from a LinuxIO installed by its install script." >&2
+			echo "linuxio: Remove that install first with the uninstall script of the release it came from" >&2
+			echo "linuxio: (packaging/scripts/uninstall.sh in its source; it keeps /var/lib/linuxio), then install this package again." >&2
+			exit 1
+		fi
+	done
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0

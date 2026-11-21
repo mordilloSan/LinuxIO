@@ -1,0 +1,45 @@
+#!/usr/bin/make -f
+# The DEB of LinuxIO, assembled by packaging/scripts/package-deb.sh from
+# programs already built: nothing is compiled here. The script sets
+# LINUXIO_BUILD_DIR (the programs) and LINUXIO_PACKAGING_DIR (packaging/).
+
+ifeq ($(strip $(LINUXIO_BUILD_DIR)),)
+$(error LINUXIO_BUILD_DIR is not set: build with packaging/scripts/package-deb.sh)
+endif
+ifeq ($(strip $(LINUXIO_PACKAGING_DIR)),)
+$(error LINUXIO_PACKAGING_DIR is not set: build with packaging/scripts/package-deb.sh)
+endif
+
+pkg := debian/linuxio
+
+%:
+	dh $@
+
+# The tree both packages share, then what only the Debian family gets. The
+# programs package-root.sh makes 0700 are listed for override_dh_fixperms.
+override_dh_auto_install:
+	"$(LINUXIO_PACKAGING_DIR)/scripts/package-root.sh" --build-dir "$(LINUXIO_BUILD_DIR)" --destdir "$(CURDIR)/$(pkg)"
+	install -D -m 0644 "$(LINUXIO_PACKAGING_DIR)/etc/pam.d/linuxio" $(pkg)/etc/pam.d/linuxio
+	install -D -m 0644 "$(LINUXIO_PACKAGING_DIR)/etc/needrestart/conf.d/linuxio.conf" $(pkg)/etc/needrestart/conf.d/linuxio.conf
+	install -D -m 0755 "$(LINUXIO_PACKAGING_DIR)/etc/update-motd.d/60-linuxio" $(pkg)/etc/update-motd.d/60-linuxio
+	cd $(pkg) && find . -type f -perm 0700 -printf '%P\n' >"$(CURDIR)/debian/root-only-programs"
+
+# The programs go in byte for byte as built: the webserver checks the SHA-256
+# of linuxio-bridge recorded at build time, so nothing strips them, splits
+# their debug information or rewrites their build ID.
+override_dh_strip override_dh_dwz:
+
+# The maintainer scripts enable, start, restart and stop the units
+# themselves: debhelper's own code would restart or stop the job hosts
+# (linuxio-jobs@*) on an upgrade, and they must run on.
+override_dh_installsystemd:
+
+# dh_fixperms makes every program 0755; the programs systemd runs as root stay
+# 0700 so no other user can start them.
+override_dh_fixperms:
+	dh_fixperms
+	while IFS= read -r path; do chmod 0700 "$(pkg)/$$path"; done <debian/root-only-programs
+
+# The notices keep their name, as in the RPM.
+override_dh_compress:
+	dh_compress -X THIRD_PARTY_NOTICES.md

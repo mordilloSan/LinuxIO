@@ -112,8 +112,8 @@ The installer places the `linuxio` command in `/usr/bin` and eight programs in
 `linuxio-docker-update`, `linuxio-indexer`, `linuxio-monitoring`,
 `linuxio-worker`, and `linuxio-claude-relay`. Only `linuxio` is a command to
 type; the programs systemd runs as root are installed so only root can start
-them. From a checkout, `make localinstall` runs the same installer with
-`--local` against the binaries in `build/`.
+them. From a checkout, `make localinstall` builds the binaries in `build/`,
+packages them as a DEB or an RPM and installs that package with `apt` or `dnf`.
 
 The first-party `linuxio-monitoring` binary is installed and enabled with
 LinuxIO rather than through Capability Manager. It samples the host, keeps the

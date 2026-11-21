@@ -102,7 +102,7 @@ test("a drop-in alone creates no unit", async () => {
   ]) {
     expect(
       await vmSsh(
-        `test -f /etc/systemd/system/${dir}/10-linuxio-run.conf && echo installed || true`,
+        `test -f /usr/lib/systemd/system/${dir}/10-linuxio-run.conf && echo installed || true`,
       ),
       dir,
     ).toBe("installed\n");
@@ -400,7 +400,7 @@ test("a system update records its run and shows in the history", async ({
   );
   expect(
     await vmSsh(
-      `test -f /etc/systemd/system/${SYSTEM_UPDATE_UNIT}.d/10-linuxio-run.conf && echo installed || true`,
+      `test -f /usr/lib/systemd/system/${SYSTEM_UPDATE_UNIT}.d/10-linuxio-run.conf && echo installed || true`,
     ),
     "the run-record drop-in",
   ).toBe("installed\n");
