@@ -2,14 +2,13 @@
 # shellcheck disable=SC2016
 # Fixture-only checks for package-root.sh, the layout the DEB and the RPM are
 # built from: the staged tree is exactly the manifest below, with its modes,
-# and agrees with the Makefile, packaging/systemd and the installer. Fake
-# programs stand in for the build; nothing is installed on the host.
+# and agrees with the Makefile and packaging/systemd. Fake programs stand in
+# for the build; nothing is installed on the host.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 PACKAGE_ROOT="${SCRIPT_DIR}/../package-root.sh"
-INSTALLER="${SCRIPT_DIR}/../install-linuxio-binaries.sh"
 
 fail() {
 	echo "❌ $*" >&2
@@ -126,33 +125,26 @@ if [[ "$actual" != "$expected" ]]; then
 fi
 pass "staged tree matches the manifest, paths and modes"
 
-# 2. The nine programs are the Makefile's, at the installer's modes.
+# 2. The nine programs are the Makefile's. Their modes are the manifest's:
+# the five systemd runs as root are 0700, so no other user can run them.
 staged_programs=$(cd "$tree" && find usr/bin usr/libexec/linuxio -type f -printf '%f\n' | LC_ALL=C sort)
 make_binaries=$(make -s -C "$REPO_ROOT" print-binaries | LC_ALL=C sort)
 assert_eq "$make_binaries" "$staged_programs" "staged programs vs make print-binaries"
-if [[ -f "$INSTALLER" ]]; then
-	installer_modes=$(bash -c "source '$INSTALLER'; for b in \$(binary_names); do printf '%s %s\n' \"\$(binary_mode \"\$b\")\" \"\$b\"; done" | LC_ALL=C sort -k2)
-	staged_modes=$(cd "$tree" && find usr/bin usr/libexec/linuxio -type f -printf '0%m %f\n' | LC_ALL=C sort -k2)
-	assert_eq "$installer_modes" "$staged_modes" "program modes vs the installer's binary_mode"
-fi
-pass "programs match make print-binaries and the installer's modes"
+pass "programs match make print-binaries"
 
-# 3. The units are packaging/systemd's, the drop-in folders the installer's.
+# 3. The units are packaging/systemd's, and every drop-in folder of the
+# manifest holds the run-record drop-in.
 staged_units=$(cd "${tree}/usr/lib/systemd/system" && find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
 assert_eq "$(printf '%s\n' "$packaged_units" | LC_ALL=C sort)" "$staged_units" "staged units vs packaging/systemd"
 staged_dropin_dirs=$(cd "${tree}/usr/lib/systemd/system" && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | LC_ALL=C sort)
-if [[ -f "$INSTALLER" ]]; then
-	installer_dropin_dirs=$(bash -c "source '$INSTALLER'; run_record_dropin_dirs" | LC_ALL=C sort)
-	assert_eq "$installer_dropin_dirs" "$staged_dropin_dirs" "drop-in folders vs the installer's run_record_dropin_dirs"
-fi
 for dir in $staged_dropin_dirs; do
 	cmp -s "${REPO_ROOT}/packaging/systemd/linuxio-run-record.conf" "${tree}/usr/lib/systemd/system/${dir}/10-linuxio-run.conf" ||
 		fail "${dir}/10-linuxio-run.conf is not packaging/systemd/linuxio-run-record.conf"
 done
-pass "units match packaging/systemd, drop-in folders the installer's"
+pass "units match packaging/systemd, each drop-in folder holds the run-record drop-in"
 
 # 4. Every LinuxIO program a unit or drop-in starts is in the tree, and no
-# staged file names the script installer's /usr/local/bin.
+# staged file names /usr/local/bin, where releases up to v0.54 put them.
 exec_paths=$(cd "${tree}/usr/lib/systemd/system" && find . -type f -exec grep -hE '^Exec[A-Za-z]*=' {} + |
 	grep -oE '/usr/(libexec/linuxio/[^[:space:]]+|bin/linuxio[^[:space:]]*|share/linuxio/[^[:space:]]+)' | LC_ALL=C sort -u || true)
 for path in $exec_paths; do

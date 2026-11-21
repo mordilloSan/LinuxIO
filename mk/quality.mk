@@ -49,7 +49,7 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 
 ##@ Tests|green
 # See scripts/lanes.sh for the lane layout and why it is scheduled this way.
-test: setup dev-prep test-installation-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
+test: setup dev-prep test-packaging-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" test "$(test_timer_start)"
 
 ##@ Quality checks|green
@@ -78,13 +78,10 @@ test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./p
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
 
-test-installation-scripts: ## Run host-independent installer fixture tests
+test-packaging-scripts: ## Run host-independent fixture tests of the packaging files and scripts
 	@echo ""
-	@$(PRINTC) "$(COLOR_CYAN)🧪 Running install-dependencies fixture tests...$(COLOR_RESET)"
-	@bash "$(packaging_scripts_dir)/tests/install-dependencies-fixtures.sh"
-	@echo ""
-	@$(PRINTC) "$(COLOR_CYAN)🧪 Running installer fixture tests...$(COLOR_RESET)"
-	@bash "$(packaging_scripts_dir)/tests/installer-fixtures.sh"
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package file fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/package-files-fixtures.sh"
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package-root fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/package-root-fixtures.sh"

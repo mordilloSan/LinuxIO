@@ -153,7 +153,7 @@ func TestValidateOptionsRejectsPendingWithoutSupport(t *testing.T) {
 	}
 }
 
-// The installer hooks these services with the run-record drop-in, and the
+// The package hooks these services with the run-record drop-in, and the
 // run recorder names them itself so it does not import this package: a
 // service one of the backends runs its updates in must be known to it.
 func TestScheduledRunKnowsTheUpgradeServices(t *testing.T) {

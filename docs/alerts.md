@@ -368,10 +368,10 @@ linuxio-worker alert pending-updates --provider apt
 
 Only root can start `linuxio-worker` (mode `0700`), so these run from a unit,
 a drop-in or a root shell. An administrator's own unit raises an alert with
-`ExecStopPost=/usr/libexec/linuxio/linuxio-worker alert raise ...`. Up to
-v0.53 they were `linuxio alert ...`, and earlier releases installed the
-worker in `/usr/local/bin`; the installer rewrites the drop-ins LinuxIO wrote
-and leaves an administrator's own files, which need the new name and path.
+`ExecStopPost=/usr/libexec/linuxio/linuxio-worker alert raise ...`. An
+administrator's own file written for an older release (`linuxio alert ...` up
+to v0.53, a worker in `/usr/local/bin` after) needs the new name and path:
+the package never rewrites it.
 
 ## Bridge API
 

@@ -42,9 +42,10 @@ front-end; the remaining processes are independently constrained by their
 responsibilities.
 
 **Who may start each program.** `linuxio` is the only program meant to be
-typed. The installer gives the programs systemd runs as root (`linuxio-worker`,
+typed. The package installs the programs systemd runs as root (`linuxio-worker`,
 `linuxio-docker-update`, `linuxio-auth`, `linuxio-indexer`,
-`linuxio-monitoring`) mode `0700`, so another local user cannot run a private
+`linuxio-monitoring`) at mode `0700` ([Packages](./packaging.md#what-is-installed-where)),
+so another local user cannot run a private
 word or flag of theirs, and the rest `0755` because they run as someone else:
 `linuxio` as whoever types it, `linuxio-bridge` and `linuxio-claude-relay` as
 the signed-in user, and `linuxio-webserver` as a dynamic user, whose ids
@@ -62,13 +63,10 @@ program, several of which are root only. The page polls `/api/version` only
 to see that a restarted webserver answers again; the footer shows the
 version the bridge's `control.version` reports.
 
-Known limits: on an update the installer rewrites the command lines
-in the units and drop-ins LinuxIO itself wrote (`saved_unit_files`); an
-administrator's own unit or override that calls `linuxio alert ...`, starts
-a daemon with `run` or passes the indexer `--config-file` (`--config` since
-v0.55) is not touched and needs the new command line. The installer takes its
-units from current `main`, so it installs v0.55.0 or newer only, and with
-`--skip-binaries` it refuses a host whose programs are older.
+Known limits: an administrator's own unit or override that calls
+`linuxio alert ...`, starts a daemon with `run` or passes the indexer
+`--config-file` (`--config` since v0.55) needs the current command line; the
+package never rewrites an administrator's files.
 
 ### Binary invocation map
 
@@ -276,9 +274,9 @@ ExecStopPost=-+/usr/libexec/linuxio/linuxio-worker scheduled-run end --unit %n
 
 - **Where they are.** Never in a rendered unit: `schedules.run_now` refuses a
   schedule whose unit file differs from what the build renders, so the hooks
-  live in packaged files. The installer copies
-  `packaging/systemd/linuxio-run-record.conf` to `10-linuxio-run.conf` in
-  `/etc/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
+  live in packaged files. The package installs
+  `packaging/systemd/linuxio-run-record.conf` as `10-linuxio-run.conf` in
+  `/usr/lib/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
   every `linuxio-schedule-<id>.service` gets it),
   `linuxio-btrfs-snapshot.service.d/`, `linuxio-btrfs-replicate.service.d/`
   and `linuxio-docker-update.service.d/`,
@@ -287,9 +285,9 @@ ExecStopPost=-+/usr/libexec/linuxio/linuxio-worker scheduled-run end --unit %n
   `dnf5-automatic.service.d/`, `mintupdate-automation-upgrade.service.d/`),
   so a system update is recorded like LinuxIO's own timer runs; a host has
   one of those services at most, and systemd ignores a drop-in of a unit that
-  does not exist. Then it reloads systemd. The uninstaller removes the
-  drop-in from the update services by its name, with the alert drop-in the
-  bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` and
+  does not exist. The drop-ins go with the package, and its removal deletes
+  the alert drop-in the bridge writes beside them
+  ([Removal](./packaging.md#removal)). `linuxio-btrfs-resync@.service` and
   `linuxio-btrfs-rebuild@.service` carry the two lines themselves. The
   snapshot, replication and Docker update services are package units, as
   the resync and rebuild templates are: a save writes only their timers,
@@ -457,42 +455,9 @@ the same uid reconnects to the same host if it is still up.
 
 **needrestart.** On Ubuntu, needrestart, whose apt hook runs after every dpkg
 run, restarts each service still running a replaced binary; for an older host
-that interrupts its jobs (seen once in the test VM, during an unattended-upgrades
-run; [Jobs](./jobs.md#updates)). Where `/etc/needrestart`
-exists the installer therefore installs
-`packaging/etc/needrestart/conf.d/linuxio.conf` as
-`/etc/needrestart/conf.d/linuxio.conf`, after the release binaries are
-verified and before it replaces any of them. Each of its lines adds one
-regular expression with the value 0 ("do not restart") to needrestart's
-`$nrconf{override_rc}` and keeps the distribution's entries:
-`linuxio-jobs@<uid>.service`, the timer-run units `linuxio-schedule-*`,
-`linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`,
-`linuxio-btrfs-rebuild@*` and `linuxio-docker-update`. The DEB carries the
-same file as a conffile (`packaging/debian/rules`).
-needrestart then lists them under "Service restarts being deferred" instead of
-restarting them. The daemons the installer restarts itself (`linuxio-webserver`,
-`linuxio-monitoring`, `linuxio-indexer`, `linuxio-auth`) are not listed, and
-needrestart restarts them as before. The uninstaller removes the file.
-needrestart evaluates the file as Perl, as root, and a release install fetches
-it from `main` without a checksum; a file needrestart cannot load stops all its
-restarts. So the installer installs it only when every line is blank, a
-comment, or one such entry whose pattern has, token by token, the shipped form
-(`^linuxio-`, lowercase words joined by `-`, at most one `@` or `-` followed
-by `\d+` or `.+`, then `\.service$`), never for one of the four always-on
-daemons, and, where Perl is present, only when the file compiles under
-`strict` as needrestart loads it (`needrestart_override_valid`). Any other
-file is not installed, an installed copy stays as it is, and the installer
-prints a notice.
-
-In the test VM, against needrestart 3.11-1ubuntu2 on Ubuntu 26.04
-(`frontend/src/test/vm/jobs-needrestart.spec.ts`): in list mode needrestart put
-`linuxio-jobs@0.service` under "Service restarts being deferred" and
-`linuxio-monitoring.service` under "Services to be restarted"; in automatic
-mode it deferred the job host, whose `MainPID` stayed, and restarted
-`linuxio-monitoring.service`, which got a new one. That the other five
-expressions match their units and no daemon, that the content check refuses
-other files, and that the uninstaller removes the file is covered by the
-installer's fixture tests, not seen in the VM.
+that interrupts its jobs ([Jobs](./jobs.md#updates)). The DEB ships an
+override that keeps it from restarting the job hosts and the timer-run units
+([The needrestart override](./packaging.md#the-needrestart-override)).
 
 ### After login — the connection becomes the yamux transport
 
@@ -529,15 +494,7 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
 | `make build-worker` | `linuxio-worker` | Go; the timer jobs and unit hooks systemd starts with a word |
 
-`make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and installer tests read. Only `common/version.Version` is stamped into the binaries that report a version. Install via `make localinstall`, which assembles the DEB or the RPM for the host's family and installs it with `apt` or `dnf` ([Development](./development.md)). The script installer (`install-linuxio-binaries.sh --local --build-dir build/`), which the packages replace, places:
-
-- `linuxio` → `/usr/bin/`, the other programs → `/usr/libexec/linuxio/` (created root:root 0755); the copies of all nine and of `linuxio-btrfs-timer` that earlier releases installed in `/usr/local/bin/` are removed by name, since a `linuxio` left there would come first on `PATH`, and the saved units and drop-ins that name `/usr/local/bin/linuxio-<program>` are rewritten to `/usr/libexec/linuxio/` (`rewrite_saved_unit_commands`)
-- units → `/etc/systemd/system/linuxio*`
-- tmpfiles → `/usr/lib/tmpfiles.d/linuxio.conf`
-- PAM stack → `/etc/pam.d/linuxio`, from `packaging/etc/pam.d/linuxio` on the Debian family and from `packaging/etc/pam.d/linuxio.rhel` on the RHEL family, which has `password-auth` and `postlogin` where Debian has the `common-*` files, and `/etc/locale.conf` for `/etc/default/locale`. The installer tells the families apart with `install-dependencies.sh`'s `detect_distro` and `is_fedora`, of which it carries a copy, and installs the file through a staged copy (`atomic_replace_file`, 0644 root:root), so a download cut half-way leaves the installed file as it was. The installer fixtures keep the copy identical and check that the RHEL file is the Debian one line for line and in the same order, with `common-auth` mapped to `substack password-auth` and `include postlogin`, `common-account` and `common-password` to `password-auth`, `common-session-noninteractive` to `password-auth` and `postlogin`, and `/etc/default/locale` to `/etc/locale.conf`. Order matters on RHEL: a `sufficient` line in `password-auth` ends the stack where it is included, so LinuxIO's own lines stay above each include.
-- config → `/etc/linuxio/`
-- needrestart override → `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart` exists (see the **needrestart.** paragraph in "Login and jobs — the bridge connects to its job host")
-- SELinux module `linuxio` → the policy store, with `semodule -i` and a relabel of `/usr/libexec/linuxio/linuxio-auth`, on the RHEL family only (see [SELinux](#selinux))
+`make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and the package tests read. Only `common/version.Version` is stamped into the binaries that report a version. `make localinstall` assembles the DEB or the RPM for the host's family from them and installs it with `apt` or `dnf` ([Development](./development.md)). Where the package puts each file, and what its install, upgrade and removal steps do, is in [Packages, installation and updates](./packaging.md).
 
 ### Login banner
 
@@ -555,49 +512,12 @@ advertises no address that does not answer. The design is Cockpit's
 inactive file and a link switched between them: the SELinux module names
 `/run/linuxio/issue`, and `update-issue` relabels it after each write.
 
-Links to `../../run/linuxio/issue` show the file: `/etc/motd.d/linuxio`,
-which `pam_motd` prints at an SSH login, on both families, and on the Debian
-family also `/etc/issue.d/linuxio.issue`, which `agetty` prints on the
-console before the login prompt. Ubuntu's `sshd` and `login` PAM files have
-a plain `pam_motd.so noupdate` line, which reads `/etc/motd.d`, so the DEB
-needs no `update-motd.d` script. The RHEL family gets no console link:
-SELinux refuses `agetty` (`getty_t`) the file's type, `motd_var_run_t`,
-which `sshd` needs ([SELinux](#selinux)). The package's post-install step
-makes the links on a first install only (on the DEB, also on an install
-after `apt remove`), never over a file that is there, so a link an
-administrator deleted stays deleted at an update. Neither package owns
-them: removal deletes each while it is still LinuxIO's link.
-
-### Removal
-
-A package manager removes only the files it installed. On removal (not on
-an upgrade) the DEB's `prerm` and the RPM's `%preun` stop and disable the
-snapshot and Docker update timers, and the DEB's `postrm` and the RPM's
-`%postun` then delete what LinuxIO itself wrote under `/etc/systemd/system`
-while it ran, by exact path, the two lists kept equal: the two timers
-(`linuxio-btrfs-snapshot.timer`, `linuxio-docker-update.timer`; left
-behind, each would start a service the removal took away), the verbose
-drop-ins (`backend/common/verbosemode`), the indexer timer's
-`linuxio-indexer-index.timer.d/linuxio.conf`, the alert drop-ins
-`linuxio-alert.conf` on the distribution's update services (left behind,
-their `ExecStopPost=` names a program that is gone and the nightly upgrade
-is marked failed) and the schedule drop-ins `linuxio.conf` on its update
-timers (the distribution's own schedule returns). A drop-in folder goes too
-when nothing else is in it. A test of each writer holds both lists to the
-paths it writes (`TestPackageRemovalDeletes*`). Then systemd reloads.
-`/etc/linuxio` and `/var/lib/linuxio` stay, and after a new install these
-settings are switched on again by hand.
-
-What LinuxIO writes for something an administrator set up stays, since it
-runs without LinuxIO and removing it would stop the administrator's own work
-without a word: the scheduled scripts' units (`linuxio-schedule-<id>.service`
-and `.timer`, which run `bash` on a script under `/etc/linuxio/schedules`
-as their user; the run-record drop-in that hooks them goes with the
-package), the rsync service (`linuxio-rsync.service`, `rsync --daemon` on
-`/etc/linuxio/rsyncd.conf`), Docker's drop-ins
-(`docker.service.d/linuxio-*.conf`: the mounts its data needs and the
-addresses it waits for) and the memory page's hold-off drop-ins on swap units (`90-linuxio-memory.conf`), which keep a swap device it stopped from coming back at boot. A new
-install finds them with their definitions under `/etc/linuxio`.
+Links to `../../run/linuxio/issue`, which the package makes, show the file:
+`/etc/motd.d/linuxio` at an SSH login on both families, and on the Debian
+family also `/etc/issue.d/linuxio.issue` on the console
+([The login banner](./packaging.md#the-login-banner)). The RHEL family gets
+no console link: SELinux refuses `agetty` (`getty_t`) the file's type,
+`motd_var_run_t`, which `sshd` needs ([SELinux](#selinux)).
 
 ## SELinux
 
@@ -697,47 +617,20 @@ the domain may not stat (`/etc/audit`) fails whole. And a job host, which
 systemd starts, runs as `unconfined_service_t` whoever it works for, so
 opening its socket to a confined user would run that user's jobs unconfined.
 
-**Install and uninstall.** `install_selinux_module` in
-`install-linuxio-binaries.sh` runs on the RHEL family only, at the top level
-of `main`:
-
-1. **Right after the binaries**, also with `--skip-binaries`, and before any
-   later step that can end the install. The installer replaces a binary
-   through a new file, which is `bin_t` again, and every sign-in is refused
-   until it is relabelled. A binary that fails inside `install_binaries`
-   still ends the install first, and a `linuxio-auth` it already replaced
-   stays `bin_t` until the next install.
-2. **The module**, where `semodule -l` lists the modules of a policy store.
-   It is fetched from main like the other packaging assets and loaded as
-   root with no checksum, so `selinux_module_valid` first checks it has the
-   shipped form: every line is one the module uses, about LinuxIO's own types
-   and paths only (rules from `linuxio_auth_t`, the two file contexts, the
-   constraint as shipped). A store that already holds the same file
-   (`semodule -E linuxio`, compared with the fetched one) is not loaded
-   again, since a load takes about 5 s; and where `/etc/selinux` is not
-   writable a new or changed module is not tried, and the notice names the
-   root command that loads it.
-3. **Then `restorecon /usr/libexec/linuxio/linuxio-auth`**, whenever `restorecon`
-   exists, whatever happened to the module: the file context lives in the
-   module, and a binary just replaced needs it. When SELinux is on and
-   `semodule` cannot read the store (another program holding its lock), the
-   module is left as it is with a notice, and the relabel still runs.
-4. **All before the systemd steps and the restart**, which recreates the
-   auth socket in `linuxio_auth_t`. On a running host the next sign-in uses
-   the domain at once; the listening socket keeps its old type until the
-   socket unit restarts, which does not stop sign-in.
-
-A module that does not load, or is not of the shipped form, is reported, and
-the install goes on: a module loaded before stays, and without one sign-in is
-refused where SELinux enforces, as before. On a host with SELinux disabled
-`semodule` works on the store and `restorecon` does nothing; switching
-SELinux on asks for a relabel, which gives the binary its type. The Debian
-family is left alone: `unconfined_service_t` is a name of Fedora's policy.
-The banner's file context sits in an optional block, so a policy without
-`motd_var_run_t` loads the rest and only the banner keeps `var_run_t`.
-`uninstall.sh` removes the module after the binaries: removed while
-`linuxio-auth` is still there, it would leave that file `unlabeled_t`, which
-systemd cannot run (status `203/EXEC`).
+**Install and removal.** The RPM carries the module and loads it in its
+post-install step, then relabels `/usr/libexec/linuxio/linuxio-auth`, before
+any unit is enabled or started, and an upgrade loads the new package's module
+the same way; an erase removes the module after the files, since removed
+while `linuxio-auth` is still there it would leave that file `unlabeled_t`,
+which systemd cannot run (status `203/EXEC`)
+([The SELinux module](./packaging.md#the-selinux-module)). A module that does
+not load does not stop the install: without it sign-in is refused where
+SELinux enforces. On a host with SELinux disabled `semodule` works on the
+store and `restorecon` does nothing; switching SELinux on asks for a relabel,
+which gives the binary its type. The Debian family is left alone:
+`unconfined_service_t` is a name of Fedora's policy. The banner's file
+context sits in an optional block, so a policy without `motd_var_run_t` loads
+the rest and only the banner keeps `var_run_t`.
 
 **Turned down, likely to be proposed again** (one line each under Rejected
 in the [backlog](./TODO/backlog.md#rejected)): dropping `pam_selinux.so open`
@@ -759,7 +652,7 @@ policy refuses `init_t` an `unconfined_t` socket.
 - A user SELinux refuses (`user_u` when the session opens, `staff_u` when
   the bridge starts) still has their `linuxio-jobs@<uid>.socket` started:
   `linuxio-auth` starts it before the session opens.
-- The file context names `/usr/libexec/linuxio`, the installer's `LIBEXEC_DIR`.
+- The file context names `/usr/libexec/linuxio/linuxio-auth`, where the package installs it.
 - A policy that lacks a name the module uses (a strict or MLS policy, or one
   with `unconfined` removed) does not load it, and sign-in is refused there
   as before.
@@ -813,7 +706,7 @@ reads the drop-ins when it starts; one already running keeps its level until it
 idles out. `set_debug` stays a Call rather than a Mutation: it is an instant,
 idempotent switch whose point is the calling bridge's own level.
 
-Neither `restart`, `stop` nor the installer stops a job host: they are outside
+Neither `restart`, `stop` nor a package upgrade stops a job host: they are outside
 `linuxio.target`. `systemctl stop linuxio-jobs@<uid>` does, and marks that
 host's running jobs `interrupted`. The next connection to its socket starts it
 again, within 1–30 s while a bridge is connected, so stop
@@ -832,14 +725,14 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 |-----------|------|
 | Systemd units | `packaging/systemd/*.{target,socket,service}` |
 | libvirt QEMU hook (bridged VM forwarding past Docker's FORWARD DROP) | `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` → `/etc/libvirt/hooks/qemu.d/` |
-| needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, only where `/etc/needrestart` exists |
+| needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, DEB only |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
-| Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout) |
-| SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → the policy store, loaded by `install_selinux_module` in the install script and removed by `packaging/scripts/uninstall.sh`; `packaging/scripts/update-issue` relabels the banner |
+| Packages | `packaging/debian`, `packaging/rpm/linuxio.spec`, the shared tree `packaging/scripts/package-root.sh` ([Packages](./packaging.md)) |
+| SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → `/usr/share/selinux/packages/targeted/`, loaded into the policy store by the RPM's `%post` and removed by its `%postun`; `packaging/scripts/update-issue` relabels the banner |
 | CLI (commands) | `backend/cli/` (`main.go` dispatch and help, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
 | CLI man page | `packaging/man/linuxio.8`, handwritten roff → `/usr/share/man/man8/linuxio.8.gz` by both packages (`debian/linuxio.manpages`, the RPM's `%install`) |
 | Worker (timer jobs and unit hooks) | `backend/worker/` (`main.go` dispatch; `snapshot.go`, `replicate.go`, `health.go`, `degraded.go`; `scheduled_run.go`, `alert.go`) |
-| Program modes, saved-unit rewrite | `binary_mode` and `rewrite_saved_unit_commands` in `packaging/scripts/install-linuxio-binaries.sh` |
+| Program folders and modes | `packaging/scripts/package-root.sh` |
 | Shared socket-activation adopt | `backend/common/socketactivation`, `backend/webserver/cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |

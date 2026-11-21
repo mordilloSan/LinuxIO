@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish the LinuxIO RPMs of a folder into a signed static RPM repository
-# (docs/TODO/packaging.md, "Publish signed static repositories"):
+# (docs/releases.md, "Repositories"; docs/development.md):
 #
 #   OUT_DIR/linuxio.repo                       gpgcheck=1, repo_gpgcheck=1
 #   OUT_DIR/RPM-GPG-KEY-linuxio                the public key

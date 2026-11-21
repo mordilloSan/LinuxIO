@@ -173,7 +173,7 @@ See `docs/development.md`, "Test VM", for usage.
   (`vdb`–`vde`) for storage tests. All disks are qcow2.
 - `make vm-create` boots it once with `packaging/vm/user-data.yaml.in`
   (cloud-init over HTTP: test user with passwordless sudo, Docker, btrfs-progs,
-  `install-dependencies.sh`) and snapshots it as `clean`. The image cache, SSH
+  what the package depends on) and snapshots it as `clean`. The image cache, SSH
   key and login live in `~/.cache/linuxio-vm`, outside git.
 - `make vm-install` installs the current build; `make vm-reset` reverts every
   disk to `clean`; `make vm-destroy` removes the domain and its volumes.
@@ -220,9 +220,9 @@ VM recipe hash, the Ubuntu base image digest, and any major dependency versions.
 
 ### Distributions
 
-Decided 2026-11-17: the rig gets a VM for every distribution the installer
-accepts (`is_debian` and `is_fedora` in
-`packaging/scripts/install-dependencies.sh`), not Ubuntu alone:
+Decided 2026-11-17: the rig gets a VM for every distribution of the two
+families the packages are for (the DEB for the Debian family, the RPM for
+the RHEL family), not Ubuntu alone:
 
 | Family | Distributions |
 |---|---|

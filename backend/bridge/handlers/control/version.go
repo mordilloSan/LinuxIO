@@ -34,7 +34,7 @@ func handleVersion(ctx context.Context, _ apischema.NoRequest) (apischema.Versio
 	switch {
 	case err == nil:
 		resp.UpdateVersion = update
-	case errors.Is(err, dbusclient.ErrPackageKitUnavailable) || ctx.Err() != nil:
+	case errors.Is(err, dbusclient.ErrPackageKitUnavailable) || lookupCtx.Err() != nil:
 		slog.Debug("linuxio update lookup skipped", "package", linuxioPackage, "error", err)
 	default:
 		slog.Warn("linuxio update lookup failed", "package", linuxioPackage, "error", err)

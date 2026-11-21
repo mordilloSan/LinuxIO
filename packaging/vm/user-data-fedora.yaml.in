@@ -1,9 +1,8 @@
 #cloud-config
 # First boot of the disposable Fedora test VM (packaging/vm/linuxio-vm.sh
 # create with LINUXIO_VM_DISTRO=fedora); user-data.yaml.in is Ubuntu's. The
-# script fills in the @...@ values and serves this file, meta-data and
-# install-dependencies.sh from @SEED_URL@ for the first boot only. SELinux
-# stays enforcing.
+# script fills in the @...@ values and serves this file and meta-data from
+# @SEED_URL@ for the first boot only. SELinux stays enforcing.
 hostname: linuxio-e2e
 users:
   - name: linuxio-e2e
@@ -24,6 +23,11 @@ packages:
   - docker-compose
   - docker-buildx
   - btrfs-progs
+  # What the RPM requires besides systemd, so installing it in the VM needs
+  # no download (packaging/rpm/linuxio.spec).
+  - pam
+  - polkit
+  - PackageKit
   # What assembles LinuxIO's RPM in the VM (linuxio-vm.sh install): rpmbuild,
   # the spec's systemd and SELinux macros and what they ask rpmbuild for.
   - rpm-build
@@ -39,4 +43,3 @@ runcmd:
   - systemctl disable --now dnf-makecache.timer
   # Fedora's packages do not start their services; Ubuntu's docker.io does.
   - systemctl enable --now docker.service
-  - curl -fsS -o /root/install-dependencies.sh @SEED_URL@install-dependencies.sh && bash /root/install-dependencies.sh

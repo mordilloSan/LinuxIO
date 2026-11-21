@@ -18,7 +18,7 @@ import {
 // disk of the mounted test pool drops off the guest's PCI bus and comes back,
 // while the pool holds its dead block device. The health
 // checks, started by hand, see it back twice, start the rebuild unit as the
-// installer put it, which erases the disk and replaces the member onto it,
+// package installed it, which erases the disk and replaces the member onto it,
 // and the resync then makes the pool whole. The pool page shows each step.
 // The same holds after a reboot, for the other disk. The rig's data disks
 // carry serials (packaging/vm/linuxio-vm.sh), the identity the rebuild

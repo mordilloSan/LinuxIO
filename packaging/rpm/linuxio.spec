@@ -77,9 +77,10 @@ install -D -m 0644 '%{linuxio_packaging_dir}/man/linuxio.8' %{buildroot}%{_mandi
 gzip -9n %{buildroot}%{_mandir}/man8/linuxio.8
 
 %pre
-# Refuse to install over LinuxIO put in by the script installer, which the
-# package would fight over units and programs: it is removed first. Exact
-# paths only, and nothing is removed here.
+# Refuse to install over LinuxIO put in by the install script of v0.54 or
+# earlier, which the package would fight over units and programs: it is
+# removed first, with that release's uninstall script. Exact paths only, and
+# nothing is removed here.
 if [ "$1" -eq 1 ]; then
 	for sentinel in /usr/local/bin/linuxio /etc/systemd/system/linuxio.target; do
 		# A mask (a link to /dev/null) is an administrator's, not the script's.
@@ -88,8 +89,8 @@ if [ "$1" -eq 1 ]; then
 		fi
 		if [ -e "$sentinel" ] || [ -L "$sentinel" ]; then
 			echo "linuxio: ${sentinel} is from a LinuxIO installed by its install script." >&2
-			echo "linuxio: Remove that install first with the uninstall script of the release it came from" >&2
-			echo "linuxio: (packaging/scripts/uninstall.sh in its source; it keeps /var/lib/linuxio), then install this package again." >&2
+			echo "linuxio: Remove that install first with the uninstall script of the release it came from, v0.54 or earlier" >&2
+			echo "linuxio: (packaging/scripts/uninstall.sh in that release's source; it keeps /var/lib/linuxio), then install this package again." >&2
 			exit 1
 		fi
 	done

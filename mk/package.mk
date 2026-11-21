@@ -25,8 +25,8 @@ package-deb: ## Assemble the DEB from @BIN@ into PACKAGES_DIR (needs debhelper)
 package-rpm: ## Assemble the RPM from @BIN@ into PACKAGES_DIR (needs rpm-build)
 	@"$(packaging_scripts_dir)/package-rpm.sh" --build-dir "$(bin_dir)" --version "$(PACKAGE_VERSION)" --out-dir "$(packages_dir)"
 
-# The signed repositories a release publishes (docs/TODO/packaging.md,
-# "Publish signed static repositories"), from the packages in PACKAGES_DIR:
+# The signed repositories a release publishes (docs/releases.md,
+# "Repositories"), from the packages in PACKAGES_DIR:
 # REPO_DIR/apt and REPO_DIR/rpm, each kept across runs so a new version joins
 # the ones already there. REPO_SIGNING_KEY names a key already in the GnuPG
 # keyring (GNUPGHOME); the scripts never create or import one. REPO_BASE_URL is

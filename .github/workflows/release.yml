@@ -293,7 +293,7 @@ jobs:
       contents: read
     steps:
       - name: Install the packaging tools
-        run: dnf install -y --setopt=install_weak_deps=False git make tar rpm-build selinux-policy-devel systemd-rpm-macros
+        run: dnf install -y --setopt=install_weak_deps=False git make tar rpm-build selinux-policy-devel systemd-devel systemd-rpm-macros
 
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -349,7 +349,7 @@ jobs:
       contents: read # the earlier releases' packages
     steps:
       - name: Install the repository tools
-        run: dnf install -y --setopt=install_weak_deps=False apt-utils createrepo_c git gnupg2 jq make rpm-sign tar
+        run: dnf install -y --setopt=install_weak_deps=False apt-utils createrepo_c dpkg git gnupg2 jq make rpm-sign tar
 
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

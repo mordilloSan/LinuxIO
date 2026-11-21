@@ -4,9 +4,9 @@ A release of LinuxIO is a DEB and an RPM of one version, signed, published in
 an APT and a DNF repository served from GitHub Pages, and attached to a GitHub
 release. `.github/workflows/release.yml` builds and publishes it; nothing a
 release is built from changes unless a commit changes it. How the packages
-themselves are laid out and assembled is in
-[development.md](./development.md); the plan the remaining work follows is
-[TODO/packaging.md](./TODO/packaging.md).
+themselves are laid out and assembled, and what they do when they are
+installed, upgraded and removed, is in
+[Packages, installation and updates](./packaging.md).
 
 ## What a release is built from
 

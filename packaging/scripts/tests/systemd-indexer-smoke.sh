@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Opt-in smoke test for a disposable systemd host.
+# Opt-in smoke test for a disposable systemd host: installs the LinuxIO
+# package LINUXIO_SMOKE_PACKAGE (a DEB or an RPM, made by make package-deb or
+# package-rpm) with apt or dnf, checks the indexer's socket activation, idle
+# exit and index timer under systemd, and removes the package again.
 set -euo pipefail
 
 if [[ "${LINUXIO_SYSTEMD_SMOKE:-}" != 1 ]]; then
@@ -17,25 +20,46 @@ fail() {
 [[ $EUID -eq 0 ]] || fail "systemd smoke test must run as root"
 [[ "$(ps -p 1 -o comm=)" == systemd ]] || fail "PID 1 is not systemd"
 command -v curl >/dev/null || fail "curl is required"
+package="${LINUXIO_SMOKE_PACKAGE:-}"
+[[ -n "$package" ]] || fail "set LINUXIO_SMOKE_PACKAGE to the DEB or RPM to install (make package-deb or package-rpm)"
+[[ -f "$package" ]] || fail "no package at ${package}"
+package="$(realpath -- "$package")"
+case "$package" in
+*.deb) command -v apt-get >/dev/null || fail "apt-get is required for ${package}" ;;
+*.rpm) command -v dnf >/dev/null || fail "dnf is required for ${package}" ;;
+*) fail "${package} is neither a DEB nor an RPM" ;;
+esac
 command -v jq >/dev/null || fail "jq is required"
 CURL_BIN="$(command -v curl)"
 readonly CURL_BIN
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-readonly REPO_ROOT
 readonly SOCKET_PATH=/run/linuxio/indexer.sock
-readonly CONFIG_PATH=/etc/linuxio/indexer/config.yaml
 readonly DB_PATH=/var/lib/linuxio/indexer/indexer.db
 SMOKE_DIR="$(mktemp -d /tmp/linuxio-indexer-smoke.XXXXXX)"
 readonly SMOKE_DIR
 readonly INDEX_DROPIN=/run/systemd/system/linuxio-indexer-index.service.d/smoke.conf
 readonly TIMER_DROPIN=/run/systemd/system/linuxio-indexer-index.timer.d/smoke.conf
 installed=0
+owns_state=0
+
+# remove_package [purge]: the package manager's removal; purge also drops the
+# Debian family's configuration files, which a plain removal keeps.
+remove_package() {
+	case "$package" in
+	*.deb) env DEBIAN_FRONTEND=noninteractive apt-get "${1:-remove}" -y -q linuxio ;;
+	*.rpm) dnf remove -y -q linuxio ;;
+	esac
+}
 
 cleanup() {
 	local status=$?
 	if [[ $installed -eq 1 ]]; then
-		bash "${REPO_ROOT}/packaging/scripts/uninstall.sh" --remove-data >/dev/null 2>&1 || true
+		remove_package >/dev/null 2>&1 || true
+	fi
+	# What the package keeps on removal.
+	if [[ $owns_state -eq 1 ]]; then
+		[[ "$package" != *.deb ]] || remove_package purge >/dev/null 2>&1 || true
+		rm -rf /var/lib/linuxio /etc/linuxio
 	fi
 	rm -f "$INDEX_DROPIN" "$TIMER_DROPIN"
 	rmdir \
@@ -47,33 +71,30 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+if dpkg-query -W -f='${db:Status-Status}' linuxio 2>/dev/null | grep -qx installed || rpm -q linuxio >/dev/null 2>&1; then
+	fail "refusing to run with the linuxio package installed"
+fi
 for path in \
 	/etc/linuxio \
 	/var/lib/linuxio \
 	/run/linuxio \
 	/usr/libexec/linuxio/linuxio-indexer \
-	/etc/systemd/system/linuxio.target \
-	/etc/systemd/system/linuxio-indexer.socket \
-	/etc/systemd/system/linuxio-indexer.service; do
+	/usr/local/bin/linuxio \
+	/etc/systemd/system/linuxio.target; do
 	[[ ! -e "$path" ]] || fail "refusing to run with existing LinuxIO state: ${path}"
 done
-# The build to install: LINUXIO_SMOKE_BUILD_DIR where there is no make (the
-# test VM, whose make target built it on the host), make's bin dir otherwise.
-if [[ -n "${LINUXIO_SMOKE_BUILD_DIR:-}" ]]; then
-	BIN_SRC_DIR=$LINUXIO_SMOKE_BUILD_DIR
-else
-	command -v make >/dev/null || fail "make is required"
-	BIN_SRC_DIR="$(make -s -C "$REPO_ROOT" print-bin-dir)"
-	mapfile -t BINARIES < <(make -s -C "$REPO_ROOT" print-binaries)
-	for binary in "${BINARIES[@]}"; do
-		[[ -x "${BIN_SRC_DIR}/${binary}" ]] || fail "run make build-binaries before the smoke test (missing ${binary})"
-	done
-fi
 
+# The package's first install enables and starts linuxio.target. From here
+# on the LinuxIO state on the host is this run's, and cleanup removes it.
 installed=1
-if ! bash "${REPO_ROOT}/packaging/scripts/install-linuxio-binaries.sh" --local --build-dir "$BIN_SRC_DIR" >"${SMOKE_DIR}/install.log" 2>&1; then
+owns_state=1
+case "$package" in
+*.deb) install_cmd=(env DEBIAN_FRONTEND=noninteractive apt-get install -y "$package") ;;
+*.rpm) install_cmd=(dnf install -y "$package") ;;
+esac
+if ! "${install_cmd[@]}" >"${SMOKE_DIR}/install.log" 2>&1; then
 	tail -n 40 "${SMOKE_DIR}/install.log" >&2 || true
-	fail "local installer failed; full log is ${SMOKE_DIR}/install.log"
+	fail "the package install failed; full log is ${SMOKE_DIR}/install.log"
 fi
 
 mkdir -p "$(dirname "$INDEX_DROPIN")" "$(dirname "$TIMER_DROPIN")"
@@ -128,10 +149,18 @@ systemctl stop linuxio-indexer.service
 curl_unix /status >/dev/null
 systemctl is-active --quiet linuxio-indexer.service || fail "indexer did not reactivate from its Unix socket"
 
-if ! bash "${REPO_ROOT}/packaging/scripts/uninstall.sh" --remove-data >"${SMOKE_DIR}/uninstall.log" 2>&1; then
-	tail -n 40 "${SMOKE_DIR}/uninstall.log" >&2 || true
-	fail "uninstaller failed; full log is ${SMOKE_DIR}/uninstall.log"
+# Removal stops and removes the units and keeps the indexer's data, as it
+# keeps all of /var/lib/linuxio.
+db_before=0
+[[ ! -e "$DB_PATH" ]] || db_before=1
+if ! remove_package >"${SMOKE_DIR}/remove.log" 2>&1; then
+	tail -n 40 "${SMOKE_DIR}/remove.log" >&2 || true
+	fail "the package removal failed; full log is ${SMOKE_DIR}/remove.log"
 fi
 installed=0
-[[ ! -e "$CONFIG_PATH" && ! -e "$DB_PATH" && ! -e "$SOCKET_PATH" ]] || fail "uninstall left LinuxIO indexer state behind"
+systemctl is-active --quiet linuxio-indexer.service && fail "the indexer runs after the package was removed"
+[[ ! -e /usr/lib/systemd/system/linuxio-indexer.socket ]] || fail "removal left the indexer socket unit"
+[[ ! -e "$SOCKET_PATH" ]] || fail "removal left ${SOCKET_PATH}"
+[[ -d /var/lib/linuxio ]] || fail "removal deleted /var/lib/linuxio"
+[[ $db_before -eq 0 || -e "$DB_PATH" ]] || fail "removal deleted the indexer database"
 echo "✅ disposable-host systemd indexer smoke test passed"

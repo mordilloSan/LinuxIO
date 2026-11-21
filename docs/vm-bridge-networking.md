@@ -81,14 +81,14 @@ or namespace path, and the fix: remove them, set up the bridge, recreate them
 with the bridge as parent.
 
 Docker loads `br_netfilter` and sets the iptables `FORWARD` policy to `DROP`,
-which drops VM↔LAN frames on any Linux bridge. The installers ship
+which drops VM↔LAN frames on any Linux bridge. The package installs
 `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` into
-`/etc/libvirt/hooks/qemu.d/`; on every domain start it inserts
+`/etc/libvirt/hooks/qemu.d/` ([The libvirt hook](./packaging.md#the-libvirt-hook)); on every domain start it inserts
 `FORWARD -i <bridge> -o <bridge> -j ACCEPT` (IPv4 and IPv6) for each host bridge
 the domain attaches to, skipping libvirt's own `virbr*`. libvirt runs a hook
 only when it is an executable regular file, and finds its hooks only when its
-daemon starts, which is why the installer restarts `libvirtd.service` and
-`virtqemud.service` after it installs the hook. The hook's first line exits
+daemon starts, which is why the package's post-install step restarts
+`libvirtd.service` and `virtqemud.service` after it installs the hook. The hook's first line exits
 when `/usr/bin/linuxio` is missing: a Debian-family package removal leaves a
 configuration file in place until a purge, and libvirt would go on running it.
 
@@ -119,7 +119,7 @@ fixed hook path, mode `0755`, through a new temporary file in
 never runs a half-written hook. A regular file at the hook's path is replaced
 whatever its mode; a symlink, a folder or anything else there is refused with a
 409 and left for the administrator to remove, never followed. A missing copy is
-a 409 too. Then it runs the installer's restart over D-Bus, `TryRestartUnit`
+a 409 too. Then it runs the package's restart over D-Bus, `TryRestartUnit`
 for `libvirtd.service` and `virtqemud.service`: a daemon that is stopped, not
 installed or masked is left alone. libvirt's man pages say restarting
 `libvirtd` or `virtqemud` does not interrupt running guests, and on that

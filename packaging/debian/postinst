@@ -21,12 +21,15 @@ enabled_units="linuxio.target linuxio-indexer-index.timer linuxio-monitoring.ser
 # restarts it with systemctl below.
 started_units="linuxio.target linuxio-monitoring.service"
 
-if [ "$1" = configure ]; then
+# abort-remove: a removal that failed after the prerm stopped and disabled
+# everything leaves the package installed, so it is brought up again as on a
+# first install.
+if [ "$1" = configure ] || [ "$1" = abort-remove ]; then
 	# A first install, or one after the package was removed (not purged),
 	# whose prerm forgot what it had enabled: deb-systemd-helper has no
 	# record of linuxio.target in either case.
 	first=0
-	if [ -z "$2" ] || ! deb-systemd-helper debian-installed linuxio.target; then
+	if [ "$1" = abort-remove ] || [ -z "$2" ] || ! deb-systemd-helper debian-installed linuxio.target; then
 		first=1
 	fi
 

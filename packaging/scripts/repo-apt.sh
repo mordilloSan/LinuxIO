@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish the LinuxIO DEBs of a folder into a signed static APT repository
-# (docs/TODO/packaging.md, "Publish signed static repositories"):
+# (docs/releases.md, "Repositories"; docs/development.md):
 #
 #   OUT_DIR/linuxio.sources                     deb822, the public key in Signed-By
 #   OUT_DIR/pool/main/l/linuxio/linuxio_<version>_amd64.deb

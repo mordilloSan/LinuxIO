@@ -74,7 +74,7 @@ Replication views.
 Alerts are updated whenever the list is loaded and, independently of the
 browser, by `linuxio-btrfs-health.timer`, which runs `linuxio-worker
 health` two minutes after boot and every ten minutes. The units ship with the
-package; the installer enables the timer when the host has a btrfs
+package; its first install enables the timer when the host has a btrfs
 filesystem, and the bridge enables it the first time an administrator lists
 filesystems, covering pools created after install.
 
@@ -1118,12 +1118,6 @@ never its timeline:
   the next time the auto-update policy is saved.
 
 Manual `apt` or `dnf` runs are not hooked.
-
-Up to v0.53 the worker was `linuxio-btrfs-timer` and its jobs took a second
-word (`snapshot run`). The installer rewrites the snapshot and replication
-units and the update drop-ins a saved setting wrote, so they start
-`linuxio-worker` after an update without being saved again
-(`rewrite_saved_unit_commands`).
 
 ## Pools
 

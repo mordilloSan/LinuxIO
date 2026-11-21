@@ -27,7 +27,7 @@ import {
   waitForJob,
 } from "./vm";
 
-// docs/TODO/packaging.md, Release gates: LinuxIO updated from its signed
+// docs/packaging.md (Upgrade): LinuxIO updated from its signed
 // repository from a shell, as an administrator or an unattended upgrade
 // does. The VM runs the build `make vm-install` put in; each test publishes
 // this checkout's build as the next version in the VM's signed repository

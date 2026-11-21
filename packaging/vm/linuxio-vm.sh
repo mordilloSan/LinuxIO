@@ -368,7 +368,6 @@ write_seed() {
 	printf 'instance-id: %s\nlocal-hostname: %s\n' "$DOMAIN" "$DOMAIN" >"${seed}/meta-data"
 	sed -e "s|@PASSWORD_HASH@|${hash}|" -e "s|@SSH_KEY@|${key}|" -e "s|@SEED_URL@|${SEED_URL}|" \
 		"${REPO_ROOT}/packaging/vm/${SEED_TEMPLATE}" >"${seed}/user-data"
-	cp "${REPO_ROOT}/packaging/scripts/install-dependencies.sh" "${seed}/"
 }
 
 # cloud-init reads the seed over HTTP: the host has no ISO tools. The server
@@ -589,6 +588,8 @@ dnf)
 		sudo dnf reinstall -y "$file" </dev/null
 	else
 		sudo dnf install -y "$file" </dev/null
+		# dnf install leaves a newer package in place.
+		[[ "$(rpm -q --qf '%{VERSION}' linuxio)" == "$version" ]] || sudo dnf downgrade -y "$file" </dev/null
 	fi
 	;;
 esac
@@ -599,8 +600,7 @@ INSTALL
 
 # repo-publish BUILD_DIR VERSION [NOTE] publishes the build in BUILD_DIR as
 # LinuxIO VERSION into the VM's signed package repository, PACKAGE_REPO, the
-# way a release does (docs/TODO/packaging.md, "Publish signed static
-# repositories"): the VM assembles the package as install does, and the
+# way a release does (docs/releases.md, "Repositories"): the VM assembles the package as install does, and the
 # release's own script (repo-apt.sh or repo-rpm.sh) adds it to the packages
 # already there and signs the metadata. NOTE, when given, is appended as a
 # comment to the copy of packaging/selinux/linuxio.cil the package is
@@ -654,12 +654,11 @@ vm_has_packages() {
 	esac
 }
 
-# push_checkout BUILD_DIR puts what the package scripts and the installer
-# read in ~/linuxio, from the checkout, and the build in ~/linuxio/build:
-# packaging/, LICENSE and docs/THIRD_PARTY_NOTICES.md, and the Makefile, by
-# which the installer's --local finds the checkout (the indexer suite).
+# push_checkout BUILD_DIR puts what the package scripts read in ~/linuxio,
+# from the checkout, and the build in ~/linuxio/build: packaging/, LICENSE
+# and docs/THIRD_PARTY_NOTICES.md.
 push_checkout() {
-	local -a files=(Makefile LICENSE docs/THIRD_PARTY_NOTICES.md packaging)
+	local -a files=(LICENSE docs/THIRD_PARTY_NOTICES.md packaging)
 	tar -C "$REPO_ROOT" -cf - "${files[@]}" |
 		vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
 	# Not the packages and repositories make put beside the programs
@@ -1131,14 +1130,16 @@ suite_userconfig() {
 }
 
 # The indexer's socket activation, idle exit and index timer under systemd
-# (packaging/scripts/tests/systemd-indexer-smoke.sh). The script installs the
-# LinuxIO build make made and uninstalls it again, and refuses a VM that
-# already has LinuxIO.
+# (packaging/scripts/tests/systemd-indexer-smoke.sh). The VM assembles the
+# package from the LinuxIO build make made, as install does; the script
+# installs it, removes it again, and refuses a VM that already has LinuxIO.
 suite_indexer() {
 	local build=${LINUXIO_VM_BUILD_DIR:?mk/vm.mk sets it}
 	[[ -x "${build}/linuxio" ]] || die "no LinuxIO build in '${build}'"
 	push_checkout "$build"
-	vm_ssh "sudo env LINUXIO_SYSTEMD_SMOKE=1 LINUXIO_SYSTEMD_SMOKE_CONFIRM=disposable-linuxio-host LINUXIO_SMOKE_BUILD_DIR=/home/${VM_USER}/linuxio/build bash linuxio/packaging/scripts/tests/systemd-indexer-smoke.sh" </dev/null
+	assemble_package "$(package_version)"
+	# shellcheck disable=SC2016 # expanded in the VM
+	vm_ssh 'sudo env LINUXIO_SYSTEMD_SMOKE=1 LINUXIO_SYSTEMD_SMOKE_CONFIRM=disposable-linuxio-host LINUXIO_SMOKE_PACKAGE="$(echo ~/linuxio/packages/*)" bash linuxio/packaging/scripts/tests/systemd-indexer-smoke.sh' </dev/null
 }
 
 boot_id() { vm_ssh cat /proc/sys/kernel/random/boot_id </dev/null; }

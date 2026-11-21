@@ -561,7 +561,7 @@ stopped Docker nothing would run on to follow.
 | OOM kill of a job's subprocess | That job fails; the host and its other jobs run on |
 | Reboot or power loss | The root host, started at boot, marks the records a power loss left running `interrupted/reboot`, resumes the resumable jobs the shutdown or the power loss interrupted, and raises a warning for each job it marks and does not resume. A user's host marks theirs at the next login |
 | Cancel (`tasks.cancel`, stream abort) | `cancel_requested`, then the handler cleans up, then `canceled` |
-| LinuxIO update | Nothing: hosts are outside `linuxio.target` and the installer never stops them |
+| LinuxIO update | Nothing: hosts are outside `linuxio.target` and the package never stops them |
 
 ## Updates
 
@@ -572,7 +572,8 @@ PackageKit gives for the pending update to the package `linuxio`
 `GetUpdates` list as the Updates page, from PackageKit's cache, and refreshes
 nothing. A host without PackageKit, without that package, or whose PackageKit
 fails or takes more than 20 s gets the running build alone; the failure is
-logged at Debug when PackageKit is missing and at Warn otherwise. The footer
+logged at Debug when PackageKit is missing or does not answer in time, and at
+Warn otherwise. The footer
 shows the running build, and to a sudo session the main layout shows
 `LinuxIO <version> is available.` (`AppUpdateBanner`), the version as
 PackageKit gives it (`0.56.0` from a DEB, `0.56.0-1` from an RPM), with
@@ -620,11 +621,8 @@ On Ubuntu, needrestart, which apt runs after every dpkg run, restarts each
 service still running a replaced binary, and so would restart the job hosts
 and interrupt the jobs an update waits for. The DEB therefore carries
 `packaging/etc/needrestart/conf.d/linuxio.conf` as a conffile, which keeps
-needrestart from restarting the job hosts and the timer-run units; the script
-installer, until the packages replace it, installs the same file and checks
-it token by token first, because needrestart runs it as Perl, as root
-([Process & Systemd Architecture](./process-systemd-architecture.md#login-and-jobs),
-needrestart).
+needrestart from restarting the job hosts and the timer-run units
+([The needrestart override](./packaging.md#the-needrestart-override)).
 
 ## Scheduled runs
 
@@ -973,7 +971,7 @@ The record itself is the quickest evidence: as root,
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
 | Go unit | same | `backend/common/scheduledrun/*_test.go`, `backend/worker/scheduled_run_test.go` | The hooks' outcomes and order, liveness, output copy, exit statuses, unit kinds |
 | C | `make test-auth-pam`, in `make test-backend` | `backend/auth/linuxio-auth-pam_test.c` | The exact `systemctl` arguments of an unprivileged login, before the session opens; a failed, missing or hanging `systemctl` keeps the login; a login the sudo probe admits (a stub `sudo`) is privileged and starts no host |
-| Installer | `make test-installation-scripts` | `packaging/scripts/tests/installer-fixtures.sh` | Unit fixtures, the run-record drop-ins, the needrestart override's content check and its expressions |
+| Package files | `make test-packaging-scripts`, in `make test` | `packaging/scripts/tests/package-files-fixtures.sh` | The job units outside `linuxio.target`, the run-record drop-in's hooks, and the needrestart override's expressions loaded as needrestart loads them |
 | Frontend unit | `make test-frontend`, in `make check-frontend-quiet` | `HistoryPage.test.tsx`, `SavedOutput.test.tsx`, `JobsUpdateBanner.test.tsx`, `useJobHostStatus.test.ts`, `useRefreshHistoryAfterUpdate.test.tsx`, `useAwayNotice.test.tsx`, `NotificationsBell.test.tsx`, `taskTitles.test.ts`, `scheduledRuns.test.ts`, `mutation-react-query.test.ts`, `call-react-query.test.ts` | Pages, banner and bell in jsdom, which has no layout; the client's resend and reattach; the `update_pending` toast |
 | Browser | `make test-frontend-browser-quiet` | `frontend/src/test/browser/history.spec.ts`, `frontend/src/test/browser/schedules.spec.ts`, `frontend/src/test/browser/background-tasks.spec.ts` | Real layout against the fixture: the history table has height, the Schedules table keeps its rows beside tall details, tray rendering |
 | Root, in the VM | `make vm-test-relay-root` | `backend/bridge/cmd/jobs_relay_test.go` | The relay tests as root: the in-process host is the root host, so its owner and privileged rules differ from a user host's |

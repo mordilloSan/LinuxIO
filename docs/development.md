@@ -71,19 +71,10 @@ family). The static-analysis tools are only needed by `analyze-auth`. The
 wrapper libraries are needed by `test-auth-pam`; that target skips when they
 are not installed.
 
-The runtime bootstrap script installs only PAM, PolicyKit, and PackageKit.
-Docker and the other optional host capabilities are installed after sign-in
-from LinuxIO Capability Manager, not from the bootstrap script; Docker's entry
-runs Docker's convenience script and streams its output.
-
-Release installation deliberately combines immutable release binaries with
-current-`main` packaging assets (systemd units, PAM and application
-configuration, MOTD, helper files, and the SELinux policy
-`packaging/selinux/linuxio.cil`). This is the recovery path for fixing
-installer or service-definition bugs in already-published releases. Keep those
-assets compatible with supported historical binaries, or add a clear minimum
-binary-version failure before making an incompatible packaging change. Every
-release's installer fetches them by path, so their paths must not move.
+The package itself needs only PAM, polkit, PackageKit and systemd
+([Packages](./packaging.md#installing)). Docker and the other optional host
+capabilities are installed after sign-in from LinuxIO Capability Manager;
+Docker's entry runs Docker's convenience script and streams its output.
 
 ## Initial setup
 
@@ -122,7 +113,7 @@ Built binaries land in `build/` (`BIN_DIR`). `make build-go-binaries` builds
 every Go binary (embedding the bridge SHA-256 in the webserver),
 `make build-binaries` adds the C authentication helper, and
 `make print-binaries` lists the shipped-binary names that the release workflow
-and installer tests consume. Only `common/version.Version` is stamped into
+and the package tests consume. Only `common/version.Version` is stamped into
 binaries at link time.
 
 `make localinstall` installs this checkout as a package, the way a release
@@ -133,58 +124,23 @@ those programs (below) and installs it with `apt-get install --reinstall` or
 package manager and a closing `systemctl start linuxio.target` run through
 `SUDO` (`sudo` unless overridden). The package restarts LinuxIO when it was
 running and leaves a stopped one stopped; the start brings that one up. The
-package refuses to install over LinuxIO put in by the install script
-(`/usr/local/bin/linuxio` or `/etc/systemd/system/linuxio.target` there):
-`make uninstall` removes that install first and keeps `/var/lib/linuxio`.
+package refuses to install over a LinuxIO that the install script of v0.54 or
+earlier put in ([Refusing a script install](./packaging.md#refusing-a-script-install)).
 
-`make package-root DESTDIR=<empty folder>` lays the built programs and the
-files under `packaging/` out as the tree a package installs
-(`packaging/scripts/package-root.sh`): `usr/bin/linuxio`, the other programs
-in `usr/libexec/linuxio` with the five that systemd runs as root at mode
-0700, the units and the run-record drop-ins in `usr/lib/systemd/system`, and
-the configuration under `etc`. It builds nothing, runs without root, sets
-modes and not owners, and refuses a folder that is not empty. What differs
-between distribution families is not in the tree: the PAM file, the SELinux
-module, the needrestart override and the licences. The login banner's
-links are made by each package's post-install step.
-`packaging/scripts/tests/package-root-fixtures.sh`, part of
-`make test-installation-scripts`, checks every path and mode of the tree
-against a written list, and that every program a unit starts is in it.
-
-`make package-deb` and `make package-rpm` assemble the two packages from the
-programs in `build/` into `build/packages/` (`PACKAGES_DIR`), and build nothing
-themselves. Each runs a script that needs only `packaging/`, `LICENSE` and
-`docs/THIRD_PARTY_NOTICES.md` beside it, so a test VM or a release image runs
-it from a copy of those: `packaging/scripts/package-deb.sh` (debhelper, the
-metadata and maintainer scripts in `packaging/debian`) and
-`packaging/scripts/package-rpm.sh` (rpmbuild, `packaging/rpm/linuxio.spec`).
-Both take the tree from `package-root.sh`, run as the build user and fail with
-the name of the package to install when their tool is missing; a
-Debian-family host has no rpmbuild, so its RPM is assembled in a Fedora test
-VM. Neither changes a byte of a program: no strip, no debug split, no build-ID
-rewrite, since the webserver checks the SHA-256 of the bridge recorded at
-build time. Both packages are for amd64 only (`Architecture: amd64`,
-`ExclusiveArch: x86_64`), so `make localinstall` does not work on another
-architecture.
-
-Both packages carry one version, `PACKAGE_VERSION`
-(`packaging/scripts/package-version.sh`): `X.Y.Z` on a commit tagged
-`vX.Y.Z`, and `X.Y.Z+devN.gSHA` on a commit `N` after the last such tag,
-which sorts after that release and before the next in dpkg and rpm.
-`PACKAGE_VERSION=...` on the command line gives another, such as a higher one
-to try an upgrade with. `packaging/scripts/tests/package-version-fixtures.sh`,
-part of `make test-installation-scripts`, checks it in a throwaway repository.
-
-`packaging/scripts/tests/package-contents.sh PACKAGE BUILD_DIR` checks a
-`.deb` or a `.rpm` before it is installed: its files and links are exactly the
-tree `package-root.sh` stages from the build, at the same modes, with what
-that family adds, all owned by root; everything under `/etc` is a
-configuration file (a conffile, `%config(noreplace)`); nothing is under
-`/usr/local`; and the nine programs have the build's SHA-256. What each
-package does when it is installed, upgraded and removed is in
-[Packaging](./TODO/packaging.md), until that plan becomes a doc.
-`make test-packages` (`test-packages-quiet`) runs it on every LinuxIO package
-in `PACKAGES_DIR` against `build/`.
+`make package-root DESTDIR=<empty folder>` stages the tree both packages
+install, and `make package-deb` and `make package-rpm` assemble the DEB and
+the RPM from the programs in `build/` into `build/packages/`
+(`PACKAGES_DIR`), at `PACKAGE_VERSION` (from git; `PACKAGE_VERSION=...` on the
+command line gives another, such as a higher one to try an upgrade with).
+None of them builds a program; each runs as you and fails with the name of
+the package to install when its tool is missing (debhelper, rpm-build), so a
+Debian-family host assembles its RPM in a Fedora test VM. `make
+test-packages` (`test-packages-quiet`) checks every LinuxIO package in
+`PACKAGES_DIR` against `build/`, and `make test-packaging-scripts`, part of
+`make test`, runs the host-independent fixtures of the packaging scripts and
+files. What the scripts lay out, what the packages do when they are
+installed, upgraded and removed, and what each check holds them to is in
+[Packages, installation and updates](./packaging.md#how-the-packages-are-built).
 
 `make repo-apt` and `make repo-rpm` add the packages in `PACKAGES_DIR` to the
 signed repositories a release publishes, `build/repo/apt` and
@@ -201,7 +157,7 @@ create, import or print one; `REPO_BASE_URL` is the address `REPO_DIR` is
 published at, without the `apt/` or `rpm/` each adds. The test VMs publish
 with the same scripts and a throwaway key (`linuxio-vm.sh repo-publish`,
 below). `packaging/scripts/tests/repo-fixtures.sh`, part of
-`make test-installation-scripts`, checks their arguments everywhere and, where
+`make test-packaging-scripts`, checks their arguments everywhere and, where
 the tools are installed, a round trip with a key of its own.
 
 ## Test VM
@@ -448,7 +404,8 @@ and the packages they install. Fedora's is:
 - `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
   passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
   `docker-compose` and `docker-buildx`, `btrfs-progs`, the RPM tools
-  above, `install-dependencies.sh`, every package upgraded, and
+  above, `pam`, `polkit` and `PackageKit` (what the RPM requires), every
+  package upgraded, and
   `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
   filesystem is btrfs.
 - `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
@@ -516,8 +473,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   run at once) that runs only during that boot. It creates the user
   `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
   Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
-  `btrfs-progs`, the tools that assemble and publish the package and the
-  LinuxIO dependencies, and upgrades every package. The
+  `btrfs-progs`, the tools that assemble and publish the package, and what
+  the DEB depends on (`libpam0g`, `packagekit`, `polkitd`), so an install of
+  the package needs no download, and upgrades every package. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
   to the seed's packages reaches a VM only when it is created again
   (`vm-destroy`, then `vm-create`); `vm-update` upgrades what `clean` already
@@ -636,9 +594,10 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   - `indexer` is the disposable-host smoke test
     ([Indexer](./indexer.md#disposable-host-smoke-test)). It needs the
     LinuxIO build, so the target runs `build-nocheck` first; the suite
-    copies the checkout's packaging and the build in, and the script
-    installs it, checks socket activation, idle exit and the index timer, and
-    uninstalls it.
+    copies the checkout's packaging and the build in and assembles the
+    package there as `vm-install` does, and the script installs it with apt
+    or dnf, checks socket activation, idle exit and the index timer, and
+    removes it again.
   - `docker` is `test-docker-update-integration`: real Compose replacements,
     which pull alpine images from Docker Hub. Ubuntu's `docker.io` and
     Fedora's `moby-engine` come without the Compose and buildx plugins, so
@@ -971,8 +930,9 @@ The full index groups the supported targets as follows:
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
-- installation: `localinstall`, `uninstall`, `package-root`, `package-deb`,
-  `package-rpm`, `test-packages`, `repo-apt`, `repo-rpm`
+- installation: `localinstall`, `package-root`, `package-deb`,
+  `package-rpm`, `test-packages`, `test-packaging-scripts`, `repo-apt`,
+  `repo-rpm`
 - test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-update-build`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,

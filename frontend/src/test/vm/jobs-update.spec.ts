@@ -48,12 +48,11 @@ import {
   waitForRun,
 } from "./vm";
 
-// docs/TODO/packaging.md (Replace the application updater with the Updates
-// page; Release gates) and docs/jobs.md (Updates): LinuxIO's own update is the
-// package `linuxio` on the Updates page. The VM installs package A from its
-// signed repository (linuxio-vm.sh repo-publish, then apt or dnf, as an
-// administrator does), long jobs run in A's job hosts, and package B is
-// published. A sudo session's banner names B and opens the Updates page,
+// docs/packaging.md (LinuxIO's own update) and docs/jobs.md (Updates):
+// LinuxIO's own update is the package `linuxio` on the Updates page. The VM
+// installs package A from its signed repository (linuxio-vm.sh repo-publish,
+// then apt or dnf, as an administrator does), long jobs run in A's job
+// hosts, and package B is published. A sudo session's banner names B and opens the Updates page,
 // where the administrator updates it: `packages.update`, a job in the root job
 // host, PackageKit verifies the repository and the package, and the package's
 // own step restarts linuxio.target. The job hosts are outside the target and

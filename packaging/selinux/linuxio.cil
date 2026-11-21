@@ -4,8 +4,8 @@
 ; instead of unconfined_service_t. The domain is as unconfined as
 ; unconfined_service_t; it adds one permission, to start linuxio-bridge as
 ; unconfined_t once pam_selinux has set that context, and only for the
-; SELinux user unconfined_u. install-linuxio-binaries.sh loads it on the RHEL
-; family; docs/process-systemd-architecture.md, "SELinux".
+; SELinux user unconfined_u. The RPM loads it in its post-install step;
+; docs/process-systemd-architecture.md, "SELinux".
 
 ; The executable.
 (type linuxio_auth_exec_t)

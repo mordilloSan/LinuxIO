@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	// Installed from packaging/libvirt/hooks/qemu.d by the LinuxIO installers.
+	// Installed from packaging/libvirt/hooks/qemu.d by the LinuxIO package.
 	libvirtBridgeNetfilterHook = "/etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter"
 	// The package's untouched copy of the hook, which RestoreHook copies to
 	// libvirtBridgeNetfilterHook. The hook is a configuration file, and a
@@ -27,7 +27,8 @@ const (
 )
 
 // libvirtDaemons run the QEMU hooks: the monolithic libvirtd or the modular
-// virtqemud, whichever the host runs. Both are named, as the installer does.
+// virtqemud, whichever the host runs. Both are named, as the package's
+// post-install step does.
 var libvirtDaemons = []string{"libvirtd.service", "virtqemud.service"}
 
 // HookState is what libvirt makes of the LinuxIO libvirt hook's file.
@@ -180,7 +181,7 @@ func readHookSource(source string) ([]byte, error) {
 }
 
 // makeHookDir makes the hook's folder, and any missing folder above it, mode
-// 0755 whatever the bridge's umask (077), as the installer's mkdir -p does. A
+// 0755 whatever the bridge's umask (077), as the package installs it. A
 // folder that is there keeps its mode.
 func makeHookDir(dir string) error {
 	info, err := os.Stat(dir)
@@ -234,7 +235,7 @@ func checkHookDestination(path string) error {
 }
 
 // restartLibvirtDaemons restarts whichever libvirt daemon runs, as the
-// installer's systemctl try-restart does; one the host does not have or does
+// package's post-install try-restart does; one the host does not have or does
 // not run is left alone. A failure leaves the restored hook in place, and
 // libvirt runs it once its daemon next starts.
 func restartLibvirtDaemons(ctx context.Context, env Environment) error {

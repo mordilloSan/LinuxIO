@@ -17,8 +17,9 @@ packaging_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 public_programs=(linuxio-webserver linuxio-bridge linuxio-claude-relay)
 # Programs systemd runs as root: no other user may start them.
 root_programs=(linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-worker)
-# Folders under usr/lib/systemd/system that get the run-record drop-in, as the
-# installer's run_record_dropin_dirs.
+# Folders under usr/lib/systemd/system that get the run-record drop-in: the
+# generated schedule units, the snapshot, replication and Docker update units,
+# and the distributions' automatic update services.
 run_record_dropin_dirs=(
 	linuxio-schedule-.service.d
 	linuxio-btrfs-snapshot.service.d
