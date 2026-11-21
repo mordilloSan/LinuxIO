@@ -195,6 +195,7 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
 
    ```sh
    export GNUPGHOME=~/linuxio-keys
+   export GPG_TTY=$(tty)
    install -d -m 0700 "$GNUPGHOME"
    cd "$GNUPGHOME"
    gpg --batch --passphrase '' --quick-generate-key 'LinuxIO packages <packages@engmariz.com>' ed25519 cert 10y
@@ -208,7 +209,10 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
    ```
 
    The keys are made without a passphrase, and the last `gpg` asks for one:
-   it encrypts the backup of the primary key. Three files leave the folder:
+   it encrypts the backup of the primary key. `GPG_TTY` names the terminal
+   that question appears on; without it, over SSH or in an editor's
+   terminal, `gpg` ends with "Inappropriate ioctl for device". Three files
+   leave the folder:
 
    - `linuxio.asc`, the public key, for the repository (step 2);
    - `linuxio-signing-subkey.asc`, the signing subkey alone, for the CI
