@@ -149,7 +149,9 @@ signed.
 
 ## Trust
 
-- The OpenPGP primary key is kept offline by the owner and only certifies.
+- The OpenPGP primary key only certifies. The owner keeps it as an
+  encrypted backup away from any machine, and no machine holds it between
+  the times a subkey is made.
   A signing subkey, the only secret CI has, signs the APT `Release` files,
   `repomd.xml` and every RPM. The public key is `packaging/keys/linuxio.asc`;
   the `repositories` job refuses a subkey that does not belong to it, and
@@ -187,29 +189,46 @@ Pull requests and forks cannot reach the key:
 
 Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
 
-1. **Keys, on an offline machine** (a live system without network; keep
-   `GNUPGHOME` on the encrypted medium that will hold the backup):
+1. **Keys**, on the owner's own machine, in a folder of their own that is
+   deleted at the end, so the primary key is on that machine only while the
+   keys are made:
 
    ```sh
-   export GNUPGHOME=/media/offline/linuxio-gnupg
+   export GNUPGHOME=~/linuxio-keys
    install -d -m 0700 "$GNUPGHOME"
-   gpg --quick-generate-key 'LinuxIO packages <packages@engmariz.com>' ed25519 cert 10y
+   cd "$GNUPGHOME"
+   gpg --batch --passphrase '' --quick-generate-key 'LinuxIO packages <packages@engmariz.com>' ed25519 cert 10y
    FPR=$(gpg --with-colons --list-keys packages@engmariz.com | awk -F: '$1 == "fpr" { print $10; exit }')
-   gpg --quick-add-key "$FPR" ed25519 sign 3y
+   gpg --batch --passphrase '' --quick-add-key "$FPR" ed25519 sign 3y
    SUB=$(gpg --with-colons --list-keys "$FPR" | awk -F: '$1 == "sub" { s = 1 } s && $1 == "fpr" { print $10; exit }')
    gpg --armor --export "$FPR" >linuxio.asc
-   gpg --armor --export-secret-keys "$FPR" >linuxio-primary-secret.asc
+   gpg --armor --export-secret-subkeys "${SUB}!" >linuxio-signing-subkey.asc
+   gpg --armor --export-secret-keys "$FPR" | gpg --symmetric --cipher-algo AES256 -o linuxio-primary-secret.asc.gpg
+   cp "openpgp-revocs.d/${FPR}.rev" linuxio-revocation.rev
    ```
+
+   The keys are made without a passphrase, and the last `gpg` asks for one:
+   it encrypts the backup of the primary key. Three files leave the folder:
+
+   - `linuxio.asc`, the public key, for the repository (step 2);
+   - `linuxio-signing-subkey.asc`, the signing subkey alone, for the CI
+     secret (step 4);
+   - `linuxio-primary-secret.asc.gpg` and `linuxio-revocation.rev`, the
+     backup: on two media that are not this machine (a USB stick, a password
+     manager), with the passphrase kept apart from them.
 
    Ed25519 is read by every verifier the supported systems use (GnuPG,
    Sequoia's `sqv` in APT, rpm). Expiry: the primary key 10 years, the
    signing subkey 3 years. Every host holds a copy of the public key, so an
    expiry date, extended or replaced, reaches hosts only when their copy is
-   replaced; before the subkey expires, add the next one
-   (`gpg --quick-add-key "$FPR" ed25519 sign 3y`), commit the new public key
-   and replace the secret below. Keep `linuxio-primary-secret.asc` and the
-   revocation certificate GnuPG wrote to `$GNUPGHOME/openpgp-revocs.d/` on
-   two offline media.
+   replaced; before the subkey expires, restore the backup into a new folder
+   (`gpg --decrypt linuxio-primary-secret.asc.gpg | gpg --import`), add the
+   next subkey (`gpg --quick-add-key "$FPR" ed25519 sign 3y`), commit the new
+   public key and replace the secret below.
+
+   Stricter, for an owner who does not trust the machine: the same commands
+   on a live system without network, with the folder on the encrypted medium
+   that holds the backup.
 
 2. **The public key**: commit `linuxio.asc` as `packaging/keys/linuxio.asc`,
    and write its full fingerprint (`gpg --fingerprint "$FPR"`) here:
@@ -231,28 +250,25 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
    both merges the release and approves it. With a second maintainer, turn
    it on.
 
-4. **The CI secret**: only the signing subkey, without a passphrase. In a
-   scratch GnuPG home, so the offline one keeps its passphrase:
+4. **The CI secret**: the signing subkey alone, without a passphrase, the
+   file step 1 wrote. Check it first: in a GnuPG home that holds nothing
+   else, `gpg --list-secret-keys` must show `sec#` (no primary secret) and
+   one `ssb`.
 
    ```sh
-   gpg --armor --export-secret-subkeys "${SUB}!" >sub-protected.asc
-   export GNUPGHOME=$(mktemp -d)
-   gpg --import sub-protected.asc
-   gpg --passwd "$FPR"
-   gpg --list-secret-keys "$FPR"
-   gpg --armor --export-secret-subkeys "${SUB}!" >linuxio-signing-subkey.asc
+   GNUPGHOME=$(mktemp -d) sh -c 'gpg --quiet --import linuxio-signing-subkey.asc && gpg --list-secret-keys'
+   gh secret set LINUXIO_SIGNING_KEY --env release --repo OWNER/REPO <linuxio-signing-subkey.asc
    ```
 
-   `gpg --passwd` reports the primary key's secret as missing, which is the
-   point, then asks for the subkey's passphrase and a new one: leave the new
-   one empty and confirm. `gpg --list-secret-keys` must show `sec#` (no
-   primary secret) and one `ssb`.
-
-   Carry `linuxio-signing-subkey.asc` to a machine with `gh`, then:
+   Then, once the backup of step 1 is on its two media and reads back
+   (`gpg --decrypt linuxio-primary-secret.asc.gpg | head -n 1` prints
+   `-----BEGIN PGP PRIVATE KEY BLOCK-----`), delete the folder of step 1 with
+   everything in it:
 
    ```sh
-   gh secret set LINUXIO_SIGNING_KEY --env release --repo OWNER/REPO <linuxio-signing-subkey.asc
-   shred -u linuxio-signing-subkey.asc sub-protected.asc
+   gpgconf --kill all
+   cd ~ && rm -rf ~/linuxio-keys
+   unset GNUPGHOME
    ```
 
 5. **Pages**: source GitHub Actions, then the custom domain and HTTPS:

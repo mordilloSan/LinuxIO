@@ -378,7 +378,7 @@ jobs:
           ls -l build/repo-packages
 
       # The secret is the signing subkey alone, without a passphrase: the
-      # primary key never leaves the owner's offline copy. It lives in a
+      # primary key never leaves the owner's backup. It lives in a
       # GnuPG home of this job that the last step deletes.
       - name: Import the signing subkey
         id: key
