@@ -18,11 +18,11 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/socketactivation"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
-	"github.com/mordilloSan/LinuxIO/backend/webserver/appupdate"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/tlsserver"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/versionapi"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/ws"
 )
@@ -99,7 +99,7 @@ func newHTTPServer(cfg ServerConfig, sm *sessions.Manager) (*http.Server, *serve
 		UI: ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
 			auth.RegisterAuthRoutes(mux, sm)
-			appupdate.RegisterRoutes(mux)
+			versionapi.RegisterRoutes(mux)
 		},
 	}, sm)
 

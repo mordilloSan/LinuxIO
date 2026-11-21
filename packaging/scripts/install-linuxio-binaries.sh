@@ -164,54 +164,6 @@ remove_old_binaries() {
 	)
 }
 
-# The programs whose version line write_components_file records. Must name
-# the binaries of version.Components (backend/common/version/components.go);
-# tests/installer-fixtures.sh enforces it.
-component_binaries() {
-	printf '%s\n' \
-		linuxio \
-		linuxio-webserver \
-		linuxio-bridge \
-		linuxio-auth \
-		linuxio-indexer \
-		linuxio-monitoring \
-		linuxio-worker \
-		linuxio-docker-update \
-		linuxio-claude-relay
-}
-
-# Record the version line of each program of component_binaries, linuxio
-# found in $1 and the others in $2, into the file $3 (owner $4, when given).
-# The CLI and the webserver read it and never run the programs, several of
-# which only root may start.
-write_components_file() {
-	local cli_dir="$1"
-	local libexec_dir="$2"
-	local dst="$3"
-	local owner="${4:-}"
-	local staged="${STAGING}/components"
-	local binary line
-
-	# Readable by the webserver's user whatever umask root runs under.
-	mkdir -p "$(dirname "$dst")" && chmod 0755 "$(dirname "$dst")" || return 1
-	: >"$staged" || return 1
-	while IFS= read -r binary; do
-		if [[ "$binary" == linuxio ]]; then
-			line="$("${cli_dir}/${binary}" version --self 2>/dev/null | head -n1)" || line=""
-		else
-			# Without the variable that names Claude Code, which the relay
-			# would hand --version to.
-			line="$(env -u LINUXIO_CLAUDE_BIN "${libexec_dir}/${binary}" --version 2>/dev/null | head -n1)" || line=""
-		fi
-		if [[ -n "$line" ]]; then
-			printf '%s\n' "$line" >>"$staged"
-		else
-			Show 3 "${binary} did not report its version"
-		fi
-	done < <(component_binaries)
-	atomic_replace_file "$staged" "$dst" 0644 "$owner"
-}
-
 release_download_assets() {
 	binary_names
 	printf '%s\n' LICENSE THIRD_PARTY_NOTICES.md SHA256SUMS
@@ -1457,9 +1409,6 @@ main() {
 	# first, and a linuxio-auth it already replaced stays bin_t until the next
 	# install.
 	install_selinux_module "$SELINUX_DIR"
-	if ! write_components_file "$CLI_DIR" "$LIBEXEC_DIR" "${SHARE_DIR}/components" root:root; then
-		Show 1 "Failed to record the installed versions"
-	fi
 	# Right after the binaries, so a later step that fails leaves no saved unit
 	# calling a program or a word the new binaries do not have.
 	rewrite_saved_unit_commands "$SYSTEMD_DIR"

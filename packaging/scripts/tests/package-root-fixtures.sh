@@ -81,14 +81,13 @@ expected_tree="\
 700 usr/libexec/linuxio/linuxio-worker
 755 usr/share
 755 usr/share/linuxio
-644 usr/share/linuxio/components
 755 usr/share/linuxio/issue
 755 usr/share/linuxio/issue/update-issue
 755 usr/share/linuxio/libvirt
 644 usr/share/linuxio/libvirt/linuxio-bridge-netfilter"
 
-# The order of the components record.
-component_order="\
+# The nine programs of a build.
+programs="\
 linuxio
 linuxio-webserver
 linuxio-bridge
@@ -102,19 +101,16 @@ linuxio-claude-relay"
 fixture_dir=$(mktemp -d)
 trap 'rm -rf "$fixture_dir"' EXIT
 
-# Fake programs that answer as the real ones do: the CLI to "version --self",
-# the others to --version, the relay only while LINUXIO_CLAUDE_BIN is unset.
+# Fake programs: package-root.sh copies them and runs none.
 bin="${fixture_dir}/build"
 mkdir -p "$bin"
-printf '#!/bin/sh\n[ "$1 $2" = "version --self" ] && echo "LinuxIO linuxio v9.9.9"\n' >"${bin}/linuxio"
 while IFS= read -r name; do
-	[[ "$name" == linuxio ]] && continue
-	printf '#!/bin/sh\n[ -z "$LINUXIO_CLAUDE_BIN" ] && [ "$1" = "--version" ] && echo "LinuxIO %s v9.9.9"\n' "$name" >"${bin}/${name}"
-done <<<"$component_order"
+	printf '#!/bin/sh\nexit 0\n' >"${bin}/${name}"
+done <<<"$programs"
 chmod 0755 "${bin}"/*
 
 tree="${fixture_dir}/root"
-LINUXIO_CLAUDE_BIN=/nonexistent bash "$PACKAGE_ROOT" --build-dir "$bin" --destdir "$tree" >/dev/null ||
+bash "$PACKAGE_ROOT" --build-dir "$bin" --destdir "$tree" >/dev/null ||
 	fail "package-root.sh failed on a complete build"
 
 # 1. The tree is exactly the manifest: every path and mode, nothing else.
@@ -166,15 +162,7 @@ old_paths=$(grep -rlF /usr/local/bin "$tree" | sed "s#^${tree}/##" || true)
 [[ -z "$old_paths" ]] || fail "staged files still name /usr/local/bin: ${old_paths//$'\n'/ }"
 pass "every program a unit starts is staged, and nothing names /usr/local/bin"
 
-# 5. The components record: one line per program, in order.
-if [[ -f "$INSTALLER" ]]; then
-	assert_eq "$component_order" "$(bash -c "source '$INSTALLER'; component_binaries")" "component order vs the installer's component_binaries"
-fi
-expected_components=$(while IFS= read -r name; do echo "LinuxIO ${name} v9.9.9"; done <<<"$component_order")
-assert_eq "$expected_components" "$(cat "${tree}/usr/share/linuxio/components")" "components record"
-pass "components record holds one version line per program, in order"
-
-# 6. Refusals, each before anything is staged.
+# 5. Refusals, each before anything is staged.
 refuses() {
 	local label="$1"
 	local dest="$2"
@@ -192,9 +180,9 @@ rm "${fixture_dir}/partial/linuxio-worker"
 refuses "a build without linuxio-worker" "${fixture_dir}/out-missing" --build-dir "${fixture_dir}/partial"
 [[ ! -e "${fixture_dir}/out-missing" ]] || fail "a refused run left ${fixture_dir}/out-missing behind"
 printf '#!/bin/sh\nexit 0\n' >"${fixture_dir}/partial/linuxio-worker"
-chmod 0755 "${fixture_dir}/partial/linuxio-worker"
-refuses "a program that reports no version" "${fixture_dir}/out-silent" --build-dir "${fixture_dir}/partial"
-[[ ! -e "${fixture_dir}/out-silent" ]] || fail "a refused run left ${fixture_dir}/out-silent behind"
+chmod 0644 "${fixture_dir}/partial/linuxio-worker"
+refuses "a linuxio-worker that is not executable" "${fixture_dir}/out-noexec" --build-dir "${fixture_dir}/partial"
+[[ ! -e "${fixture_dir}/out-noexec" ]] || fail "a refused run left ${fixture_dir}/out-noexec behind"
 pass "refuses an empty, root or non-empty destdir and an incomplete build"
 
 printf '\033[1;32m%s\033[0m\n' "✅ package-root fixtures passed!"

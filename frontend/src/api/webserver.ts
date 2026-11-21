@@ -1,5 +1,5 @@
 // Client for the webserver's plain HTTP endpoints (backend/webserver/auth and
-// backend/webserver/appupdate). Everything else travels over the stream mux.
+// backend/webserver/versionapi). Everything else travels over the stream mux.
 
 // The auth endpoints honor VITE_API_URL; the /api/* endpoints are same-origin.
 const API_BASE = import.meta.env.VITE_API_URL || "";

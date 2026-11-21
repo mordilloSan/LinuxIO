@@ -53,16 +53,16 @@ nothing by hand: the bridge and the relay stop without the connection their
 parent hands them, and a webserver started by a user has that user's rights
 and cannot open `auth.sock`. None of the programs is setuid.
 
-**Versions.** Because most programs are root only, nothing runs them to ask
-for a version. The installer runs each one as root and records its version
-line in `/usr/share/linuxio/components` (mode `0644`,
-`backend/common/version`); `linuxio version` and the webserver's
-unauthenticated `/api/version` read that file and add their own compiled-in
-version. A build run without the installer has no record and lists the other
-programs as not recorded.
+**Versions.** The package installs all nine programs from one build, so they
+have one version, `common/version.Version`. `linuxio version` (also
+`linuxio --version`) prints its own, and the webserver's unauthenticated
+`/api/version` answers `{"version": "..."}` with its own
+(`backend/webserver/versionapi`); neither runs or reads about another
+program, several of which are root only. The page polls `/api/version` only
+to see that a restarted webserver answers again; the footer shows the
+version the bridge's `control.version` reports.
 
-Known limits: a program replaced by hand keeps its recorded version until the
-installer runs again. On an update the installer rewrites the command lines
+Known limits: on an update the installer rewrites the command lines
 in the units and drop-ins LinuxIO itself wrote (`saved_unit_files`); an
 administrator's own unit or override that calls `linuxio alert ...`, starts
 a daemon with `run` or passes the indexer `--config-file` (`--config` since
@@ -83,8 +83,8 @@ command of `linuxio` and never a word on a daemon.
 `--version`, spelled the same on every program, and nothing else on them is
 meant for a person.
 
-- `--version` prints one line, the program's name and its build. It is the
-  line the installer records ([Versions](#binaries)).
+- `--version` prints one line, the program's name and its build
+  ([Versions](#binaries)).
 - `--help` says what the program is, what starts it and with which command
   line. It lists the flags systemd passes so that someone reading a unit file
   can tell what they mean, not so that they are typed.
@@ -101,13 +101,13 @@ C. A program installed `0700` cannot be started by another user at all, so
 for that user the shell answers "Permission denied" to `--help` and
 `--version` as to everything else. That is on purpose: the refusal comes from
 the kernel before any code of the program runs, and `linuxio version` shows
-anyone the version of all nine programs, as the installer recorded them.
+anyone the version, which is that of all nine programs.
 
 #### What each program accepts
 
 | Program | Mode | What a person can type | What it really runs as |
 |---|---|---|---|
-| `linuxio` | open | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version [--self]` (also `--version`), `help` (also `-h`, `--help`) | Nothing else; it is the admin tool |
+| `linuxio` | open | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version` (also `--version`), `help` (also `-h`, `--help`) | Nothing else; it is the admin tool |
 | `linuxio-webserver` | open | `--help`, `-h`, `--version` | The web server, started by `linuxio-webserver.service` with `[--port N] [--verbose]` |
 | `linuxio-bridge` | open | `--help`, `-h`, `--version` | One process per signed-in user, started by `linuxio-auth` with no arguments, the inherited fd 3 and the auth bootstrap; also the job host, started by systemd (`linuxio-jobs@<uid>.service`) with no arguments and the `linuxio-jobs` socket |
 | `linuxio-claude-relay` | open | `--help`, `-h`, `--version`, outside a chat only | Started only by `claude-agent-acp` in an Assistant chat, with Claude Code's own arguments and `LINUXIO_CLAUDE_BIN` naming the real CLI. While that variable is set every argument goes to Claude Code, those three too; without it, anything else exits 2 |
@@ -716,8 +716,12 @@ linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
 linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring (SIGHUP reload; open sessions switch at next login); persists across restarts
-linuxio version [--self]    # version of the CLI + of each program as the installer recorded it; also linuxio --version
+linuxio version             # the version of the build, which is the package's; also linuxio --version
 ```
+
+With no command, or with `help`, `-h` or `--help`, it prints the list of
+commands. `man linuxio` describes each command, which need root, the files
+and the units (`packaging/man/linuxio.8`).
 
 The Services page warns before it cuts LinuxIO off. Stop, Restart, Disable and
 Mask on `linuxio.target` or a `linuxio-*` unit ask for confirmation first
@@ -764,9 +768,10 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
 | Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout) |
 | SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → the policy store, loaded by `install_selinux_module` in the install script and removed by `packaging/scripts/uninstall.sh`; `packaging/scripts/update-issue` relabels the banner |
-| CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
+| CLI (commands) | `backend/cli/` (`main.go` dispatch and help, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
+| CLI man page | `packaging/man/linuxio.8`, handwritten roff → `/usr/share/man/man8/linuxio.8.gz` by both packages (`debian/linuxio.manpages`, the RPM's `%install`) |
 | Worker (timer jobs and unit hooks) | `backend/worker/` (`main.go` dispatch; `snapshot.go`, `replicate.go`, `health.go`, `degraded.go`; `scheduled_run.go`, `alert.go`) |
-| Program modes, recorded versions, saved-unit rewrite | `binary_mode`, `write_components_file` and `rewrite_saved_unit_commands` in `packaging/scripts/install-linuxio-binaries.sh`; `backend/common/version/components.go` |
+| Program modes, saved-unit rewrite | `binary_mode` and `rewrite_saved_unit_commands` in `packaging/scripts/install-linuxio-binaries.sh` |
 | Shared socket-activation adopt | `backend/common/socketactivation`, `backend/webserver/cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |

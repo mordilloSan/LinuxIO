@@ -1,80 +1,81 @@
 package main
 
 import (
-	"errors"
-	"io"
 	"os"
-	"strings"
+	"path/filepath"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-func versionOutput(t *testing.T, recorded map[string]string, readErr error) string {
+// runCaptured runs the CLI with args and returns its exit code and what it
+// wrote to standard output and standard error.
+func runCaptured(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
-	return versionOutputOf(t, recorded, readErr, func() { showVersion(nil) })
-}
-
-// versionOutputOf returns what show prints while the installer's record
-// holds recorded.
-func versionOutputOf(t *testing.T, recorded map[string]string, readErr error, show func()) string {
-	t.Helper()
-	orig := readComponentVersions
-	t.Cleanup(func() { readComponentVersions = orig })
-	readComponentVersions = func() (map[string]string, error) { return recorded, readErr }
-
-	r, w, err := os.Pipe()
+	dir := t.TempDir()
+	outFile, err := os.Create(filepath.Join(dir, "stdout"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	stdout := os.Stdout
-	os.Stdout = w
-	show()
-	os.Stdout = stdout
-	_ = w.Close()
-	out, err := io.ReadAll(r)
+	errFile, err := os.Create(filepath.Join(dir, "stderr"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(out)
+	origOut, origErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outFile, errFile
+	code = runCLI(append([]string{"linuxio"}, args...))
+	os.Stdout, os.Stderr = origOut, origErr
+	_ = outFile.Close()
+	_ = errFile.Close()
+
+	out, err := os.ReadFile(outFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	errOut, err := os.ReadFile(errFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return code, string(out), string(errOut)
 }
 
-// The CLI prints its own version from this build and the other programs'
-// from the installer's record, and runs none of them.
-func TestShowVersionPrintsTheRecordedVersions(t *testing.T) {
-	out := versionOutput(t, map[string]string{"LinuxIO CLI": "v0.0.1", "LinuxIO Bridge": "v1.2.3"}, nil)
+// linuxio version and linuxio --version print the one version of this build,
+// which is the package's, and nothing else.
+func TestVersionPrintsTheBuildVersion(t *testing.T) {
+	orig := version.Version
+	t.Cleanup(func() { version.Version = orig })
+	version.Version = "v1.2.3"
 
-	for _, want := range []string{"\n  " + cliVersionLine() + "\n", "\n  LinuxIO Bridge v1.2.3\n", "\n  linuxio-auth: version not recorded\n"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output missing %q:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "v0.0.1") {
-		t.Errorf("the CLI printed its recorded version, not its own:\n%s", out)
-	}
-}
-
-func TestShowVersionWithoutARecordNamesEveryOtherProgram(t *testing.T) {
-	out := versionOutput(t, nil, errors.New("no such file"))
-
-	for _, c := range version.Components {
-		if c.Binary == "linuxio" {
-			continue
-		}
-		want := "\n  " + c.Binary + ": version not recorded\n"
-		if !strings.Contains(out, want) {
-			t.Errorf("output missing %q:\n%s", want, out)
+	for _, arg := range []string{"version", "--version"} {
+		code, out, errOut := runCaptured(t, arg)
+		if code != 0 || out != "LinuxIO v1.2.3\n" || errOut != "" {
+			t.Errorf("linuxio %s = %d, stdout %q, stderr %q; want 0, %q", arg, code, out, errOut, "LinuxIO v1.2.3\n")
 		}
 	}
 }
 
-func TestDashDashVersionPrintsWhatTheVersionCommandPrints(t *testing.T) {
-	recorded := map[string]string{"LinuxIO Bridge": "v1.2.3"}
-	want := versionOutput(t, recorded, nil)
+func TestHelpPrintsTheCommandSummary(t *testing.T) {
+	const want = `LinuxIO system administration
 
-	var code int
-	got := versionOutputOf(t, recorded, nil, func() { code = runCLI([]string{"linuxio", "--version"}) })
-	if code != 0 || got != want {
-		t.Fatalf("linuxio --version = %d\n%s\nwant what linuxio version prints:\n%s", code, got, want)
+linuxio status
+linuxio logs [component] [lines]
+linuxio start
+linuxio stop
+linuxio restart [--full]
+linuxio verbose enable|disable|status
+linuxio version
+`
+	for _, args := range [][]string{nil, {"help"}, {"-h"}, {"--help"}} {
+		code, out, errOut := runCaptured(t, args...)
+		if code != 0 || out != want || errOut != "" {
+			t.Errorf("linuxio %q = %d, stdout %q, stderr %q; want 0 and the summary", args, code, out, errOut)
+		}
+	}
+}
+
+func TestUnknownCommandPrintsTheSummaryToStandardError(t *testing.T) {
+	code, out, errOut := runCaptured(t, "frobnicate")
+	if want := "Unknown command: frobnicate\n\n" + helpText; code != 2 || out != "" || errOut != want {
+		t.Fatalf("linuxio frobnicate = %d, stdout %q, stderr %q; want 2 and %q on stderr", code, out, errOut, want)
 	}
 }

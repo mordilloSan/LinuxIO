@@ -390,39 +390,6 @@ printf '   \033[1;32m✓\033[0m %s\n' "auth socket leaves room for live sessions
 )
 printf '   \033[1;32m✓\033[0m %s\n' "root-run programs are installed for root only"
 
-# The installer records each program's version line, since the CLI and the
-# webserver may not run the root-only programs. Its list of programs is the
-# Go list's.
-go_components=$(grep -o 'Binary: "[^"]*"' "$REPO_ROOT/backend/common/version/components.go" | cut -d'"' -f2 | sort)
-installer_components=$(bash -c "source '$RELEASE_INSTALLER'; component_binaries" | sort)
-assert_eq "$go_components" "$installer_components" "installer component list vs version.Components"
-(
-	# shellcheck disable=SC1090
-	source "$RELEASE_INSTALLER"
-	fixture_dir=$(mktemp -d)
-	# The CLI in one folder and the other programs in another, as installed.
-	mkdir "${fixture_dir}/cli" "${fixture_dir}/libexec"
-	printf '#!/bin/sh\n[ "$1 $2" = "version --self" ] && echo "LinuxIO CLI v1.2.3"\n' >"${fixture_dir}/cli/linuxio"
-	for name in webserver:"Web Server" bridge:Bridge indexer:Indexer monitoring:Monitoring worker:Worker docker-update:"Docker Updater"; do
-		printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "LinuxIO %s v1.2.3" && echo "more"\n' "${name#*:}" >"${fixture_dir}/libexec/linuxio-${name%%:*}"
-	done
-	# The relay answers only without the variable that names Claude Code, so
-	# the installer must not hand it one from its own environment.
-	printf '#!/bin/sh\n[ -z "$LINUXIO_CLAUDE_BIN" ] && [ "$1" = "--version" ] && echo "LinuxIO Claude Relay v1.2.3"\n' >"${fixture_dir}/libexec/linuxio-claude-relay"
-	export LINUXIO_CLAUDE_BIN=/opt/claude/bin/claude
-	# A program that cannot run, such as one built for another machine.
-	printf '#!/bin/sh\nexit 1\n' >"${fixture_dir}/libexec/linuxio-auth"
-	chmod 0755 "${fixture_dir}/cli/linuxio" "${fixture_dir}/libexec/"*
-	write_components_file "${fixture_dir}/cli" "${fixture_dir}/libexec" "${fixture_dir}/share/components" >/dev/null ||
-		fail "recording the installed versions failed"
-	expected=$'LinuxIO CLI v1.2.3\nLinuxIO Web Server v1.2.3\nLinuxIO Bridge v1.2.3\nLinuxIO Indexer v1.2.3\nLinuxIO Monitoring v1.2.3\nLinuxIO Worker v1.2.3\nLinuxIO Docker Updater v1.2.3\nLinuxIO Claude Relay v1.2.3'
-	assert_eq "$expected" "$(cat "${fixture_dir}/share/components")" "recorded versions"
-	assert_eq "644" "$(stat -c %a "${fixture_dir}/share/components")" "recorded versions mode"
-	assert_eq "755" "$(stat -c %a "${fixture_dir}/share")" "recorded versions directory mode"
-	rm -rf "$fixture_dir"
-)
-printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the CLI and the webserver"
-
 # Units and drop-ins a saved setting wrote hold the command lines of the
 # release that wrote them; the installer rewrites those of earlier releases
 # (the words up to v0.54, the /usr/local/bin folder after) and leaves
@@ -627,7 +594,7 @@ needrestart_override_fixtures() {
 			printf '%s\n' "$shipped_entry" >"$one"
 			needrestart_override_valid "$one" || fail "the content check refuses the shipped line ${shipped_entry}"
 		done < <(grep '^\$nrconf' "$NEEDRESTART_CONF")
-		assert_eq "8" "$(grep -c '^\$nrconf' "$NEEDRESTART_CONF")" "shipped needrestart override entries"
+		assert_eq "7" "$(grep -c '^\$nrconf' "$NEEDRESTART_CONF")" "shipped needrestart override entries"
 		# Where Perl is present, the file must also compile under strict.
 		if command -v perl >/dev/null 2>&1; then
 			needrestart_override_loads "$NEEDRESTART_CONF" || fail "the shipped needrestart override does not compile under strict"

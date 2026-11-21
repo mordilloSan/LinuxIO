@@ -122,20 +122,18 @@ Not working on this branch:
 Native packaging guarantees that every file in the package has one version.
 
 - [x] Remove `versionExecCommand` and the private-binary subprocess
-      probes from `backend/cli/version.go`. Done with `linuxio-worker`: the
-      CLI and the webserver read the installer's record,
-      `/usr/share/linuxio/components`
+      probes from `backend/cli/version.go`. The record of one version per
+      program that replaced them is gone too
       ([Versions](../process-systemd-architecture.md#binaries)).
-- [ ] Remove `version --self`.
-- [ ] Make `linuxio version` print the package/build version.
+- [x] Remove `version --self`.
+- [x] Make `linuxio version` print the package/build version.
 - [x] Support the conventional `linuxio --version` with the same result.
-- [ ] Remove component-version probing from
-      `backend/webserver/appupdate/version.go:129`; it must not depend on all
-      LinuxIO binaries sharing one executable search path.
+- [x] Remove component-version probing from the webserver: `/api/version`
+      (`backend/webserver/versionapi`) answers with its own build version.
 
 ### 4. Clarify help text
 
-- [ ] Use this simpler command summary:
+- [x] Use this simpler command summary:
 
   ```text
   LinuxIO system administration
@@ -151,21 +149,22 @@ Native packaging guarantees that every file in the package has one version.
 
 ### 5. Add one handwritten man page
 
-- [ ] Add `packaging/man/linuxio.8` in plain roff (the earlier draft was deleted). Do not add a documentation
+- [x] Add `packaging/man/linuxio.8` in plain roff (the earlier draft was deleted). Do not add a documentation
       generator.
-- [ ] Document the synopsis, commands, required privileges, files, systemd
+- [x] Document the synopsis, commands, required privileges, files, systemd
       units, and examples.
-- [ ] Install it in the DEB through `debian/linuxio.manpages`.
-- [ ] Include `%{_mandir}/man8/linuxio.8*` in the RPM. Let debhelper and RPM
-      packaging handle compression.
+- [x] Install it in the DEB through `debian/linuxio.manpages`.
+- [x] Include `%{_mandir}/man8/linuxio.8*` in the RPM. debhelper compresses it; the RPM gzips
+      it in `%install`, because the spec switches off the scripts that would
+      (they also strip programs).
 
 ### 6. Update tests and documentation
 
-- [ ] Remove component-probing and `--self` tests.
+- [x] Remove component-probing and `--self` tests.
 - [x] Test both `linuxio version` and `linuxio --version`.
-- [ ] Update systemd path assertions.
+- [x] Update systemd path assertions.
 - [x] Update the binary-location paragraph in `docs/process-systemd-architecture.md`.
-- [ ] Add the man page to package-content tests.
+- [x] Add the man page to package-content tests.
 
 ## Development workflow
 

@@ -71,6 +71,11 @@ ln -s ../../run/linuxio/issue %{buildroot}%{_sysconfdir}/motd.d/linuxio
 		esac
 	done
 ) >%{_builddir}/linuxio.files
+# The man page, after the file list is made: %%files names it. The brp
+# scripts that would compress it are off (__os_install_post above), so it is
+# gzipped here.
+install -D -m 0644 '%{linuxio_packaging_dir}/man/linuxio.8' %{buildroot}%{_mandir}/man8/linuxio.8
+gzip -9n %{buildroot}%{_mandir}/man8/linuxio.8
 
 %pre
 # Refuse to install over LinuxIO put in by the script installer, which the
@@ -144,3 +149,4 @@ fi
 %files -f %{_builddir}/linuxio.files
 %license LICENSE
 %doc THIRD_PARTY_NOTICES.md
+%{_mandir}/man8/linuxio.8*

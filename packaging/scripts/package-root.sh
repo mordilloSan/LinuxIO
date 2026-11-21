@@ -16,18 +16,6 @@ packaging_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 public_programs=(linuxio-webserver linuxio-bridge linuxio-claude-relay)
 # Programs systemd runs as root: no other user may start them.
 root_programs=(linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-worker)
-# The order of the components record, as the installer's component_binaries.
-component_programs=(
-	linuxio
-	linuxio-webserver
-	linuxio-bridge
-	linuxio-auth
-	linuxio-indexer
-	linuxio-monitoring
-	linuxio-worker
-	linuxio-docker-update
-	linuxio-claude-relay
-)
 # Folders under usr/lib/systemd/system that get the run-record drop-in, as the
 # installer's run_record_dropin_dirs.
 run_record_dropin_dirs=(
@@ -91,25 +79,9 @@ if [[ -e "$destdir" ]]; then
 	[[ -z "$(find "$destdir" -mindepth 1 -maxdepth 1 -print -quit)" ]] || die "${destdir} is not empty"
 fi
 
-for name in "${component_programs[@]}"; do
+for name in linuxio "${public_programs[@]}" "${root_programs[@]}"; do
 	[[ -f "${build_dir}/${name}" && -x "${build_dir}/${name}" ]] ||
 		die "${build_dir}/${name} is missing or not executable (build it first: make build-binaries)"
-done
-
-# One version line per program, read from the programs themselves, as the
-# installer's write_components_file records it. The CLI and the webserver read
-# this file and never run the programs, several of which only root may start.
-components=()
-for name in "${component_programs[@]}"; do
-	if [[ "$name" == linuxio ]]; then
-		line="$("${build_dir}/${name}" version --self 2>/dev/null | head -n1)" || line=""
-	else
-		# Without the variable that names Claude Code, which the relay would
-		# hand --version to.
-		line="$(env -u LINUXIO_CLAUDE_BIN "${build_dir}/${name}" --version 2>/dev/null | head -n1)" || line=""
-	fi
-	[[ -n "$line" ]] || die "${name} did not report its version"
-	components+=("$line")
 done
 
 mkdir -p "$destdir"
@@ -141,9 +113,5 @@ for entry in "${files[@]}"; do
 	read -r src dest mode <<<"$entry"
 	stage "${packaging_dir}/${src}" "$dest" "$mode"
 done
-
-install -d -m 0755 "${destdir}/usr/share/linuxio"
-printf '%s\n' "${components[@]}" >"${destdir}/usr/share/linuxio/components"
-chmod 0644 "${destdir}/usr/share/linuxio/components"
 
 echo "Staged the package tree in ${destdir}"
