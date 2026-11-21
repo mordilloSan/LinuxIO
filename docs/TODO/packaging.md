@@ -211,6 +211,29 @@ Use this common layout:
 - [ ] Install package-owned units under `/usr/lib/systemd/system`.
 - [ ] Continue using `/etc/systemd/system` only for administrator or
       runtime-generated drop-ins.
+- [ ] Ship the three job units whose text is the same on every host as
+      package units, as `linuxio-btrfs-health.timer` and
+      `linuxio-btrfs-degraded.service` already are:
+      `linuxio-btrfs-snapshot.service`, `linuxio-btrfs-replicate.service`
+      (`backend/common/btrfs/unit.go`) and `linuxio-docker-update.service`
+      (`backend/common/dockerupdate/timer.go`). Decided 2026-11-21.
+      - Saving a setting then writes or enables only the timer, which holds
+        a schedule and no command line, so an update can never leave one of
+        these three naming a program that moved.
+      - Cockpit gets the same result another way: a timer it writes runs the
+        administrator's command through `/bin/sh` and never a Cockpit
+        program. LinuxIO's timers run LinuxIO's own work, so the unit that
+        names the program comes with the package instead.
+      - Two kinds of saved file still name a LinuxIO program, because a
+        setting decides what they hold: the verbose drop-ins
+        (`backend/common/verbosemode`) and the alert drop-ins on the
+        distribution's update services
+        (`backend/bridge/handlers/packages/internal/autoupdate/notify.go`).
+- [ ] Ship the run-record drop-in (`packaging/systemd/linuxio-run-record.conf`)
+      as a package file in each of the eight folders of the installer's
+      `run_record_dropin_dirs`, under `/usr/lib/systemd/system`, with the
+      program's new path. It is the same file everywhere and depends on no
+      setting, so it updates and is removed with the package.
 - [ ] Treat `/etc/linuxio`, `/etc/pam.d/linuxio`, and other administrator
       configuration as preserved package configuration.
 - [ ] Carry the needrestart override that the script installer installs
@@ -361,6 +384,22 @@ Checks, each in the VM as the package installs it and again after a reboot:
       - The restart comes when LinuxIO's own package is done, which in a
         larger upgrade is before the transaction ends.
 - [ ] On removal, stop and disable services while preserving application data.
+- [ ] On removal, also delete what LinuxIO itself wrote under
+      `/etc/systemd/system` while it ran, as `uninstall.sh` does today; a
+      package manager removes only the files it installed. Decided
+      2026-11-21. `/etc/linuxio` and `/var/lib/linuxio` stay.
+      - The snapshot and Docker update timers, stopped and disabled first:
+        left behind, each would start a service the package just removed.
+      - The verbose drop-ins.
+      - The alert drop-ins on the distribution's update services
+        (`linuxio-alert.conf`): left behind, their `ExecStopPost=` names a
+        program that is gone, and the nightly upgrade is marked failed.
+      - The schedule drop-ins on the distribution's update timers
+        (`linuxio.conf`). They hold only a time and would break nothing;
+        they go too, so removal leaves nothing of LinuxIO's there, and the
+        distribution's own schedule returns.
+      - After a removal and a new install these settings are switched on
+        again by hand, as after the uninstaller today.
 - [ ] Add `make package-deb` and `make package-rpm`.
 - [ ] Replace the current `make localinstall` implementation with the
       package-based development workflow above.
