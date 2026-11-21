@@ -49,7 +49,7 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 
 ##@ Tests|green
 # See scripts/lanes.sh for the lane layout and why it is scheduled this way.
-test: setup dev-prep test-installation-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
+test: setup dev-prep test-packaging-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" test "$(test_timer_start)"
 
 ##@ Quality checks|green
@@ -78,30 +78,25 @@ test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./p
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
 
-test-installation-scripts: ## Run host-independent installer fixture tests
+test-packaging-scripts: ## Run host-independent fixture tests of the packaging files and scripts
 	@echo ""
-	@$(PRINTC) "$(COLOR_CYAN)🧪 Running install-dependencies fixture tests...$(COLOR_RESET)"
-	@bash "$(packaging_scripts_dir)/tests/install-dependencies-fixtures.sh"
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package file fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/package-files-fixtures.sh"
 	@echo ""
-	@$(PRINTC) "$(COLOR_CYAN)🧪 Running installer fixture tests...$(COLOR_RESET)"
-	@bash "$(packaging_scripts_dir)/tests/installer-fixtures.sh"
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package-root fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/package-root-fixtures.sh"
+	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package-version fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/package-version-fixtures.sh"
+	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running signed repository fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/repo-fixtures.sh"
 
 test-indexer-systemd-integration: ## Run the opt-in disposable-host indexer smoke test
 	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"
 
-# The updater and Docker update tests, here and in the test VM's updater and
-# docker suites (mk/vm.mk).
-UPDATER_RUN := ^TestInstallScriptDryRunWithSystemdSandbox$$
+# The Docker update tests, here and in the test VM's docker suite (mk/vm.mk).
 DOCKER_UPDATE_RUN := ^TestDockerUpdateCompose
-
-test-updater: ensure-go ## Run the root-only updater systemd dry-run integration test
-	@echo "🔎 Running updater systemd dry-run integration test..."
-	@cd "$(backend_dir)" && \
-	  sudo env \
-	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
-	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
-	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run '$(UPDATER_RUN)' -count=1 -v
 
 test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose update test
 	@echo "🐳 Running native Docker update integration test..."

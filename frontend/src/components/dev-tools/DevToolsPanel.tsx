@@ -27,29 +27,8 @@ export const DevToolsPanel = ({
   onClose,
   onToggleWebVitals,
 }: DevToolsPanelProps) => {
-  // Check if update notification is currently shown
-  const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
   const [isRouterDevtoolsOpen, setIsRouterDevtoolsOpen] = useState(false);
-
-  const forceUpdateNotification = () => {
-    const fakeUpdateInfo = {
-      available: true,
-      current_version: "dev-v0.6.12",
-      latest_version: "dev-v0.6.12",
-      release_url: "https://github.com/mordilloSan/LinuxIO/releases",
-    };
-
-    sessionStorage.setItem("update_info", JSON.stringify(fakeUpdateInfo));
-    sessionStorage.setItem("dev_update_forced", "true");
-    window.location.reload();
-  };
-
-  const clearUpdateNotification = () => {
-    sessionStorage.removeItem("update_info");
-    sessionStorage.removeItem("dev_update_forced");
-    window.location.reload();
-  };
 
   if (!import.meta.env.DEV) {
     return null;
@@ -142,27 +121,6 @@ export const DevToolsPanel = ({
           >
             {isWebVitalsVisible ? "Hide" : "Show"} Web Vitals in Footer
           </AppButton>
-          {!shown ? (
-            <AppButton
-              color="warning"
-              fullWidth
-              onClick={forceUpdateNotification}
-              size="small"
-              variant="contained"
-            >
-              Show Update Notification
-            </AppButton>
-          ) : (
-            <AppButton
-              color="secondary"
-              fullWidth
-              onClick={clearUpdateNotification}
-              size="small"
-              variant="contained"
-            >
-              Hide Update Notification
-            </AppButton>
-          )}
         </div>
       )}
 

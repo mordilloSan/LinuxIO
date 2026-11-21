@@ -53,7 +53,7 @@ scoped reindexing never start an independent daemon.
 
 | Path or unit | Purpose |
 |--------------|---------|
-| `/usr/local/bin/linuxio-indexer` | Daemon and private full-scan worker |
+| `/usr/libexec/linuxio/linuxio-indexer` | Daemon and private full-scan worker |
 | `/etc/linuxio/indexer/config.yaml` | Strict two-field YAML configuration |
 | `/var/lib/linuxio/indexer/indexer.db` | Persistent, rebuildable SQLite cache |
 | `/run/linuxio/indexer.sock` | Root-only Unix API socket, `root:root`, mode `0600` |
@@ -393,18 +393,26 @@ old cache remains available for inspection.
 ## Disposable-host smoke test
 
 The repository includes an opt-in systemd smoke test
-(`packaging/scripts/tests/systemd-indexer-smoke.sh`). It requires built local
-binaries, root, systemd as PID 1, and a clean disposable host. The test VM is
-one: `make test-vm-backend SUITES=indexer` builds LinuxIO, creates the VM
-when it is missing, reverts it, copies the build in and runs the script there
-with `LINUXIO_SMOKE_BUILD_DIR` naming the build, since the VM has no `make`.
-On another disposable host:
+(`packaging/scripts/tests/systemd-indexer-smoke.sh`). It installs a LinuxIO
+package with apt or dnf, checks the indexer's socket activation, idle exit
+and index timer, and removes the package again, checking that the removal
+stops the indexer and keeps `/var/lib/linuxio` and the index in it. It
+requires the package, root, systemd as PID 1, and a disposable host with no
+LinuxIO on it; at the end it purges what the package left and deletes
+`/etc/linuxio` and `/var/lib/linuxio`. The test VM is one:
+`make test-vm-backend SUITES=indexer` builds LinuxIO, creates the VM when it
+is missing, reverts it, assembles the package in the VM as `make vm-install`
+does and runs the script there with `LINUXIO_SMOKE_PACKAGE` naming it. On
+another disposable host:
 
 ```bash
-make build
-LINUXIO_SYSTEMD_SMOKE=1 \
-LINUXIO_SYSTEMD_SMOKE_CONFIRM=disposable-linuxio-host \
-  make test-indexer-systemd-integration
+make build package-deb   # or package-rpm
+sudo LINUXIO_SYSTEMD_SMOKE=1 \
+  LINUXIO_SYSTEMD_SMOKE_CONFIRM=disposable-linuxio-host \
+  LINUXIO_SMOKE_PACKAGE="$(echo build/packages/linuxio*)" \
+  packaging/scripts/tests/systemd-indexer-smoke.sh
 ```
 
-Without `LINUXIO_SYSTEMD_SMOKE=1`, the script exits without changing the host.
+`make test-indexer-systemd-integration` runs the same script with the
+variables of its environment. Without `LINUXIO_SYSTEMD_SMOKE=1`, the script
+exits without changing the host.

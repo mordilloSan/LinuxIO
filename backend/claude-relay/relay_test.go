@@ -308,7 +308,7 @@ func TestStreamJSONNeedsBothSides(t *testing.T) {
 }
 
 func TestChildEnvDropsTheBridgeVariables(t *testing.T) {
-	env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude", envPaneSocket + "=/tmp/x/pane.sock", envExecutable + "=/usr/local/bin/linuxio-claude-relay", "HOME=/home/ana"}
+	env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude", envPaneSocket + "=/tmp/x/pane.sock", envExecutable + "=/usr/libexec/linuxio/linuxio-claude-relay", "HOME=/home/ana"}
 	require.Equal(t, []string{"PATH=/bin", "HOME=/home/ana", envExecutable + "=/opt/claude"}, childEnv(env, "/opt/claude"))
 }
 
@@ -365,7 +365,7 @@ func TestRunPassesThroughWhenItCannotRelay(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude/bin/claude", envExecutable + "=/usr/local/bin/linuxio-claude-relay"}
+			env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude/bin/claude", envExecutable + "=/usr/libexec/linuxio/linuxio-claude-relay"}
 			if tc.socket != "" {
 				env = append(env, envPaneSocket+"="+tc.socket)
 			}

@@ -19,10 +19,7 @@ mkdir -p "$log_dir"
 log="$log_dir/$target-$(date -u +%Y%m%dT%H%M%S)-$PPID-$RANDOM.log"
 start_seconds="$(uptime_now)"
 
-if [ "$target" = "test-updater" ]; then
-	# Stays in the foreground so sudo retains a controlling terminal.
-	if "$make_cmd" --no-print-directory "$target" >"$log" 2>&1; then rc=0; else rc=$?; fi
-elif run_grouped "$setsid_cmd" "$make_cmd" --no-print-directory "$target" >"$log" 2>&1; then
+if run_grouped "$setsid_cmd" "$make_cmd" --no-print-directory "$target" >"$log" 2>&1; then
 	rc=0
 else
 	rc=$?

@@ -13,7 +13,7 @@ NotifyAccess=main
 User=%i
 # No arguments: the bridge knows it is the job host from the socket systemd
 # passes it.
-ExecStart=/usr/local/bin/linuxio-bridge
+ExecStart=/usr/libexec/linuxio/linuxio-bridge
 StateDirectory=linuxio/jobs/%i
 StateDirectoryMode=0700
 RuntimeDirectory=linuxio/jobs/%i

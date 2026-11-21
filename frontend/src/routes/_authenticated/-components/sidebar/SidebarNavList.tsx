@@ -7,7 +7,6 @@ import { useSortableNavItem } from "./useSortableNavItem";
 
 type SidebarNavListItemProps = SidebarItem & {
   collapsed?: boolean;
-  disabled?: boolean;
   /** Layout mode is open: the entry is being rearranged, not followed. */
   editMode?: boolean;
   /** This entry is being held, waiting for the hold to complete. */
@@ -21,11 +20,10 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
     icon,
     params,
     collapsed = false,
-    disabled = false,
     editMode = false,
     pending = false,
   }) => {
-    const { describedBy, itemProps } = useSortableNavItem(to, disabled);
+    const { describedBy, itemProps } = useSortableNavItem(to);
 
     const renderIcon = () => {
       if (!icon) return null;
@@ -38,7 +36,6 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
     const baseClassName = [
       "app-sidebar-link",
       collapsed && "app-sidebar-link--collapsed",
-      disabled && "app-sidebar-link--disabled",
     ]
       .filter(Boolean)
       .join(" ");
@@ -54,20 +51,6 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
         </span>
       </>
     );
-
-    if (disabled) {
-      return (
-        <li className={itemClassName} {...itemProps}>
-          <span
-            aria-disabled="true"
-            className={baseClassName}
-            title={collapsed ? title : undefined}
-          >
-            {content}
-          </span>
-        </li>
-      );
-    }
 
     return (
       <li className={itemClassName} {...itemProps}>

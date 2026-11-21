@@ -74,7 +74,6 @@ export const router = createRouter({
   context: {
     access: undefined!,
     auth: undefined!,
-    isUpdateBlocked: undefined!,
     queryClient: appQueryClient,
   } satisfies LinuxIORouterContext,
   defaultErrorComponent: RouteError,
@@ -144,11 +143,6 @@ Inside, the context is memoized and any identity change triggers
 `router.invalidate()`, so `beforeLoad` and loaders re-evaluate after sign-in,
 sign-out, or a capability change. Because the router never mounts with unknown
 auth, `RouterAuthSnapshot` can narrow `isInitialized: true`.
-
-`isUpdateBlocked` is the module-level getter `isAppUpdateInProgress` from
-`contexts/appUpdateInProgress.ts`, not a hook — the router mounts *above*
-`AppUpdateProvider`, so it cannot consume that context directly. That is why
-`-loader.ts` takes a getter rather than a boolean.
 
 Mount chain: `index.tsx` → `App.tsx` → `QueryClientProvider` >
 `AuthProvider` > `ApplicationRouterProvider`. `App.tsx` provides
@@ -274,20 +268,15 @@ argument only when it needs a different named freshness policy:
 
 `loadRouteQueries` then does the following:
 
-1. Waits while either the router-context getter or the live stream mux reports
-   an update. The mux check covers the first-load window before
-   `AppUpdateProvider` mounts, and navigation cancellation aborts the wait.
-2. Awaits abortable `ensureLoaderRequestReady()` — the RPC transport may need
+1. Awaits abortable `ensureLoaderRequestReady()` — the RPC transport may need
    reconnecting. This happens before cache inspection even when every required
    Query entry already contains usable data: route transitions require a live
    backend and cached data is not an offline-navigation contract.
-3. **Re-checks** and, if necessary, waits for the update state again, closing
-   the race where an update starts during the transport wait.
-4. Runs the selected QueryClient operation in parallel, deduped by query key.
-5. Tags initial and intent-preload failures `silent`, so the route boundary is
+2. Runs the selected QueryClient operation in parallel, deduped by query key.
+3. Tags initial and intent-preload failures `silent`, so the route boundary is
    their single visible error owner. A stale background failure remains eligible
    for the global toast because cached UI is still visible.
-6. Defaults the Query-layer attempt to `retry: false`; the RPC transport retains
+4. Defaults the Query-layer attempt to `retry: false`; the RPC transport retains
    its own bounded reconnect retry, so the two layers do not multiply attempts.
 
 Call descriptor loaders pass Router's loader arguments directly. The helper derives
@@ -1039,34 +1028,15 @@ production build: it discovers route files from disk, then asserts each has a
 distinct `isDynamicEntry` chunk in the Vite manifest. Because the list is
 derived, a new route is covered the moment you add it.
 
-## The Update Boundary
+## Transport Loss
 
-While a live application update is running, two independent mechanisms stop
-traffic — the doc-level distinction matters when debugging:
-
-1. **Loaders wait.** `loadRouteQueries` / `loadRouteTransport` defer new
-   route work while the update is active and resume when it finishes. Router
-   cancellation aborts a superseded wait.
-2. **Mounted queries pause.** `AppUpdateProvider` flips the stream multiplexer's
-   updating flag; `isRequestAvailable()` goes false; `api/query-client.ts` feeds that
-   into `onlineManager`, so React Query treats the app as offline. The
-   multiplexer itself does not reject calls.
-
-This distinction is intentional. When the mux is unavailable, a mounted
+While the stream multiplexer is not open, `isRequestAvailable()` is false and
+`api/query-client.ts` feeds that into `onlineManager`, so React Query treats
+the app as offline. The multiplexer itself does not reject calls. A mounted
 observer may keep rendering usable cached data while React Query pauses new
 network work, but a new route transition still waits for transport readiness
 before inspecting that cache and may enter its error boundary. LinuxIO does not
 offer offline route navigation.
-
-On top of that, `useAppUpdateNavigationGuard` installs a `useBlocker` that rejects
-transitions, and sidebar entries go inert while `useAppUpdateInProgress()` is true.
-Intent-prefetched queries are tagged `silent`, so an unreliable hover preload
-during an update does not produce a toast.
-
-The loader gate checks both `context.isUpdateBlocked()` and the live
-`getStreamMux()?.isUpdating` flag before and after readiness, subscribing to
-both owners while it waits. The mux flag closes the initial-load gap before
-`AppUpdateProvider` has published context state.
 
 ## Adding A Route — Checklist
 
@@ -1262,7 +1232,7 @@ For a component that calls `getRouteApi(...)`, mock the module's `getRouteApi`
 | `src/components/tabbar/RoutedTabContainer.test.tsx` | Tab links, active child URL, `matchChildren`, mobile action slot |
 | `src/routes/_authenticated/-components/sidebar/useSidebarItems.test.tsx` | Access filtering, `position` ordering, no preload overrides |
 | `src/routes/_authenticated/-components/sidebar/useCloseMobileSidebarOnNavigate.test.tsx` | Mobile drawer close-on-navigate |
-| `src/utils/navigation.test.ts`, `src/hooks/useAppUpdateNavigationGuard.test.tsx` | The update navigation blocker |
+| `src/utils/navigation.test.ts` | The sign-in redirect after a lost session |
 | `src/test/browser/router.spec.ts` | Chromium: direct links, refresh, back/forward, pending and error UI, first-navigation chunk load, and the derived production chunk-boundary assertion |
 
 ### Scope of the browser suite

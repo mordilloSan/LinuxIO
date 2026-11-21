@@ -45,7 +45,7 @@ func writeNotifyDropIn(host backendHost, service, provider string, policy AutoUp
 		return nil
 	}
 	// ExecStartPre only exists while the drop-in does, so "never" keeps removing the whole file.
-	body := fmt.Sprintf("[Service]\nExecStartPre=-%[1]s/linuxio-worker snapshot pre-update\nExecStopPost=%[1]s/linuxio-worker alert auto-update --provider %[2]s --policy %[3]s\n", version.BinDir, provider, policy)
+	body := fmt.Sprintf("[Service]\nExecStartPre=-%[1]s/linuxio-worker snapshot pre-update\nExecStopPost=%[1]s/linuxio-worker alert auto-update --provider %[2]s --policy %[3]s\n", version.LibexecDir, provider, policy)
 	if err := host.writeFileAtomic(path, []byte(body), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
@@ -88,7 +88,7 @@ func writePendingDropIn(host backendHost, service, provider string, enabled bool
 		}
 		return nil
 	}
-	body := fmt.Sprintf("[Service]\nExecStopPost=%s/linuxio-worker alert pending-updates --provider %s\n", version.BinDir, provider)
+	body := fmt.Sprintf("[Service]\nExecStopPost=%s/linuxio-worker alert pending-updates --provider %s\n", version.LibexecDir, provider)
 	if err := host.writeFileAtomic(path, []byte(body), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}

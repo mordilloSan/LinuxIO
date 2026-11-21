@@ -106,6 +106,8 @@ type VMPreflight struct {
 	ManagedPaths         VMManagedPaths      `json:"managedPaths"`
 	Warnings             []string            `json:"warnings,omitempty"`
 	Errors               []string            `json:"errors,omitempty"`
+	// BridgeHook is absent unless the host firewall drops bridged traffic.
+	BridgeHook *NetworkBridgeHook `json:"bridgeHook,omitzero"`
 }
 
 type VMCreateProgress struct {

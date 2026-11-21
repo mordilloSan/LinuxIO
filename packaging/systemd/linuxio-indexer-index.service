@@ -7,7 +7,7 @@ After=linuxio-indexer.socket
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock
+ExecStart=/usr/libexec/linuxio/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

@@ -60,11 +60,28 @@ func GetBridgeOptions(ctx context.Context) (apischema.NetworkBridgeOptions, erro
 	return mapBridgeOptions(options), nil
 }
 
-// BridgeHookWarnings reports, for the VM preflight, that the traffic of VMs
-// attached to a host bridge will be dropped because libvirt does not run the
-// LinuxIO hook.
-func BridgeHookWarnings(ctx context.Context) []string {
-	return hostbridge.HookWarnings(ctx, bridgeEnv)
+// BridgeHook reports, for the VM preflight, the LinuxIO libvirt hook while
+// the host firewall drops bridged VM traffic, with the warning when libvirt
+// does not run it.
+func BridgeHook(ctx context.Context) (*apischema.NetworkBridgeHook, []string) {
+	hook, warnings := hostbridge.CheckHook(ctx, bridgeEnv)
+	return mapBridgeHook(hook), warnings
+}
+
+// RestoreBridgeHook puts the package's copy of the LinuxIO libvirt hook back
+// in place and restarts the libvirt daemons.
+func RestoreBridgeHook(ctx context.Context) error {
+	return hostbridge.RestoreHook(ctx, bridgeEnv)
+}
+
+func mapBridgeHook(hook *hostbridge.HookStatus) *apischema.NetworkBridgeHook {
+	if hook == nil {
+		return nil
+	}
+	return &apischema.NetworkBridgeHook{
+		State:      apischema.NetworkBridgeHookState(hook.State),
+		Restorable: hook.Restorable,
+	}
 }
 
 func CreateBridge(ctx context.Context, req apischema.NetworkBridgeCreateRequest) (apischema.NetworkBridgeCreateResult, error) {
@@ -101,6 +118,7 @@ func mapBridgeOptions(options hostbridge.BridgeOptions) apischema.NetworkBridgeO
 	result := apischema.NetworkBridgeOptions{
 		Candidates: make([]apischema.NetworkBridgeCandidate, 0, len(options.Candidates)),
 		Warnings:   options.Warnings,
+		BridgeHook: mapBridgeHook(options.Hook),
 	}
 	for _, candidate := range options.Candidates {
 		result.Candidates = append(result.Candidates, apischema.NetworkBridgeCandidate{

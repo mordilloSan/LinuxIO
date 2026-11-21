@@ -74,7 +74,7 @@ Replication views.
 Alerts are updated whenever the list is loaded and, independently of the
 browser, by `linuxio-btrfs-health.timer`, which runs `linuxio-worker
 health` two minutes after boot and every ten minutes. The units ship with the
-package; the installer enables the timer when the host has a btrfs
+package; its first install enables the timer when the host has a btrfs
 filesystem, and the bridge enables it the first time an administrator lists
 filesystems, covering pools created after install.
 
@@ -1079,8 +1079,10 @@ enabled rule must keep at least one snapshot; 0 keeps none of that bucket.
 One hourly timer drives all rules:
 `linuxio-btrfs-snapshot.timer` (`OnCalendar=hourly`, `Persistent=true`)
 starts `linuxio-btrfs-snapshot.service`, which runs
-`linuxio-worker snapshot`. The timer is enabled while at least one rule or
-replication job is enabled and disabled otherwise. **Run now** runs the
+`linuxio-worker snapshot`. The service is a package unit; the bridge writes
+the timer to `/etc/systemd/system` when a rule or job is saved, and enables
+it while at least one rule or replication job is enabled and disables it
+otherwise. **Run now** runs the
 snapshot and prune pass from the bridge; it does not replicate (each
 replication job has its own **Run now**). A timer pass in which a rule
 failed still completes, since each failure raised its own alert, and its
@@ -1108,7 +1110,7 @@ rule is enabled; a disabled rule prunes only its `pre-update` snapshots and
 never its timeline:
 
 - by LinuxIO's own package update task and offline apply, before they start;
-- by `ExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update` in the
+- by `ExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update` in the
   `linuxio-alert.conf` drop-in LinuxIO writes for the distribution's
   auto-update unit when its notification policy is not `never` (see
   [Alerts](./alerts.md#automatic-updates-notification-policy)). The `-` means
@@ -1116,12 +1118,6 @@ never its timeline:
   the next time the auto-update policy is saved.
 
 Manual `apt` or `dnf` runs are not hooked.
-
-Up to v0.53 the worker was `linuxio-btrfs-timer` and its jobs took a second
-word (`snapshot run`). The installer rewrites the snapshot and replication
-units and the update drop-ins a saved setting wrote, so they start
-`linuxio-worker` after an update without being saved again
-(`rewrite_saved_unit_commands`).
 
 ## Pools
 
@@ -1804,21 +1800,12 @@ start finds the unit's start job running and is merged into it (systemd's
 merge" into the running job, which is not run again). The hour's replication
 is thus skipped, not queued, and the running one carries on.
 
-- The bridge writes the unit beside the snapshot units whenever a rule or a
-  job is saved and some job is enabled. When none is, it removes the file,
-  except while a replication still runs in it: removing the file under a
-  running unit would drop its end hook at the reload that follows (a service
-  without its unit file loads as `not-found`, without its drop-ins), losing
-  the run's record and outcome, and stopping the unit would cut a send short.
-  The next save after that run removes it. Disabling every rule and job
-  also stops and disables the timer.
-- Before starting the unit, the snapshot pass writes its file when it is
-  missing or differs from what the build renders, and reloads systemd. That
-  is how an install upgraded from a release that replicated inside the
-  snapshot unit keeps replicating without a rule or job being saved: the new
-  binary runs under the snapshot unit the old bridge wrote, and no
-  replication unit exists yet. The installer adds the unit's run-record
-  drop-in on the same update.
+- The unit, like the snapshot service, is a package unit under
+  `/usr/lib/systemd/system`, with its run-record drop-in beside it: it is
+  there whether or not a job is enabled, and an update replaces it with the
+  programs it names. Saving a rule or a job writes only the timer, which
+  holds a schedule and no command line. Disabling every rule and job stops
+  and disables the timer.
 - The replication run's exit status follows the snapshot pass's: 0 also
   when jobs failed, since each raised its job's alert and the run's summary
   counts them, 1 for a failure without one (jobs that cannot be read, an
@@ -1890,13 +1877,13 @@ btrfsmaintenance timers.
 | `/etc/linuxio/btrfs-replication.json` | `root:root` `0600` | Replication jobs |
 | `/etc/linuxio/btrfs-replication/id_ed25519` (`.pub`) | root, key `0600` | SSH key for replication |
 | `/etc/linuxio/btrfs-replication/known_hosts` | root | Trusted target host keys |
-| `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio-worker snapshot` |
-| `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
-| `/etc/systemd/system/linuxio-btrfs-replicate.service` | root | Runs `linuxio-worker replicate`; written while a replication job is enabled |
-| `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-worker health` |
-| `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
-| `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-worker degraded` at boot |
-| `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-worker resync <uuid>` |
+| `/usr/lib/systemd/system/linuxio-btrfs-snapshot.service` | root, package | Runs `linuxio-worker snapshot` |
+| `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger; written when a rule or job is saved, deleted when the package is removed |
+| `/usr/lib/systemd/system/linuxio-btrfs-replicate.service` | root, package | Runs `linuxio-worker replicate`; started by the snapshot pass while a replication job is enabled |
+| `/usr/lib/systemd/system/linuxio-btrfs-health.service` | root, package | Runs `linuxio-worker health` |
+| `/usr/lib/systemd/system/linuxio-btrfs-health.timer` | root, package | Every ten minutes |
+| `/usr/lib/systemd/system/linuxio-btrfs-degraded.service` | root, package | Runs `linuxio-worker degraded` at boot |
+| `/usr/lib/systemd/system/linuxio-btrfs-resync@.service` | root, package | Runs `linuxio-worker resync <uuid>` |
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem, and a running one's progress; written under `btrfs-scrub.json.lock` |
 | `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, whether and on which disks it ran degraded, when the episode began, the disks it ran without with their error counters as the pool was last seen whole or as they went missing, each device's error counters as a health run or the end of an episode last saw the pool whole, and the run of the episode's resync scrub (`resyncRun`) |
 | `/var/lib/linuxio/btrfs-label.lock` | root | Lock taken around every label change, the resync's commit of a counter reset included |

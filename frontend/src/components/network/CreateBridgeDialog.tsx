@@ -15,6 +15,8 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
+import BridgeHookRestore from "./BridgeHookRestore";
+
 const NETWORK_TOAST_META = {
   label: "Open network",
   to: "/network",
@@ -137,6 +139,7 @@ const CreateBridgeDialog = ({
               {warning}
             </AppAlert>
           ))}
+          <BridgeHookRestore hook={options?.bridgeHook} />
 
           {candidates.length > 0 && (
             <AppSelect

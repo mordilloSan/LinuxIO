@@ -12,26 +12,16 @@ import type { AssistantAgentId } from "./acp/agents";
 import type {
   LinuxIOStreamSchema,
   StreamRouteName,
-  TaskSnapshot,
 } from "./generated/linuxio-types";
+import { streamOpenPayload } from "./linuxio-core";
 import {
-  request as bridgeRequest,
-  startJob,
-  streamOpenPayload,
-} from "./linuxio-core";
-import {
-  encodeString,
   getStreamMux,
   type MuxStatus,
-  type ProgressFrame,
-  type ResultFrame,
   type Stream,
   type StreamMultiplexer,
-  type StreamStatus,
   type StreamType,
   subscribeMuxInstanceChanged,
 } from "./StreamMultiplexer";
-import { isTerminalTaskState } from "./task-state";
 
 function openMuxStream(
   type: StreamType,
@@ -58,203 +48,6 @@ export function openChannel<R extends StreamRouteName>(
   ...args: StreamRouteArgs<R>
 ): Stream | null {
   return openMuxStream(route, streamOpenPayload(route, args[0]));
-}
-
-let nextTaskDataStreamID = -1;
-
-type TaskDataProgress = {
-  type?: unknown;
-  data?: unknown;
-};
-
-function routeParts(route: string): [string, string] {
-  const dot = route.indexOf(".");
-  if (dot <= 0 || dot === route.length - 1) {
-    throw new Error(`Invalid bridge route: ${route}`);
-  }
-  return [route.slice(0, dot), route.slice(dot + 1)];
-}
-
-function dataProgressValue(progress: unknown): string | null {
-  if (!progress || typeof progress !== "object") {
-    return null;
-  }
-  const candidate = progress as TaskDataProgress;
-  if (candidate.type !== "data") {
-    return null;
-  }
-  if (typeof candidate.data === "string") {
-    return candidate.data;
-  }
-  if (candidate.data == null) {
-    return "";
-  }
-  if (
-    typeof candidate.data === "number" ||
-    typeof candidate.data === "boolean"
-  ) {
-    return String(candidate.data);
-  }
-  // Objects and arrays would stringify to "[object Object]"; emit JSON instead.
-  return JSON.stringify(candidate.data) ?? "";
-}
-
-class TaskDataStream implements Stream {
-  readonly id = nextTaskDataStreamID--;
-  readonly type: StreamType;
-  onData: ((data: Uint8Array) => void) | null = null;
-  onClose: (() => void) | null = null;
-  onProgress: ((progress: ProgressFrame) => void) | null = null;
-  onResult: ((result: ResultFrame) => void) | null = null;
-
-  private _status: StreamStatus = "opening";
-  private watchStream: Stream | null = null;
-  private taskId: string | null = null;
-  private closed = false;
-  private readonly request: unknown;
-  private readonly cancelOnClose: boolean;
-
-  constructor(route: string, request: unknown, cancelOnClose: boolean) {
-    this.request = request;
-    this.type = route;
-    this.cancelOnClose = cancelOnClose;
-    void this.start(route);
-  }
-
-  get status(): StreamStatus {
-    return this._status;
-  }
-
-  write(): void {
-    // Task data streams are receive-only.
-  }
-
-  resize(): void {
-    // Not applicable to receive-only Task data streams.
-  }
-
-  close(): void {
-    this.stop(false);
-  }
-
-  abort(): void {
-    this.stop(true);
-  }
-
-  private async start(route: string): Promise<void> {
-    try {
-      const [handler, command] = routeParts(route);
-      const snapshot = await startJob(handler, command, this.request);
-      if (this.closed) {
-        if (this.cancelOnClose) {
-          void this.cancelTask(snapshot.id);
-        }
-        return;
-      }
-
-      this.taskId = snapshot.id;
-      const watch = openTaskWatchStream(snapshot.id);
-      if (!watch) {
-        if (isTerminalTaskState(snapshot.state)) {
-          this.forwardProgress(snapshot.progress);
-          this.forwardTerminalSnapshot(snapshot);
-          return;
-        }
-        this.forwardError("Failed to watch task", "stream_unavailable");
-        return;
-      }
-
-      this.watchStream = watch;
-      this._status = "open";
-      watch.onData = (data) => this.onData?.(data);
-      watch.onProgress = (progress) => this.forwardProgress(progress);
-      watch.onResult = (result) => {
-        this.onResult?.(result);
-        this.markClosed();
-      };
-      watch.onClose = () => this.markClosed();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to start task";
-      const code =
-        typeof error === "object" && error !== null && "code" in error
-          ? (error as { code?: string | number }).code
-          : undefined;
-      this.forwardError(message, code);
-    }
-  }
-
-  private forwardProgress(progress: unknown): void {
-    const data = dataProgressValue(progress);
-    if (data !== null) {
-      this.onData?.(encodeString(data));
-      return;
-    }
-    if (progress !== undefined && progress !== null) {
-      this.onProgress?.(progress as ProgressFrame);
-    }
-  }
-
-  private forwardTerminalSnapshot(snapshot: TaskSnapshot): void {
-    if (snapshot.state === "completed") {
-      this.onResult?.({ status: "ok", data: snapshot.result });
-    } else {
-      this.onResult?.({
-        status: "error",
-        error: snapshot.error?.message ?? "Task failed",
-        code: snapshot.error?.code,
-      });
-    }
-    this.markClosed();
-  }
-
-  private forwardError(message: string, code?: string | number): void {
-    this.onResult?.({
-      status: "error",
-      error: message,
-      code,
-    });
-    this.markClosed();
-  }
-
-  private stop(abort: boolean): void {
-    if (this.closed) return;
-    if (abort) {
-      this.watchStream?.abort();
-    } else {
-      this.watchStream?.close();
-    }
-    if (this.taskId && (abort || this.cancelOnClose)) {
-      void this.cancelTask(this.taskId);
-    }
-    this.markClosed();
-  }
-
-  private async cancelTask(taskId: string): Promise<void> {
-    try {
-      await bridgeRequest<TaskSnapshot>("tasks", "cancel", { taskId });
-    } catch (error) {
-      console.debug("Failed to cancel bridge task", error);
-    }
-  }
-
-  private markClosed(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this._status = "closed";
-    this.onClose?.();
-  }
-}
-
-function openTaskOutputStream<R extends StreamRouteName>(
-  route: R,
-  request: LinuxIOStreamSchema[R],
-  cancelOnClose = true,
-): Stream | null {
-  if (!isConnected()) {
-    return null;
-  }
-  return new TaskDataStream(route, request, cancelOnClose);
 }
 
 function makeSubscribeWithRebind(
@@ -289,26 +82,16 @@ const subscribeToStatus = makeSubscribeWithRebind((mux, notifyStoreChanged) =>
   mux.addStatusListener(notifyStoreChanged),
 );
 
-const subscribeToUpdating = makeSubscribeWithRebind((mux, notifyStoreChanged) =>
-  mux.addUpdatingListener(notifyStoreChanged),
-);
-
 /** Subscribe to changes that determine whether API requests may run. */
 export function subscribeRequestAvailability(
   notifyStoreChanged: () => void,
 ): () => void {
-  const unsubscribeStatus = subscribeToStatus(notifyStoreChanged);
-  const unsubscribeUpdating = subscribeToUpdating(notifyStoreChanged);
-  return () => {
-    unsubscribeStatus();
-    unsubscribeUpdating();
-  };
+  return subscribeToStatus(notifyStoreChanged);
 }
 
-/** Whether the shared request transport is open and not paused by an update. */
+/** Whether the shared request transport is open. */
 export function isRequestAvailable(): boolean {
-  const mux = getStreamMux();
-  return mux?.status === "open" && !mux.isUpdating;
+  return getStreamMux()?.status === "open";
 }
 
 function getStatusSnapshot(): MuxStatus {
@@ -397,15 +180,6 @@ export function openContainerStream(
   rows: number,
 ): Stream | null {
   return openChannel("container.open", { containerId, shell, cols, rows });
-}
-
-export function openAppUpdateStream(
-  runId: string,
-  version?: string,
-): Stream | null {
-  // The updater is session-bound. Closing this watch only detaches observation;
-  // abort()/tasks.cancel explicitly cancels the running Task.
-  return openTaskOutputStream("control.app_update", { runId, version }, false);
 }
 
 export function openTaskWatchStream(taskId: string): Stream | null {

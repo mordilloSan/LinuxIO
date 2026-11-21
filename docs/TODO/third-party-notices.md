@@ -25,25 +25,23 @@ Not built, waiting on a choice between the options below. Measured 2026-11-21 fr
 
 A fix that misses one of these leaves it with the short file:
 
-- **The release.** `.github/workflows/release.yml` copies `docs/THIRD_PARTY_NOTICES.md` into the tarball and uploads it as an asset of its own, listed in `SHA256SUMS`.
-- **The installer**, until the packages replace it. `release_download_assets` downloads it, `--local` reads it from the checkout (`packaging/scripts/install-linuxio-binaries.sh`), and both install it to `/usr/share/linuxio/doc/`.
-- **The test VM.** `packaging/vm/linuxio-vm.sh` copies it from the checkout.
-- **The packages.** The DEB and the RPM in [Package-managed installation](./packaging.md) add it beside `copyright` or as `%doc`.
-- `packaging/scripts/tests/installer-fixtures.sh` checks that it lives under `docs/`.
+- **The packages.** `packaging/scripts/package-deb.sh` and `packaging/scripts/package-rpm.sh` take `docs/THIRD_PARTY_NOTICES.md` from the folder beside `packaging/`, and the DEB and the RPM install it in `/usr/share/doc/linuxio/`, beside `copyright` or as `%doc` ([Packages](../packaging.md)). A release's assets are the two packages, so they are the only way the file reaches a host.
+- **The test VM.** `packaging/vm/linuxio-vm.sh` copies it from the checkout for those scripts.
+- `packaging/scripts/tests/package-files-fixtures.sh` checks that it lives under `docs/`, and `packaging/scripts/tests/package-contents.sh` that both packages hold it.
 
 ## Tools already at hand
 
 - Vite 8's `build.license` option writes the full licence text of every package it bundles, and only those. It is off in `frontend/config/vite.config.ts`. It reads `LICENSE` and `LICENCE` files, not `NOTICE`; no bundled package has one today.
-- Every Go program records its exact modules and versions (`go version -m`), and `go mod download`, which the release job already runs, puts their licence files in the module cache.
+- Every Go program records its exact modules and versions (`go version -m`), and building them puts their licence files in the module cache.
 
 ## Options
 
 ### A. A generator step in `release.yml`
 
-The release job runs go-licenses and an npm licence collector and appends their output to the notices before it packs the tarball.
+The release's compile job runs go-licenses and an npm licence collector and appends their output to the notices before it assembles the packages.
 
-- Size: one file. Adds two third-party tools to a job that holds `contents: write`.
-- Covers the GitHub release only. The installer's `--local`, the VM and the packages keep the short file.
+- Size: one file. Adds two third-party tools to the job that builds what a release ships.
+- Covers a release's packages only. `make localinstall` and the test VMs keep the short file.
 - Misses the Go standard library, the icon sets and the MPL source links.
 - go-licenses reads the package graph through `go list` under the GOOS, build tags and CGO setting it runs with, not what the programs linked.
 - A failure first shows when a release is cut. Pull-request CI does not run it.
@@ -59,10 +57,10 @@ The build writes `build/THIRD_PARTY_NOTICES.md` from what it built, and everythi
   - appends Vite's file and the hand-written `docs/THIRD_PARTY_NOTICES.md`;
   - fails when a linked module has no licence file, so a new dependency cannot arrive unnoticed.
 - A Make target that `build-binaries` runs.
-- One-line path changes in `release.yml`, the installer's `--local`, `linuxio-vm.sh` and `installer-fixtures.sh`. The packages take the file from the build folder.
+- One-line path changes in `package-deb.sh`, `package-rpm.sh`, `linuxio-vm.sh` and `package-files-fixtures.sh`, so the packages take the file from the build folder.
 - `docs/THIRD_PARTY_NOTICES.md` keeps FileBrowser Quantum, Beszel and lot-map, adds Go, the icon sets and the MPL source links, and drops go-sqlite3, go-yaml and x/sys, which the script then writes.
 - The README line and the docs that cover packaging and the release.
-- Size: about ten files. No new tool and no new privileged or public surface. The installed path, the asset name, the installer's download list and `SHA256SUMS` stay as they are.
+- Size: about ten files. No new tool and no new privileged or public surface. The installed path stays as it is.
 
 Vite writes its file into the build's output folder, which is embedded in the webserver, so the file is also served at a URL. That is harmless, and fits code sent to browsers.
 
@@ -78,7 +76,7 @@ The script from B writes `docs/THIRD_PARTY_NOTICES.md`, the file is committed, a
 
 ## Recommendation
 
-B. It is the only option that reaches every reader above, works from what was actually linked, and adds no tool. A is the cheapest, but it leaves the installer, the VM, the packages, Go itself, the icon sets and the MPL source links uncovered.
+B. It is the only option that reaches every reader above, works from what was actually linked, and adds no tool. A is the cheapest, but it leaves `make localinstall`, the test VMs, Go itself, the icon sets and the MPL source links uncovered.
 
 ## Measuring again
 

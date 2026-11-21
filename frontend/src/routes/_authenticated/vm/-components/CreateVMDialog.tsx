@@ -7,6 +7,7 @@ import type { VMCreateProgress, VMCreateRequest, VMFirmware } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import BridgeHandoffDialog from "@/components/network/BridgeHandoffDialog";
+import BridgeHookRestore from "@/components/network/BridgeHookRestore";
 import CreateBridgeDialog from "@/components/network/CreateBridgeDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -903,6 +904,7 @@ export default function CreateVMDialog({
                   </ul>
                 </AppAlert>
               )}
+              <BridgeHookRestore hook={preflight.data.bridgeHook} />
               {preflightErrors.length > 0 && (
                 <AppAlert severity="error">
                   <AppAlertTitle>Preflight Errors</AppAlertTitle>

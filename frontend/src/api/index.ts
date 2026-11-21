@@ -62,7 +62,6 @@ export {
   openTerminalLoginStream,
   openTerminalStream,
   openContainerStream,
-  openAppUpdateStream,
   openVMConsoleStream,
   openTaskDataStream,
   openTaskEventsStream,

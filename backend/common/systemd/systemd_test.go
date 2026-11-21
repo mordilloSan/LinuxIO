@@ -121,6 +121,38 @@ func TestPackageLevelMethodsCallExpectedManagerMethods(t *testing.T) { //nolint:
 	}
 }
 
+// try-restart leaves alone a unit the host does not have or has masked, as
+// libvirtd.service on a host that runs the modular virtqemud, and reports
+// any other refusal.
+func TestTryRestartUnit(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	manager := testdbus.NewSystemdManager()
+	manager.TryRestartErrors = map[string]string{
+		"missing.service": "org.freedesktop.systemd1.NoSuchUnit",
+		"masked.service":  "org.freedesktop.systemd1.UnitMasked",
+		"refused.service": "org.freedesktop.DBus.Error.AccessDenied",
+	}
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
+		t.Fatalf("export systemd manager: %v", err)
+	}
+
+	ctx := context.Background()
+	for _, unit := range []string{"demo.service", "missing.service", "masked.service"} {
+		if err := TryRestartUnit(ctx, unit); err != nil {
+			t.Fatalf("TryRestartUnit(%s): %v", unit, err)
+		}
+	}
+	if err := TryRestartUnit(ctx, "refused.service"); err == nil || !strings.Contains(err.Error(), "try-restart unit refused.service") {
+		t.Fatalf("TryRestartUnit(refused.service) = %v, want the refusal", err)
+	}
+	calls := manager.Calls()
+	if len(calls) != 4 || calls[0].Method != "TryRestartUnit" || !reflect.DeepEqual(calls[0].Args, []any{"demo.service", "replace"}) {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
 func TestPackageLevelEnableDisableReloadManager(t *testing.T) {
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)

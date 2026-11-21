@@ -1,9 +1,7 @@
 /**
  * TanStack Router and TanStack Query loader primitives.
  *
- * Route loaders call this after their access checks. It intentionally
- * receives a live update-state getter: appUpdateInProgress owns that state and the
- * stream multiplexer does not.
+ * Route loaders call this after their access checks.
  */
 
 import {
@@ -17,14 +15,11 @@ import {
 import {
   CACHE_TTL_MS,
   ensureLoaderRequestReady,
-  getStreamMux,
   linuxio,
-  subscribeRequestAvailability,
   type UIConfig,
 } from "@/api";
 import { scopedConfigQueryKey } from "@/api/config-query";
 import { cacheUserId } from "@/api/user-scope";
-import { subscribeAppUpdateInProgress } from "@/contexts/appUpdateInProgress";
 import type { LinuxIORouterContext } from "@/routes/-auth";
 
 /** Heterogeneous queryOptions accepted by a route-level batch. */
@@ -76,7 +71,7 @@ export async function loadRouteQueries(
   freshness: LoaderFreshness = LOADER_FRESHNESS.PRESENCE,
 ): Promise<void> {
   const { signal } = abortController;
-  await prepareRouteLoading(context.isUpdateBlocked, signal);
+  await prepareRouteLoading(signal);
 
   await Promise.all(
     queryOptions.map((options) =>
@@ -93,7 +88,7 @@ export async function loadRouteQueries(
  * Start optional route work without making the route transition atomic.
  *
  * Call this only after loadRouteTransport/loadRouteQueries has completed its
- * readiness and update checks. Query prefetch intentionally swallows failures;
+ * readiness check. Query prefetch intentionally swallows failures;
  * the mounted widget observer and its local error boundary own a later retry.
  */
 export function startRouteQueryPrefetches(
@@ -105,7 +100,6 @@ export function startRouteQueryPrefetches(
   queryOptions: readonly LoaderQueryOptions[],
 ): void {
   throwIfAborted(signal);
-  if (routeLoadingBlocked(context.isUpdateBlocked)) return;
 
   for (const options of queryOptions) {
     const prepared = {
@@ -163,16 +157,12 @@ export async function loadRouteTransport(
   context: LinuxIORouterContext,
   signal?: AbortSignal,
 ): Promise<void> {
-  await prepareRouteLoading(context.isUpdateBlocked, signal);
+  await prepareRouteLoading(signal);
 }
 
-async function prepareRouteLoading(
-  isUpdateBlocked: () => boolean,
-  signal?: AbortSignal,
-): Promise<void> {
-  await waitForRouteLoadingAllowed(isUpdateBlocked, signal);
+async function prepareRouteLoading(signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
   await ensureLoaderRequestReady(undefined, signal);
-  await waitForRouteLoadingAllowed(isUpdateBlocked, signal);
 }
 
 async function loadRouteQuery(
@@ -323,55 +313,4 @@ function abortSignalError(signal: AbortSignal): Error {
   const error = new Error("Navigation cancelled");
   error.name = "AbortError";
   return error;
-}
-
-function routeLoadingBlocked(isUpdateBlocked: () => boolean): boolean {
-  // AppUpdateProvider mounts below the Router, so the live mux flag closes the
-  // first-navigation window before the context getter has observed the event.
-  return isUpdateBlocked() || getStreamMux()?.isUpdating === true;
-}
-
-function waitForRouteLoadingAllowed(
-  isUpdateBlocked: () => boolean,
-  signal?: AbortSignal,
-): Promise<void> {
-  throwIfAborted(signal);
-  if (!routeLoadingBlocked(isUpdateBlocked)) return Promise.resolve();
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let unsubscribeLiveUpdate: () => void = () => undefined;
-    let unsubscribeRequestAvailability: () => void = () => undefined;
-
-    const cleanup = () => {
-      signal?.removeEventListener("abort", handleAbort);
-      unsubscribeLiveUpdate();
-      unsubscribeRequestAvailability();
-    };
-    const settle = (callback: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      callback();
-    };
-    const handleAbort = () => {
-      if (signal) settle(() => reject(abortSignalError(signal)));
-    };
-    const resolveIfAllowed = () => {
-      if (!routeLoadingBlocked(isUpdateBlocked)) settle(resolve);
-    };
-
-    unsubscribeLiveUpdate = subscribeAppUpdateInProgress(resolveIfAllowed);
-    unsubscribeRequestAvailability =
-      subscribeRequestAvailability(resolveIfAllowed);
-
-    // Recheck after subscribing so a release between the initial check and
-    // listener registration cannot leave the navigation waiting indefinitely.
-    if (signal?.aborted) {
-      handleAbort();
-    } else {
-      signal?.addEventListener("abort", handleAbort, { once: true });
-      resolveIfAllowed();
-    }
-  });
 }

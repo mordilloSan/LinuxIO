@@ -172,9 +172,6 @@ func isSelectorCall(call *ast.CallExpr, pkg, name string) bool {
 
 func isAllowedBackground(path, funcName string) bool {
 	allowed := map[string]map[string]bool{
-		"appupdate/app_update_operation.go": {
-			"detachedPostUpdateContext": true,
-		},
 		"filebrowser/indexer_sync.go": {
 			"runDetachedIndexerUpdate": true,
 			"withIndexerTimeout":       true,

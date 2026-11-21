@@ -27,7 +27,7 @@ import (
 
 // paneRelayPath is the relay the adapter runs in place of the agent's CLI. A
 // variable so tests can point it elsewhere.
-var paneRelayPath = filepath.Join(version.BinDir, "linuxio-claude-relay")
+var paneRelayPath = filepath.Join(version.LibexecDir, "linuxio-claude-relay")
 
 const (
 	maxPaneConns     = 16

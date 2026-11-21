@@ -42,6 +42,9 @@ var boundSettle = 10 * time.Second
 // managerVersion is systemd's version; swapped by tests.
 var managerVersion = systemd.ManagerVersion
 
+// unitDaemonReload is the manager's reload; swapped by tests.
+var unitDaemonReload = systemd.DaemonReload
+
 // UnboundMountsHonoured says whether systemd reads
 // x-systemd.device-bound=false as it is written. One older than 255 reads
 // the option's mere presence as bound (fstab_test_option in its mount.c),

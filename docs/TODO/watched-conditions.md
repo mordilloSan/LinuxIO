@@ -112,7 +112,7 @@ Levels are LinuxIO's three: notice (`info`), warning, alert (`error`).
 | Clock not synchronized (`ntp`) | Time synchronization is on and has not synchronized for an hour | Synchronized | warning | `org.freedesktop.timedate1` over D-Bus | 30 min |
 | Certificate expiring (`certificate`) | LinuxIO's HTTPS certificate expires within 14 days. It renews itself 30 days ahead when the web server starts, so this means it has not restarted since | The certificate on disk is valid for longer | warning | The certificate file | daily |
 | SSH logins failing (`ssh-logins`) | 50 or more failed SSH logins in the last 24 hours | Fewer than 25 | warning | `sshd`'s lines in the journal, through `journalctl` as `backend/common/scheduledrun/output.go` does | 30 min |
-| LinuxIO release available (`release`) | A release newer than the installed one is published | The installed version is that release or newer | notice | The release lookup the app's updater uses | daily |
+| LinuxIO release available (`release`) | PackageKit lists an update to the `linuxio` package | PackageKit lists none | notice | `FindUpdateByName` in `backend/bridge/handlers/packages`, the lookup behind `control.version` | daily |
 
 Notes on single checks:
 
@@ -128,8 +128,9 @@ Notes on single checks:
   them. These two therefore depend on it. When it does not answer they
   change nothing, and the service check reports `linuxio-monitoring.service`.
 - **LinuxIO release available.** This is the "release-check source" of
-  [Alerts](../alerts.md#not-in-this-slice). It needs the network; a failed
-  lookup changes nothing.
+  [Alerts](../alerts.md#not-in-this-slice). It reads PackageKit's cache and
+  refreshes nothing, so it sees a release only after the package lists are
+  refreshed; a failed lookup changes nothing.
 
 ## Steps
 

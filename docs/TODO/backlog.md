@@ -1,7 +1,7 @@
 # Backlog
 
-Every open item about the backend, the API, jobs, scheduled scripts and
-consistency is here, once. What is built is described in
+Every open item about the backend, the API, jobs, scheduled scripts, the
+packages and consistency is here, once. What is built is described in
 [the docs](../README.md), not here.
 
 An item belongs here only if someone would hit it in normal use or it is a
@@ -53,6 +53,27 @@ after a change that issues ioctls).
 
 ## Tests that are missing
 
+- Nothing checks that a failed or a cancelled update of the package leaves
+  LinuxIO running the old build with no restart; [Jobs](../jobs.md#updates)
+  says so from how apt, dnf and the package's scripts work. A test VM can
+  show it (`jobs-update.spec.ts` updates through PackageKit). **not
+  verified**
+
+## Needs the owner
+
+- The release workflow has never run, so nothing is published at
+  `packages.engmariz.com` and the README's install commands do not work yet:
+  the keys, the public key in the repository and the `release` environment
+  with its secret are done (2026-11-21); Pages, the DNS record, the release
+  rules and then a first release remain
+  ([Releases](../releases.md#owner-setup), steps 5 to 8). **checked**
+- Whether `linuxio.repo` sets `skip_if_unavailable=False`: today dnf given a
+  repository whose `repomd.xml` signature fails reports it, goes on without
+  the repository and exits 0, so a tampered repository looks like "nothing to
+  upgrade"; with the setting it exits 1, but every dnf transaction on the
+  host also fails while the repository is unreachable
+  (`packaging/scripts/repo-rpm.sh`). **checked**
+
 ## Needs a real machine or a measurement
 
 - The automatic btrfs rebuild onto a disk that comes back
@@ -71,6 +92,18 @@ after a change that issues ioctls).
   container that publishes on the address starts), and a host whose address
   a bridge handoff by LinuxIO moved to a bridge (`systemd-analyze blame`
   must not show `docker.service` waiting 30 s).
+
+- The package's install, upgrade from the signed repository, removal and
+  kept configuration ran in the test VMs on Ubuntu 26.04 and Fedora 45 only.
+  Not run: Debian stable and the previous Fedora release, which have no test
+  VM (the DEB takes its dependencies' names from Ubuntu, and that Debian has
+  them under the same names is expected, not seen), and the DEB on Ubuntu
+  24.04, which the rig has (`VM_RELEASE=noble`). **needs a host**
+- An update of LinuxIO by the distribution's unattended upgrade
+  (`unattended-upgrades`, `dnf-automatic`) with a job running is not run:
+  that LinuxIO then runs the new build with no `linuxio restart`, the job
+  goes on and a stopped LinuxIO stays stopped was seen from a shell and from
+  the Updates page only ([Upgrade](../packaging.md#upgrade)). **needs a host**
 
 ## Later, no plan yet
 
@@ -276,6 +309,27 @@ Sign-in where SELinux is enforcing
   `init_t` an `unconfined_t` socket, so the auth socket fails as installed
   and takes the web server with it. It looked fine as a drop-in on a running
   system.
+
+Packages ([Packages, installation and updates](../packaging.md)):
+
+- The libvirt hook under `/usr` with a link in `/etc` made at first install,
+  like the banner's links: it would deliver every fix and honour a deleted
+  link on both families, but a program started through a link runs under the
+  SELinux label of the file it points to, not of `/etc/libvirt/hooks`, and
+  that needs a Fedora VM running a bridged VM beside Docker to check.
+- A bootstrap installer script, or a package that installs the repository's
+  source file: the source file is one download into the package manager's
+  folder, and running a downloaded script as root is what the packages
+  replaced.
+- Taking over a script install (v0.54 or earlier) in the package, or links
+  left in `/usr/local/bin`: the package refuses one and the administrator
+  removes it with its own uninstall script; a migration would have to take
+  over files the script wrote under `/etc` and `/usr/local`.
+- Choosing a free port at install, or rewriting the packaged socket unit for
+  another port: a socket drop-in changes the port and survives every upgrade.
+- A build image of LinuxIO's own with the build libraries in it, to pin
+  those too: within one release the distribution keeps them compatible, and
+  the image would be one more thing to build, store and move.
 
 Docker updates ([Docker Updates](../docker-updates.md#rebuilding-a-built-service)):
 

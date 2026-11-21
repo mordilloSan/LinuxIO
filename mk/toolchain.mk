@@ -1,6 +1,8 @@
 # Toolchain provisioning: Node through nvm, and the Go tool installers. Go
 # itself comes from PATH (install it with linux-toolbox or from go.dev); the
-# exact version go.mod pins is fetched by Go's own toolchain switching.
+# exact version go.mod pins is fetched by Go's own toolchain switching. Node
+# and the Go tools are the versions packaging/build/pins.env names, which
+# update-build-pins moves with the release images and the action commits.
 
 go_tools_dir := $(if $(GO_TOOLS_DIR),$(GO_TOOLS_DIR),$(HOME)/.go)
 GO_TOOLS_DIR ?= $(go_tools_dir)
@@ -11,19 +13,19 @@ GO_BIN ?= $(if $(CODEQL_ACTION_GO_BINARY),$(CODEQL_ACTION_GO_BINARY),$(shell com
 GO_PATH_PREFIX := $(dir $(GO_BIN)):$(go_tools_dir)/bin
 GO_CMD_ENV := PATH="$(GO_PATH_PREFIX):$$PATH" GOTOOLCHAIN=$(GO_TOOLCHAIN) GOOS="$(GOOS)" $(if $(GOARCH),GOARCH="$(GOARCH)",)
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-GOLANGCI_LINT_VERSION ?= latest
+GOLANGCI_LINT_VERSION ?= $(call build_pin,GOLANGCI_LINT_VERSION)
 golangci_lint := $(if $(GOLANGCI_LINT),$(GOLANGCI_LINT),$(go_tools_dir)/bin/golangci-lint)
 GOLANGCI_LINT ?= $(golangci_lint)
 MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
-MODERNIZE_VERSION     ?= latest
+MODERNIZE_VERSION    ?= $(call build_pin,MODERNIZE_VERSION)
 modernize := $(if $(MODERNIZE),$(MODERNIZE),$(go_tools_dir)/bin/modernize)
 MODERNIZE ?= $(modernize)
 DEADCODE_MODULE       := golang.org/x/tools/cmd/deadcode
-DEADCODE_VERSION      ?= latest
+DEADCODE_VERSION     ?= $(call build_pin,DEADCODE_VERSION)
 deadcode := $(if $(DEADCODE),$(DEADCODE),$(go_tools_dir)/bin/deadcode)
 DEADCODE ?= $(deadcode)
 GOVULNCHECK_MODULE    := golang.org/x/vuln/cmd/govulncheck
-GOVULNCHECK_VERSION   ?= latest
+GOVULNCHECK_VERSION  ?= $(call build_pin,GOVULNCHECK_VERSION)
 govulncheck := $(if $(GOVULNCHECK),$(GOVULNCHECK),$(go_tools_dir)/bin/govulncheck)
 GOVULNCHECK ?= $(govulncheck)
 GO_BUILD_PREREQ := ensure-go
@@ -64,3 +66,8 @@ ensure-govulncheck: ensure-go ## Install govulncheck (built with local Go @GO@)
 # and the C build packages are checked by check-c-build-deps, not installed.
 setup: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck setup-frontend ## Install Node, the Go tools and frontend dependencies
 	@$(PRINTC) "$(COLOR_GREEN)✅ Development toolchain ready!$(COLOR_RESET)"
+
+# Needs only curl, jq and git: no sudo, no docker. Go modules and npm packages
+# keep their own targets (update-go-deps, update-deps).
+update-build-pins: ## Move the release images, Node, the Go tools and the action commits to their newest
+	@"$(scripts_dir)/update-build-pins.sh" "$(repo_root)"

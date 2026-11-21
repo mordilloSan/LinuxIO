@@ -1,7 +1,6 @@
 import { type PropsWithChildren, useEffect, useMemo } from "react";
 
 import { ANONYMOUS_USER_ID } from "@/api/user-scope";
-import { AppUpdateProvider } from "@/contexts/AppUpdateProvider";
 import { ComposeProviders, withProps } from "@/contexts/composeProviders";
 import { ConfigProvider } from "@/contexts/ConfigProvider";
 import { HeaderActionSlotProvider } from "@/contexts/HeaderActionSlotProvider";
@@ -49,7 +48,6 @@ export default function AuthenticatedRuntimeProvider({
         BackgroundTasksProvider,
         AuthedThemeShell,
         PowerActionProvider,
-        AppUpdateProvider,
         SidebarProvider,
         HeaderActionSlotProvider,
       ]}

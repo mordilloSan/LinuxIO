@@ -10,9 +10,11 @@ monitoring_binary := $(bin_dir)/linuxio-monitoring
 worker_binary := $(bin_dir)/linuxio-worker
 claude_relay_binary := $(bin_dir)/linuxio-claude-relay
 
-# The shipped-binary manifest. Every consumer (release workflow, installers'
-# fixture test) reads this list through `make print-binaries`; add a binary
-# here, give it a build target, and add it to build-go-binaries/build-binaries.
+# The shipped-binary manifest. Its consumers (the release workflow, the
+# package fixture tests) read this list through `make print-binaries`; add a
+# binary here, give it a build target, add it to build-go-binaries/build-binaries,
+# and give it its folder and mode in packaging/scripts/package-root.sh, which
+# package-root-fixtures.sh checks against this list.
 shipped_binaries := linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-worker linuxio-claude-relay
 
 # sha256_of FILE: hex digest of FILE, for use inside a recipe's shell.

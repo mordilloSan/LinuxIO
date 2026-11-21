@@ -232,14 +232,14 @@ its 30 seconds, the error says so rather than a bare "timed out".
 The rollback runs detached from the request. In the bridge, a cancel of the
 update does not stop a rollback in progress; a request canceled while the new
 container is still being waited for is not rolled back, since how the
-container would have done is unknown. The timer's service is written with
+container would have done is unknown. The timer's service has
 `KillMode=mixed` and `TimeoutStopSec=250` (the rollback's bound and a
-minute): a stop signals the program alone, which cancels the pass's work,
-while a rollback in progress finishes before systemd kills what is left. A
-cancelled `docker compose` command gets SIGTERM, as it did when systemd's
-stop reached it directly, so Compose stops what it started, and is killed 10
-seconds later if it has not stopped. A schedule saved before these two settings
-were added gets them when it is saved again.
+minute, which a unit test holds the packaged file to): a stop signals the
+program alone, which cancels the pass's work, while a rollback in progress
+finishes before systemd kills what is left. A cancelled `docker compose`
+command gets SIGTERM, as it did when systemd's stop reached it directly, so
+Compose stops what it started, and is killed 10 seconds later if it has not
+stopped.
 
 A scheduled pass updates the services of one project with one `pull` and one
 `up`. A rollback is per tag: every service of the project under the tag a
@@ -357,7 +357,13 @@ restarting again and again), not a wait that ran out of time.
 ## The scheduled pass
 
 The timer runs the service once a day at the configured time (04:00 by
-default, `RandomizedDelaySec=1m`, `Persistent=true`). The service runs
+default, `RandomizedDelaySec=1m`, `Persistent=true`). The service,
+`linuxio-docker-update.service`, is a package unit under
+`/usr/lib/systemd/system` (`packaging/systemd`), so an update replaces it
+with the program it names; saving the settings writes only the timer to
+`/etc/systemd/system`, which holds the time and no command line, and enables
+or disables it. Removing the package stops, disables and deletes the timer.
+The service runs
 `linuxio-docker-update --config /etc/linuxio/docker-update.json` as root
 with `ProtectSystem=strict`, writing only `/var/lib/linuxio` and `/run`. The
 settings choose the mode (update, or check only), which containers to update

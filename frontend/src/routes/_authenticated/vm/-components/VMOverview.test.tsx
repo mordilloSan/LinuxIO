@@ -63,7 +63,10 @@ const pools = [
   },
 ];
 
-const renderOverview = (overrides: Partial<VMPreflight> = {}) =>
+const renderOverview = (
+  overrides: Partial<VMPreflight> = {},
+  privileged = false,
+) =>
   render(
     <VMOverview
       hostname="TNAS"
@@ -76,6 +79,7 @@ const renderOverview = (overrides: Partial<VMPreflight> = {}) =>
       preflight={{ ...preflight, ...overrides }}
       vms={vms}
     />,
+    { auth: { privileged } },
   );
 
 describe("VM overview", () => {
@@ -124,5 +128,19 @@ describe("VM overview", () => {
     renderOverview({ errors: ["KVM is not available"] });
     expect(screen.getByRole("heading", { name: "Error" })).toBeInTheDocument();
     expect(screen.getByText("KVM is not available")).toBeInTheDocument();
+  });
+
+  it("offers to restore a missing libvirt hook beside its warning", () => {
+    renderOverview(
+      {
+        bridgeHook: { restorable: true, state: "missing" },
+        warnings: ["the LinuxIO libvirt hook is missing"],
+      },
+      true,
+    );
+    expect(
+      screen.getByText("the LinuxIO libvirt hook is missing"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore" })).toBeEnabled();
   });
 });

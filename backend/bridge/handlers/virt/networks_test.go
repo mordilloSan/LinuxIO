@@ -210,7 +210,8 @@ func TestPreflightWithoutNetworkDoesNotRequireDefaultNAT(t *testing.T) {
 func TestPreflightWarnsAboutBridgeFirewall(t *testing.T) {
 	withFakeLibvirt(t, newFakeConn())
 	const warning = "bridged VM traffic will be dropped"
-	bridgeHookWarnings = func(context.Context) []string { return []string{warning} }
+	hook := &apischema.NetworkBridgeHook{State: apischema.NetworkBridgeHookMissing, Restorable: true}
+	bridgeHook = func(context.Context) (*apischema.NetworkBridgeHook, []string) { return hook, []string{warning} }
 
 	out, err := Preflight(context.Background(), apischema.VMPreflightRequest{Network: "br-lan"})
 	if err != nil {
@@ -218,6 +219,9 @@ func TestPreflightWarnsAboutBridgeFirewall(t *testing.T) {
 	}
 	if !slices.Contains(out.Warnings, warning) {
 		t.Fatalf("warnings = %#v, want bridge firewall warning", out.Warnings)
+	}
+	if out.BridgeHook == nil || *out.BridgeHook != *hook {
+		t.Fatalf("bridge hook = %#v, want %#v", out.BridgeHook, hook)
 	}
 	if slices.Contains(out.Errors, warning) {
 		t.Fatalf("errors = %#v, bridge firewall warning must not be an error", out.Errors)

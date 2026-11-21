@@ -144,3 +144,19 @@ func TestReloadDaemonsSignalsEveryUnitWebserverLast(t *testing.T) {
 		t.Fatalf("reload order = %v, want %v", order, want)
 	}
 }
+
+// Removing the package deletes the verbose drop-ins, which LinuxIO wrote while it ran:
+// each path is in the removal lists of both packages.
+func TestPackageRemovalDeletesTheVerboseDropIns(t *testing.T) {
+	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "packaging", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range Paths() {
+			if !slices.Contains(strings.Fields(string(data)), path) {
+				t.Errorf("packaging/%s does not delete %s", script, path)
+			}
+		}
+	}
+}

@@ -24,7 +24,7 @@ import {
 // and left the service disabled. It is
 // written for Ubuntu and, with DISTRO=fedora, Fedora; only the package, how
 // it is taken out and put back, and the provider differ. On Fedora it runs
-// with SELinux enforcing, against LinuxIO as its installer puts it
+// with SELinux enforcing, against LinuxIO as its package installs it
 // (docs/process-systemd-architecture.md, "SELinux").
 //
 // Before the test the tool is taken out with the distribution's package

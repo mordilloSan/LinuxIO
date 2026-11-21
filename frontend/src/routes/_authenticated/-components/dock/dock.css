@@ -34,12 +34,6 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.app-dock-link--disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
 .app-dock__tile {
   position: relative;
   display: flex;

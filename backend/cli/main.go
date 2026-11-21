@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,7 +18,7 @@ func runCLI(args []string) int {
 	defer stop()
 
 	if len(args) < 2 {
-		showHelp()
+		showHelp(os.Stdout)
 		return 0
 	}
 
@@ -38,37 +39,30 @@ func runCLI(args []string) int {
 	case "verbose":
 		return runVerbose(ctx, cmdArgs)
 	case "version", "--version":
-		showVersion(cmdArgs)
+		showVersion(os.Stdout)
 		return 0
 	case "help", "-h", "--help":
-		showHelp()
+		showHelp(os.Stdout)
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", cmd)
-		showHelp()
+		showHelp(os.Stderr)
 		return 2
 	}
 }
 
-func showHelp() {
-	fmt.Printf("\033[1mLinuxIO CLI - Manage LinuxIO services\033[0m\n")
-	fmt.Println(`
-Usage: linuxio <command> [options]
+// helpText is what linuxio with no command, help, -h and --help print.
+const helpText = `LinuxIO system administration
 
-Commands:
-  status      Show status of all LinuxIO services
-  logs        Tail logs [webserver|bridge|auth|indexer|monitoring] [lines] (default: all, 100)
-  start       Start LinuxIO services
-  stop        Stop LinuxIO services
-  restart     Restart LinuxIO control plane [--full]
-  verbose     Manage verbose logging [enable|disable|status]
-  version     Show version information [--self]
-  help        Show this help message
+linuxio status
+linuxio logs [component] [lines]
+linuxio start
+linuxio stop
+linuxio restart [--full]
+linuxio verbose enable|disable|status
+linuxio version
+`
 
-Examples:
-  linuxio status
-  linuxio restart
-  linuxio restart --full
-  linuxio logs bridge 200
-  linuxio version --self`)
+func showHelp(w io.Writer) {
+	fmt.Fprint(w, helpText)
 }

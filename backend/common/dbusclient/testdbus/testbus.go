@@ -122,7 +122,10 @@ type SystemdManager struct {
 	UnitFileState string
 	// UnitFileMissing makes GetUnitFileState answer as systemd does for a
 	// unit no unit file defines.
-	UnitFileMissing          bool
+	UnitFileMissing bool
+	// TryRestartErrors makes TryRestartUnit answer with the bus error named
+	// for a unit, as NoSuchUnit for one no unit file defines.
+	TryRestartErrors         map[string]string
 	EnableCarriesInstallInfo bool
 	EnableChanges            [][]any
 	DisableChanges           [][]any
@@ -155,6 +158,14 @@ func (m *SystemdManager) RestartUnit(name, mode string) (string, *godbus.Error) 
 func (m *SystemdManager) ReloadUnit(name, mode string) (string, *godbus.Error) {
 	m.record("ReloadUnit", name, mode)
 	return "/org/freedesktop/systemd1/job/4", nil
+}
+
+func (m *SystemdManager) TryRestartUnit(name, mode string) (string, *godbus.Error) {
+	m.record("TryRestartUnit", name, mode)
+	if errName := m.TryRestartErrors[name]; errName != "" {
+		return "", &godbus.Error{Name: errName, Body: []any{"refused"}}
+	}
+	return "/org/freedesktop/systemd1/job/5", nil
 }
 
 func (m *SystemdManager) EnableUnitFiles(names []string, runtime, force bool) (bool, [][]any, *godbus.Error) {

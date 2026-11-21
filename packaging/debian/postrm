@@ -1,0 +1,63 @@
+#!/bin/sh
+# After removal: delete what LinuxIO itself wrote under /etc/systemd/system
+# while it ran, and the login banner's links while they are still LinuxIO's,
+# then systemd forgets the units that went. /var/lib/linuxio, the
+# application's data, stays even on a purge; dpkg purges the configuration
+# files under /etc it installed. The RPM's %postun does the same
+# (packaging/rpm/linuxio.spec).
+set -e
+
+# Exact paths, kept equal to the RPM's list; a test of each writer holds both
+# lists to the paths it writes. The prerm stopped and disabled the two
+# timers. What LinuxIO writes for something an administrator set up stays,
+# since it works without LinuxIO: scheduled scripts (linuxio-schedule-*), the
+# rsync service, Docker's and the swap units' drop-ins.
+written_files="
+/etc/systemd/system/linuxio-btrfs-snapshot.timer
+/etc/systemd/system/linuxio-docker-update.timer
+/etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf
+/etc/systemd/system/linuxio-webserver.service.d/verbose.conf
+/etc/systemd/system/linuxio-indexer.service.d/verbose.conf
+/etc/systemd/system/linuxio-monitoring.service.d/verbose.conf
+/etc/systemd/system/apt-daily.service.d/linuxio-alert.conf
+/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf
+/etc/systemd/system/dnf-automatic.service.d/linuxio-alert.conf
+/etc/systemd/system/dnf5-automatic.service.d/linuxio-alert.conf
+/etc/systemd/system/mintupdate-automation-upgrade.service.d/linuxio-alert.conf
+/etc/systemd/system/apt-daily.timer.d/linuxio.conf
+/etc/systemd/system/apt-daily-upgrade.timer.d/linuxio.conf
+/etc/systemd/system/dnf-automatic.timer.d/linuxio.conf
+/etc/systemd/system/dnf5-automatic.timer.d/linuxio.conf
+/etc/systemd/system/mintupdate-automation-upgrade.timer.d/linuxio.conf
+"
+
+case "$1" in
+remove)
+	for path in $written_files; do
+		if [ -e "$path" ] || [ -L "$path" ]; then
+			rm -f "$path"
+			# The drop-in folder too, while nothing else is in it.
+			case "${path%/*}" in
+			*.d) rmdir "${path%/*}" 2>/dev/null || true ;;
+			esac
+		fi
+	done
+	for link in /etc/motd.d/linuxio /etc/issue.d/linuxio.issue; do
+		if [ "$(readlink "$link" 2>/dev/null)" = ../../run/linuxio/issue ]; then
+			rm -f "$link"
+		fi
+	done
+	;;
+esac
+
+case "$1" in
+remove | purge)
+	if [ -d /run/systemd/system ]; then
+		systemctl --system daemon-reload >/dev/null || true
+	fi
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -55,6 +55,10 @@ func run(args []string) int {
 }
 
 func runUpdater(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	// Before any setup, so --help and --version answer where journald is absent.
+	if program.Answer(args[1:], stdout) {
+		return 0
+	}
 	if err := configureLogging("linuxio-docker-update", false); err != nil {
 		fmt.Fprintf(stderr, "linuxio-docker-update: initialize logging: %v\n", err)
 		return 1
