@@ -255,6 +255,25 @@ cil_depth=$(sed -e 's/;.*//' -e 's/"[^"]*"//g' "$SELINUX_CIL" | awk '
 	{ for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c == "(") d++; else if (c == ")") d--; if (d < 0) { print "negative at line " NR; exit } } }
 	END { print d }')
 [[ "$cil_depth" == 0 ]] || fail "parenthesis depth at the end of linuxio.cil: ${cil_depth}"
-pass "SELinux policy names only LinuxIO's files and balances"
+# Every allow rule, with the optional block it sits in ("-" for none). The
+# module gives a domain that is not LinuxIO's these two permissions only, each
+# in its own optional block, so the console reads the banner and a policy
+# without one of the types drops only that block
+# (docs/process-systemd-architecture.md, "SELinux").
+cil_allows=$(sed -e 's/;.*//' "$SELINUX_CIL" | awk '
+	/^\(optional / { block = $2 }
+	/^[[:blank:]]*\(allow/ { line = $0; sub(/^[[:blank:]]+/, "", line); sub(/[[:blank:]]+$/, "", line); print (block == "" ? "-" : block) "\t" line }
+	{ for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c == "(") d++; else if (c == ")") d-- } if (d == 0) block = "" }')
+other_domain_allows=$(printf '%s\n' "$cil_allows" | grep -v $'^[^\t]*\t(allow linuxio_auth_t ' || true)
+expected_other_domain_allows=$(printf '%s\t%s\n' \
+	linuxio_banner '(allow getty_t motd_var_run_t (file (getattr open read)))' \
+	linuxio_banner_kmscon '(allow kmscon_t motd_var_run_t (file (getattr open read)))')
+if ! allow_diff=$(diff <(printf '%s\n' "$expected_other_domain_allows") <(printf '%s\n' "$other_domain_allows")); then
+	fail "linuxio.cil's permissions for domains that are not LinuxIO's changed (expected <, linuxio.cil >):
+${allow_diff}"
+fi
+[[ "$(sed -e 's/;.*//' "$SELINUX_CIL" | grep -c -w -E 'getty_t|kmscon_t')" == 2 ]] ||
+	fail "linuxio.cil names getty_t or kmscon_t outside the banner's two allow rules"
+pass "SELinux policy names only LinuxIO's files, gives other domains only the banner's reads and balances"
 
 printf '\033[1;32m%s\033[0m\n' "✅ package file fixtures passed!"

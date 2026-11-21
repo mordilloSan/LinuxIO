@@ -512,12 +512,12 @@ advertises no address that does not answer. The design is Cockpit's
 inactive file and a link switched between them: the SELinux module names
 `/run/linuxio/issue`, and `update-issue` relabels it after each write.
 
-Links to `../../run/linuxio/issue`, which the package makes, show the file:
-`/etc/motd.d/linuxio` at an SSH login on both families, and on the Debian
-family also `/etc/issue.d/linuxio.issue` on the console
-([The login banner](./packaging.md#the-login-banner)). The RHEL family gets
-no console link: SELinux refuses `agetty` (`getty_t`) the file's type,
-`motd_var_run_t`, which `sshd` needs ([SELinux](#selinux)).
+Links to `../../run/linuxio/issue`, which the package makes, show the file
+on both families: `/etc/motd.d/linuxio` at an SSH login and
+`/etc/issue.d/linuxio.issue` on the console
+([The login banner](./packaging.md#the-login-banner)). On the RHEL family
+the SELinux module lets the console's programs read the file
+([SELinux](#selinux)).
 
 ## SELinux
 
@@ -565,15 +565,32 @@ does for `cockpit-session`.
   get an unconfined bridge. The constraint allows the switch out of
   `linuxio_auth_t` only into the SELinux user `unconfined_u` (or the same
   user, as for programs `linuxio-auth` runs before the session).
-- **The SSH banner.** The module also gives `/run/linuxio/issue`, which
+- **The login banner.** The module also gives `/run/linuxio/issue`, which
   `/etc/motd.d/linuxio` links to, the type of `/run/motd.d`,
   `motd_var_run_t`: in its folder's type, `var_run_t`, `pam_motd` in `sshd`
   may not read it, and the banner never showed on Fedora. `update-issue`
-  relabels the file after each write. The console's `agetty` (`getty_t`)
-  may not read `motd_var_run_t`: with a link in `/etc/issue.d` the Fedora
-  45 console showed the banner only in permissive mode, and the policy has
-  no rule that lets `getty_t` read the type (`sesearch`). So the RPM makes
-  no console link, and the module stays as it is.
+  relabels the file after each write.
+- **Two permissions for domains that are not LinuxIO's**, so the console
+  shows the banner through `/etc/issue.d/linuxio.issue`: `getty_t`
+  (`agetty`, the serial console) and `kmscon_t` (`kmscon`, Fedora's console
+  on the screen, which reads `/etc/issue.d` itself) get `getattr`, `open`
+  and `read` on files (class `file`) of type `motd_var_run_t`. The policy
+  gives `login_pgm` (`sshd`, `login`) that read and neither of the two; with
+  `var_run_t` `agetty` could read the file and `sshd` could not. They may
+  now read every file of that type, which on Fedora 45 are
+  `/run/linuxio/issue`, `/run/motd` and what is in `/run/motd.d`: messages
+  shown at every login, and `getty_t` already reads every `var_run_t` file.
+  Each rule is in an `optional` block of its own (`linuxio_banner` with the
+  file context, `linuxio_banner_kmscon`), so a policy without `kmscon_t`
+  drops only that rule. Measured on Fedora 45 in permissive mode: those
+  three permissions are all either program asks for.
+  `package-files-fixtures.sh` holds the module's rules for other domains to
+  these two lines.
+- **Finding a denial.** `agetty`'s refusal was logged
+  (`avc: denied { read } ... comm="agetty" ... tcontext=...motd_var_run_t`)
+  in `/var/log/audit/audit.log` and the journal. `ausearch` run over a
+  non-interactive SSH command reads its standard input instead of the log
+  and prints `<no matches>`; give it `--input-logs`.
 
 What runs where, seen on Fedora 45 with SELinux enforcing after a fresh
 install and a reboot:
@@ -599,11 +616,11 @@ Who gets in:
 time needs `selinux-policy-devel` and what it pulls in (3 MiB to download,
 26 MiB installed). The CIL converted from such a module is 259 lines
 nobody reviews. Neither can carry the constraint: `checkmodule` refuses
-`constrain` in a module, and CIL takes it. The hand-written file is about 70
+`constrain` in a module, and CIL takes it. The hand-written file is about 90
 lines and needs no build step and nothing beyond `semodule` and
 `restorecon`, which a host with an SELinux policy has. Only the banner's file
-context is in an `optional` block, so a policy that lacks one of the other
-names it uses refuses the whole module.
+context and the console's two reads are in `optional` blocks, so a policy
+that lacks one of the other names it uses refuses the whole module.
 
 **Why confined users are refused, not given a confined session.** A session
 in the user's own domain (`user_t`, `staff_t`) was tried. It needs lines added
@@ -629,8 +646,9 @@ SELinux enforces. On a host with SELinux disabled `semodule` works on the
 store and `restorecon` does nothing; switching SELinux on asks for a relabel,
 which gives the binary its type. The Debian family is left alone:
 `unconfined_service_t` is a name of Fedora's policy. The banner's file
-context sits in an optional block, so a policy without `motd_var_run_t` loads
-the rest and only the banner keeps `var_run_t`.
+context and the `getty_t` read sit in an optional block, so a policy without
+`motd_var_run_t` loads the rest and only the banner keeps `var_run_t`; the
+`kmscon_t` read sits in one of its own.
 
 **Turned down, likely to be proposed again** (one line each under Rejected
 in the [backlog](./TODO/backlog.md#rejected)): dropping `pam_selinux.so open`
@@ -658,11 +676,11 @@ policy refuses `init_t` an `unconfined_t` socket.
   as before.
 - A Debian-family host with SELinux enforcing is not handled: no module is
   installed there.
-- The RHEL family shows the banner at an SSH login only, not on the
-  console (above).
-- The banner's label was checked on Fedora 45 only; a policy whose
-  file-context substitutions map `/run` to `/var/run` may not match
-  `/run/linuxio/issue`, and the banner then stays unreadable to `sshd`.
+- The banner's label and the console's reads were checked on Fedora 45
+  only; the screen console's reading by `kmscon` was seen with `strace` on a
+  VM with no display, not on a screen. A policy whose file-context
+  substitutions map `/run` to `/var/run` may not match `/run/linuxio/issue`,
+  and the banner then stays unreadable to `sshd`.
 - Checked on Fedora 45 only. That RHEL, CentOS Stream, Rocky Linux and
   AlmaLinux have every name the module uses is expected, not seen; an update
   of the policy package to a newer version was not seen either (a reinstall

@@ -239,20 +239,22 @@ carries no module: `unconfined_service_t` is a name of Fedora's policy.
 
 `linuxio-issue.service` writes the addresses LinuxIO answers on into
 `/run/linuxio/issue` ([Login banner](./process-systemd-architecture.md#login-banner)).
-The packages show it through links to `../../run/linuxio/issue`:
-`/etc/motd.d/linuxio`, which `pam_motd` prints at an SSH login, on both
-families, and on the Debian family also `/etc/issue.d/linuxio.issue`, which
-`agetty` prints on the console before the login prompt. Ubuntu's `sshd` and
-`login` PAM files read `/etc/motd.d` (`pam_motd.so noupdate`), so no
-`update-motd.d` script is needed. The RHEL family gets no console link: on
-Fedora with SELinux enforcing the console does not show the file, since the
-policy gives `agetty` (`getty_t`) no read on `motd_var_run_t`, the type the
-module gives the file so `sshd` can read it; with SELinux permissive it does.
+Both packages show it through two links to `../../run/linuxio/issue`:
+`/etc/motd.d/linuxio`, which `pam_motd` prints at an SSH login, and
+`/etc/issue.d/linuxio.issue`, which the console prints before its login
+prompt (`agetty`; on Fedora's screen console `kmscon`, which reads
+`/etc/issue.d` itself). Ubuntu's `sshd` and `login` PAM files read
+`/etc/motd.d` (`pam_motd.so noupdate`), so no `update-motd.d` script is
+needed. On the RHEL family the SELinux module gives the file the type
+`sshd` reads, `motd_var_run_t`, and lets `agetty` and `kmscon` read that type
+([SELinux](./process-systemd-architecture.md#selinux)).
 
 The post-install step makes the links on a first install only, never over a
 file that is there, so a link an administrator deleted stays deleted at an
 update. Neither package owns them: removal deletes each while it is still
-LinuxIO's link.
+LinuxIO's link. An RPM installed before the console link existed does not
+get it at an upgrade; `sudo ln -s ../../run/linuxio/issue
+/etc/issue.d/linuxio.issue` makes it.
 
 ## The libvirt hook
 
@@ -418,8 +420,14 @@ removes a package under a real systemd ([Indexer](./indexer.md)).
   without the repository, exiting 0 with nothing to upgrade: `linuxio.repo`
   does not set `skip_if_unavailable=False`, which would stop every dnf
   transaction on the host while the repository is unreachable.
-- The RHEL family shows the login banner at an SSH login only, not on the
-  console.
+- An RPM upgraded from a version without the console link shows the login
+  banner at an SSH login only, until the link is made by hand
+  ([above](#the-login-banner)).
+- The console shows the banner at the first prompt of a boot only when
+  `linuxio-issue.service` has written it by then: nothing orders the getty
+  after it. A later prompt (`agetty`'s after a logout or a login that timed
+  out, `kmscon`'s each minute its login times out) reads the file again. On
+  the Fedora 45 test VM the first prompt of two boots showed it.
 - An upgrade restarts `linuxio.target`, which ends every session.
 - A sudoers rule that names `/usr/local/bin/linuxio-bridge`, or an
   administrator's own unit that names a program under `/usr/local/bin`, from

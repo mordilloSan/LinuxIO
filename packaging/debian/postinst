@@ -61,7 +61,7 @@ if [ "$1" = configure ] || [ "$1" = abort-remove ]; then
 	# /run/linuxio/issue through these links. Made on the first install only,
 	# so one an administrator deleted stays deleted at an update, and never
 	# over a file of someone else's; the postrm deletes them while they are
-	# still LinuxIO's. The RPM's %post makes the first one only.
+	# still LinuxIO's. The RPM's %post makes the same two.
 	if [ "$first" = 1 ]; then
 		for link in /etc/motd.d/linuxio /etc/issue.d/linuxio.issue; do
 			if [ ! -e "$link" ] && [ ! -L "$link" ]; then

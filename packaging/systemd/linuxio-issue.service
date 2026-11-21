@@ -9,7 +9,7 @@ After=network-online.target linuxio-webserver.socket
 Type=oneshot
 RemainAfterExit=yes
 # The addresses LinuxIO answers on, and how to start it once it stopped, in
-# /run/linuxio/issue, which /etc/motd.d/linuxio (and on the Debian family
-# /etc/issue.d/linuxio.issue) link to.
+# /run/linuxio/issue, which /etc/motd.d/linuxio and /etc/issue.d/linuxio.issue
+# link to.
 ExecStart=-/usr/share/linuxio/issue/update-issue
 ExecStop=-/usr/share/linuxio/issue/update-issue stop

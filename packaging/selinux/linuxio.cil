@@ -61,11 +61,26 @@
 ; take; this keeps a staff_u login out of unconfined_t.
 (constrain (process (transition)) (or (neq t1 linuxio_auth_t) (or (eq u1 u2) (eq u2 unconfined_u))))
 
-; The SSH banner update-issue writes, which /etc/motd.d/linuxio links to. In
-; its folder's type, var_run_t, pam_motd in sshd may not read it; as
+; The login banner update-issue writes, which /etc/motd.d/linuxio (SSH
+; login) and /etc/issue.d/linuxio.issue (the console) link to. In its
+; folder's type, var_run_t, pam_motd in sshd may not read it; as
 ; motd_var_run_t, the type of /run/motd.d, it may. update-issue relabels the
 ; file after each write. Optional: a policy without motd_var_run_t drops this
 ; block and loads the rest, since a missing banner must not stop sign-in.
 (optional linuxio_banner
 	(filecon "/run/linuxio/issue" file (system_u object_r motd_var_run_t ((s0) (s0))))
+	; A permission for a domain that is not LinuxIO's: agetty on a serial
+	; console (getty_t) gets getattr, open and read on files of class file
+	; labelled motd_var_run_t, which are this file, /run/motd and
+	; /run/motd.d/*, so it can print the banner before the login prompt.
+	(allow getty_t motd_var_run_t (file (getattr open read)))
+)
+
+; A permission for a domain that is not LinuxIO's: kmscon, Fedora's console
+; on the screen (kmscon_t), gets getattr, open and read on files of class
+; file labelled motd_var_run_t, the same files, to print the banner before
+; its login prompt. A block of its own: a policy without kmscon_t drops only
+; this one.
+(optional linuxio_banner_kmscon
+	(allow kmscon_t motd_var_run_t (file (getattr open read)))
 )

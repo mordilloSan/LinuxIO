@@ -67,11 +67,6 @@ after a change that issues ioctls).
   with its secret are done (2026-11-21); Pages, the DNS record, the release
   rules and then a first release remain
   ([Releases](../releases.md#owner-setup), steps 5 to 8). **checked**
-- Whether the Fedora console shows the login banner: one rule in an
-  `optional` block of `packaging/selinux/linuxio.cil` letting `getty_t` read
-  `motd_var_run_t` would, at the cost of a permission for a domain that is
-  not LinuxIO's ([The login banner](../packaging.md#the-login-banner)).
-  **checked**
 - Whether `linuxio.repo` sets `skip_if_unavailable=False`: today dnf given a
   repository whose `repomd.xml` signature fails reports it, goes on without
   the repository and exits 0, so a tampered repository looks like "nothing to

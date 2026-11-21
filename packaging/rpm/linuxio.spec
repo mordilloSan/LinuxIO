@@ -118,19 +118,20 @@ fi
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || :
 fi
-# The login banner: SSH logins (pam_motd) show /run/linuxio/issue through
-# this link. Made on the first install only, so one an administrator deleted
-# stays deleted at an update, and never over a file of someone else's;
-# %%postun deletes it while it is still LinuxIO's. The DEB's postinst does the
-# same, and also links /etc/issue.d/linuxio.issue for the console: here
-# SELinux refuses agetty (getty_t) the file's type, motd_var_run_t, which
-# sshd needs (docs/process-systemd-architecture.md, "Login banner").
+# The login banner: SSH logins (pam_motd) and the console (agetty, kmscon)
+# show /run/linuxio/issue through these links; the module loaded above lets
+# the console read it (docs/process-systemd-architecture.md, "SELinux").
+# Made on the first install only, so one an administrator deleted stays
+# deleted at an update, and never over a file of someone else's; %%postun
+# deletes them while they are still LinuxIO's. The DEB's postinst does the
+# same.
 if [ "$1" -eq 1 ]; then
-	link=%{_sysconfdir}/motd.d/linuxio
-	if [ ! -e "$link" ] && [ ! -L "$link" ]; then
-		mkdir -p "$(dirname "$link")"
-		ln -s ../../run/linuxio/issue "$link"
-	fi
+	for link in %{_sysconfdir}/motd.d/linuxio %{_sysconfdir}/issue.d/linuxio.issue; do
+		if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+			mkdir -p "$(dirname "$link")"
+			ln -s ../../run/linuxio/issue "$link"
+		fi
+	done
 fi
 if [ "$1" -eq 1 ] && [ -d /run/systemd/system ]; then
 	systemctl start %{started_units} || :
@@ -168,7 +169,7 @@ fi
 # update that started this among them (docs/jobs.md, Updates).
 %systemd_postun_with_restart %{started_units}
 # On removal, what LinuxIO itself wrote under /etc/systemd/system while it
-# ran, and the login banner's link while it is still LinuxIO's: rpm
+# ran, and the login banner's links while they are still LinuxIO's: rpm
 # removes only the files it installed. Exact paths, kept equal to the DEB's
 # list (packaging/debian/postrm); a test of each writer holds both lists to
 # the paths it writes. What LinuxIO writes for something an administrator set
@@ -203,10 +204,11 @@ if [ "$1" -eq 0 ]; then
 			esac
 		fi
 	done
-	link=%{_sysconfdir}/motd.d/linuxio
-	if [ "$(readlink "$link" 2>/dev/null)" = ../../run/linuxio/issue ]; then
-		rm -f "$link"
-	fi
+	for link in %{_sysconfdir}/motd.d/linuxio %{_sysconfdir}/issue.d/linuxio.issue; do
+		if [ "$(readlink "$link" 2>/dev/null)" = ../../run/linuxio/issue ]; then
+			rm -f "$link"
+		fi
+	done
 	if [ -d /run/systemd/system ]; then
 		systemctl daemon-reload || :
 	fi

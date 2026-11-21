@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # LinuxIO login banner: writes the addresses LinuxIO answers on into
 # /run/linuxio/issue, which /etc/motd.d/linuxio (SSH login, through pam_motd)
-# and, on the Debian family, /etc/issue.d/linuxio.issue (the console, through
-# agetty) link to. The package makes the links on its first install. Run
-# once by linuxio-issue.service, which linuxio-webserver.socket pulls in; with the
+# and /etc/issue.d/linuxio.issue (the console, through agetty or kmscon) link
+# to. The package makes the links on its first install. Run once by
+# linuxio-issue.service, which linuxio-webserver.socket pulls in; with the
 # word "stop", which the service's stop runs, it writes how to start LinuxIO
 # instead, so a stopped LinuxIO does not advertise an address that does not
 # answer. The design is Cockpit's (src/systemd/update-issue).
