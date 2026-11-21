@@ -1,4 +1,4 @@
-// /usr/local/bin/linuxio-auth  (install 0700 root:root, runs via systemd)
+// /usr/libexec/linuxio/linuxio-auth  (install 0700 root:root, runs via systemd)
 // Single-shot mode: read one binary auth request from stdin (socket-activated)
 #define _GNU_SOURCE
 #include <security/pam_appl.h>
@@ -61,7 +61,7 @@
 // time to point at a private bridge directory, a non-root bridge owner, and
 // tmpfile accounting databases. Production builds keep the defaults.
 #ifndef BRIDGE_DIR
-#define BRIDGE_DIR "/usr/local/bin"
+#define BRIDGE_DIR "/usr/libexec/linuxio"
 #endif
 #ifndef BRIDGE_NAME
 #define BRIDGE_NAME "linuxio-bridge"

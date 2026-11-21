@@ -135,7 +135,7 @@ func updaterWritablePaths() []updaterWritablePath {
 	// Installed bridges launch future release installers, so mandatory
 	// installer destinations must remain within these paths.
 	return []updaterWritablePath{
-		{path: version.BinDir},
+		{path: version.LibexecDir},
 		{path: version.ConfigDir},
 		{path: "/etc/pam.d"},
 		{path: "/etc/systemd/system"},
@@ -344,7 +344,7 @@ func getInstalledVersion(parent context.Context) string {
 	// Fallback: try running linuxio-webserver to get version
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, version.BinDir+"/linuxio-webserver", "--version")
+	cmd := exec.CommandContext(ctx, version.LibexecDir+"/linuxio-webserver", "--version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Debug("failed to get version from binary", "component", "control", "subsystem", "version", "error", err)

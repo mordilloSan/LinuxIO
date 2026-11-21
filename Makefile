@@ -227,6 +227,7 @@ include $(mk_dir)/frontend.mk
 include $(mk_dir)/auth.mk
 include $(mk_dir)/quality.mk
 include $(mk_dir)/install.mk
+include $(mk_dir)/package.mk
 include $(mk_dir)/vm.mk
 
 # ---- help -------------------------------------------------------------------
@@ -279,5 +280,5 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: deadcode deadcode-only analyze analyze-auth bundle-metrics compiler-coverage check-c-build-deps
 .PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-worker build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
-.PHONY: localinstall reinstall uninstall clean cloc
+.PHONY: localinstall reinstall uninstall package-root clean cloc
 .PHONY: vm-create vm-install vm-ssh vm-stop vm-reset vm-update vm-update-build vm-destroy test-vm-browser vm-test-btrfs-integration vm-test-memory-integration vm-test-filebrowser-root vm-test-relay-root test-vm-browser-rerun test-vm-backend

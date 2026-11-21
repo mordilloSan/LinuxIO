@@ -42,6 +42,50 @@ packages must not delete administrator-owned files under `/usr/local` or
 - [ ] Do not add legacy migration, compatibility symlinks, source packages,
       extra release channels, or additional architectures in this work.
 
+## Build order
+
+The work is on the branch `feat/packaging`, which no release is cut from
+until the last step lands.
+
+1. [x] The new folders: the compiled paths, the units' command lines, the
+   SELinux file context, and `make package-root` with its test.
+2. [ ] The DEB, and `make localinstall` installing it.
+3. [ ] The RPM, with the SELinux module.
+4. [ ] The test VMs install packages.
+5. [ ] The login banner, the job units in the package, removal, the hook's
+   Restore button.
+6. [ ] LinuxIO's own update through the Updates page; the app updater
+   deleted.
+7. [ ] Signed repositories, pinned build images, the release workflow.
+8. [ ] The installer scripts deleted, this plan rewritten as a doc.
+
+Until the packages replace it, the script installer on this branch installs
+the new folders itself: `linuxio` in `/usr/bin`, the other programs in
+`/usr/libexec/linuxio`, the units still in `/etc/systemd/system`. It removes
+the nine programs and `linuxio-btrfs-timer` from `/usr/local/bin` by name and
+rewrites the saved units and drop-ins that name them there.
+
+The branch merges into `main` only with step 8, never part-way:
+
+- A published installer (v0.54, v0.55) fetches the units and the SELinux
+  module from `main` and puts its programs in `/usr/local/bin`. With this
+  branch's units on `main`, an install or in-app update made by one of them
+  would leave every service naming a program that is not there.
+- This branch's installer, run without `--local`, would download a release
+  built for `/usr/local/bin` into the new folders, where its `linuxio-auth`
+  finds no bridge. On this branch it is run with `--local` only
+  (`make localinstall`, the test VMs).
+
+Not working on this branch from step 1 to step 6:
+
+- The in-app updater. Its sandbox does not let the installer write
+  `/usr/bin`, and it was not widened for a component that step 6 deletes.
+  `jobs-update.spec.ts`, `jobs-phase5a.spec.ts` and the updater suite fail
+  with it.
+- A sudoers rule that grants web administration by naming
+  `/usr/local/bin/linuxio-bridge`, and an administrator's own unit that
+  names `/usr/local/bin/linuxio-worker`: both need the new path.
+
 ## Required changes
 
 ### 1. Keep the CLI name
@@ -57,23 +101,23 @@ packages must not delete administrator-owned files under `/usr/local` or
 
 ### 2. Separate public and private paths
 
-- [ ] Replace `BinDir` in `backend/common/version/paths.go` with the
+- [x] Replace `BinDir` in `backend/common/version/paths.go` with the
       private executable location:
 
   ```go
   const LibexecDir = "/usr/libexec/linuxio"
   ```
 
-- [ ] Do not add a `CLIPath` constant unless code genuinely needs to invoke
+- [x] Do not add a `CLIPath` constant unless code genuinely needs to invoke
       the CLI.
-- [ ] Use `LibexecDir` when the webserver spawns the bridge in
+- [x] Use `LibexecDir` when the webserver spawns the bridge in
       `backend/webserver/bridge/bridge.go:59`.
-- [ ] Update the Docker updater path in
+- [x] Update the Docker updater path in
       `backend/common/dockerupdate/sandbox.go:11` (`RunnerPath`).
-- [ ] Update the authentication bridge path in
+- [x] Update the authentication bridge path in
       `backend/auth/linuxio-auth.c:64`.
-- [ ] Update every package-owned systemd `ExecStart` entry.
-- [ ] Update the verbose systemd drop-ins written by
+- [x] Update every package-owned systemd `ExecStart` entry.
+- [x] Update the verbose systemd drop-ins written by
       `backend/cli/verbose.go:70`.
 
 ### 3. Simplify `linuxio version`
@@ -123,7 +167,7 @@ Native packaging guarantees that every file in the package has one version.
 - [ ] Remove component-probing and `--self` tests.
 - [x] Test both `linuxio version` and `linuxio --version`.
 - [ ] Update systemd path assertions.
-- [ ] Update the binary-location paragraph in `docs/process-systemd-architecture.md`.
+- [x] Update the binary-location paragraph in `docs/process-systemd-architecture.md`.
 - [ ] Add the man page to package-content tests.
 
 ## Development workflow
@@ -204,12 +248,12 @@ Use this common layout:
 /var/lib/linuxio
 ```
 
-- [ ] Add one shared `make package-root DESTDIR=...` target that installs the
+- [x] Add one shared `make package-root DESTDIR=...` target that installs the
       common package tree.
-- [ ] Replace compiled `/usr/local/bin` paths with `/usr/bin` for the CLI and
+- [x] Replace compiled `/usr/local/bin` paths with `/usr/bin` for the CLI and
       `/usr/libexec/linuxio` for private executables.
-- [ ] Update the C authentication helper's bridge path.
-- [ ] Update package-owned systemd units to execute binaries from
+- [x] Update the C authentication helper's bridge path.
+- [x] Update package-owned systemd units to execute binaries from
       `/usr/libexec/linuxio`.
 - [ ] Keep the five programs systemd runs as root (`linuxio-worker`,
       `linuxio-docker-update`, `linuxio-auth`, `linuxio-indexer`,

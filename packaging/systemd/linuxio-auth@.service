@@ -6,7 +6,7 @@ Requires=linuxio-auth.socket
 After=linuxio-auth.socket
 
 [Service]
-ExecStart=/usr/local/bin/linuxio-auth
+ExecStart=/usr/libexec/linuxio/linuxio-auth
 StandardInput=socket
 StandardOutput=inherit
 StandardError=journal

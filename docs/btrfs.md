@@ -1108,7 +1108,7 @@ rule is enabled; a disabled rule prunes only its `pre-update` snapshots and
 never its timeline:
 
 - by LinuxIO's own package update task and offline apply, before they start;
-- by `ExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update` in the
+- by `ExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update` in the
   `linuxio-alert.conf` drop-in LinuxIO writes for the distribution's
   auto-update unit when its notification policy is not `never` (see
   [Alerts](./alerts.md#automatic-updates-notification-policy)). The `-` means

@@ -48,7 +48,7 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 	}
 
 	wantPaths := []string{
-		version.BinDir,
+		version.LibexecDir,
 		"/etc/linuxio",
 		"/etc/pam.d",
 		"/etc/systemd/system",

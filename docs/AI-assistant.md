@@ -730,7 +730,7 @@ untouched.
 - **Opt-in.** `assistant.open` takes `panes`. The Assistant page's chat sets
   it; the Settings login probe does not. Without it, or for an agent that is
   not marked `Panes` in `acpagents` (only `claude` is), or when
-  `/usr/local/bin/linuxio-claude-relay` is missing, the stream is exactly what
+  `/usr/libexec/linuxio/linuxio-claude-relay` is missing, the stream is exactly what
   it was.
 - **The relay.** With panes on, the bridge points the adapter's
   `CLAUDE_CODE_EXECUTABLE` at `linuxio-claude-relay` and passes the real CLI

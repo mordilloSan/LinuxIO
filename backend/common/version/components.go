@@ -12,7 +12,8 @@ type Component struct {
 	// Name is the key in /api/version and the prefix of the program's version
 	// line ("<Name> <version>").
 	Name string
-	// Binary is the program's file name in BinDir.
+	// Binary is the program's file name: /usr/bin for the linuxio CLI,
+	// LibexecDir for every other program.
 	Binary string
 }
 

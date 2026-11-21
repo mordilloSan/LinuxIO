@@ -89,7 +89,13 @@ Show 0 "Systemd reloaded"
 
 # ========== REMOVE BINARIES ==========
 Show 2 "Removing binaries..."
-rm -f /usr/local/bin/linuxio*
+rm -f /usr/bin/linuxio
+rm -rf /usr/libexec/linuxio
+# Where earlier releases installed every program; named one by one so nothing
+# else in the folder goes (install-linuxio-binaries.sh, remove_old_binaries).
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-worker linuxio-claude-relay linuxio-btrfs-timer; do
+	rm -f "/usr/local/bin/${binary}"
+done
 Show 0 "Binaries removed"
 
 # ========== REMOVE THE SELINUX MODULE ==========
@@ -152,7 +158,7 @@ echo -e "${LINE}"
 echo ""
 echo -e " ${BOLD}Removed:${COLOUR_RESET}"
 echo -e " ${GREEN}-${COLOUR_RESET} All systemd services and sockets"
-echo -e " ${GREEN}-${COLOUR_RESET} All binaries from /usr/local/bin"
+echo -e " ${GREEN}-${COLOUR_RESET} The linuxio command from /usr/bin and the programs in /usr/libexec/linuxio"
 echo -e " ${GREEN}-${COLOUR_RESET} Configuration files from /etc/linuxio"
 echo -e " ${GREEN}-${COLOUR_RESET} PAM configuration"
 echo -e " ${GREEN}-${COLOUR_RESET} Runtime files from /run"

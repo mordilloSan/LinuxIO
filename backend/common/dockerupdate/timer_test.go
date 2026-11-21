@@ -44,7 +44,7 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 		t.Fatalf("timer file did not render schedule:\n%s", timer)
 	}
 	unit := readTestFile(t, store.unitPath)
-	if !strings.Contains(unit, "ExecStart=/usr/local/bin/linuxio-docker-update --config "+ConfigPath) {
+	if !strings.Contains(unit, "ExecStart=/usr/libexec/linuxio/linuxio-docker-update --config "+ConfigPath) {
 		t.Fatalf("unit file does not invoke the LinuxIO runner directly:\n%s", unit)
 	}
 	if strings.Contains(unit, "/bin/sh") {

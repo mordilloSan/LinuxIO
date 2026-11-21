@@ -16,7 +16,13 @@ trap 'echo -e "\e[0m"; exit 1' INT
 # ---------- Configuration ----------
 readonly REPO_OWNER="mordilloSan"
 readonly REPO_NAME="LinuxIO"
-readonly BIN_DIR="/usr/local/bin"
+# The admin CLI is on PATH; every other program is LinuxIO's own and is
+# started by systemd, linuxio-auth or the bridge (binary_dir).
+readonly CLI_DIR="/usr/bin"
+readonly LIBEXEC_DIR="/usr/libexec/linuxio"
+# Where earlier releases installed every program; the install removes the
+# copies they left there once the new units are in place (remove_old_binaries).
+readonly OLD_BIN_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
@@ -128,6 +134,36 @@ binary_mode() {
 	esac
 }
 
+# The folder a program of binary_names is installed in.
+binary_dir() {
+	if [[ "$1" == linuxio ]]; then
+		printf '%s\n' "$CLI_DIR"
+	else
+		printf '%s\n' "$LIBEXEC_DIR"
+	fi
+}
+
+# Remove from $1 the programs earlier releases installed there: each name of
+# binary_names, and linuxio-btrfs-timer, the worker's name up to v0.53. Named
+# one by one, never a pattern, so nothing else in the folder goes. A linuxio
+# left there would come before the new one on PATH.
+remove_old_binaries() {
+	local dir="$1"
+	local binary
+
+	while IFS= read -r binary; do
+		[[ -e "${dir}/${binary}" || -L "${dir}/${binary}" ]] || continue
+		if rm -f -- "${dir}/${binary}"; then
+			Show 0 "Removed ${dir}/${binary}"
+		else
+			Show 3 "Could not remove ${dir}/${binary}; remove it by hand"
+		fi
+	done < <(
+		binary_names
+		printf '%s\n' linuxio-btrfs-timer
+	)
+}
+
 # The programs whose version line write_components_file records. Must name
 # the binaries of version.Components (backend/common/version/components.go);
 # tests/installer-fixtures.sh enforces it.
@@ -144,13 +180,15 @@ component_binaries() {
 		linuxio-claude-relay
 }
 
-# Record the version line of each program of component_binaries found in $1
-# into the file $2 (owner $3, when given). The CLI and the webserver read it
-# and never run the programs, several of which only root may start.
+# Record the version line of each program of component_binaries, linuxio
+# found in $1 and the others in $2, into the file $3 (owner $4, when given).
+# The CLI and the webserver read it and never run the programs, several of
+# which only root may start.
 write_components_file() {
-	local bin_dir="$1"
-	local dst="$2"
-	local owner="${3:-}"
+	local cli_dir="$1"
+	local libexec_dir="$2"
+	local dst="$3"
+	local owner="${4:-}"
 	local staged="${STAGING}/components"
 	local binary line
 
@@ -159,11 +197,11 @@ write_components_file() {
 	: >"$staged" || return 1
 	while IFS= read -r binary; do
 		if [[ "$binary" == linuxio ]]; then
-			line="$("${bin_dir}/${binary}" version --self 2>/dev/null | head -n1)" || line=""
+			line="$("${cli_dir}/${binary}" version --self 2>/dev/null | head -n1)" || line=""
 		else
 			# Without the variable that names Claude Code, which the relay
 			# would hand --version to.
-			line="$(env -u LINUXIO_CLAUDE_BIN "${bin_dir}/${binary}" --version 2>/dev/null | head -n1)" || line=""
+			line="$(env -u LINUXIO_CLAUDE_BIN "${libexec_dir}/${binary}" --version 2>/dev/null | head -n1)" || line=""
 		fi
 		if [[ -n "$line" ]]; then
 			printf '%s\n' "$line" >>"$staged"
@@ -248,9 +286,13 @@ saved_unit_files() {
 # jobs took "run", the hooks were words of linuxio, and the webserver,
 # monitoring and the Docker updater took "run". Up to v0.54 the indexer's
 # flag was --config-file, which it no longer takes, and the webserver's was
-# written -verbose. Without this, snapshots would stop and the page and the
-# indexer would not start under verbose logging until each setting was saved
-# again. Running it twice changes nothing.
+# written -verbose. Earlier releases installed every program in
+# /usr/local/bin, which the install empties of them; the last rule runs
+# after the others, so a hook that was a word of linuxio ends up naming the
+# worker in /usr/libexec/linuxio, and no saved file names the CLI.
+# Without this, snapshots would stop and the page and the indexer would not
+# start under verbose logging until each setting was saved again. Running it
+# twice changes nothing.
 rewrite_saved_unit_commands() {
 	local systemd_dir="$1"
 	local file path
@@ -258,7 +300,7 @@ rewrite_saved_unit_commands() {
 	while IFS= read -r file; do
 		path="${systemd_dir}/${file}"
 		[[ -f "$path" && ! -L "$path" ]] || continue
-		grep -Eq '/linuxio-btrfs-timer |/linuxio (alert|scheduled-run|btrfs-snapshot|btrfs-health) |/linuxio-(webserver|monitoring|docker-update) run( |$)|/linuxio-webserver -verbose( |$)|/linuxio-indexer --config-file ' "$path" || continue
+		grep -Eq '/linuxio-btrfs-timer |/linuxio (alert|scheduled-run|btrfs-snapshot|btrfs-health) |/linuxio-(webserver|monitoring|docker-update) run( |$)|/linuxio-webserver -verbose( |$)|/linuxio-indexer --config-file |/usr/local/bin/linuxio-' "$path" || continue
 		if sed -i -E \
 			-e 's#/linuxio btrfs-(snapshot|health) #/linuxio-btrfs-timer \1 #' \
 			-e 's#/linuxio-btrfs-timer (snapshot|replicate|health|degraded) run( |$)#/linuxio-worker \1\2#' \
@@ -267,6 +309,7 @@ rewrite_saved_unit_commands() {
 			-e 's#/(linuxio-webserver|linuxio-monitoring|linuxio-docker-update) run( |$)#/\1\2#' \
 			-e 's#/linuxio-webserver -verbose( |$)#/linuxio-webserver --verbose\1#' \
 			-e 's#/linuxio-indexer --config-file #/linuxio-indexer --config #' \
+			-e 's#/usr/local/bin/linuxio-#/usr/libexec/linuxio/linuxio-#g' \
 			"$path"; then
 			Show 0 "Updated the commands in ${file}"
 		else
@@ -471,16 +514,21 @@ verify_local_binaries() {
 }
 
 install_binaries() {
-	Show 2 "Installing binaries to ${BOLD}${BIN_DIR}${COLOUR_RESET}"
+	Show 2 "Installing binaries to ${BOLD}${CLI_DIR}${COLOUR_RESET} and ${BOLD}${LIBEXEC_DIR}${COLOUR_RESET}"
 
-	mkdir -p "$BIN_DIR"
+	# linuxio-auth checks that root owns this folder and only root may write
+	# it before it starts the bridge from it.
+	if ! mkdir -p "$LIBEXEC_DIR" || ! chown root:root "$LIBEXEC_DIR" || ! chmod 0755 "$LIBEXEC_DIR"; then
+		Show 1 "Failed to create ${LIBEXEC_DIR}"
+	fi
 
 	local binaries
 	mapfile -t binaries < <(binary_names)
 
 	for binary in "${binaries[@]}"; do
 		local src="${BINARY_SRC_DIR}/${binary}"
-		local dst="${BIN_DIR}/${binary}"
+		local dst
+		dst="$(binary_dir "$binary")/${binary}"
 		local mode
 		mode="$(binary_mode "$binary")"
 
@@ -496,12 +544,10 @@ install_binaries() {
 		Show 0 "Installed ${binary}"
 	done
 
-	# The worker's name up to v0.53; nothing starts it any more.
-	rm -f "${BIN_DIR}/linuxio-btrfs-timer"
-
 	Show 2 "Verifying installations..."
 	for binary in "${binaries[@]}"; do
-		local dst="${BIN_DIR}/${binary}"
+		local dst
+		dst="$(binary_dir "$binary")/${binary}"
 		if [[ ! -x "$dst" ]]; then
 			Show 1 "${binary} is not executable"
 		fi
@@ -633,7 +679,7 @@ selinux_module_valid() {
 			$line =~ ^\(typeattributeset\ ${name}\ \(${own}\)\)$ ||
 			$line =~ ^\(allow\ linuxio_auth_t\ ${name}\ \(${name}\ \(${name}(\ ${name})*\)\)\)$ ||
 			$line == '(typetransition initrc_domain linuxio_auth_exec_t process linuxio_auth_t)' ||
-			$line == "(filecon \"${BIN_DIR}/linuxio-auth\" file (system_u object_r linuxio_auth_exec_t ((s0) (s0))))" ||
+			$line == "(filecon \"${LIBEXEC_DIR}/linuxio-auth\" file (system_u object_r linuxio_auth_exec_t ((s0) (s0))))" ||
 			$line == '(filecon "/run/linuxio/issue" file (system_u object_r motd_var_run_t ((s0) (s0))))' ||
 			$line == '(optional linuxio_banner' ||
 			$line == ')' ]]; then
@@ -721,10 +767,10 @@ install_selinux_module() {
 		fi
 	fi
 	if command -v restorecon >/dev/null 2>&1; then
-		if restorecon "${BIN_DIR}/linuxio-auth"; then
-			Show 0 "${BIN_DIR}/linuxio-auth labelled"
+		if restorecon "${LIBEXEC_DIR}/linuxio-auth"; then
+			Show 0 "${LIBEXEC_DIR}/linuxio-auth labelled"
 		else
-			Show 3 "Failed to label ${BIN_DIR}/linuxio-auth, so sign-in is refused while SELinux enforces; run restorecon ${BIN_DIR}/linuxio-auth"
+			Show 3 "Failed to label ${LIBEXEC_DIR}/linuxio-auth, so sign-in is refused while SELinux enforces; run restorecon ${LIBEXEC_DIR}/linuxio-auth"
 		fi
 	fi
 	return 0
@@ -1186,11 +1232,12 @@ grant_journal_access() {
 # ---------- Verification Functions ----------
 
 verify_installation() {
-	local binary
+	local binary path
 	while IFS= read -r binary; do
+		path="$(binary_dir "$binary")/${binary}"
 		case "$binary" in
 		linuxio)
-			if "${BIN_DIR}/${binary}" help >/dev/null 2>&1; then
+			if "$path" help >/dev/null 2>&1; then
 				Show 0 "${binary}: working"
 			else
 				Show 3 "${binary} did not run successfully"
@@ -1198,21 +1245,21 @@ verify_installation() {
 			;;
 		linuxio-webserver)
 			# With no argument it starts the server, so ask for its version.
-			if "${BIN_DIR}/${binary}" --version >/dev/null 2>&1; then
-				Show 0 "$("${BIN_DIR}/${binary}" --version 2>&1 | head -n1 || echo "unknown")"
+			if "$path" --version >/dev/null 2>&1; then
+				Show 0 "$("$path" --version 2>&1 | head -n1 || echo "unknown")"
 			else
 				Show 3 "${binary} did not run successfully (may be arch mismatch)"
 			fi
 			;;
 		linuxio-indexer | linuxio-monitoring | linuxio-docker-update | linuxio-worker)
-			if "${BIN_DIR}/${binary}" --version >/dev/null 2>&1; then
+			if "$path" --version >/dev/null 2>&1; then
 				Show 0 "${binary}: working"
 			else
 				Show 3 "${binary} did not run successfully"
 			fi
 			;;
 		*)
-			if [[ -x "${BIN_DIR}/${binary}" ]]; then
+			if [[ -x "$path" ]]; then
 				Show 0 "${binary}: executable"
 			else
 				Show 3 "${binary}: not executable"
@@ -1255,7 +1302,8 @@ verify_dry_run_targets() {
 	Show 2 "Dry run: validating writable install targets..."
 
 	local targets=(
-		"${BIN_DIR}"
+		"${CLI_DIR}"
+		"${LIBEXEC_DIR}"
 		"${CONFIG_DIR}"
 		"${PAM_DIR}"
 		"${SYSTEMD_DIR}"
@@ -1381,8 +1429,8 @@ main() {
 		Header "Steps 1-3 — Skipping binary installation"
 		# The units installed below start the programs with command lines
 		# that binaries before MINIMUM_SUPPORTED_RELEASE do not take.
-		if ! installed_binaries_supported "$BIN_DIR"; then
-			Show 1 "The installed binaries are older than ${MINIMUM_SUPPORTED_RELEASE}; run without --skip-binaries"
+		if ! installed_binaries_supported "$LIBEXEC_DIR"; then
+			Show 1 "The binaries in ${LIBEXEC_DIR} are missing or older than ${MINIMUM_SUPPORTED_RELEASE}; run without --skip-binaries"
 		fi
 	fi
 
@@ -1409,7 +1457,7 @@ main() {
 	# first, and a linuxio-auth it already replaced stays bin_t until the next
 	# install.
 	install_selinux_module "$SELINUX_DIR"
-	if ! write_components_file "$BIN_DIR" "${SHARE_DIR}/components" root:root; then
+	if ! write_components_file "$CLI_DIR" "$LIBEXEC_DIR" "${SHARE_DIR}/components" root:root; then
 		Show 1 "Failed to record the installed versions"
 	fi
 	# Right after the binaries, so a later step that fails leaves no saved unit
@@ -1432,6 +1480,10 @@ main() {
 	if ! install_systemd_files; then
 		Show 1 "Systemd installation failed"
 	fi
+	# Only now: until the units above replaced those of an earlier release,
+	# systemd started the programs from there, so an install that ended before
+	# this line leaves the old ones in place and working.
+	remove_old_binaries "$OLD_BIN_DIR"
 	if ! enable_services; then
 		Show 3 "Some services may not be enabled"
 	fi
@@ -1497,7 +1549,9 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-worker, linuxio-claude-relay
+  - CLI:          ${CLI_DIR}/linuxio
+  - Programs:     ${LIBEXEC_DIR}/: linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-worker, linuxio-claude-relay
+  - Removed:      the same programs in ${OLD_BIN_DIR}, where earlier releases installed them
   - Systemd:      /etc/systemd/system/linuxio*
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and ${DATA_DIR}/icons)
   - PAM:          /etc/pam.d/linuxio

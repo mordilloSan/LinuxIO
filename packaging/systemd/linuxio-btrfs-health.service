@@ -5,4 +5,4 @@ PartOf=linuxio.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/linuxio-worker health
+ExecStart=/usr/libexec/linuxio/linuxio-worker health

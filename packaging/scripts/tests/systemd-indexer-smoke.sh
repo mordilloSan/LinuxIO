@@ -51,7 +51,7 @@ for path in \
 	/etc/linuxio \
 	/var/lib/linuxio \
 	/run/linuxio \
-	/usr/local/bin/linuxio-indexer \
+	/usr/libexec/linuxio/linuxio-indexer \
 	/etc/systemd/system/linuxio.target \
 	/etc/systemd/system/linuxio-indexer.socket \
 	/etc/systemd/system/linuxio-indexer.service; do

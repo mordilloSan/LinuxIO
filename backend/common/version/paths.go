@@ -2,7 +2,7 @@ package version
 
 // Installation paths.
 const (
-	BinDir            = "/usr/local/bin"
+	LibexecDir        = "/usr/libexec/linuxio"
 	ConfigDir         = "/etc/linuxio"
 	DataDir           = "/var/lib/linuxio"
 	RunDir            = "/run/linuxio"

@@ -4,7 +4,7 @@ import "github.com/mordilloSan/LinuxIO/backend/common/version"
 
 // RunnerPath is the root-sandboxed Docker updater the scheduled service
 // executes.
-const RunnerPath = version.BinDir + "/linuxio-docker-update"
+const RunnerPath = version.LibexecDir + "/linuxio-docker-update"
 
 // UnitSpec is how the scheduled Docker updater is confined and ordered; the
 // service unit text (timer.go) is derived from it.

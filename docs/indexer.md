@@ -53,7 +53,7 @@ scoped reindexing never start an independent daemon.
 
 | Path or unit | Purpose |
 |--------------|---------|
-| `/usr/local/bin/linuxio-indexer` | Daemon and private full-scan worker |
+| `/usr/libexec/linuxio/linuxio-indexer` | Daemon and private full-scan worker |
 | `/etc/linuxio/indexer/config.yaml` | Strict two-field YAML configuration |
 | `/var/lib/linuxio/indexer/indexer.db` | Persistent, rebuildable SQLite cache |
 | `/run/linuxio/indexer.sock` | Root-only Unix API socket, `root:root`, mode `0600` |

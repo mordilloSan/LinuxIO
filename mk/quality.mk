@@ -85,6 +85,9 @@ test-installation-scripts: ## Run host-independent installer fixture tests
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running installer fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/installer-fixtures.sh"
+	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package-root fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/package-root-fixtures.sh"
 
 test-indexer-systemd-integration: ## Run the opt-in disposable-host indexer smoke test
 	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"

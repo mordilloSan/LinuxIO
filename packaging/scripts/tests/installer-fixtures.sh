@@ -223,7 +223,7 @@ assert_eq "$packaged_units" "$(printf '%s\n' "$unit_list" | sort)" "installer un
 # Every binary a packaged unit starts must be one the installer ships.
 while IFS= read -r exec_bin; do
 	assert_line "$exec_bin" "$binary_list" "ExecStart binary in packaging/systemd"
-done < <(sed -nE 's#^ExecStart=-?/usr/local/bin/([^ ]+).*#\1#p' "${REPO_ROOT}"/packaging/systemd/*.service | sort -u)
+done < <(sed -nE 's#^ExecStart=-?/usr/libexec/linuxio/([^ ]+).*#\1#p' "${REPO_ROOT}"/packaging/systemd/*.service | sort -u)
 # Workflows must read the manifest from make, not retype the binary list.
 if grep -Eq 'linuxio-webserver[ ,]+linuxio-bridge' "${REPO_ROOT}"/.github/workflows/*.yml; then
 	fail "workflows must use make print-binaries instead of retyping the binary list"
@@ -283,8 +283,8 @@ grep -Fqx 'RestrictAddressFamilies=AF_UNIX' "$INDEXER_SERVICE" || fail "indexer 
 if grep -Eq 'linuxio-webserver.socket|linuxio-indexer-tcp.socket' "$INDEXER_SERVICE"; then
 	fail "indexer service must depend only on its Unix activation socket"
 fi
-grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --config /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" || fail "indexer service must start the managed daemon directly"
-grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock' \
+grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --config /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" || fail "indexer service must start the managed daemon directly"
+grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock' \
 	"${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.service" || fail "index timer must use the private socket trigger"
 if grep -rEq 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' \
 	"${REPO_ROOT}/packaging/systemd" "${REPO_ROOT}/backend/auth"; then
@@ -349,7 +349,7 @@ grep -Fqx 'SocketMode=0600' "$JOBS_SOCKET" || fail "a job host socket must be pr
 grep -Fqx 'Accept=no' "$JOBS_SOCKET" || fail "one job host serves every connection of its uid"
 # The bridge recognizes the host by this name; the host takes no arguments.
 grep -Fqx 'FileDescriptorName=linuxio-jobs' "$JOBS_SOCKET" || fail "the job host socket must carry its name"
-grep -Fqx 'ExecStart=/usr/local/bin/linuxio-bridge' "$JOBS_HOST" || fail "a job host must start without arguments"
+grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-bridge' "$JOBS_HOST" || fail "a job host must start without arguments"
 grep -Fqx 'Wants=linuxio-jobs@%i.socket' "$JOBS_HOST" || fail "a job host must pull in its socket"
 grep -Fqx 'User=%i' "$JOBS_HOST" || fail "a job host must run as its own uid"
 grep -Fqx 'StateDirectoryMode=0700' "$JOBS_HOST" || fail "job records must be private to their uid"
@@ -408,19 +408,20 @@ assert_eq "$go_components" "$installer_components" "installer component list vs 
 	# shellcheck disable=SC1090
 	source "$RELEASE_INSTALLER"
 	fixture_dir=$(mktemp -d)
-	mkdir "${fixture_dir}/bin"
-	printf '#!/bin/sh\n[ "$1 $2" = "version --self" ] && echo "LinuxIO CLI v1.2.3"\n' >"${fixture_dir}/bin/linuxio"
+	# The CLI in one folder and the other programs in another, as installed.
+	mkdir "${fixture_dir}/cli" "${fixture_dir}/libexec"
+	printf '#!/bin/sh\n[ "$1 $2" = "version --self" ] && echo "LinuxIO CLI v1.2.3"\n' >"${fixture_dir}/cli/linuxio"
 	for name in webserver:"Web Server" bridge:Bridge indexer:Indexer monitoring:Monitoring worker:Worker docker-update:"Docker Updater"; do
-		printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "LinuxIO %s v1.2.3" && echo "more"\n' "${name#*:}" >"${fixture_dir}/bin/linuxio-${name%%:*}"
+		printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "LinuxIO %s v1.2.3" && echo "more"\n' "${name#*:}" >"${fixture_dir}/libexec/linuxio-${name%%:*}"
 	done
 	# The relay answers only without the variable that names Claude Code, so
 	# the installer must not hand it one from its own environment.
-	printf '#!/bin/sh\n[ -z "$LINUXIO_CLAUDE_BIN" ] && [ "$1" = "--version" ] && echo "LinuxIO Claude Relay v1.2.3"\n' >"${fixture_dir}/bin/linuxio-claude-relay"
+	printf '#!/bin/sh\n[ -z "$LINUXIO_CLAUDE_BIN" ] && [ "$1" = "--version" ] && echo "LinuxIO Claude Relay v1.2.3"\n' >"${fixture_dir}/libexec/linuxio-claude-relay"
 	export LINUXIO_CLAUDE_BIN=/opt/claude/bin/claude
 	# A program that cannot run, such as one built for another machine.
-	printf '#!/bin/sh\nexit 1\n' >"${fixture_dir}/bin/linuxio-auth"
-	chmod 0755 "${fixture_dir}/bin/"*
-	write_components_file "${fixture_dir}/bin" "${fixture_dir}/share/components" >/dev/null ||
+	printf '#!/bin/sh\nexit 1\n' >"${fixture_dir}/libexec/linuxio-auth"
+	chmod 0755 "${fixture_dir}/cli/linuxio" "${fixture_dir}/libexec/"*
+	write_components_file "${fixture_dir}/cli" "${fixture_dir}/libexec" "${fixture_dir}/share/components" >/dev/null ||
 		fail "recording the installed versions failed"
 	expected=$'LinuxIO CLI v1.2.3\nLinuxIO Web Server v1.2.3\nLinuxIO Bridge v1.2.3\nLinuxIO Indexer v1.2.3\nLinuxIO Monitoring v1.2.3\nLinuxIO Worker v1.2.3\nLinuxIO Docker Updater v1.2.3\nLinuxIO Claude Relay v1.2.3'
 	assert_eq "$expected" "$(cat "${fixture_dir}/share/components")" "recorded versions"
@@ -431,8 +432,9 @@ assert_eq "$go_components" "$installer_components" "installer component list vs 
 printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the CLI and the webserver"
 
 # Units and drop-ins a saved setting wrote hold the command lines of the
-# release that wrote them; the installer rewrites those of releases up to
-# v0.54 and leaves everything else as it is.
+# release that wrote them; the installer rewrites those of earlier releases
+# (the words up to v0.54, the /usr/local/bin folder after) and leaves
+# everything else as it is.
 (
 	# shellcheck disable=SC1090
 	source "$RELEASE_INSTALLER"
@@ -453,6 +455,12 @@ printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the C
 	# A drop-in from before the worker was a program of its own.
 	mkdir -p "${system}/dnf-automatic.service.d"
 	printf '[Service]\nExecStartPre=-/usr/local/bin/linuxio btrfs-snapshot pre-update\n' >"${system}/dnf-automatic.service.d/linuxio-alert.conf"
+	# A drop-in with this release's words in the folder earlier releases
+	# installed the programs in, and one already in this release's folder.
+	mkdir -p "${system}/dnf5-automatic.service.d" "${system}/mintupdate-automation-upgrade.service.d"
+	printf '[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider dnf5 --policy always\n' >"${system}/dnf5-automatic.service.d/linuxio-alert.conf"
+	printf '[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider mint --policy always\n' >"${system}/mintupdate-automation-upgrade.service.d/linuxio-alert.conf"
+	cp "${system}/mintupdate-automation-upgrade.service.d/linuxio-alert.conf" "${fixture_dir}/mint.before"
 	# Not a file LinuxIO writes: an administrator's own hook stays as it is.
 	printf '[Service]\nExecStopPost=/usr/local/bin/linuxio alert raise --source mine --key k --title T\n' >"${system}/other.service.d/mine.conf"
 	cp "${system}/other.service.d/mine.conf" "${fixture_dir}/mine.before"
@@ -460,42 +468,79 @@ printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the C
 
 	for pass in first second; do
 		rewrite_saved_unit_commands "$system" >/dev/null || fail "${pass} rewrite failed"
-		assert_eq $'[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio-worker snapshot' \
+		assert_eq $'[Service]\nType=oneshot\nExecStart=/usr/libexec/linuxio/linuxio-worker snapshot' \
 			"$(cat "${system}/linuxio-btrfs-snapshot.service")" "${pass} rewrite of the snapshot unit"
-		assert_eq $'[Service]\nExecStart=/usr/local/bin/linuxio-worker replicate' \
+		assert_eq $'[Service]\nExecStart=/usr/libexec/linuxio/linuxio-worker replicate' \
 			"$(cat "${system}/linuxio-btrfs-replicate.service")" "${pass} rewrite of the replication unit"
-		assert_eq $'[Service]\nExecStart=/usr/local/bin/linuxio-docker-update --config /etc/linuxio/docker-update.json' \
+		assert_eq $'[Service]\nExecStart=/usr/libexec/linuxio/linuxio-docker-update --config /etc/linuxio/docker-update.json' \
 			"$(cat "${system}/linuxio-docker-update.service")" "${pass} rewrite of the Docker update unit"
-		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver --verbose' \
+		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/libexec/linuxio/linuxio-webserver --verbose' \
 			"$(cat "${system}/linuxio-webserver.service.d/verbose.conf")" "${pass} rewrite of the webserver verbose drop-in"
-		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-indexer --config /etc/linuxio/indexer/config.yaml --verbose' \
+		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/libexec/linuxio/linuxio-indexer --config /etc/linuxio/indexer/config.yaml --verbose' \
 			"$(cat "${system}/linuxio-indexer.service.d/verbose.conf")" "${pass} rewrite of the indexer verbose drop-in"
-		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-monitoring --config /etc/linuxio/monitoring/config.yaml --verbose' \
+		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/libexec/linuxio/linuxio-monitoring --config /etc/linuxio/monitoring/config.yaml --verbose' \
 			"$(cat "${system}/linuxio-monitoring.service.d/verbose.conf")" "${pass} rewrite of the monitoring verbose drop-in"
-		assert_eq $'[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy on_change' \
+		assert_eq $'[Service]\nExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider apt --policy on_change' \
 			"$(cat "${system}/apt-daily-upgrade.service.d/linuxio-alert.conf")" "${pass} rewrite of the update alert drop-in"
-		assert_eq $'[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert pending-updates --provider apt' \
+		assert_eq $'[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert pending-updates --provider apt' \
 			"$(cat "${system}/apt-daily.service.d/linuxio-alert.conf")" "${pass} rewrite of the pending updates drop-in"
-		assert_eq $'[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update' \
+		assert_eq $'[Service]\nExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update' \
 			"$(cat "${system}/dnf-automatic.service.d/linuxio-alert.conf")" "${pass} rewrite of a drop-in with the oldest words"
+		assert_eq $'[Service]\nExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider dnf5 --policy always' \
+			"$(cat "${system}/dnf5-automatic.service.d/linuxio-alert.conf")" "${pass} rewrite of a drop-in naming the old folder"
+		cmp -s "${system}/mintupdate-automation-upgrade.service.d/linuxio-alert.conf" "${fixture_dir}/mint.before" ||
+			fail "${pass} rewrite changed a drop-in that already names /usr/libexec/linuxio"
 	done
 	cmp -s "${system}/other.service.d/mine.conf" "${fixture_dir}/mine.before" || fail "a file LinuxIO did not write was rewritten"
 	assert_eq "644" "$(stat -c %a "${system}/linuxio-btrfs-snapshot.service")" "rewritten unit mode"
 	# The webserver drop-in as v0.54 wrote it, with no "run" to mark it.
 	printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver -verbose\n' >"${system}/linuxio-webserver.service.d/verbose.conf"
 	rewrite_saved_unit_commands "$system" >/dev/null || fail "rewrite of a v0.54 drop-in failed"
-	assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver --verbose' \
+	assert_eq $'[Service]\nExecStart=\nExecStart=/usr/libexec/linuxio/linuxio-webserver --verbose' \
 		"$(cat "${system}/linuxio-webserver.service.d/verbose.conf")" "rewrite of the v0.54 webserver verbose drop-in"
 	rm -rf "$fixture_dir"
 )
 printf '   \033[1;32m✓\033[0m %s\n' "saved units and drop-ins get this release's command lines"
 
+# The CLI goes on PATH and the other programs in LinuxIO's own folder; the
+# copies earlier releases left in /usr/local/bin go, by name, and nothing else
+# there does.
+(
+	# shellcheck disable=SC1090
+	source "$RELEASE_INSTALLER"
+	assert_eq "/usr/bin" "$(binary_dir linuxio)" "folder of the CLI"
+	while IFS= read -r binary; do
+		[[ "$binary" == linuxio ]] && continue
+		assert_eq "/usr/libexec/linuxio" "$(binary_dir "$binary")" "folder of ${binary}"
+	done < <(binary_names)
+	assert_eq "/usr/local/bin" "$OLD_BIN_DIR" "folder earlier releases installed in"
+	fixture_dir=$(mktemp -d)
+	old="${fixture_dir}/old"
+	mkdir "$old"
+	while IFS= read -r binary; do
+		printf 'old\n' >"${old}/${binary}"
+	done < <(binary_names)
+	printf 'old\n' >"${old}/linuxio-btrfs-timer"
+	# A dangling link goes too, and a missing name is no failure.
+	rm -f "${old}/linuxio-worker" "${old}/linuxio-auth"
+	ln -s /nonexistent "${old}/linuxio-worker"
+	# The administrator's own files, whose names only start like LinuxIO's.
+	printf 'mine\n' >"${old}/linuxio-backup.sh"
+	printf 'mine\n' >"${old}/linuxio.bak"
+	for pass in first second; do
+		remove_old_binaries "$old" >/dev/null || fail "${pass} removal of the old copies failed"
+		assert_eq $'linuxio-backup.sh\nlinuxio.bak' "$(LC_ALL=C ls -A "$old")" "${pass} removal of the old copies"
+	done
+	rm -rf "$fixture_dir"
+)
+printf '   \033[1;32m✓\033[0m %s\n' "programs go to /usr/bin and /usr/libexec/linuxio; the old copies in /usr/local/bin are removed by name"
+
 # Scheduled units record their runs through two hook lines. The schedule units
 # are generated, so the lines reach them (and the snapshot, replication and
 # Docker update units) through one drop-in; linuxio-btrfs-resync@.service and
 # linuxio-btrfs-rebuild@.service carry them themselves.
-BEGIN_HOOK='ExecStartPre=-+/usr/local/bin/linuxio-worker scheduled-run begin --unit %n'
-END_HOOK='ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n'
+BEGIN_HOOK='ExecStartPre=-+/usr/libexec/linuxio/linuxio-worker scheduled-run begin --unit %n'
+END_HOOK='ExecStopPost=-+/usr/libexec/linuxio/linuxio-worker scheduled-run end --unit %n'
 run_record_dropin_fixtures() {
 	local checkout="$REPO_ROOT"
 	(
@@ -975,32 +1020,32 @@ selinux_case() {
 loaded="semodule -l
 semodule -E linuxio
 semodule -i linuxio.cil
-restorecon /usr/local/bin/linuxio-auth"
+restorecon /usr/libexec/linuxio/linuxio-auth"
 selinux_case "on Fedora without the module" "$loaded" "" "$(selinux_install fedora)"
 selinux_case "with an older module loaded" "$loaded" "" "$(selinux_install rocky LOADED="${selinux_fixture}/older.cil")"
 # The store holds the shipped module: no load (about 5 s), only the relabel
 # the replaced binary needs.
 selinux_case "with the shipped module loaded" "semodule -l
 semodule -E linuxio
-restorecon /usr/local/bin/linuxio-auth" "" "$(selinux_install almalinux LOADED="$SELINUX_CIL")"
+restorecon /usr/libexec/linuxio/linuxio-auth" "" "$(selinux_install almalinux LOADED="$SELINUX_CIL")"
 out=$(selinux_install fedora LOAD_FAILS=1)
 selinux_case "when the load fails" "$loaded" "did not load.*semodule -i ${selinux_checkout}/packaging/selinux/linuxio.cil" "$out"
 # A new or changed module where the SELinux folder is read-only (the in-app
 # updater) is not tried; the notice names the command that loads it.
 selinux_case "with the SELinux folder read-only" "semodule -l
 semodule -E linuxio
-restorecon /usr/local/bin/linuxio-auth" "read-only here.*semodule -i ${selinux_checkout}/packaging/selinux/linuxio.cil" \
+restorecon /usr/libexec/linuxio/linuxio-auth" "read-only here.*semodule -i ${selinux_checkout}/packaging/selinux/linuxio.cil" \
 	"$(selinux_install fedora LOADED="${selinux_fixture}/older.cil" DIR="${selinux_fixture}/no-such-dir")"
 selinux_case "when the fetch fails" "semodule -l
-restorecon /usr/local/bin/linuxio-auth" "Failed to fetch" "$(selinux_install fedora CHECKOUT="${selinux_fixture}/no-policy")"
+restorecon /usr/libexec/linuxio/linuxio-auth" "Failed to fetch" "$(selinux_install fedora CHECKOUT="${selinux_fixture}/no-policy")"
 selinux_case "with a policy file not of the shipped form" "semodule -l
-restorecon /usr/local/bin/linuxio-auth" "not what LinuxIO ships" "$(selinux_install fedora CHECKOUT="${selinux_fixture}/bad-policy")"
+restorecon /usr/libexec/linuxio/linuxio-auth" "not what LinuxIO ships" "$(selinux_install fedora CHECKOUT="${selinux_fixture}/bad-policy")"
 # No policy store: with SELinux on, a notice; either way the relabel.
 selinux_case "without a policy store, SELinux on" "semodule -l
-restorecon /usr/local/bin/linuxio-auth" "not checked" "$(selinux_install centos STORE=0)"
+restorecon /usr/libexec/linuxio/linuxio-auth" "not checked" "$(selinux_install centos STORE=0)"
 selinux_case "without a policy store, SELinux off" "semodule -l
-restorecon /usr/local/bin/linuxio-auth" "" "$(selinux_install centos STORE=0 ENABLED=0)"
-selinux_case "without semodule" "restorecon /usr/local/bin/linuxio-auth" "" \
+restorecon /usr/libexec/linuxio/linuxio-auth" "" "$(selinux_install centos STORE=0 ENABLED=0)"
+selinux_case "without semodule" "restorecon /usr/libexec/linuxio/linuxio-auth" "" \
 	"$(selinux_install fedora TOOLPATH="${selinux_relabel_only}:${selinux_tools}")"
 selinux_case "without semodule and restorecon" "" "" "$(selinux_install fedora TOOLPATH="$selinux_tools")"
 selinux_case "when restorecon fails" "$loaded" "Failed to label" "$(selinux_install fedora RESTORECON_EXIT=1)"
@@ -1056,7 +1101,14 @@ fi
 # linuxio-auth is still there, it would leave that file unlabeled_t, which
 # systemd cannot run. Only a module that is loaded, whether semodule lists
 # bare names or names with versions, and only with semodule.
-rm_bin_at=$(grep -n -m1 -F 'rm -f /usr/local/bin/linuxio*' "$UNINSTALLER" | cut -d: -f1 || true)
+rm_bin_at=$(grep -n -m1 -Fx 'rm -rf /usr/libexec/linuxio' "$UNINSTALLER" | cut -d: -f1 || true)
+[[ -n "$rm_bin_at" ]] || fail "the uninstaller does not remove /usr/libexec/linuxio"
+# It removes the copies earlier releases left in /usr/local/bin by the
+# installer's names, and nothing else there.
+uninstall_old=$(sed -n 's/^for binary in \(linuxio .*\); do$/\1/p' "$UNINSTALLER" | tr ' ' '\n')
+assert_eq "$(printf '%s\n' "$binary_list" linuxio-btrfs-timer)" "$uninstall_old" "names the uninstaller removes from /usr/local/bin"
+grep -Fqx '	rm -f "/usr/local/bin/${binary}"' "$UNINSTALLER" || fail "the uninstaller does not remove the old copies by name"
+grep -Fqx 'rm -f /usr/bin/linuxio' "$UNINSTALLER" || fail "the uninstaller does not remove /usr/bin/linuxio"
 rm_module_at=$(grep -n -m1 -F 'semodule -r linuxio' "$UNINSTALLER" | cut -d: -f1 || true)
 [[ -n "$rm_module_at" ]] || fail "the uninstaller does not remove the SELinux module"
 ((rm_bin_at < rm_module_at)) || fail "the uninstaller removes the SELinux module before the binaries"
@@ -1087,18 +1139,18 @@ assert_eq "" "$(selinux_calls "$out")" "uninstall without semodule"
 assert_line "the uninstall went on" "$out" "uninstall without semodule"
 
 # The policy file: its file contexts name only files LinuxIO puts there (the
-# auth binary in the installer's BIN_DIR, the banner update-issue writes); the
+# auth binary in the installer's LIBEXEC_DIR, the banner update-issue writes); the
 # banner's sits in an optional block, so a policy without its type still
 # loads the rest; and its parentheses balance outside comments and strings.
-bin_dir=$(bash -c 'source "$1"; printf "%s\n" "$BIN_DIR"' _ "$RELEASE_INSTALLER")
+libexec_dir=$(bash -c 'source "$1"; printf "%s\n" "$LIBEXEC_DIR"' _ "$RELEASE_INSTALLER")
 issue_file=$(sed -n 's/^OUTPUT_FILE="\${OUTPUT_FILE:-\(.*\)}"$/\1/p' "${SCRIPT_DIR}/../update-issue")
 [[ -n "$issue_file" ]] || fail "update-issue has no default OUTPUT_FILE"
 printf '%s\n' "$binary_list" | grep -Fqx linuxio-auth || fail "linuxio-auth is not an installed binary"
 filecon_paths=$(sed -n 's/^[[:blank:]]*(filecon "\([^"]*\)".*/\1/p' "$SELINUX_CIL")
-assert_line "${bin_dir}/linuxio-auth" "$filecon_paths" "file context of the auth binary"
+assert_line "${libexec_dir}/linuxio-auth" "$filecon_paths" "file context of the auth binary"
 while IFS= read -r path; do
 	case "$path" in
-	"${bin_dir}/linuxio-auth" | "$issue_file") ;;
+	"${libexec_dir}/linuxio-auth" | "$issue_file") ;;
 	*) fail "linuxio.cil gives a file context to ${path}, which LinuxIO does not install" ;;
 	esac
 done <<<"$filecon_paths"

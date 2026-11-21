@@ -35,15 +35,15 @@ import {
 // It leaves the apt timers stopped until the next boot, the e2e pool on vdb
 // and vdc that ensurePool creates on a fresh VM (with its 1 GiB fill.bin), the
 // scrub's completed record in the root job host's store, that host on a
-// replaced binary, /usr/local/bin/linuxio-monitoring rewritten (a copy renamed
-// over it) and linuxio-monitoring.service restarted; `make vm-reset` undoes
-// all of it.
+// replaced binary, /usr/libexec/linuxio/linuxio-monitoring rewritten (a copy
+// renamed over it) and linuxio-monitoring.service restarted; `make vm-reset`
+// undoes all of it.
 
 const OVERRIDE = "/etc/needrestart/conf.d/linuxio.conf";
 const HOST = "linuxio-jobs@0.service";
 /** A daemon the override does not exempt: the installer restarts it. */
 const DAEMON = "linuxio-monitoring.service";
-const DAEMON_BINARY = "/usr/local/bin/linuxio-monitoring";
+const DAEMON_BINARY = "/usr/libexec/linuxio/linuxio-monitoring";
 /** The build directory `make vm-install` builds (the Makefile's default BIN_DIR). */
 const BUILD = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -142,7 +142,9 @@ test("needrestart leaves a job host that runs a replaced binary alone", async ({
     expect(await mainPid(HOST), "the install left the job host running").toBe(
       host,
     );
-    expect(await exe(host)).toBe("/usr/local/bin/linuxio-bridge (deleted)");
+    expect(await exe(host)).toBe(
+      "/usr/libexec/linuxio/linuxio-bridge (deleted)",
+    );
     expect((await jobRecord(job.id))?.state).toBe("running");
 
     // The install restarted the daemons. Replace one daemon's binary as the

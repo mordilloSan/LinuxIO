@@ -36,21 +36,21 @@ var dropins = []dropin{
 		unit: "linuxio-webserver.service",
 		content: `[Service]
 ExecStart=
-ExecStart=` + version.BinDir + `/linuxio-webserver --verbose
+ExecStart=` + version.LibexecDir + `/linuxio-webserver --verbose
 `,
 	},
 	{
 		unit: "linuxio-indexer.service",
 		content: `[Service]
 ExecStart=
-ExecStart=` + version.BinDir + `/linuxio-indexer --config ` + version.ConfigDir + `/indexer/config.yaml --verbose
+ExecStart=` + version.LibexecDir + `/linuxio-indexer --config ` + version.ConfigDir + `/indexer/config.yaml --verbose
 `,
 	},
 	{
 		unit: "linuxio-monitoring.service",
 		content: `[Service]
 ExecStart=
-ExecStart=` + version.BinDir + `/linuxio-monitoring --config ` + version.ConfigDir + `/monitoring/config.yaml --verbose
+ExecStart=` + version.LibexecDir + `/linuxio-monitoring --config ` + version.ConfigDir + `/monitoring/config.yaml --verbose
 `,
 	},
 }

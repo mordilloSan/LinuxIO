@@ -15,7 +15,7 @@ func TestWriteNotifyDropInContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(fake.files[aptAlertDropIn])
-	want := "[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy on_change\n"
+	want := "[Service]\nExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider apt --policy on_change\n"
 	if got != want {
 		t.Fatalf("drop-in = %q, want %q", got, want)
 	}
@@ -48,11 +48,11 @@ func TestReadNotifyPolicy(t *testing.T) {
 	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
 		t.Fatalf("missing drop-in = %q, want on_failure", got)
 	}
-	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider dnf --policy always\n")
+	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider dnf --policy always\n")
 	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyAlways {
 		t.Fatalf("policy = %q", got)
 	}
-	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider dnf --policy sometimes\n")
+	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider dnf --policy sometimes\n")
 	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
 		t.Fatalf("invalid policy read as %q, want on_failure", got)
 	}
@@ -69,7 +69,7 @@ func TestReadNotifyPolicyFallsBackOnlyForOnChange(t *testing.T) {
 		AutoUpdateNotifyAlways:    AutoUpdateNotifyAlways,
 		AutoUpdateNotifyOnFailure: AutoUpdateNotifyOnFailure,
 	} {
-		fake.files[aptAlertDropIn] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy " + string(stored) + "\n")
+		fake.files[aptAlertDropIn] = []byte("[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider apt --policy " + string(stored) + "\n")
 		if got := readNotifyPolicy(host, aptUpgradeService, offered); got != want {
 			t.Errorf("stored %q read as %q, want %q", stored, got, want)
 		}
@@ -109,7 +109,7 @@ func TestWritePendingDropIn(t *testing.T) {
 	if err := writePendingDropIn(host, aptRefreshService, "apt", true); err != nil {
 		t.Fatal(err)
 	}
-	want := "[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert pending-updates --provider apt\n"
+	want := "[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert pending-updates --provider apt\n"
 	if got := string(fake.files[path]); got != want {
 		t.Fatalf("drop-in = %q, want %q", got, want)
 	}

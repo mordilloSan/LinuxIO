@@ -126,6 +126,19 @@ and installer tests consume. `make localinstall` runs
 `install-linuxio-binaries.sh --local --build-dir build/`. Only
 `common/version.Version` is stamped into binaries at link time.
 
+`make package-root DESTDIR=<empty folder>` lays the built programs and the
+files under `packaging/` out as the tree a package installs
+(`packaging/scripts/package-root.sh`): `usr/bin/linuxio`, the other programs
+in `usr/libexec/linuxio` with the five that systemd runs as root at mode
+0700, the units and the run-record drop-ins in `usr/lib/systemd/system`, and
+the configuration under `etc`. It builds nothing, runs without root, sets
+modes and not owners, and refuses a folder that is not empty. What differs
+between distribution families is not in the tree: the PAM file, the SELinux
+module, the needrestart override, the login banner hooks and the licences.
+`packaging/scripts/tests/package-root-fixtures.sh`, part of
+`make test-installation-scripts`, checks every path and mode of the tree
+against a written list, and that every program a unit starts is in it.
+
 ## Test VM
 
 `mk/vm.mk` drives a disposable Ubuntu 26.04 VM (or Fedora 45, with
@@ -850,7 +863,7 @@ The full index groups the supported targets as follows:
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
-- installation: `localinstall`, `reinstall`, `uninstall`
+- installation: `localinstall`, `reinstall`, `uninstall`, `package-root`
 - test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-update-build`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,

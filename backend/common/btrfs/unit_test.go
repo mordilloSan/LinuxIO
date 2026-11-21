@@ -20,7 +20,7 @@ func TestRenderTimerHourlyPersistent(t *testing.T) {
 	if got := string(RenderTimer()); got != timer {
 		t.Errorf("RenderTimer =\n%q\nwant\n%q", got, timer)
 	}
-	const unit = "[Unit]\nDescription=LinuxIO btrfs timeline snapshots\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio-worker snapshot\n"
+	const unit = "[Unit]\nDescription=LinuxIO btrfs timeline snapshots\n\n[Service]\nType=oneshot\nExecStart=/usr/libexec/linuxio/linuxio-worker snapshot\n"
 	if got := string(RenderUnit()); got != unit {
 		t.Errorf("RenderUnit =\n%q\nwant\n%q", got, unit)
 	}
@@ -29,7 +29,7 @@ func TestRenderTimerHourlyPersistent(t *testing.T) {
 // The replication unit is a oneshot with no [Install] section: nothing but
 // the snapshot pass starts it, and its hooks come from the packaged drop-in.
 func TestRenderReplicateUnit(t *testing.T) {
-	const unit = "[Unit]\nDescription=LinuxIO btrfs replication\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio-worker replicate\n"
+	const unit = "[Unit]\nDescription=LinuxIO btrfs replication\n\n[Service]\nType=oneshot\nExecStart=/usr/libexec/linuxio/linuxio-worker replicate\n"
 	if got := string(RenderReplicateUnit()); got != unit {
 		t.Errorf("RenderReplicateUnit =\n%q\nwant\n%q", got, unit)
 	}
@@ -51,7 +51,7 @@ func TestRenderedServicesVerify(t *testing.T) {
 	}
 	dir := t.TempDir()
 	for name, content := range map[string][]byte{SnapshotServiceName: RenderUnit(), ReplicateServiceName: RenderReplicateUnit()} {
-		unit := strings.Replace(string(content), version.BinDir+"/linuxio-worker", exe, 1)
+		unit := strings.Replace(string(content), version.LibexecDir+"/linuxio-worker", exe, 1)
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(unit), 0o600); err != nil {
 			t.Fatal(err)

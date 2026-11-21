@@ -107,13 +107,13 @@ hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
 
-The installer places nine binaries in `/usr/local/bin`: `linuxio`,
-`linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
-`linuxio-indexer`, `linuxio-monitoring`, `linuxio-worker`, and
-`linuxio-claude-relay`. Only `linuxio` is a command to type; the programs
-systemd runs as root are installed so only root can start them. From a
-checkout, `make localinstall` runs the same installer with `--local` against the
-binaries in `build/`.
+The installer places the `linuxio` command in `/usr/bin` and eight programs in
+`/usr/libexec/linuxio`: `linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`,
+`linuxio-docker-update`, `linuxio-indexer`, `linuxio-monitoring`,
+`linuxio-worker`, and `linuxio-claude-relay`. Only `linuxio` is a command to
+type; the programs systemd runs as root are installed so only root can start
+them. From a checkout, `make localinstall` runs the same installer with
+`--local` against the binaries in `build/`.
 
 The first-party `linuxio-monitoring` binary is installed and enabled with
 LinuxIO rather than through Capability Manager. It samples the host, keeps the

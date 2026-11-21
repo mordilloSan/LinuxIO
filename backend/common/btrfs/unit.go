@@ -30,7 +30,7 @@ const (
 // RenderUnit returns the oneshot service the snapshot timer starts.
 func RenderUnit() []byte {
 	return []byte("[Unit]\nDescription=LinuxIO btrfs timeline snapshots\n\n[Service]\nType=oneshot\nExecStart=" +
-		version.BinDir + "/linuxio-worker snapshot\n")
+		version.LibexecDir + "/linuxio-worker snapshot\n")
 }
 
 // RenderTimer returns the hourly timer; Persistent catches up missed runs.
@@ -43,7 +43,7 @@ func RenderTimer() []byte {
 // jobs. It has no [Install] section: only the snapshot pass starts it.
 func RenderReplicateUnit() []byte {
 	return []byte("[Unit]\nDescription=LinuxIO btrfs replication\n\n[Service]\nType=oneshot\nExecStart=" +
-		version.BinDir + "/linuxio-worker replicate\n")
+		version.LibexecDir + "/linuxio-worker replicate\n")
 }
 
 // UnitFile is a unit the snapshot pass starts: its name, the file it is

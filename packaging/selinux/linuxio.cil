@@ -1,5 +1,5 @@
 ; LinuxIO: a domain for linuxio-auth (hand-written CIL, no macros).
-; systemd starts /usr/local/bin/linuxio-auth for each connection to
+; systemd starts /usr/libexec/linuxio/linuxio-auth for each connection to
 ; /run/linuxio/auth.sock (linuxio-auth@.service) and enters linuxio_auth_t
 ; instead of unconfined_service_t. The domain is as unconfined as
 ; unconfined_service_t; it adds one permission, to start linuxio-bridge as
@@ -16,7 +16,7 @@
 (typeattributeset exec_type (linuxio_auth_exec_t))
 (typeattributeset entry_type (linuxio_auth_exec_t))
 (typeattributeset direct_init_entry (linuxio_auth_exec_t))
-(filecon "/usr/local/bin/linuxio-auth" file (system_u object_r linuxio_auth_exec_t ((s0) (s0))))
+(filecon "/usr/libexec/linuxio/linuxio-auth" file (system_u object_r linuxio_auth_exec_t ((s0) (s0))))
 
 ; The domain systemd enters when it runs the executable.
 (type linuxio_auth_t)
