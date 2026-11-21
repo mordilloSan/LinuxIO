@@ -265,7 +265,9 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
    one `ssb`.
 
    ```sh
-   GNUPGHOME=$(mktemp -d) sh -c 'gpg --quiet --import linuxio-signing-subkey.asc && gpg --list-secret-keys'
+   check=$(mktemp -d)
+   GNUPGHOME=$check sh -c 'gpg --quiet --import linuxio-signing-subkey.asc && gpg --list-secret-keys; gpgconf --kill all'
+   rm -rf "$check"
    gh secret set LINUXIO_SIGNING_KEY --env release --repo OWNER/REPO <linuxio-signing-subkey.asc
    ```
 
