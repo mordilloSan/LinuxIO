@@ -119,6 +119,31 @@ anyone the version of all nine programs, as the installer recorded them.
 daemons live through a SIGHUP reload and open sessions at the next login; it
 persists across restarts and is also in Settings.
 
+#### Every flag
+
+Seven programs start with flags only. These are all of them, beside `--help`,
+`-h` and `--version`:
+
+| Program | Flag | Default | Who passes it |
+|---|---|---|---|
+| `linuxio-webserver` | `--port N` | `8090` | No unit. systemd hands the server its listening socket; the port is for a start without one, and it is the port the redirect from HTTP to HTTPS names |
+| `linuxio-webserver` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
+| `linuxio-bridge` | none | | Started with no arguments |
+| `linuxio-auth` | none | | Started with no arguments |
+| `linuxio-claude-relay` | none of its own | | Every argument is Claude Code's |
+| `linuxio-docker-update` | `--config PATH` | `/etc/linuxio/docker-update.json` | The saved `linuxio-docker-update.service`, with the default path |
+| `linuxio-indexer` | `--config PATH` | `/etc/linuxio/indexer/config.yaml` | `linuxio-indexer.service`, with the default path; the daemon passes it on to its scanner |
+| `linuxio-indexer` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
+| `linuxio-indexer` | `--trigger-index` | | `linuxio-indexer-index.service`, for the timer: it asks the running daemon for a full index and exits |
+| `linuxio-indexer` | `--socket-path PATH` | `/run/linuxio/indexer.sock` | `linuxio-indexer-index.service`, with the default path; only with `--trigger-index` |
+| `linuxio-indexer` | `--index-mode` | | The daemon itself, for the scanner it starts as a child process |
+| `linuxio-monitoring` | `--config PATH` | `/etc/linuxio/monitoring/config.yaml` | `linuxio-monitoring.service`, with the default path |
+| `linuxio-monitoring` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
+
+`--trigger-index` and `--index-mode` must come first on the command line,
+since each chooses what the program does. The flags of the worker's words
+are in the list below.
+
 The words of `linuxio-worker` are:
 
 - `snapshot [--now RFC3339]` and `snapshot pre-update`: the timeline
