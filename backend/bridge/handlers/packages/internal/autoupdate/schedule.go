@@ -19,15 +19,19 @@ func onCalendarFor(freq string) (string, error) {
 	}
 }
 
+// timerDropInPath is the drop-in that sets an update timer's schedule.
+func timerDropInPath(timer string) string {
+	return filepath.Join("/etc/systemd/system", timer+".d", "linuxio.conf")
+}
+
 func writeTimerDropIn(host backendHost, timer, onCalendar string) error {
-	path := filepath.Join("/etc/systemd/system", timer+".d", "linuxio.conf")
+	path := timerDropInPath(timer)
 	body := "[Timer]\nOnCalendar=\nOnCalendar=" + onCalendar + "\nRandomizedDelaySec=30m\n"
 	return host.writeFileAtomic(path, []byte(body), 0o644)
 }
 
 func readTimerFrequency(host backendHost, timer string) string {
-	path := filepath.Join("/etc/systemd/system", timer+".d", "linuxio.conf")
-	data, err := host.readFile(path)
+	data, err := host.readFile(timerDropInPath(timer))
 	if err != nil {
 		return "daily"
 	}

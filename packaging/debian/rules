@@ -23,7 +23,6 @@ override_dh_auto_install:
 	"$(LINUXIO_PACKAGING_DIR)/scripts/package-root.sh" --build-dir "$(LINUXIO_BUILD_DIR)" --destdir "$(CURDIR)/$(pkg)"
 	install -D -m 0644 "$(LINUXIO_PACKAGING_DIR)/etc/pam.d/linuxio" $(pkg)/etc/pam.d/linuxio
 	install -D -m 0644 "$(LINUXIO_PACKAGING_DIR)/etc/needrestart/conf.d/linuxio.conf" $(pkg)/etc/needrestart/conf.d/linuxio.conf
-	install -D -m 0755 "$(LINUXIO_PACKAGING_DIR)/etc/update-motd.d/60-linuxio" $(pkg)/etc/update-motd.d/60-linuxio
 	cd $(pkg) && find . -type f -perm 0700 -printf '%P\n' >"$(CURDIR)/debian/root-only-programs"
 	install -D -m 0644 "$(LINUXIO_PACKAGING_DIR)/man/linuxio.8" man/linuxio.8
 

@@ -20,6 +20,8 @@
 %global enabled_units linuxio.target linuxio-indexer-index.timer linuxio-monitoring.service linuxio-jobs@0.service
 %global btrfs_units linuxio-btrfs-health.timer linuxio-btrfs-degraded.service
 %global started_units linuxio.target linuxio-monitoring.service linuxio-issue.service
+# The timers LinuxIO writes to /etc/systemd/system when a setting is saved.
+%global written_timers linuxio-btrfs-snapshot.timer linuxio-docker-update.timer
 
 Name:           linuxio
 Version:        %{linuxio_version}
@@ -58,9 +60,6 @@ cp -p '%{linuxio_source_dir}/LICENSE' '%{linuxio_source_dir}/docs/THIRD_PARTY_NO
 '%{linuxio_packaging_dir}/scripts/package-root.sh' --build-dir '%{linuxio_build_dir}' --destdir '%{buildroot}'
 install -D -m 0644 '%{linuxio_packaging_dir}/etc/pam.d/linuxio.rhel' %{buildroot}%{_sysconfdir}/pam.d/linuxio
 install -D -m 0644 '%{linuxio_packaging_dir}/selinux/linuxio.cil' %{buildroot}%{selinux_module}
-# The SSH banner: pam_motd reads /etc/motd.d.
-install -d -m 0755 %{buildroot}%{_sysconfdir}/motd.d
-ln -s ../../run/linuxio/issue %{buildroot}%{_sysconfdir}/motd.d/linuxio
 (
 	cd %{buildroot}
 	find . -mindepth 1 -type d \( -name linuxio -o -path '*/linuxio/*' -o -name '*.service.d' \) -printf '%%%%dir /%%P\n'
@@ -118,6 +117,20 @@ fi
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || :
 fi
+# The login banner: SSH logins (pam_motd) show /run/linuxio/issue through
+# this link. Made on the first install only, so one an administrator deleted
+# stays deleted at an update, and never over a file of someone else's;
+# %%postun deletes it while it is still LinuxIO's. The DEB's postinst does the
+# same, and also links /etc/issue.d/linuxio.issue for the console: here
+# SELinux refuses agetty (getty_t) the file's type, motd_var_run_t, which
+# sshd needs (docs/process-systemd-architecture.md, "Login banner").
+if [ "$1" -eq 1 ]; then
+	link=%{_sysconfdir}/motd.d/linuxio
+	if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+		mkdir -p "$(dirname "$link")"
+		ln -s ../../run/linuxio/issue "$link"
+	fi
+fi
 if [ "$1" -eq 1 ] && [ -d /run/systemd/system ]; then
 	systemctl start %{started_units} || :
 fi
@@ -135,6 +148,17 @@ if [ "$1" -eq 0 ] && [ -d /run/systemd/system ]; then
 	systemctl stop linuxio.target linuxio-webserver.socket linuxio-auth.socket linuxio-indexer.socket \
 		linuxio-indexer-index.timer linuxio-btrfs-health.timer linuxio-issue.service $hosts || :
 fi
+# The timers LinuxIO wrote: left running, each would start a service this
+# removal takes away. %%postun deletes their files. One at a time: systemctl
+# refuses the whole list when one of them was never written.
+if [ "$1" -eq 0 ]; then
+	for unit in %{written_timers}; do
+		if [ -d /run/systemd/system ]; then
+			systemctl stop "$unit" >/dev/null 2>&1 || :
+		fi
+		systemctl --no-reload disable "$unit" >/dev/null 2>&1 || :
+	done
+fi
 %systemd_preun %{enabled_units} %{btrfs_units}
 
 %postun
@@ -142,6 +166,50 @@ fi
 # the job hosts (linuxio-jobs@*) are outside linuxio.target and run on, the
 # update that started this among them (docs/jobs.md, Updates).
 %systemd_postun_with_restart %{started_units}
+# On removal, what LinuxIO itself wrote under /etc/systemd/system while it
+# ran, and the login banner's link while it is still LinuxIO's: rpm
+# removes only the files it installed. Exact paths, kept equal to the DEB's
+# list (packaging/debian/postrm); a test of each writer holds both lists to
+# the paths it writes. What LinuxIO writes for something an administrator set
+# up stays, since it works without LinuxIO: scheduled scripts
+# (linuxio-schedule-*), the rsync service, Docker's and the swap units'
+# drop-ins.
+if [ "$1" -eq 0 ]; then
+	written_files="
+/etc/systemd/system/linuxio-btrfs-snapshot.timer
+/etc/systemd/system/linuxio-docker-update.timer
+/etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf
+/etc/systemd/system/linuxio-webserver.service.d/verbose.conf
+/etc/systemd/system/linuxio-indexer.service.d/verbose.conf
+/etc/systemd/system/linuxio-monitoring.service.d/verbose.conf
+/etc/systemd/system/apt-daily.service.d/linuxio-alert.conf
+/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf
+/etc/systemd/system/dnf-automatic.service.d/linuxio-alert.conf
+/etc/systemd/system/dnf5-automatic.service.d/linuxio-alert.conf
+/etc/systemd/system/mintupdate-automation-upgrade.service.d/linuxio-alert.conf
+/etc/systemd/system/apt-daily.timer.d/linuxio.conf
+/etc/systemd/system/apt-daily-upgrade.timer.d/linuxio.conf
+/etc/systemd/system/dnf-automatic.timer.d/linuxio.conf
+/etc/systemd/system/dnf5-automatic.timer.d/linuxio.conf
+/etc/systemd/system/mintupdate-automation-upgrade.timer.d/linuxio.conf
+"
+	for path in $written_files; do
+		if [ -e "$path" ] || [ -L "$path" ]; then
+			rm -f "$path"
+			# The drop-in folder too, while nothing else is in it.
+			case "$(dirname "$path")" in
+			*.d) rmdir "$(dirname "$path")" 2>/dev/null || : ;;
+			esac
+		fi
+	done
+	link=%{_sysconfdir}/motd.d/linuxio
+	if [ "$(readlink "$link" 2>/dev/null)" = ../../run/linuxio/issue ]; then
+		rm -f "$link"
+	fi
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || :
+	fi
+fi
 # The module goes only when the package does, after the files: removed while
 # linuxio-auth is still there, it would leave the file unlabeled_t.
 %selinux_modules_uninstall -s %{selinuxtype} linuxio

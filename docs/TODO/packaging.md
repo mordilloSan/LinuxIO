@@ -316,7 +316,7 @@ Use this common layout:
 - [x] Continue using `/etc/systemd/system` only for administrator or
       runtime-generated drop-ins. The packages put only the links of the
       units they enable there.
-- [ ] Ship the three job units whose text is the same on every host as
+- [x] Ship the three job units whose text is the same on every host as
       package units, as `linuxio-btrfs-health.timer` and
       `linuxio-btrfs-degraded.service` already are:
       `linuxio-btrfs-snapshot.service`, `linuxio-btrfs-replicate.service`
@@ -430,44 +430,46 @@ The banner keeps its design, which is Cockpit's (`src/systemd/update-issue`,
 `tools/debian/cockpit-ws.postinst` on Cockpit's `main`, read 2026-11-21).
 Decided 2026-11-21: take the following from Cockpit.
 
-- [ ] Ship `packaging/scripts/update-issue` as the package file
+- [x] Ship `packaging/scripts/update-issue` as the package file
       `/usr/share/linuxio/issue/update-issue`; nothing fetches it.
-- [ ] Read the port from systemd (the last line of
+- [x] Read the port from systemd (the last line of
       `systemctl show --property Listen linuxio-webserver.socket`) instead of
       parsing the unit file, so a port set in a drop-in is the port shown.
-- [ ] Show the address before the login prompt as well: a link
+- [x] Show the address before the login prompt as well: a link
       `/etc/issue.d/linuxio.issue` beside `/etc/motd.d/linuxio`, both to
       `../../run/linuxio/issue`.
-- [ ] Use the same two links on the Debian family and delete
+- [x] Use the same two links on the Debian family and delete
       `packaging/etc/update-motd.d/60-linuxio`, if the Ubuntu check below
       passes; otherwise that script stays.
-- [ ] Create the links in the package's post-install step, on first install
+- [x] Create the links in the package's post-install step, on first install
       only, so an administrator who deletes them does not get them back at
       an update. Removal deletes them only while they are still LinuxIO's
       links.
-- [ ] When LinuxIO stops, write "Start LinuxIO with: linuxio start" into the
+- [x] When LinuxIO stops, write "Start LinuxIO with: linuxio start" into the
       same file. One file, not Cockpit's active and inactive files with a
       link switched between them: the SELinux module names
       `/run/linuxio/issue`, and one file leaves the module as it is.
 
 Kept from LinuxIO's script, which Cockpit's does not have:
 
-- [ ] The fallback address for a host with no default route (the first
+- [x] The fallback address for a host with no default route (the first
       global IPv4 address on an interface that is not `lo`, `docker*`,
       `virbr*` or `br-*`).
-- [ ] The `restorecon` of the file, without which `sshd` may not read it on
+- [x] The `restorecon` of the file, without which `sshd` may not read it on
       an enforcing RHEL-family host.
-- [ ] The script stays `bash` and runs once, from `linuxio-issue.service`;
+- [x] The script stays `bash` and runs once, from `linuxio-issue.service`;
       its hostname and address lookups stay as they are.
 
 Checks, each in the VM as the package installs it and again after a reboot:
 
-- [ ] Ubuntu: a link in `/etc/motd.d` shows at SSH login.
-- [ ] Fedora, enforcing: the console shows the banner through `/etc/issue.d`
-      with no denial. The module labels the file `motd_var_run_t` for `sshd`,
-      and whether the console's login program may read that type is not
-      known. If it is refused, either the module gains a rule or the RHEL
-      family gets no link in `/etc/issue.d`.
+- [x] Ubuntu: a link in `/etc/motd.d` shows at SSH login.
+- [x] Fedora, enforcing: the console does not show the banner through
+      `/etc/issue.d`. The policy gives `getty_t` no read on `motd_var_run_t`,
+      the type the module labels the file with for `sshd`; with SELinux
+      permissive the console shows it. So the RHEL family gets the SSH link
+      only, no link in `/etc/issue.d`, and the module is unchanged. The
+      alternative, one rule in an `optional` block letting `getty_t` read
+      that type, was not taken: it is the owner's to decide.
 
 ## 2. Build native DEB and RPM packages
 
@@ -562,7 +564,7 @@ Checks, each in the VM as the package installs it and again after a reboot:
 - [x] On removal, stop and disable services while preserving application data.
       The target, the sockets, monitoring, the banner and every job host and
       job socket stop; what the install enabled is disabled.
-- [ ] On removal, also delete what LinuxIO itself wrote under
+- [x] On removal, also delete what LinuxIO itself wrote under
       `/etc/systemd/system` while it ran, as `uninstall.sh` does today; a
       package manager removes only the files it installed. Decided
       2026-11-21. `/etc/linuxio` and `/var/lib/linuxio` stay.
@@ -576,6 +578,13 @@ Checks, each in the VM as the package installs it and again after a reboot:
         (`linuxio.conf`). They hold only a time and would break nothing;
         they go too, so removal leaves nothing of LinuxIO's there, and the
         distribution's own schedule returns.
+      - The indexer timer's schedule drop-in, which configures a unit the
+        package removes.
+      - What stays, because it runs without LinuxIO: the scheduled-script
+        units (`linuxio-schedule-*`, which run an administrator's script
+        kept under `/etc/linuxio/schedules`), `linuxio-rsync.service`,
+        Docker's `linuxio-*.conf` drop-ins (its data-root mount order and
+        host-IP wait) and the memory page's hold-off drop-ins on swap units.
       - After a removal and a new install these settings are switched on
         again by hand, as after the uninstaller today.
 - [x] Add `make package-deb` and `make package-rpm`. Each fails, naming the
@@ -849,7 +858,8 @@ one compile
         (`package-repository.spec.ts`, `jobs-phase5a.spec.ts`); the
         unattended upgrade is not run.
 - [ ] Verify failed and cancelled updates do not restart LinuxIO.
-- [ ] Pass the two login banner checks in "Login banner".
+- [x] Pass the two login banner checks in "Login banner" (the Fedora one
+      ended in its fallback).
 - [ ] Verify APT and DNF reject tampered metadata and packages.
       - Seen 2026-11-21 (`package-repository.spec.ts`): apt fails with Hash
         Sum mismatch on a changed `Packages` and a changed DEB; dnf fails on

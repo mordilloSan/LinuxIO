@@ -145,7 +145,8 @@ in `usr/libexec/linuxio` with the five that systemd runs as root at mode
 the configuration under `etc`. It builds nothing, runs without root, sets
 modes and not owners, and refuses a folder that is not empty. What differs
 between distribution families is not in the tree: the PAM file, the SELinux
-module, the needrestart override, the login banner hooks and the licences.
+module, the needrestart override and the licences. The login banner's
+links are made by each package's post-install step.
 `packaging/scripts/tests/package-root-fixtures.sh`, part of
 `make test-installation-scripts`, checks every path and mode of the tree
 against a written list, and that every program a unit starts is in it.

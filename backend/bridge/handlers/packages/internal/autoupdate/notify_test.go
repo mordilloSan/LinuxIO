@@ -1,6 +1,9 @@
 package autoupdate
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -173,4 +176,35 @@ func TestNotifyDropInIsTheOneTheRunRecordHookLooksFor(t *testing.T) {
 	if got, want := notifyDropInPath(aptUpgradeService), scheduledrun.UpdateNotifyDropIn(aptUpgradeService); got != want {
 		t.Errorf("notifyDropInPath = %q, the run-record hook looks for %q", got, want)
 	}
+}
+
+// Removing the package deletes the alert drop-ins on the distribution's
+// update services and the schedule drop-ins on its update timers, which
+// LinuxIO wrote while it ran: each path is in the removal lists of both
+// packages.
+func TestPackageRemovalDeletesTheDropIns(t *testing.T) {
+	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "..", "packaging", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range updateDropInPaths() {
+			if !slices.Contains(strings.Fields(string(data)), path) {
+				t.Errorf("packaging/%s does not delete %s", script, path)
+			}
+		}
+	}
+}
+
+// updateDropInPaths are the drop-ins the backends write: the alert drop-in
+// on each update service and the schedule drop-in on each update timer.
+func updateDropInPaths() []string {
+	var paths []string
+	for _, service := range []string{aptRefreshService, aptUpgradeService, mintUpgradeService, "dnf-automatic.service", "dnf5-automatic.service"} {
+		paths = append(paths, notifyDropInPath(service))
+	}
+	for _, timer := range []string{"apt-daily.timer", "apt-daily-upgrade.timer", mintTimer, "dnf-automatic.timer", "dnf5-automatic.timer"} {
+		paths = append(paths, timerDropInPath(timer))
+	}
+	return paths
 }

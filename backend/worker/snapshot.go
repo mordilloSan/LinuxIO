@@ -14,14 +14,19 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 const snapshotUsage = "Usage: linuxio-worker snapshot [--now RFC3339] | pre-update"
 
 // runSnapshots, startReplication and raiseAlert are swapped by tests.
+// startReplication asks systemd to start the packaged replication unit
+// without waiting for its run: the manager's StartUnit call returns once the
+// start job is queued, and a start while the unit still runs merges into its
+// running start job, so runs never pile up behind a long one.
 var (
 	runSnapshots     = btrfs.Run
-	startReplication = func(ctx context.Context) error { return btrfs.ReplicateUnit().Start(ctx) }
+	startReplication = func(ctx context.Context) error { return systemd.StartUnit(ctx, btrfs.ReplicateServiceName) }
 	raiseAlert       = alerts.Raise
 )
 

@@ -16,14 +16,16 @@ import (
 )
 
 const (
+	// dockerUpdateUnitName is a package unit; the bridge writes only the
+	// timer that starts it.
 	dockerUpdateUnitName  = "linuxio-docker-update.service"
 	dockerUpdateTimerName = "linuxio-docker-update.timer"
-	dockerUpdateUnitPath  = "/etc/systemd/system/" + dockerUpdateUnitName
 	dockerUpdateTimerPath = "/etc/systemd/system/" + dockerUpdateTimerName
-	// dockerUpdateStopTimeout is how long a stop of the pass waits before
-	// systemd kills what is left: with KillMode=mixed a stop signals the
-	// program alone, which cancels its work, while a rollback in progress
-	// (and its `docker compose up`) finishes within composeRollbackTimeout.
+	// dockerUpdateStopTimeout is the unit's TimeoutStopSec, how long a stop
+	// of the pass waits before systemd kills what is left: with
+	// KillMode=mixed a stop signals the program alone, which cancels its
+	// work, while a rollback in progress (and its `docker compose up`)
+	// finishes within composeRollbackTimeout. A test holds the unit to it.
 	dockerUpdateStopTimeout = composeRollbackTimeout + time.Minute
 )
 
@@ -53,8 +55,8 @@ func GetAutoUpdate(ctx context.Context, cli *client.Client) (DockerContainerAuto
 	return getContainerAutoUpdate(ctx, cli, defaultContainerAutoUpdateStore, defaultContainerUpdateSystemdOps)
 }
 
-// SetAutoUpdate persists the schedule, renders the service and timer units,
-// enables or disables the timer and returns the resulting state.
+// SetAutoUpdate persists the schedule, writes the timer, enables or disables
+// it and returns the resulting state.
 func SetAutoUpdate(ctx context.Context, cli *client.Client, opts DockerContainerAutoUpdateOptions) (DockerContainerAutoUpdateState, error) {
 	if err := applyContainerAutoUpdate(ctx, defaultContainerAutoUpdateStore, defaultContainerUpdateSystemdOps, opts); err != nil {
 		return DockerContainerAutoUpdateState{}, err
@@ -112,40 +114,6 @@ func applyContainerAutoUpdate(ctx context.Context, store containerAutoUpdateStor
 		return fmt.Errorf("disable %s: %w", dockerUpdateTimerName, err)
 	}
 	return nil
-}
-
-func renderDockerUpdateUnit() []byte {
-	unit := UpdaterUnit
-	execStart := strings.Join(append([]string{RunnerPath}, scheduledArgs()...), " ")
-	return fmt.Appendf(nil, `[Unit]
-Description=Run LinuxIO native Docker updates
-After=%s
-Requires=%s
-Wants=%s
-
-[Service]
-Type=oneshot
-ExecStart=%s
-TimeoutStartSec=infinity
-KillMode=mixed
-TimeoutStopSec=%d
-NoNewPrivileges=%t
-PrivateTmp=%t
-ProtectHome=%s
-ProtectSystem=%s
-ReadWritePaths=%s
-`,
-		strings.Join(unit.After, " "),
-		strings.Join(unit.Requires, " "),
-		strings.Join(unit.Wants, " "),
-		execStart,
-		int(dockerUpdateStopTimeout.Seconds()),
-		unit.NoNewPrivileges,
-		unit.PrivateTmp,
-		unit.ProtectHome,
-		unit.ProtectSystem,
-		strings.Join(unit.ReadWritePaths, " "),
-	)
 }
 
 func renderDockerUpdateTimer(timeOfDay string) ([]byte, error) {

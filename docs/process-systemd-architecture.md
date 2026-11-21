@@ -134,7 +134,7 @@ Seven programs start with flags only. These are all of them, beside `--help`,
 | `linuxio-bridge` | none | | Started with no arguments |
 | `linuxio-auth` | none | | Started with no arguments |
 | `linuxio-claude-relay` | none of its own | | Every argument is Claude Code's |
-| `linuxio-docker-update` | `--config PATH` | `/etc/linuxio/docker-update.json` | The saved `linuxio-docker-update.service`, with the default path |
+| `linuxio-docker-update` | `--config PATH` | `/etc/linuxio/docker-update.json` | `linuxio-docker-update.service`, with the default path |
 | `linuxio-indexer` | `--config PATH` | `/etc/linuxio/indexer/config.yaml` | `linuxio-indexer.service`, with the default path; the daemon passes it on to its scanner |
 | `linuxio-indexer` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
 | `linuxio-indexer` | `--trigger-index` | | `linuxio-indexer-index.service`, for the timer: it asks the running daemon for a full index and exits |
@@ -188,7 +188,7 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-monitoring.service        runs `linuxio-monitoring`; root; owns
 │                                    /run/linuxio/monitoring/{api,control}.sock
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group
-└─ linuxio-issue.service             oneshot: updates the login issue/MOTD
+└─ linuxio-issue.service             oneshot: writes the login banner; its stop writes how to start LinuxIO
 ```
 
 Outside `linuxio.target`, so restarting LinuxIO never cancels them:
@@ -290,11 +290,13 @@ ExecStopPost=-+/usr/libexec/linuxio/linuxio-worker scheduled-run end --unit %n
   does not exist. Then it reloads systemd. The uninstaller removes the
   drop-in from the update services by its name, with the alert drop-in the
   bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` and
-  `linuxio-btrfs-rebuild@.service` carry the two lines themselves. A drop-in alone loads no unit: until a snapshot rule, a replication
-  job or the Docker update settings are saved, that unit stays `not-found`.
+  `linuxio-btrfs-rebuild@.service` carry the two lines themselves. The
+  snapshot, replication and Docker update services are package units, as
+  the resync and rebuild templates are: a save writes only their timers,
+  which hold a schedule and no command line
+  ([Btrfs](./btrfs.md#replication), [Docker updates](./docker-updates.md#the-scheduled-pass)).
   Schedules saved before an update record their runs after it without being
-  saved again, and so does the replication unit an upgraded install's first
-  snapshot pass writes ([Btrfs](./btrfs.md#replication)).
+  saved again.
 - **`+` and `-`.** `+` runs the hook as root, outside the unit's `User=` and
   sandbox: a script runs as the user it was given, and the Docker update unit
   has `ProtectSystem=strict`. `-` makes systemd ignore a failed hook, a missing
@@ -537,6 +539,66 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 - needrestart override → `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart` exists (see the **needrestart.** paragraph in "Login and jobs — the bridge connects to its job host")
 - SELinux module `linuxio` → the policy store, with `semodule -i` and a relabel of `/usr/libexec/linuxio/linuxio-auth`, on the RHEL family only (see [SELinux](#selinux))
 
+### Login banner
+
+`linuxio-issue.service`, which `linuxio-webserver.socket` pulls in, runs
+`/usr/share/linuxio/issue/update-issue` once. It writes the addresses
+LinuxIO answers on into `/run/linuxio/issue`: the host name and the source
+address of the default route (with no default route, the first global IPv4
+address on an interface that is not `lo`, `docker*`, `virbr*` or `br-*`), on
+the port of the last line of `systemctl show --property Listen
+linuxio-webserver.socket`, so a port set in a drop-in is the port shown. The
+service is `PartOf=linuxio.target`, and its stop (`update-issue stop`) writes
+"Start LinuxIO with: linuxio start" into the same file, so a stopped LinuxIO
+advertises no address that does not answer. The design is Cockpit's
+(`src/systemd/update-issue`), with one file rather than an active and an
+inactive file and a link switched between them: the SELinux module names
+`/run/linuxio/issue`, and `update-issue` relabels it after each write.
+
+Links to `../../run/linuxio/issue` show the file: `/etc/motd.d/linuxio`,
+which `pam_motd` prints at an SSH login, on both families, and on the Debian
+family also `/etc/issue.d/linuxio.issue`, which `agetty` prints on the
+console before the login prompt. Ubuntu's `sshd` and `login` PAM files have
+a plain `pam_motd.so noupdate` line, which reads `/etc/motd.d`, so the DEB
+needs no `update-motd.d` script. The RHEL family gets no console link:
+SELinux refuses `agetty` (`getty_t`) the file's type, `motd_var_run_t`,
+which `sshd` needs ([SELinux](#selinux)). The package's post-install step
+makes the links on a first install only (on the DEB, also on an install
+after `apt remove`), never over a file that is there, so a link an
+administrator deleted stays deleted at an update. Neither package owns
+them: removal deletes each while it is still LinuxIO's link.
+
+### Removal
+
+A package manager removes only the files it installed. On removal (not on
+an upgrade) the DEB's `prerm` and the RPM's `%preun` stop and disable the
+snapshot and Docker update timers, and the DEB's `postrm` and the RPM's
+`%postun` then delete what LinuxIO itself wrote under `/etc/systemd/system`
+while it ran, by exact path, the two lists kept equal: the two timers
+(`linuxio-btrfs-snapshot.timer`, `linuxio-docker-update.timer`; left
+behind, each would start a service the removal took away), the verbose
+drop-ins (`backend/common/verbosemode`), the indexer timer's
+`linuxio-indexer-index.timer.d/linuxio.conf`, the alert drop-ins
+`linuxio-alert.conf` on the distribution's update services (left behind,
+their `ExecStopPost=` names a program that is gone and the nightly upgrade
+is marked failed) and the schedule drop-ins `linuxio.conf` on its update
+timers (the distribution's own schedule returns). A drop-in folder goes too
+when nothing else is in it. A test of each writer holds both lists to the
+paths it writes (`TestPackageRemovalDeletes*`). Then systemd reloads.
+`/etc/linuxio` and `/var/lib/linuxio` stay, and after a new install these
+settings are switched on again by hand.
+
+What LinuxIO writes for something an administrator set up stays, since it
+runs without LinuxIO and removing it would stop the administrator's own work
+without a word: the scheduled scripts' units (`linuxio-schedule-<id>.service`
+and `.timer`, which run `bash` on a script under `/etc/linuxio/schedules`
+as their user; the run-record drop-in that hooks them goes with the
+package), the rsync service (`linuxio-rsync.service`, `rsync --daemon` on
+`/etc/linuxio/rsyncd.conf`), Docker's drop-ins
+(`docker.service.d/linuxio-*.conf`: the mounts its data needs and the
+addresses it waits for) and the memory page's hold-off drop-ins on swap units (`90-linuxio-memory.conf`), which keep a swap device it stopped from coming back at boot. A new
+install finds them with their definitions under `/etc/linuxio`.
+
 ## SELinux
 
 On the RHEL family SELinux enforces by default, and without a policy of its
@@ -587,7 +649,11 @@ does for `cockpit-session`.
   `/etc/motd.d/linuxio` links to, the type of `/run/motd.d`,
   `motd_var_run_t`: in its folder's type, `var_run_t`, `pam_motd` in `sshd`
   may not read it, and the banner never showed on Fedora. `update-issue`
-  relabels the file after each write.
+  relabels the file after each write. The console's `agetty` (`getty_t`)
+  may not read `motd_var_run_t`: with a link in `/etc/issue.d` the Fedora
+  45 console showed the banner only in permissive mode, and the policy has
+  no rule that lets `getty_t` read the type (`sesearch`). So the RPM makes
+  no console link, and the module stays as it is.
 
 What runs where, seen on Fedora 45 with SELinux enforcing after a fresh
 install and a reboot:
@@ -699,6 +765,8 @@ policy refuses `init_t` an `unconfined_t` socket.
   as before.
 - A Debian-family host with SELinux enforcing is not handled: no module is
   installed there.
+- The RHEL family shows the banner at an SSH login only, not on the
+  console (above).
 - The banner's label was checked on Fedora 45 only; a policy whose
   file-context substitutions map `/run` to `/var/run` may not match
   `/run/linuxio/issue`, and the banner then stays unreadable to `sshd`.

@@ -54,6 +54,20 @@ if [ "$1" = configure ]; then
 		fi
 	fi
 
+	# The login banner: SSH logins (pam_motd) and the console (agetty) show
+	# /run/linuxio/issue through these links. Made on the first install only,
+	# so one an administrator deleted stays deleted at an update, and never
+	# over a file of someone else's; the postrm deletes them while they are
+	# still LinuxIO's. The RPM's %post makes the first one only.
+	if [ "$first" = 1 ]; then
+		for link in /etc/motd.d/linuxio /etc/issue.d/linuxio.issue; do
+			if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+				mkdir -p "${link%/*}"
+				ln -s ../../run/linuxio/issue "$link"
+			fi
+		done
+	fi
+
 	if [ -d /run/systemd/system ]; then
 		systemctl --system daemon-reload >/dev/null || true
 		if [ "$first" = 1 ]; then

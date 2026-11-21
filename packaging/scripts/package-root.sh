@@ -4,7 +4,8 @@
 # from packaging/, each at its installed path and mode under DESTDIR. It runs
 # as the build user: ownership is the package tools' to set. What differs
 # between the two families (the PAM file, the SELinux module, the needrestart
-# override, the login banner hooks, the licences) is added by each package.
+# override, the login banner's links, which the post-install step makes, the
+# licences) is added by each package.
 #
 # Usage: package-root.sh --build-dir DIR --destdir DIR
 set -euo pipefail

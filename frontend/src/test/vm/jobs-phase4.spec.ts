@@ -93,7 +93,7 @@ const trayAlert = (tray: Locator, title: string) =>
 const outputLines = async (id: string) =>
   (await scheduledOutput(id)).toString("utf8").replace(/\n$/, "").split("\n");
 
-test("a drop-in alone creates no unit", async () => {
+test("the package installs the run-record drop-ins and the job units", async () => {
   for (const dir of [
     SCRIPT_DROPIN,
     `${SNAPSHOT_UNIT}.d`,
@@ -107,19 +107,14 @@ test("a drop-in alone creates no unit", async () => {
       dir,
     ).toBe("installed\n");
   }
-  // The rest means something only on a VM where no snapshot rule and no
-  // Docker update setting was ever saved: saving one writes the unit file.
-  const written = (
-    await vmSsh(
-      `for u in ${SNAPSHOT_UNIT} ${DOCKER_UPDATE_UNIT}; do test -e /etc/systemd/system/$u && echo $u; done; true`,
-    )
-  ).trim();
-  test.skip(
-    written !== "",
-    `${written.split("\n").join(" and ")} already written on this VM, so a missing unit cannot be checked; it needs a VM where none was (make vm-reset)`,
-  );
-  expect(await unitProperty(SNAPSHOT_UNIT, "LoadState")).toBe("not-found");
-  expect(await unitProperty(DOCKER_UPDATE_UNIT, "LoadState")).toBe("not-found");
+  for (const unit of [SNAPSHOT_UNIT, REPLICATE_UNIT, DOCKER_UPDATE_UNIT]) {
+    expect(await unitProperty(unit, "FragmentPath"), unit).toBe(
+      `/usr/lib/systemd/system/${unit}`,
+    );
+    expect(await unitProperty(unit, "DropInPaths"), unit).toContain(
+      `/usr/lib/systemd/system/${unit}.d/10-linuxio-run.conf`,
+    );
+  }
 });
 
 test("a running script shows in the bell and on its page, and leaves its output", async ({
@@ -327,9 +322,12 @@ test("the snapshot unit records its run", async ({ page }) => {
   // The switch shows the saved rule, so it turns on once the rules reload.
   if (!(await rule.isChecked())) await rule.click();
   await expect(rule).toBeChecked({ timeout: 15_000 });
+  // The service comes with the package; saving the rule enables its timer.
   await expect
-    .poll(() => unitProperty(SNAPSHOT_UNIT, "LoadState"), { timeout: 30_000 })
-    .toBe("loaded");
+    .poll(() => unitProperty("linuxio-btrfs-snapshot.timer", "UnitFileState"), {
+      timeout: 30_000,
+    })
+    .toBe("enabled");
 
   const before = await recordIds(SNAPSHOT);
   await vmSsh(`sudo systemctl start ${SNAPSHOT_UNIT}`);
@@ -355,10 +353,10 @@ test("the Docker update unit records its run", async ({ page }) => {
   await enable.check();
   await save.click();
   await expect
-    .poll(() => unitProperty(DOCKER_UPDATE_UNIT, "LoadState"), {
+    .poll(() => unitProperty("linuxio-docker-update.timer", "UnitFileState"), {
       timeout: 30_000,
     })
-    .toBe("loaded");
+    .toBe("enabled");
   try {
     const before = await recordIds(DOCKER_UPDATE);
     await vmSsh(`sudo systemctl start ${DOCKER_UPDATE_UNIT}`);

@@ -25,14 +25,12 @@ PACKAGE_ROOT="${SCRIPT_DIR}/../package-root.sh"
 deb_additions="\
 f 644 etc/pam.d/linuxio
 f 644 etc/needrestart/conf.d/linuxio.conf
-f 755 etc/update-motd.d/60-linuxio
 f 644 usr/share/doc/linuxio/copyright
 f 644 usr/share/doc/linuxio/changelog.gz
 f 644 usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md
 f 644 usr/share/man/man8/linuxio.8.gz"
 rpm_additions="\
 f 644 etc/pam.d/linuxio
-l - etc/motd.d/linuxio
 f 644 usr/share/selinux/packages/targeted/linuxio.cil
 f 644 usr/share/licenses/linuxio/LICENSE
 f 644 usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md

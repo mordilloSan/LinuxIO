@@ -654,6 +654,12 @@ jobs, which also keep their own unit, limits and journal that way. The units:
 | `scheduled.docker_update` | `linuxio-docker-update.service` | Container updates | `/docker/containers` |
 | `scheduled.system_update` | `apt-daily-upgrade`, `dnf-automatic`, `dnf5-automatic` or `mintupdate-automation-upgrade.service` | System updates | `/updates` |
 
+Every unit of the table but the schedules' and the distribution's is a
+package unit under `/usr/lib/systemd/system`; for the snapshot and Docker
+update passes LinuxIO writes and enables only the timer, which holds a
+schedule and no command line, so a package update replaces the program a
+timer run starts.
+
 `linuxio-btrfs-health.service`, the degraded mount at boot and the indexer's
 timer are not recorded.
 

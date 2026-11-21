@@ -187,11 +187,14 @@ systemd_units() {
 		linuxio-btrfs-health.service \
 		linuxio-btrfs-health.timer \
 		linuxio-btrfs-degraded.service \
+		linuxio-btrfs-snapshot.service \
+		linuxio-btrfs-replicate.service \
 		linuxio-btrfs-resync@.service \
 		linuxio-btrfs-rebuild@.service \
 		linuxio-jobs@.service \
 		linuxio-jobs@.socket \
-		linuxio-monitoring.service
+		linuxio-monitoring.service \
+		linuxio-docker-update.service
 }
 
 # Drop-in directories, relative to ${SYSTEMD_DIR}, that each receive
