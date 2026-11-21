@@ -22,6 +22,13 @@ type Environment struct {
 	// VerifyBridgeHandoff is an optional runtime verification seam. The
 	// default verifier checks the bridge/member links, MAC, and addresses.
 	VerifyBridgeHandoff func(ctx context.Context, state *BridgeHandoffState) (bool, error)
+	// LibvirtHookPath and LibvirtHookSource are the installed libvirt hook
+	// and the packaged copy RestoreHook takes it from; empty means the real
+	// paths. TryRestartUnit restarts the libvirt daemons after a restore;
+	// nil means systemd.TryRestartUnit.
+	LibvirtHookPath   string
+	LibvirtHookSource string
+	TryRestartUnit    func(ctx context.Context, name string) error
 }
 
 func DefaultEnvironment() Environment {

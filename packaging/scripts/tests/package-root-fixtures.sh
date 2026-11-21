@@ -83,7 +83,9 @@ expected_tree="\
 755 usr/share/linuxio
 644 usr/share/linuxio/components
 755 usr/share/linuxio/issue
-755 usr/share/linuxio/issue/update-issue"
+755 usr/share/linuxio/issue/update-issue
+755 usr/share/linuxio/libvirt
+644 usr/share/linuxio/libvirt/linuxio-bridge-netfilter"
 
 # The order of the components record.
 component_order="\

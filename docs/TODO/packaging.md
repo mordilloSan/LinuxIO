@@ -393,7 +393,7 @@ Use this common layout:
         but a program started through a link runs under the SELinux label of
         the file it points to, not of `/etc/libvirt/hooks`, and checking that
         needs a Fedora VM running a bridged VM beside Docker.
-- [ ] Ship a second, untouched copy of the hook under
+- [x] Ship a second, untouched copy of the hook under
       `/usr/share/linuxio/libvirt/` and give the hook warning a Restore
       button in place of "reinstall LinuxIO". Decided 2026-11-21. On the
       Debian family a reinstall does not bring back a file deleted under

@@ -17,7 +17,7 @@ import (
 
 var runPreflight = Preflight
 var findOVMFCodePath = detectOVMFCodePath
-var bridgeHookWarnings = network.BridgeHookWarnings
+var bridgeHook = network.BridgeHook
 var firmwareDescriptorDirs = []string{"/etc/qemu/firmware", "/usr/share/qemu/firmware"}
 
 type qemuFirmwareDescriptor struct {
@@ -54,7 +54,9 @@ func Preflight(ctx context.Context, req apischema.VMPreflightRequest) (apischema
 	}
 	collectSourcePreflight(ctx, req, &out)
 	// A warning only: a VM on the default NAT network is unaffected.
-	out.Warnings = append(out.Warnings, bridgeHookWarnings(ctx)...)
+	hook, hookWarnings := bridgeHook(ctx)
+	out.BridgeHook = hook
+	out.Warnings = append(out.Warnings, hookWarnings...)
 	if out.Firmware.Detected == "" {
 		out.Firmware.Detected = vmFirmwareBIOS
 		if out.Firmware.UEFIAvailable {

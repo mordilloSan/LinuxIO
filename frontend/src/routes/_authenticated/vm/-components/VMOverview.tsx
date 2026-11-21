@@ -15,6 +15,7 @@ import {
   Tile,
 } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
+import BridgeHookRestore from "@/components/network/BridgeHookRestore";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
@@ -262,6 +263,7 @@ export default function VMOverview({
           </ul>
         </AppAlert>
       )}
+      <BridgeHookRestore hook={preflight?.bridgeHook} />
 
       <div style={tileGridStyle}>
         <Tile

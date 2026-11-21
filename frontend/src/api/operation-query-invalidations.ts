@@ -267,6 +267,11 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.create_bridge": NETWORK_BRIDGE_KEYS,
+  // Both answers carry the hook's state and its warning.
+  "network.restore_bridge_hook": [
+    endpointQueryPrefix("network.get_bridge_options"),
+    endpointQueryPrefix("virt.preflight"),
+  ],
   "network.start_bridge_handoff": NETWORK_BRIDGE_KEYS,
   "network.confirm_bridge_handoff": NETWORK_BRIDGE_KEYS,
   "network.revert_bridge_handoff": NETWORK_BRIDGE_KEYS,

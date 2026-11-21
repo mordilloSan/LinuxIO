@@ -166,6 +166,7 @@ export const ROUTE_MODES = {
   "network.get_bridge_handoff": "call",
   "network.get_bridge_options": "call",
   "network.get_network_info": "call",
+  "network.restore_bridge_hook": "mutation",
   "network.revert_bridge_handoff": "call",
   "network.set_ipv4": "mutation",
   "network.set_ipv4_manual": "mutation",

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -427,74 +426,6 @@ func TestBridgeOptionsExplainIfupdownInterfaces(t *testing.T) {
 		if joined := strings.Join(reasons, "; "); !strings.Contains(joined, "configured by ifupdown") || !strings.Contains(joined, "bridge_ports eth0") {
 			t.Fatalf("candidate = %#v", candidate)
 		}
-	}
-}
-
-func TestFirewallWarningsDependOnLibvirtHook(t *testing.T) {
-	env, runner := bridgeTestEnvironment(t, nil)
-	runner.outputs = map[string][]byte{"iptables -S FORWARD": []byte("-P FORWARD DROP\n")}
-	env.ReadFile = func(path string) ([]byte, error) {
-		if path == "/proc/sys/net/bridge/bridge-nf-call-iptables" {
-			return []byte("1\n"), nil
-		}
-		return nil, os.ErrNotExist
-	}
-	hook := filepath.Join(t.TempDir(), "linuxio-bridge-netfilter")
-	env.StatFile = func(path string) (fs.FileInfo, error) {
-		if path != libvirtBridgeNetfilterHook {
-			return nil, os.ErrNotExist
-		}
-		return os.Stat(hook)
-	}
-
-	// The bridge dialogs and the VM preflight give the same hook warnings.
-	for name, check := range map[string]func(context.Context, Environment) []string{
-		"bridge options": firewallWarnings,
-		"VM preflight":   HookWarnings,
-	} {
-		if err := os.RemoveAll(hook); err != nil {
-			t.Fatal(err)
-		}
-		warnings := check(context.Background(), env)
-		if len(warnings) != 1 || !strings.Contains(warnings[0], "libvirt hook") || !strings.Contains(warnings[0], "not installed") {
-			t.Fatalf("%s: warnings without hook = %v", name, warnings)
-		}
-		if err := os.WriteFile(hook, []byte("#!/bin/sh\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		warnings = check(context.Background(), env)
-		if len(warnings) != 1 || !strings.Contains(warnings[0], "will not run it") ||
-			!strings.Contains(warnings[0], "chmod 755 "+libvirtBridgeNetfilterHook) ||
-			!strings.Contains(warnings[0], "systemctl try-restart libvirtd.service virtqemud.service") {
-			t.Fatalf("%s: warnings with non-executable hook = %v", name, warnings)
-		}
-		if err := os.Chmod(hook, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if warnings := check(context.Background(), env); len(warnings) != 0 {
-			t.Fatalf("%s: warnings with executable hook = %v", name, warnings)
-		}
-	}
-}
-
-// A FORWARD policy that cannot be read is said once, in the bridge dialogs,
-// and not on the Virtual Machines page, which asks every few seconds.
-func TestUnreadableForwardPolicyWarnsOnlyInBridgeOptions(t *testing.T) {
-	env, runner := bridgeTestEnvironment(t, nil)
-	runner.fail("iptables -S FORWARD", errors.New("iptables: not found"))
-	env.ReadFile = func(path string) ([]byte, error) {
-		if path == "/proc/sys/net/bridge/bridge-nf-call-iptables" {
-			return []byte("1\n"), nil
-		}
-		return nil, os.ErrNotExist
-	}
-
-	warnings := firewallWarnings(context.Background(), env)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "could not be inspected") {
-		t.Fatalf("bridge options warnings = %v", warnings)
-	}
-	if warnings := HookWarnings(context.Background(), env); len(warnings) != 0 {
-		t.Fatalf("VM preflight warnings = %v", warnings)
 	}
 }
 

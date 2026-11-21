@@ -24,6 +24,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
+import BridgeHookRestore from "./BridgeHookRestore";
 import { defaultBridgeName, isBridgeNameValid } from "./CreateBridgeDialog";
 
 const NETWORK_TOAST_META = {
@@ -305,6 +306,12 @@ const BridgeHandoffDialog = ({
                   service is available.
                 </AppAlert>
               )}
+              {bridgeOptionsQuery.data?.warnings?.map((warning) => (
+                <AppAlert key={warning} severity="warning">
+                  {warning}
+                </AppAlert>
+              ))}
+              <BridgeHookRestore hook={bridgeOptionsQuery.data?.bridgeHook} />
               {!interfacesQuery.isPending &&
                 !interfacesQuery.isError &&
                 !bridgeOptionsQuery.isPending &&

@@ -49,6 +49,8 @@ files=(
 	"etc/linuxio/monitoring/config.yaml etc/linuxio/monitoring/config.yaml 0644"
 	"etc/avahi/services/linuxio.service etc/avahi/services/linuxio.service 0644"
 	"libvirt/hooks/qemu.d/linuxio-bridge-netfilter etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter 0755"
+	# The untouched copy the bridge restores the hook from (network.restore_bridge_hook).
+	"libvirt/hooks/qemu.d/linuxio-bridge-netfilter usr/share/linuxio/libvirt/linuxio-bridge-netfilter 0644"
 )
 
 die() {

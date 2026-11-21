@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -25,9 +24,7 @@ const (
 	bridgeBackendNetworkManager = "nmconnection"
 	bridgeBackendNetworkd       = "systemd-networkd"
 	bridgeBackendNetplan        = "netplan"
-	// Installed from packaging/libvirt/hooks/qemu.d by the LinuxIO installers.
-	libvirtBridgeNetfilterHook = "/etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter"
-	maxLinuxInterfaceNameBytes = 15
+	maxLinuxInterfaceNameBytes  = 15
 )
 
 // BridgeCandidate describes one physical link that can safely be used as the
@@ -46,6 +43,8 @@ type BridgeCandidate struct {
 type BridgeOptions struct {
 	Candidates []BridgeCandidate
 	Warnings   []string
+	// Hook is set only while the host firewall drops bridged traffic.
+	Hook *HookStatus
 }
 
 type BridgePlan struct {
@@ -76,7 +75,7 @@ func GetBridgeOptions(ctx context.Context, env Environment) (BridgeOptions, erro
 	options := BridgeOptions{
 		Candidates: make([]BridgeCandidate, 0, len(probes)),
 	}
-	options.Warnings = firewallWarnings(ctx, env)
+	options.Hook, options.Warnings = firewallChecks(ctx, env)
 	for _, probe := range probes {
 		if err := ctx.Err(); err != nil {
 			return BridgeOptions{}, err
@@ -681,51 +680,6 @@ func forwardDropsBridgedTraffic(ctx context.Context, env Environment) (bool, err
 		return false, err
 	}
 	return strings.Contains(string(output), "-P FORWARD DROP"), nil
-}
-
-// firewallWarnings is what the bridge dialogs show before a bridge is made:
-// the hook warnings, or that the FORWARD policy could not be read.
-func firewallWarnings(ctx context.Context, env Environment) []string {
-	drops, err := forwardDropsBridgedTraffic(ctx, env)
-	if err != nil {
-		return []string{"bridge netfilter is enabled, but the iptables FORWARD policy could not be inspected"}
-	}
-	if !drops {
-		return nil
-	}
-	return hookWarnings(env)
-}
-
-// HookWarnings reports that VM traffic on a host bridge will be dropped
-// because the LinuxIO libvirt hook is missing or is not something libvirt
-// runs. It is for a page that asks again and again, so a FORWARD policy that
-// cannot be read gives no warning here.
-func HookWarnings(ctx context.Context, env Environment) []string {
-	drops, err := forwardDropsBridgedTraffic(ctx, env)
-	if err != nil {
-		slog.Debug("iptables forward policy unavailable for the libvirt hook check", "error", err)
-		return nil
-	}
-	if !drops {
-		return nil
-	}
-	return hookWarnings(env)
-}
-
-// hookWarnings assumes the FORWARD policy drops bridged traffic. The packaged
-// libvirt hook accepts intra-bridge forwarding for every bridge a VM attaches
-// to, so that policy (Docker's default) is only a problem when libvirt does
-// not run the hook: it runs an executable regular file, and finds its hooks
-// only when its daemon starts.
-func hookWarnings(env Environment) []string {
-	info, err := statEnvironmentFile(env, libvirtBridgeNetfilterHook)
-	if err != nil {
-		return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP (Docker does this) and the LinuxIO libvirt hook that allows bridged VM traffic is not installed; reinstall LinuxIO or VM traffic on the bridge will be dropped"}
-	}
-	if mode := info.Mode(); mode.IsRegular() && mode.Perm()&0o111 != 0 {
-		return nil
-	}
-	return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP (Docker does this) and the LinuxIO libvirt hook " + libvirtBridgeNetfilterHook + " is not an executable regular file, so libvirt will not run it and VM traffic on the bridge will be dropped; run chmod 755 " + libvirtBridgeNetfilterHook + " and then systemctl try-restart libvirtd.service virtqemud.service, since libvirt finds its hooks only when its daemon starts"}
 }
 
 func verifyBridge(ctx context.Context, env Environment, bridge, member string) (bool, error) {

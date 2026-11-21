@@ -368,6 +368,9 @@ const linuxio = {
     get_bridge_handoff: defineCallWithRequest("network.get_bridge_handoff"),
     get_bridge_options: defineCall("network.get_bridge_options"),
     get_network_info: defineCall("network.get_network_info"),
+    restore_bridge_hook: defineMutation("network", "restore_bridge_hook", {
+      kind: "none",
+    }),
     revert_bridge_handoff: defineCallWithRequest(
       "network.revert_bridge_handoff",
     ),
