@@ -465,8 +465,8 @@ regular expression with the value 0 ("do not restart") to needrestart's
 `$nrconf{override_rc}` and keeps the distribution's entries:
 `linuxio-jobs@<uid>.service`, the timer-run units `linuxio-schedule-*`,
 `linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`,
-`linuxio-btrfs-rebuild@*` and `linuxio-docker-update`, and the updater's
-`linuxio-updater-*` unit.
+`linuxio-btrfs-rebuild@*` and `linuxio-docker-update`. The DEB carries the
+same file as a conffile (`packaging/debian/rules`).
 needrestart then lists them under "Service restarts being deferred" instead of
 restarting them. The daemons the installer restarts itself (`linuxio-webserver`,
 `linuxio-monitoring`, `linuxio-indexer`, `linuxio-auth`) are not listed, and

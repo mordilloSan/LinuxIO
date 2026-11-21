@@ -26,8 +26,11 @@ packages:
   - docker-compose-v2
   - docker-buildx
   - btrfs-progs
-  # What assembles LinuxIO's DEB in the VM (linuxio-vm.sh install).
+  # What assembles LinuxIO's DEB in the VM (linuxio-vm.sh install), and what
+  # publishes it into a signed repository (linuxio-vm.sh repo-publish).
   - debhelper
+  - apt-utils
+  - gnupg
 runcmd:
   # Unattended apt runs stall the reboot and power-cut checks.
   - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer

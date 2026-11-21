@@ -21,10 +21,6 @@ make check-backend-quiet
 make test-quiet quiet_failure_lines=80
 ```
 
-`test-updater-quiet` remains attached to the foreground terminal so its required
-`sudo` invocation can prompt for a password; the test output is still captured
-in the quiet log.
-
 Do not invoke `go test`, Vitest, TypeScript, linters, or formatters directly;
 use the corresponding Make target.
 
@@ -186,6 +182,26 @@ configuration file (a conffile, `%config(noreplace)`); nothing is under
 `/usr/local`; and the nine programs have the build's SHA-256. What each
 package does when it is installed, upgraded and removed is in
 [Packaging](./TODO/packaging.md), until that plan becomes a doc.
+`make test-packages` (`test-packages-quiet`) runs it on every LinuxIO package
+in `PACKAGES_DIR` against `build/`.
+
+`make repo-apt` and `make repo-rpm` add the packages in `PACKAGES_DIR` to the
+signed repositories a release publishes, `build/repo/apt` and
+`build/repo/rpm` (`REPO_DIR`): `packaging/scripts/repo-apt.sh` (the pool,
+`apt-ftparchive` metadata with SHA-256 sums only and by-hash copies,
+`InRelease` and `Release.gpg`, and `linuxio.sources` with the public key in
+`Signed-By`) and `packaging/scripts/repo-rpm.sh` (each RPM signed with
+`rpmsign`, `createrepo_c` metadata, `repomd.xml.asc`, `RPM-GPG-KEY-linuxio`
+and `linuxio.repo` with `gpgcheck=1` and `repo_gpgcheck=1`). A package
+already there stays, the metadata is made again over all of them, and a
+version already published with other contents is refused. They sign with
+`REPO_SIGNING_KEY`, a key the caller's GnuPG keyring already holds, and never
+create, import or print one; `REPO_BASE_URL` is the address `REPO_DIR` is
+published at, without the `apt/` or `rpm/` each adds. The test VMs publish
+with the same scripts and a throwaway key (`linuxio-vm.sh repo-publish`,
+below). `packaging/scripts/tests/repo-fixtures.sh`, part of
+`make test-installation-scripts`, checks their arguments everywhere and, where
+the tools are installed, a round trip with a key of its own.
 
 ## Test VM
 
@@ -209,14 +225,16 @@ to `clean` brings back the definition the snapshot kept; `make vm-update`
 takes the snapshot again with them.
 
 `make test-vm-browser` is the whole browser run in one command. It builds
-LinuxIO and the update build the update checks install (`vm-update-build`,
+LinuxIO and the update build the update checks publish (`vm-update-build`,
 [Jobs](./jobs.md#testing)), picks free VMs (below), creating the ones it
 needs, reverts each to `clean`, installs the build in each and runs the specs
 on all of them at once. Then it reverts the first
 VM to `clean` again and runs `jobs-update.spec.ts` alone on it, the
-Playwright project `release-update`, since that file installs an older release
-and leaves the VM changed; a run narrowed with `PLAYWRIGHT_ARGS` skips that
-stage. At the end it shuts the VMs down. `make test-vm-backend` is
+Playwright project `release-update`, since that file installs LinuxIO itself
+from the VM's signed repository and leaves the VM changed; a run narrowed
+with `PLAYWRIGHT_ARGS` skips that stage, and one narrowed to
+`--project=release-update` reverts its VMs, installs nothing and runs that
+file alone. At the end it shuts the VMs down. `make test-vm-backend` is
 the same for the root suites, without the install. A VM needs 4 GiB of free
 memory (`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and
 counts as two of the host's threads (`nproc`, hyperthreads and not cores),
@@ -370,7 +388,7 @@ Known limits:
   or distribution that another target holds and has not started yet is not
   counted, so one of the two can be refused at its start.
 - Only `install` (`make vm-install`, the browser runs) marks a VM as holding
-  a build. The indexer and updater suites install LinuxIO themselves and
+  a build. The indexer suite installs LinuxIO itself and
   leave no mark, so such a VM is picked like a clean one; it is reverted
   first either way.
 - A VM a test target creates stays, stopped, and joins the VMs that the
@@ -454,7 +472,7 @@ make vm-test-btrfs-integration
 make vm-stop                # shut the VMs down; what is installed stays
 make vm-reset               # revert every disk to "clean" and stop the VMs
 make vm-update              # upgrade the packages in "clean" and take the snapshot again
-make vm-update-build        # this tree with jobs.Protocol one higher, for the update checks
+make vm-update-build        # this tree with jobs.Protocol one higher and a version of its own, for the update checks
 make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 
@@ -469,9 +487,25 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `linuxio.target`, so LinuxIO runs. The tools that assemble a package
   (`debhelper`; `rpm-build`, `systemd-rpm-macros`, `selinux-policy-devel` and
   `systemd-devel`) come with the seed, `vm-update` adds them to `clean`, and
-  the install adds them to a VM that lacks them. `jobs-update.spec.ts`
-  installs an older release with its own installer instead
-  (`linuxio-vm.sh install BUILD_DIR REF`).
+  the install adds them to a VM that lacks them.
+- `linuxio-vm.sh repo-publish BUILD_DIR VERSION [NOTE]`, which the update
+  specs run, publishes a build into the VM's signed package repository as a
+  release does: the VM assembles the package as `vm-install` does, at
+  VERSION, and the release's own `repo-apt.sh` or `repo-rpm.sh` adds it to
+  the packages already in `/srv/linuxio-repo/apt` (or `rpm`) and signs the
+  metadata (and the RPM). The signing key is a throwaway one the first
+  publish makes in the VM (`gpg --batch`, no passphrase) under
+  `~/.linuxio-repository-gnupg` of the VM's user; it never leaves the VM and
+  goes with `vm-reset`. apt, dnf and PackageKit read the repository in place
+  through `file://`, PackageKit's apt and dnf backends included (seen on
+  Ubuntu 26.04 and Fedora 45), so no server runs. The publish copies the
+  repository's `linuxio.sources` or `linuxio.repo`, which carries the public
+  key and turns every signature check on, to `/etc/apt/sources.list.d` or
+  `/etc/yum.repos.d`; it installs nothing. NOTE is appended as a comment to
+  the copy of `packaging/selinux/linuxio.cil` that package is assembled
+  from, so it carries a changed SELinux module. The tools (`apt-utils` and
+  `gnupg`; `createrepo_c`, `rpm-sign` and `gnupg2`) are in the profile's
+  list with the assembling tools.
 - `vm-create` downloads the cloud image (checked against the release's
   `SHA256SUMS`, Fedora's `CHECKSUM`), and boots it once with
   `packaging/vm/user-data.yaml.in` (`user-data-fedora.yaml.in` on Fedora).
@@ -481,8 +515,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   run at once) that runs only during that boot. It creates the user
   `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
   Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
-  `btrfs-progs`, `debhelper` and the LinuxIO dependencies, and upgrades every
-  package. The
+  `btrfs-progs`, the tools that assemble and publish the package and the
+  LinuxIO dependencies, and upgrades every package. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
   to the seed's packages reaches a VM only when it is created again
   (`vm-destroy`, then `vm-create`); `vm-update` upgrades what `clean` already
@@ -583,7 +617,7 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   patterns of the matching host target. Without `VM` a suite picks a free
   VM and reverts it to `clean` first; with `VM=N` it runs on that VM as it
   is.
-- `test-vm-backend` runs every root suite: the four above, and six that
+- `test-vm-backend` runs every root suite: the four above, and five that
   have no target of their own. It picks as many free VMs as the CPUs and
   the memory allow, one for each suite at most, creates the ones it needs
   and reverts each to `clean` so the run starts from a known state; it installs no build,
@@ -591,13 +625,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   next when it is free: memory (about 6 minutes, with two reboots), btrfs (3), indexer (just
   under 2, most of it the indexer's idle timeout), docker (1½), packagekit
   (under ½, most of it the first boot), then relay,
-  updater, userconfig, filebrowser and network, seconds each. On three VMs
+  userconfig, filebrowser and network, seconds each. On three VMs
   the run takes about as long as memory, plus the LinuxIO build the indexer
-  suite needs. `SUITES='docker updater'` runs only those. With one VM
+  suite needs. `SUITES='docker relay'` runs only those. With one VM
   (`VMS=1`) they run one after another on it, the later ones on what the
   earlier left. The first failure ends that VM's suites; the other VMs take
   what is left of the queue. With more than one VM each one's output is in
-  `.cache/test-logs/vm-N-test.log`. The six without a target:
+  `.cache/test-logs/vm-N-test.log`. The five without a target:
   - `indexer` is the disposable-host smoke test
     ([Indexer](./indexer.md#disposable-host-smoke-test)). It needs the
     LinuxIO build, so the target runs `build-nocheck` first; the suite
@@ -612,9 +646,6 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
     the seed did. With buildx Compose builds through Bake, as it does on a
     host that has Docker's own packages; a host without buildx is covered by
     the unit tests' recorded build output only.
-  - `updater` is `test-updater`, the install script's `--dry-run` under the
-    updater's systemd sandbox. The test reads the script from
-    `LINUXIO_INSTALL_SCRIPT`, a copy, since the VM has no checkout.
   - `network` adds dummy and macvlan links and a network namespace as root
     (`TestVirtualChildrenByParentSeesOtherNamespaces`).
   - `userconfig` has a root bridge create config files for another user's
@@ -705,7 +736,10 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `BACKEND_DIR` | Auto-detected `backend/` or repository root | Go module directory. |
 | `CACHE_DIR` | `$(REPO_ROOT)/.cache` | Make caches, logs, and analysis artifacts. |
 | `BIN_DIR` | `$(REPO_ROOT)/build` | Built binary output directory. |
-| `PACKAGES_DIR` | `$(BIN_DIR)/packages` | Where `package-deb`, `package-rpm` and `localinstall` put the packages; `make clean` removes the LinuxIO packages in it. |
+| `PACKAGES_DIR` | `$(BIN_DIR)/packages` | Where `package-deb`, `package-rpm` and `localinstall` put the packages, and where `test-packages`, `repo-apt` and `repo-rpm` read them; `make clean` removes the LinuxIO packages in it. |
+| `REPO_DIR` | `$(BIN_DIR)/repo` | The signed repositories `repo-apt` and `repo-rpm` add to, `apt/` and `rpm/`. |
+| `REPO_SIGNING_KEY` | none | The key in the GnuPG keyring that `repo-apt` and `repo-rpm` sign with; required by both. |
+| `REPO_BASE_URL` | none | Where `REPO_DIR` is published; the repository files point apt and dnf at it. Required by `repo-apt` and `repo-rpm`. |
 | `GO_TOOLS_DIR` | `$(HOME)/.go` | Installed Go tool binaries. |
 | `NVM_DIR` | `$(HOME)/.nvm` | Node Version Manager installation. |
 | `VITE_DEV_LOG` | `$(FRONTEND_DIR)/.vite-dev.log` | Vite log file. |
@@ -922,7 +956,7 @@ The full index groups the supported targets as follows:
   `update-frontend-screenshots`
 - backend checks: `golint`, `golint-only`, `test-backend`, `test-go`, `deadcode`,
   `deadcode-only`, `check-backend`, `test-auth`, `test-auth-protocol`,
-  `test-auth-pam`, `test-updater`, `test-docker-update-integration`,
+  `test-auth-pam`, `test-docker-update-integration`,
   `test-assistant-agent-integration`,
   `test-filebrowser-root`, `check-c-build-deps`
 - analysis: `bundle-metrics`, `compiler-coverage`, `analyze`, `analyze-auth`
@@ -931,7 +965,7 @@ The full index groups the supported targets as follows:
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `uninstall`, `package-root`, `package-deb`,
-  `package-rpm`
+  `package-rpm`, `test-packages`, `repo-apt`, `repo-rpm`
 - test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-update-build`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,

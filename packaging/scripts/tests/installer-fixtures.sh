@@ -799,12 +799,11 @@ eval do { local(@ARGV, $/) = $fn; <> };
 die "Error parsing $fn: $@" if $@;
 my $rc = $nrconf{override_rc};
 die "override_rc lost the distribution's entries\n" unless 2 == grep { $_ eq qr(^dbus) || $_ eq qr(^user@\d+\.service) } keys %$rc;
-die "override_rc has " . scalar(keys %$rc) . " entries, want 10\n" unless 10 == keys %$rc;
+die "override_rc has " . scalar(keys %$rc) . " entries, want 9\n" unless 9 == keys %$rc;
 sub restarts { my $unit = shift; for my $re (sort keys %$rc) { return $rc->{$re} if $unit =~ /$re/ } 1 }
 my $id = "0b7c9a1e-5d2f-4c3b-9a8e-1f2e3d4c5b6a";
 for my $unit ("linuxio-jobs\@0.service", "linuxio-jobs\@1001.service", "linuxio-schedule-$id.service",
-	"linuxio-btrfs-snapshot.service", "linuxio-btrfs-replicate.service", "linuxio-btrfs-resync\@$id.service", "linuxio-btrfs-rebuild\@$id.service", "linuxio-docker-update.service",
-	"linuxio-updater-1794345333839000000.service") {
+	"linuxio-btrfs-snapshot.service", "linuxio-btrfs-replicate.service", "linuxio-btrfs-resync\@$id.service", "linuxio-btrfs-rebuild\@$id.service", "linuxio-docker-update.service") {
 	die "$unit would be restarted\n" if restarts($unit);
 }
 for my $unit ("linuxio-webserver.service", "linuxio-monitoring.service", "linuxio-indexer.service",

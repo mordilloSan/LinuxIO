@@ -30,6 +30,10 @@ packages:
   - systemd-rpm-macros
   - selinux-policy-devel
   - systemd-devel
+  # What publishes it into a signed repository (linuxio-vm.sh repo-publish).
+  - createrepo_c
+  - rpm-sign
+  - gnupg2
 runcmd:
   # The metadata refresh holds dnf's lock while a suite installs a package.
   - systemctl disable --now dnf-makecache.timer

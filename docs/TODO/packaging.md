@@ -54,9 +54,10 @@ until the last step lands.
 4. [x] The test VMs install packages.
 5. [ ] The login banner, the job units in the package, removal, the hook's
    Restore button.
-6. [ ] LinuxIO's own update through the Updates page; the app updater
+6. [x] LinuxIO's own update through the Updates page; the app updater
    deleted.
-7. [ ] Signed repositories, pinned build images, the release workflow.
+7. [ ] Signed repositories (the scripts and the test VMs' repository are
+   done), pinned build images, the release workflow.
 8. [ ] The installer scripts deleted, this plan rewritten as a doc.
 
 Until the packages replace it, the script installer on this branch installs
@@ -73,18 +74,11 @@ The branch merges into `main` only with step 8, never part-way:
   would leave every service naming a program that is not there.
 - This branch's installer, run without `--local`, would download a release
   built for `/usr/local/bin` into the new folders, where its `linuxio-auth`
-  finds no bridge. On this branch it is run with `--local` only: by the test
-  VMs' install of an older release (`linuxio-vm.sh install BUILD_DIR REF`)
-  and by the indexer smoke test.
+  finds no bridge. On this branch it is run with `--local` only, by the
+  indexer smoke test.
 
-Not working on this branch from step 1 to step 6:
+Not working on this branch:
 
-- The in-app updater. Its sandbox does not let the installer write
-  `/usr/bin`, and it was not widened for a component that step 6 deletes.
-  `jobs-update.spec.ts`, `jobs-phase5a.spec.ts` and the updater suite fail
-  with it. `jobs-update.spec.ts` also installs the update build as a package
-  over the release its installer put in, which the package's pre-install
-  guard refuses.
 - A sudoers rule that grants web administration by naming
   `/usr/local/bin/linuxio-bridge`, and an administrator's own unit that
   names `/usr/local/bin/linuxio-worker`: both need the new path.
@@ -231,13 +225,15 @@ and installs the package. Decided 2026-11-21.
       - The VMs' `clean` snapshots made before the seed had the assembling
         tools lack them; `install` adds them each time (about 30 s) until
         `make vm-update` takes the snapshot again with them.
-- [ ] The specs that install an older release with its own installer and
-      update it (`jobs-update.spec.ts`, `jobs-phase5a.spec.ts`,
-      `vm-update-build` in `mk/vm.mk`) install package A and update to
-      package B from a signed test repository inside the VM, the path of the
-      release gate.
-- [ ] The updater suite goes with the app updater it tests
-      (`appupdate_integration_test.go`, `suite_updater`).
+- [x] The update specs (`jobs-update.spec.ts`, `jobs-phase5a.spec.ts`)
+      install package A and update to package B from a signed repository
+      inside the VM, the path of the release gate:
+      `linuxio-vm.sh repo-publish` publishes a build there with the
+      release's `repo-apt.sh` or `repo-rpm.sh` and a throwaway key made in
+      the VM, served by `file://`. `package-repository.spec.ts` updates from
+      it in a shell and checks that a changed index or package is refused.
+      `vm-update-build` gives the update build a version of its own.
+- [x] The updater suite went with the app updater it tested.
 - [ ] No separate native build is a gate: the Fedora VM runs on the release
       packages are.
 
@@ -649,11 +645,18 @@ apt/
   dists/stable/main/binary-amd64/Packages.gz
 ```
 
-- [ ] Generate `Packages` and `Release` metadata with `apt-ftparchive`.
-- [ ] Publish SHA256 by-hash metadata paths.
-- [ ] Sign `Release` as both `InRelease` and `Release.gpg`.
-- [ ] Publish `linuxio.sources` with an embedded `Signed-By` public key.
-- [ ] Do not use `trusted=yes` or otherwise permit unsigned repositories.
+`packaging/scripts/repo-apt.sh` (`make repo-apt`) adds the DEBs of a folder
+to the tree, keeps the packages already there, regenerates the metadata over
+all of them and signs it with a key the caller's keyring holds; it never
+creates or imports a key. A version already published with other bytes is
+refused.
+
+- [x] Generate `Packages` and `Release` metadata with `apt-ftparchive`.
+- [x] Publish SHA256 by-hash metadata paths (SHA-256 sums only, so apt
+      fetches by those; earlier copies stay for clients mid-update).
+- [x] Sign `Release` as both `InRelease` and `Release.gpg`.
+- [x] Publish `linuxio.sources` with an embedded `Signed-By` public key.
+- [x] Do not use `trusted=yes` or otherwise permit unsigned repositories.
 
 ### RPM
 
@@ -667,10 +670,14 @@ rpm/
   stable/x86_64/repodata/
 ```
 
-- [ ] Sign every RPM with `rpmsign`.
-- [ ] Generate repository metadata with `createrepo_c`.
-- [ ] Sign `repodata/repomd.xml`.
-- [ ] Set `gpgcheck=1` and `repo_gpgcheck=1` in `linuxio.repo`.
+`packaging/scripts/repo-rpm.sh` (`make repo-rpm`) does the same for the
+RPMs, signing each copy it adds; a version already published from another
+build (another header digest) is refused.
+
+- [x] Sign every RPM with `rpmsign`.
+- [x] Generate repository metadata with `createrepo_c`.
+- [x] Sign `repodata/repomd.xml`.
+- [x] Set `gpgcheck=1` and `repo_gpgcheck=1` in `linuxio.repo`.
 
 ### Trust and hosting
 
@@ -758,7 +765,7 @@ Browser
       `uninstall.sh` calls with a package install and a package removal, and
       drop its last check, that removal leaves no indexer state, or move it
       to a purge: removal keeps `/var/lib/linuxio`.
-- [ ] Delete the app updater with its GitHub download, checksum, and
+- [x] Delete the app updater with its GitHub download, checksum, and
       transient installer-unit code.
 - [ ] Remove raw binaries, the tarball, installer scripts, and installer
       checksums from GitHub release assets.
@@ -786,7 +793,8 @@ one compile
 
 - [ ] Make the workflow call repository Make targets instead of invoking Go,
       Node, or their linters/test runners directly.
-- [ ] Add `make test-packages-quiet`, `make repo-apt`, and `make repo-rpm`.
+- [x] Add `make test-packages-quiet`, `make repo-apt`, and `make repo-rpm`
+      (`mk/package.mk`; `REPO_DIR`, `REPO_SIGNING_KEY`, `REPO_BASE_URL`).
 - [ ] Compile once in the pinned compile image, then assemble the DEB there
       and the RPM in the pinned Fedora image (see "Pinned build
       environment").
@@ -810,6 +818,10 @@ one compile
       reboot. That packages deliver a changed module is expected from how
       `dnf` runs package scripts and has not been seen; this gate is where
       it is seen.
+      - Seen 2026-11-21 on Fedora 45 in the test VM, B installed on the
+        Updates page through PackageKit (`jobs-update.spec.ts`): B's module,
+        `linuxio_auth_exec_t`, sign-in and no denial, after the update and
+        after a reboot. The auth socket's type is not checked by the spec.
 - [ ] Package contents and ownership match the intended common layout.
 - [ ] The package exposes only `/usr/bin/linuxio`; all private executables are
       under `/usr/libexec/linuxio` and are not required in `$PATH`.
@@ -826,13 +838,28 @@ one compile
       page, that the package restarts LinuxIO, that the update job runs to
       its end across that restart, and that after signing in again the
       browser shows the job finished and the host runs B.
+      - Both seen 2026-11-21 on Ubuntu 26.04 and Fedora 45 in the test VMs
+        (`jobs-update.spec.ts`), with jobs of an older protocol keeping B
+        waiting; not on Debian or the previous Fedora, which have no test
+        VM.
 - [ ] Update A to B from a shell (`apt`, `dnf`) and through the
       distribution's unattended upgrade, with a job running: LinuxIO runs B
       afterwards with no `linuxio restart`, the job goes on, and a LinuxIO
       that was stopped stays stopped.
+      - From a shell, seen 2026-11-21 on Ubuntu 26.04 and Fedora 45
+        (`package-repository.spec.ts`, `jobs-phase5a.spec.ts`); the
+        unattended upgrade is not run.
 - [ ] Verify failed and cancelled updates do not restart LinuxIO.
 - [ ] Pass the two login banner checks in "Login banner".
 - [ ] Verify APT and DNF reject tampered metadata and packages.
+      - Seen 2026-11-21 (`package-repository.spec.ts`): apt fails with Hash
+        Sum mismatch on a changed `Packages` and a changed DEB; dnf fails on
+        a changed RPM (checksum), and on a changed `repomd.xml` reports the
+        bad signature and goes on without the repository, exiting 0 with
+        nothing to upgrade. `linuxio.repo` does not set
+        `skip_if_unavailable=False`, which would make it exit 1 but would
+        stop every dnf transaction on the host while the repository is
+        unreachable.
 - [ ] Verify package removal preserves `/var/lib/linuxio`.
 - [ ] Run `shellcheck` and `shfmt -d` on all relevant remaining shell files.
 - [ ] Run `actionlint` after workflow changes.

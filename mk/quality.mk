@@ -91,23 +91,15 @@ test-installation-scripts: ## Run host-independent installer fixture tests
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package-version fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/package-version-fixtures.sh"
+	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running signed repository fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/repo-fixtures.sh"
 
 test-indexer-systemd-integration: ## Run the opt-in disposable-host indexer smoke test
 	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"
 
-# The updater and Docker update tests, here and in the test VM's updater and
-# docker suites (mk/vm.mk).
-UPDATER_RUN := ^TestInstallScriptDryRunWithSystemdSandbox$$
+# The Docker update tests, here and in the test VM's docker suite (mk/vm.mk).
 DOCKER_UPDATE_RUN := ^TestDockerUpdateCompose
-
-test-updater: ensure-go ## Run the root-only updater systemd dry-run integration test
-	@echo "🔎 Running updater systemd dry-run integration test..."
-	@cd "$(backend_dir)" && \
-	  sudo env \
-	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
-	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
-	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run '$(UPDATER_RUN)' -count=1 -v
 
 test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose update test
 	@echo "🐳 Running native Docker update integration test..."

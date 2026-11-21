@@ -49,7 +49,6 @@ quiet_targets := \
 	test-auth-pam \
 	test-installation-scripts \
 	test-indexer-systemd-integration \
-	test-updater \
 	test-docker-update-integration \
 	test-assistant-agent-integration \
 	test-btrfs-integration \
@@ -276,7 +275,7 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: test check-actions check-docs check-systemd check-frontend check-backend
 .PHONY: test-frontend test-frontend-only test-frontend-ci setup-frontend-browser test-frontend-browser update-frontend-screenshots
 .PHONY: test-backend test-go test-auth test-auth-protocol test-auth-pam
-.PHONY: test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration test-assistant-agent-integration test-btrfs-integration
+.PHONY: test-installation-scripts test-indexer-systemd-integration test-docker-update-integration test-assistant-agent-integration test-btrfs-integration
 .PHONY: deadcode deadcode-only analyze analyze-auth bundle-metrics compiler-coverage check-c-build-deps
 .PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-worker build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
