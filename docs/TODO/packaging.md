@@ -20,10 +20,24 @@ packages must not delete administrator-owned files under `/usr/local` or
 - [ ] Support Debian stable, Ubuntu LTS, and the current and previous Fedora
       releases as release-gated platforms.
 - [ ] Publish only a `stable` channel initially.
-- [ ] Host both repositories below `https://packages.linuxio.io/`, initially
-      as a static GitHub Pages deployment.
+- [ ] Host both repositories as a static GitHub Pages deployment behind a
+      name under the owner's domain `engmariz.com` (working name
+      `packages.engmariz.com`), never the default `github.io` address. An
+      installed host saves the repository address, so only a name the owner
+      controls lets the hosting move later without every administrator
+      editing that file. Decided 2026-11-21; the owner does not own
+      `linuxio.io`. A project domain, if one is wanted, is chosen before the
+      first other person installs.
 - [ ] Use PackageKit for update discovery and installation; never download or
       execute an installer script from the application.
+- [ ] LinuxIO's own update is the package `linuxio` among the host's other
+      updates on the Updates page. There is no separate update dialog and no
+      `control.app_update` route; a one-line banner says a new version is
+      available and opens the Updates page. Decided 2026-11-21.
+- [ ] The package restarts LinuxIO when it is upgraded, as Cockpit's packages
+      restart their service, so an upgrade from a shell, an unattended
+      upgrade and an update from the Updates page all end the same way. The
+      bridge has no restart path of its own. Decided 2026-11-21.
 - [ ] Do not add legacy migration, compatibility symlinks, source packages,
       extra release channels, or additional architectures in this work.
 
@@ -201,6 +215,52 @@ Use this common layout:
       `/usr/local/bin/linuxio` or `/etc/systemd/system/linuxio.target`.
       Refuse the install with a clean-install message; do not remove them.
 
+### Login banner
+
+The banner keeps its design, which is Cockpit's (`src/systemd/update-issue`,
+`src/systemd/cockpit.socket.in`, `tools/cockpit.spec` and
+`tools/debian/cockpit-ws.postinst` on Cockpit's `main`, read 2026-11-21).
+Decided 2026-11-21: take the following from Cockpit.
+
+- [ ] Ship `packaging/scripts/update-issue` as the package file
+      `/usr/share/linuxio/issue/update-issue`; nothing fetches it.
+- [ ] Read the port from systemd (the last line of
+      `systemctl show --property Listen linuxio-webserver.socket`) instead of
+      parsing the unit file, so a port set in a drop-in is the port shown.
+- [ ] Show the address before the login prompt as well: a link
+      `/etc/issue.d/linuxio.issue` beside `/etc/motd.d/linuxio`, both to
+      `../../run/linuxio/issue`.
+- [ ] Use the same two links on the Debian family and delete
+      `packaging/etc/update-motd.d/60-linuxio`, if the Ubuntu check below
+      passes; otherwise that script stays.
+- [ ] Create the links in the package's post-install step, on first install
+      only, so an administrator who deletes them does not get them back at
+      an update. Removal deletes them only while they are still LinuxIO's
+      links.
+- [ ] When LinuxIO stops, write "Start LinuxIO with: linuxio start" into the
+      same file. One file, not Cockpit's active and inactive files with a
+      link switched between them: the SELinux module names
+      `/run/linuxio/issue`, and one file leaves the module as it is.
+
+Kept from LinuxIO's script, which Cockpit's does not have:
+
+- [ ] The fallback address for a host with no default route (the first
+      global IPv4 address on an interface that is not `lo`, `docker*`,
+      `virbr*` or `br-*`).
+- [ ] The `restorecon` of the file, without which `sshd` may not read it on
+      an enforcing RHEL-family host.
+- [ ] The script stays `bash` and runs once, from `linuxio-issue.service`;
+      its hostname and address lookups stay as they are.
+
+Checks, each in the VM as the package installs it and again after a reboot:
+
+- [ ] Ubuntu: a link in `/etc/motd.d` shows at SSH login.
+- [ ] Fedora, enforcing: the console shows the banner through `/etc/issue.d`
+      with no denial. The module labels the file `motd_var_run_t` for `sshd`,
+      and whether the console's login program may read that type is not
+      known. If it is refused, either the module gains a rule or the RHEL
+      family gets no link in `/etc/issue.d`.
+
 ## 2. Build native DEB and RPM packages
 
 - [ ] Add native Debian packaging metadata using debhelper/dpkg tooling.
@@ -217,8 +277,17 @@ Use this common layout:
       `%config(noreplace)`.
 - [ ] On first install, create runtime directories, reload systemd, enable and
       start `linuxio.target`, and enable the indexer timer.
-- [ ] On upgrade, install files and reload systemd without restarting LinuxIO
-      inside the package transaction.
+- [ ] On upgrade, reload systemd and restart `linuxio.target` if it is
+      running: `deb-systemd-invoke try-restart` in the DEB's post-install
+      script and `%systemd_postun_with_restart` in the RPM, as Cockpit's
+      packages do for `cockpit.service`. A stopped LinuxIO stays stopped.
+      - The job hosts are not part of `linuxio.target`, so running jobs go
+        on, among them the `packages.update` job that started the upgrade
+        ([Jobs](../jobs.md#updates)).
+      - `linuxio-auth@.service` is `PartOf=linuxio.target`, so every session
+        ends and its user signs in again.
+      - The restart comes when LinuxIO's own package is done, which in a
+        larger upgrade is before the transaction ends.
 - [ ] On removal, stop and disable services while preserving application data.
 - [ ] Add `make package-deb` and `make package-rpm`.
 - [ ] Replace the current `make localinstall` implementation with the
@@ -270,51 +339,62 @@ rpm/
 - [ ] Store the signing subkey only in a protected GitHub release environment
       with required approval.
 - [ ] Ensure pull requests cannot access signing secrets.
-- [ ] Configure `packages.linuxio.io` so hosting can move away from GitHub
-      Pages later without changing installed clients.
+- [ ] Configure the name under `engmariz.com` (one DNS record, with GitHub
+      Pages' own certificate) so hosting can move away from GitHub Pages
+      later without changing installed clients.
+- [ ] Publish only the last few versions in the repository tree; older
+      packages stay on GitHub Releases. The built binaries are 89 MB
+      (2026-11-21), and GitHub Pages limits the size of a published site
+      (about 1 GB, from memory): read the current limit before fixing how
+      many versions stay.
 - [ ] Provide documented commands that install the static `.sources` or
       `.repo` file and then invoke `apt install linuxio` or
       `dnf install linuxio`.
 - [ ] Do not create an executable bootstrap installer or a repository bootstrap
       package.
 
-## 4. Replace the application updater with PackageKit
+## 4. Replace the application updater with the Updates page
 
+LinuxIO's own update is the package `linuxio` among the host's other updates.
 The successful update path must be:
 
 ```text
 Browser
-  -> control.app_update
-  -> linuxio-bridge asks PackageKit for updates
-  -> bridge selects the exact package name "linuxio"
+  -> the banner "LinuxIO <version> is available" opens the Updates page
+  -> the administrator updates there (packages.update, a job in the root job host)
   -> PackageKit invokes apt or dnf
   -> the package manager verifies the signed repository and package
-  -> the task and durable status are marked successful
-  -> LinuxIO restarts after the task completes
-  -> the browser reconnects
+  -> the package's own post-install step restarts linuxio.target
+  -> the job, outside linuxio.target, runs to its end and is recorded
+  -> the browser signs in again and finds the job in the task tray
 ```
 
 - [ ] Keep all privileged package operations in `linuxio-bridge`.
-- [ ] Export narrow `FindUpdateByName` and `UpdateByName` functions from the
-      existing packages handler.
-- [ ] Reuse the existing PackageKit operation gate, transactions, progress,
-      cancellation, and error handling.
-- [ ] Make the server select package `linuxio`; remove arbitrary download URLs
-      and version selection from the update request.
+- [ ] Delete `control.app_update`, its operation
+      (`backend/bridge/handlers/appupdate`), the update dialog
+      (`AppUpdateDialog.tsx`) and the code only they use; arbitrary download
+      URLs and version selection go with them.
+- [ ] Reduce `AppUpdateBanner.tsx` to one line that names the new version and
+      has a button to the Updates page.
+- [ ] Export a narrow `FindUpdateByName` from the existing packages handler
+      for the banner. No `UpdateByName`: the update itself is the Updates
+      page's own `packages.update`.
 - [ ] Replace GitHub release checks in both the bridge app-update handler and
-      the webserver update-info implementation.
+      the webserver update-info implementation with that PackageKit lookup.
 - [ ] Have the authenticated frontend query `control.version` through the
       bridge for update availability.
 - [ ] Keep `/api/version` only for detecting that the restarted webserver is
       running.
-- [ ] Preserve the durable `/run/linuxio/update-status.json` projection (`backend/common/updatestatus`).
-- [ ] After PackageKit reports success, complete the task before restarting
-      `linuxio.target`.
-- [ ] If the generic package-update operation includes package `linuxio`, use
-      the same post-task restart path.
-- [ ] Do not restart LinuxIO after a failed or cancelled PackageKit operation.
-- [ ] Regenerate API contracts with `make generate` if the update request or
-      response changes.
+- [ ] Delete the `/run/linuxio/update-status.json` record
+      (`backend/common/updatestatus`) and its reader in the webserver: only
+      the app-update operation wrote it. The job's own record carries the
+      result.
+- [ ] The bridge restarts nothing after an update. The package does it (see
+      "Build native DEB and RPM packages"), and a failed or cancelled
+      transaction leaves the package as it was, so no restart follows.
+- [ ] Keep `JobsUpdateBanner.tsx`: it tells signed-in users that an update
+      waits for running jobs, whichever way the update arrived.
+- [ ] Regenerate API contracts with `make generate`.
 
 ## 5. Delete obsolete installation and update machinery
 
@@ -323,8 +403,14 @@ Browser
 - [ ] Delete `packaging/scripts/localinstall.sh`.
 - [ ] Delete `packaging/scripts/uninstall.sh`.
 - [ ] Delete or replace their installer fixture tests.
-- [ ] Delete GitHub download, checksum, and transient installer-unit code from
-      the app updater.
+- [ ] Keep `packaging/scripts/tests/systemd-indexer-smoke.sh`: it tests the
+      indexer under a real systemd (socket activation, idle exit, the index
+      timer), not the installer. Replace its `localinstall.sh` and
+      `uninstall.sh` calls with a package install and a package removal, and
+      drop its last check, that removal leaves no indexer state, or move it
+      to a purge: removal keeps `/var/lib/linuxio`.
+- [ ] Delete the app updater with its GitHub download, checksum, and
+      transient installer-unit code.
 - [ ] Remove raw binaries, the tarball, installer scripts, and installer
       checksums from GitHub release assets.
 - [ ] Keep unrelated runtime and development scripts, including the changelog
@@ -379,10 +465,17 @@ RPM Fedora build --/                         |
 - [ ] `make localinstall` installs the package through APT or DNF and does not
       copy package-owned files directly.
 - [ ] Install version A from each local signed repository, publish version B,
-      and update A to B through PackageKit.
-- [ ] Verify a logged-in browser observes progress, survives the expected
-      service restart, reconnects, and reports success on DEB and RPM.
+      and update A to B from the Updates page.
+- [ ] Verify on DEB and RPM that the banner names B and opens the Updates
+      page, that the package restarts LinuxIO, that the update job runs to
+      its end across that restart, and that after signing in again the
+      browser shows the job finished and the host runs B.
+- [ ] Update A to B from a shell (`apt`, `dnf`) and through the
+      distribution's unattended upgrade, with a job running: LinuxIO runs B
+      afterwards with no `linuxio restart`, the job goes on, and a LinuxIO
+      that was stopped stays stopped.
 - [ ] Verify failed and cancelled updates do not restart LinuxIO.
+- [ ] Pass the two login banner checks in "Login banner".
 - [ ] Verify APT and DNF reject tampered metadata and packages.
 - [ ] Verify package removal preserves `/var/lib/linuxio`.
 - [ ] Run `shellcheck` and `shfmt -d` on all relevant remaining shell files.

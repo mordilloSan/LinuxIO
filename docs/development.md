@@ -28,6 +28,23 @@ in the quiet log.
 Do not invoke `go test`, Vitest, TypeScript, linters, or formatters directly;
 use the corresponding Make target.
 
+The browser tests serve the built frontend on `127.0.0.1:4174`. A failed run can
+leave its `vite preview --config config/browser.vite.config.ts` alive, and the
+next run then fails with "already used"; several sessions working in the same
+checkout meet the same port. Before `make test-frontend-browser-quiet`, look
+with `ss -ltn | rg 4174` and `pgrep -af 'vite preview'`, and stop only a
+leftover preview:
+
+```sh
+pkill -f '^node .*vite preview --config config/browser.vite.config.ts'
+```
+
+The `^node` anchor matters: without it `pkill -f` also matches the shell that
+runs it. Two runs at once slow each other down, so a timing assertion that
+fails while a second browser log in `.cache/test-logs` starts within seconds of
+yours is rerun when the machine is quiet;
+`PLAYWRIGHT_ARGS="<spec> --repeat-each 2"` confirms the spec is stable.
+
 ## Prerequisites
 
 - Go 1.21 or newer on PATH (Go fetches the exact version `go.mod` pins)
