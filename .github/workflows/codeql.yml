@@ -65,6 +65,7 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           dependency-caching: ${{ matrix.dependency_caching }}
+          config-file: ./.github/codeql/codeql-config.yml
           # queries: security-extended,security-and-quality
 
       - name: Prepare embedded frontend placeholders
