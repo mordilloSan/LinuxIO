@@ -856,6 +856,15 @@ credentials are stored in Make variables.
 
 ## Dependency updates
 
+Dependabot (`.github/dependabot.yml`) opens the routine updates as pull
+requests into `main`. Each week, it opens at most one grouped pull request for
+GitHub Actions (`ci(deps): …`) and one each for the Go modules in `backend/`
+and the npm packages in `frontend/` (`build(deps): …`). The grouped pull
+requests hold minor and patch versions; a new major version arrives in a pull
+request of its own. A version must be at least seven days old before
+Dependabot proposes it; security updates skip that wait. The targets below
+are for updating by hand.
+
 Run `make update-deps` in a terminal to choose frontend upgrades. Nothing is
 preselected: use Space to select packages and Enter to apply. Select related
 packages such as `vitest` and `@vitest/coverage-v8` together.
