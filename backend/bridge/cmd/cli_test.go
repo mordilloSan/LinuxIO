@@ -15,6 +15,23 @@ func TestRunUnknownArgumentReturnsUsageError(t *testing.T) {
 	}
 }
 
+func TestRunAnswersHelpAndVersion(t *testing.T) {
+	for _, arg := range []string{"--help", "-h", "--version"} {
+		if code := run([]string{"linuxio-bridge", arg}, nil); code != 0 {
+			t.Errorf("run(%s) exit code = %d, want 0", arg, code)
+		}
+	}
+}
+
+// The bridge takes no word, and -v is not a spelling of --version.
+func TestRunTakesNoWordAndNoShortVersion(t *testing.T) {
+	for _, arg := range []string{"version", "help", "-v"} {
+		if code := run([]string{"linuxio-bridge", arg}, nil); code != 2 {
+			t.Errorf("run(%s) exit code = %d, want 2", arg, code)
+		}
+	}
+}
+
 func TestRunDirectInvocationReturnsUsageError(t *testing.T) {
 	stdin, err := os.Open(os.DevNull)
 	if err != nil {

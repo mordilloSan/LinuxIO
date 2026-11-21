@@ -23,19 +23,20 @@ type ServerConfig struct {
 // test seam (override in tests)
 var runServerFunc = RunServer
 
+// program is what the webserver answers to --help and --version.
+var program = version.Program{
+	Binary:    "linuxio-webserver",
+	About:     "the LinuxIO web server",
+	StartedBy: "systemd (linuxio-webserver.service)",
+	Usage:     []string{"linuxio-webserver [--port N] [--verbose]"},
+}
+
 // Run starts the LinuxIO webserver and returns the process exit code. The
 // program takes flags and no command word: systemd starts it, and linuxio is
 // the admin tool.
 func Run(args []string) int {
-	if len(args) > 1 {
-		switch args[1] {
-		case "-h", "--help", "help":
-			printGeneralUsage()
-			return 0
-		case "version", "-v", "--version":
-			fmt.Printf("LinuxIO Web Server %s\n", version.Version)
-			return 0
-		}
+	if program.Answer(args[1:], os.Stdout) {
+		return 0
 	}
 
 	flags := flag.NewFlagSet("linuxio-webserver", flag.ContinueOnError)
@@ -43,14 +44,7 @@ func Run(args []string) int {
 	var cfg ServerConfig
 	flags.IntVar(&cfg.Port, "port", 8090, "HTTP server port (1-65535)")
 	flags.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging (default false)")
-
-	flags.Usage = func() {
-		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
-		fmt.Fprintln(os.Stderr, "\nUsage:")
-		fmt.Fprintln(os.Stderr, "  linuxio-webserver [flags]")
-		fmt.Fprintln(os.Stderr, "\nFlags:")
-		flags.PrintDefaults()
-	}
+	flags.Usage = func() { program.WriteHelp(flags.Output()) }
 
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -59,15 +53,14 @@ func Run(args []string) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
-		fmt.Fprintf(os.Stderr, "unknown argument: %q\n\n", flags.Arg(0))
-		printUsage()
+		fmt.Fprintf(os.Stderr, "linuxio-webserver: unknown argument: %q\n\n", flags.Arg(0))
+		program.WriteHelp(os.Stderr)
 		return 2
 	}
 
 	// Validate port (reject 0: server needs a fixed, known port for clients)
 	if cfg.Port <= 0 || cfg.Port > 65535 {
-		fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535 (port 0 not supported)")
+		fmt.Fprintln(os.Stderr, "linuxio-webserver: invalid --port: must be between 1 and 65535 (port 0 not supported)")
 		return 2
 	}
 
@@ -79,19 +72,4 @@ func Run(args []string) int {
 		return 1
 	}
 	return 0
-}
-
-func printGeneralUsage() {
-	fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
-	printUsage()
-}
-
-func printUsage() {
-	fmt.Fprintf(os.Stderr, `Usage:
-  linuxio-webserver [-port N] [-verbose]
-  linuxio-webserver --version
-  linuxio-webserver --help
-
-linuxio-webserver is started by systemd. Manage LinuxIO with the linuxio command.
-`)
 }

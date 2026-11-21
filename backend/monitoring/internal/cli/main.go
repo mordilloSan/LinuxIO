@@ -19,27 +19,19 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/daemon"
 )
 
-const usageText = `linuxio-monitoring is managed by LinuxIO and systemd.
-
-Usage:
-  linuxio-monitoring [--config PATH] [--verbose]
-  linuxio-monitoring --version
-  linuxio-monitoring --help
-
-Status, configuration, history and database maintenance are available through
-the LinuxIO interface.
-`
+// program is what the daemon answers to --help and --version.
+var program = version.Program{
+	Binary:    "linuxio-monitoring",
+	About:     "the LinuxIO monitoring daemon",
+	StartedBy: "systemd (linuxio-monitoring.service)",
+	Usage:     []string{"linuxio-monitoring [--config PATH] [--verbose]"},
+}
 
 // Run starts the monitoring daemon and returns the process exit code. The
 // program takes flags and no command word: systemd starts it.
 func Run(args []string) int {
-	if len(args) > 1 {
-		switch args[1] {
-		case "--version", "-v", "version":
-			return writeOutput(os.Stdout, "LinuxIO Monitoring "+version.Version+"\n")
-		case "--help", "-h", "help":
-			return writeOutput(os.Stdout, usageText)
-		}
+	if program.Answer(args[1:], os.Stdout) {
+		return 0
 	}
 	return runDaemon(args[1:])
 }
@@ -48,6 +40,7 @@ func runDaemon(args []string) int {
 	fs := flag.NewFlagSet("linuxio-monitoring", flag.ContinueOnError)
 	configPath := fs.String("config", config.DefaultPath, "YAML config file path")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	fs.Usage = func() { program.WriteHelp(fs.Output()) }
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -55,7 +48,9 @@ func runDaemon(args []string) int {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		return writeUsageError(fs.Output(), fmt.Sprintf("linuxio-monitoring does not accept arguments: %s\n\n%s", fs.Arg(0), usageText))
+		fmt.Fprintf(fs.Output(), "linuxio-monitoring: unknown argument: %q\n\n", fs.Arg(0))
+		program.WriteHelp(fs.Output())
+		return 2
 	}
 	if err := logging.Configure("linuxio-monitoring", *verbose); err != nil {
 		return writeError(os.Stderr, fmt.Sprintf("linuxio-monitoring: initialize logging: %v\n", err))
@@ -83,10 +78,4 @@ func writeOutput(w io.Writer, value string) int {
 func writeError(w io.Writer, value string) int {
 	_ = writeOutput(w, value)
 	return 1
-}
-
-// writeUsageError reports a command-line usage error with flag's exit code 2.
-func writeUsageError(w io.Writer, value string) int {
-	_ = writeOutput(w, value)
-	return 2
 }

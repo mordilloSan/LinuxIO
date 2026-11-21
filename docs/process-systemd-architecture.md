@@ -61,31 +61,75 @@ programs as not recorded.
 Known limits: a program replaced by hand keeps its recorded version until the
 installer runs again. On an update the installer rewrites the command lines
 in the units and drop-ins LinuxIO itself wrote (`saved_unit_files`); an
-administrator's own unit or override that calls `linuxio alert ...` or starts
-a daemon with `run` is not touched and needs the new command line.
+administrator's own unit or override that calls `linuxio alert ...`, starts
+a daemon with `run` or passes the indexer `--config-file` (`--config` since
+v0.55) is not touched and needs the new command line. The installer takes its
+units from current `main`, so it installs v0.55.0 or newer only, and with
+`--skip-binaries` it refuses a host whose programs are older.
 
 ### Binary invocation map
 
 Only `linuxio` is an operator administration CLI, and it holds admin commands
 only. One other program takes a command word, `linuxio-worker`, which systemd
 alone starts; a job on a timer, a hook on a unit and an alert from a drop-in
-all go through it. The remaining binaries take flags, start with no word, and
-expose metadata for diagnostics and process modes owned by systemd or the
-auth/bridge launch protocol. A new root action for a timer or a hook is a
-word of `linuxio-worker`, never a command of `linuxio` and never a word on a
-daemon.
+all go through it. The remaining programs take flags and start with no word. A
+new root action for a timer or a hook is a word of `linuxio-worker`, never a
+command of `linuxio` and never a word on a daemon.
 
-| Binary | Supported interactive surface | Managed or private surface |
-|---|---|---|
-| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | None: it holds admin commands only |
-| `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | No command word: `[-port N] [-verbose]` starts the server; used by `linuxio-webserver.service` |
-| `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
-| `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only. With no arguments and the `linuxio-jobs` socket from systemd, the job host (`linuxio-jobs@<uid>.service`). |
-| `linuxio-docker-update` | `help`/`-h`/`--help` | No command word: started with `[--config PATH]` it runs one update pass, for the managed timer. Root only |
-| `linuxio-claude-relay` | None | Claude Code's own arguments, with `LINUXIO_CLAUDE_BIN` naming the real CLI; started only by `claude-agent-acp` in an Assistant chat. Exits 2 without that variable. |
-| `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
-| `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | No command word: `[--config PATH] [--verbose]` starts the daemon; used by `linuxio-monitoring.service`. Root only |
-| `linuxio-worker` | None: root only | `snapshot [--now RFC3339]`, `snapshot pre-update`, `replicate [--now RFC3339]`, `health`, `degraded`, `resync <uuid>`, `rebuild <uuid>`, used by the btrfs units and the pre-update hook; `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); `alert raise\|resolve\|auto-update\|pending-updates`, the alert hooks ([Alerts](./alerts.md#hook-commands)). `help` prints the list |
+**One rule for the other eight.** Each answers `--help` (or `-h`) and
+`--version`, spelled the same on every program, and nothing else on them is
+meant for a person.
+
+- `--version` prints one line, the program's name and its build. It is the
+  line the installer records ([Versions](#binaries)).
+- `--help` says what the program is, what starts it and with which command
+  line. It lists the flags systemd passes so that someone reading a unit file
+  can tell what they mean, not so that they are typed.
+- There is no `help` or `version` word, since a daemon starts with flags only,
+  and no `-v`, which reads as `--verbose` beside a program that has that flag.
+- Flags are written with two dashes, in units, drop-ins and help alike. Go's
+  flag parser also takes one dash; nothing LinuxIO writes uses it.
+- An argument a program does not know ends it with status 2, and the
+  program does not start.
+
+The Go programs answer through `version.Program`
+(`backend/common/version/program.go`); `linuxio-auth` holds the same text in
+C. A program installed `0700` cannot be started by another user at all, so
+for that user the shell answers "Permission denied" to `--help` and
+`--version` as to everything else. That is on purpose: the refusal comes from
+the kernel before any code of the program runs, and `linuxio version` shows
+anyone the version of all nine programs, as the installer recorded them.
+
+#### What each program accepts
+
+| Program | Mode | What a person can type | What it really runs as |
+|---|---|---|---|
+| `linuxio` | open | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version [--self]` (also `--version`), `help` (also `-h`, `--help`) | Nothing else; it is the admin tool |
+| `linuxio-webserver` | open | `--help`, `-h`, `--version` | The web server, started by `linuxio-webserver.service` with `[--port N] [--verbose]` |
+| `linuxio-bridge` | open | `--help`, `-h`, `--version` | One process per signed-in user, started by `linuxio-auth` with no arguments, the inherited fd 3 and the auth bootstrap; also the job host, started by systemd (`linuxio-jobs@<uid>.service`) with no arguments and the `linuxio-jobs` socket |
+| `linuxio-claude-relay` | open | `--help`, `-h`, `--version`, outside a chat only | Started only by `claude-agent-acp` in an Assistant chat, with Claude Code's own arguments and `LINUXIO_CLAUDE_BIN` naming the real CLI. While that variable is set every argument goes to Claude Code, those three too; without it, anything else exits 2 |
+| `linuxio-auth` | root only | `--help`, `-h`, `--version` | The sign-in helper, started by systemd for each connection (`linuxio-auth@.service`) with no arguments |
+| `linuxio-worker` | root only | `--help`, `-h`, `--version`; the help lists its words | The words systemd timers and hooks run (list below) |
+| `linuxio-docker-update` | root only | `--help`, `-h`, `--version` | One Docker update pass, started by its timer with `[--config PATH]` |
+| `linuxio-indexer` | root only | `--help`, `-h`, `--version` | The file index daemon, started by `linuxio-indexer.service` with `[--config PATH] [--verbose]`, plus two private modes: `--trigger-index` for its timer and `--index-mode` for the scanner the daemon starts |
+| `linuxio-monitoring` | root only | `--help`, `-h`, `--version` | The monitoring daemon, started by `linuxio-monitoring.service` with `[--config PATH] [--verbose]` |
+
+"Open" is mode `0755` and "root only" is `0700`
+([Who may start each program](#binaries)). `linuxio verbose` switches the
+daemons live through a SIGHUP reload and open sessions at the next login; it
+persists across restarts and is also in Settings.
+
+The words of `linuxio-worker` are:
+
+- `snapshot [--now RFC3339]` and `snapshot pre-update`: the timeline
+  snapshots of the btrfs timer, and the snapshot the pre-update hook takes.
+- `replicate [--now RFC3339]`: the replication the btrfs timer runs.
+- `health`, `degraded`, `resync <uuid>` and `rebuild <uuid>`: the other btrfs
+  units.
+- `scheduled-run begin|end --unit <unit>`: the hooks of the scheduled units
+  ([Scheduled runs](#scheduled-runs)).
+- `alert raise|resolve|auto-update|pending-updates`: the alert hooks
+  ([Alerts](./alerts.md#hook-commands)).
 
 User lookup in the job host goes through `os/user`, which
 resolves SSSD/LDAP users only in a cgo build (the default native build); a
@@ -666,7 +710,7 @@ linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
 linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring (SIGHUP reload; open sessions switch at next login); persists across restarts
-linuxio version [--self]    # version of the CLI + of each program as the installer recorded it
+linuxio version [--self]    # version of the CLI + of each program as the installer recorded it; also linuxio --version
 ```
 
 The Services page warns before it cuts LinuxIO off. Stop, Restart, Disable and

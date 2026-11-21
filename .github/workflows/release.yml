@@ -207,11 +207,11 @@ jobs:
           cd "$BIN_DIR"
           for bin in "${bins[@]}"; do
             case "$bin" in
-              linuxio|linuxio-webserver|linuxio-docker-update|linuxio-worker)
+              linuxio)
                 "./$bin" help >/dev/null || { echo "$bin verification failed"; exit 1; }
                 echo "✓ $bin runs correctly"
                 ;;
-              linuxio-indexer|linuxio-monitoring)
+              linuxio-webserver|linuxio-docker-update|linuxio-worker|linuxio-indexer|linuxio-monitoring)
                 "./$bin" --version >/dev/null || { echo "$bin verification failed"; exit 1; }
                 echo "✓ $bin runs correctly"
                 ;;

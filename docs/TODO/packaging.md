@@ -86,7 +86,7 @@ Native packaging guarantees that every file in the package has one version.
       ([Versions](../process-systemd-architecture.md#binaries)).
 - [ ] Remove `version --self`.
 - [ ] Make `linuxio version` print the package/build version.
-- [ ] Support the conventional `linuxio --version` with the same result.
+- [x] Support the conventional `linuxio --version` with the same result.
 - [ ] Remove component-version probing from
       `backend/webserver/appupdate/version.go:129`; it must not depend on all
       LinuxIO binaries sharing one executable search path.
@@ -120,7 +120,7 @@ Native packaging guarantees that every file in the package has one version.
 ### 6. Update tests and documentation
 
 - [ ] Remove component-probing and `--self` tests.
-- [ ] Test both `linuxio version` and `linuxio --version`.
+- [x] Test both `linuxio version` and `linuxio --version`.
 - [ ] Update systemd path assertions.
 - [ ] Update the binary-location paragraph in `docs/process-systemd-architecture.md`.
 - [ ] Add the man page to package-content tests.
@@ -188,6 +188,22 @@ Use this common layout:
 - [ ] Update the C authentication helper's bridge path.
 - [ ] Update package-owned systemd units to execute binaries from
       `/usr/libexec/linuxio`.
+- [ ] Keep the five programs systemd runs as root (`linuxio-worker`,
+      `linuxio-docker-update`, `linuxio-auth`, `linuxio-indexer`,
+      `linuxio-monitoring`) at mode 0700, owned by root, as the installer's
+      `binary_mode` sets them today; the other programs stay 0755. Decided
+      2026-11-21. Cockpit installs every helper 0755; LinuxIO is stricter on
+      purpose, so no other local user can run a private word or flag.
+      - RPM: `%attr(0700,root,root)` on each of the five.
+      - DEB: `dh_fixperms` resets every program to 0755, so the rules set
+        0700 again after it.
+      - The package-content test checks the nine modes.
+      - The `AGENTS.md` rule then names the packages in place of
+        `binary_mode` in the installer.
+      - What each program answers to `--help` and `--version`, and to a
+        user who is not root, is one rule since v0.55
+        ([Binary invocation map](../process-systemd-architecture.md#binary-invocation-map)):
+        a root-only program answers "Permission denied" to another user.
 - [ ] Ship the SELinux module (`packaging/selinux/linuxio.cil`) in the RPM
       and load it from the package, with its file context changed to the
       installed path of `linuxio-auth`, `/usr/libexec/linuxio/linuxio-auth`
@@ -455,6 +471,13 @@ Browser
 ## 5. Delete obsolete installation and update machinery
 
 - [ ] Delete `packaging/scripts/install-linuxio-binaries.sh`.
+- [ ] Do not carry its `rewrite_saved_unit_commands` into the packages.
+      Decided 2026-11-21. Its replacements fix command lines that releases
+      up to v0.53 wrote into saved unit files, and no such file reaches a
+      package install, which starts on a host with no script install. The
+      `AGENTS.md` rule that names it then says that a release which changes
+      a command line LinuxIO writes on save rewrites the saved copies in the
+      package's post-install step.
 - [ ] Delete `packaging/scripts/install-dependencies.sh`.
 - [ ] Delete `packaging/scripts/localinstall.sh`.
 - [ ] Delete `packaging/scripts/uninstall.sh`.

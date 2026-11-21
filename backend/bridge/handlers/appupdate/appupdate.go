@@ -344,7 +344,7 @@ func getInstalledVersion(parent context.Context) string {
 	// Fallback: try running linuxio-webserver to get version
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, version.BinDir+"/linuxio-webserver", "version")
+	cmd := exec.CommandContext(ctx, version.BinDir+"/linuxio-webserver", "--version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Debug("failed to get version from binary", "component", "control", "subsystem", "version", "error", err)

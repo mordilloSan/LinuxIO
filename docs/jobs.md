@@ -242,8 +242,8 @@ one.
   is a no-op, so repeated logins cannot multiply hosts.
 - As the host, the bridge binary takes no arguments: it recognises the socket
   systemd passes it by its name, `linuxio-jobs`, and refuses to run without it.
-  The binary has no verb besides `version`: nothing outside the browser starts
-  a job, and there is no manual resume.
+  The binary takes no verb, only `--help` and `--version`: nothing outside the
+  browser starts a job, and there is no manual resume.
 
 ### Lifecycle
 

@@ -19,8 +19,10 @@ func TestComponentsAreUniqueAndIncludeMonitoring(t *testing.T) {
 		}
 		names[c.Name], binaries[c.Binary] = true, true
 	}
-	if !binaries["linuxio-monitoring"] {
-		t.Error("Components leaves out linuxio-monitoring")
+	for _, binary := range []string{"linuxio-monitoring", "linuxio-worker", "linuxio-docker-update", "linuxio-claude-relay"} {
+		if !binaries[binary] {
+			t.Errorf("Components leaves out %s", binary)
+		}
 	}
 }
 

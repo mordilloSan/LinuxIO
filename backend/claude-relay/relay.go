@@ -17,7 +17,21 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
+
+// program is what the relay answers to --help and --version, which it does
+// only outside a chat (see run).
+var program = version.Program{
+	Binary:    "linuxio-claude-relay",
+	About:     "runs Claude Code for an Assistant chat and carries its plugin panes to LinuxIO",
+	StartedBy: "claude-agent-acp in an Assistant chat",
+	Usage: []string{
+		"linuxio-claude-relay <Claude Code's arguments>",
+		"(" + envClaudeBin + " names the real claude; while it is set, every argument goes to Claude Code, --help and --version too)",
+	},
+}
 
 // The variables the bridge gives the adapter, and so this process.
 const (
@@ -69,6 +83,12 @@ type process struct {
 func run(p process) int {
 	claude := lookupEnv(p.env, envClaudeBin)
 	if claude == "" {
+		// With no Claude Code to start, the arguments are not Claude Code's,
+		// so the relay answers --help and --version here and nowhere else:
+		// in a chat it passes both on like every other argument.
+		if program.Answer(p.args, p.stdout) {
+			return 0
+		}
 		fmt.Fprintln(p.stderr, "linuxio-claude-relay: "+envClaudeBin+" is not set")
 		return 2
 	}

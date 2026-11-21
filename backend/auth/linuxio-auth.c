@@ -3012,19 +3012,53 @@ out:
   return result;
 }
 
+// -------- arguments ----------
+#ifndef LINUXIO_VERSION
+#define LINUXIO_VERSION "(version unknown)"
+#endif
+
+// What the helper says about itself. Every LinuxIO program answers the same
+// two requests the same way; this text follows Program.WriteHelp in
+// backend/common/version/program.go.
+static const char auth_help[] =
+    "linuxio-auth: the LinuxIO sign-in helper\n"
+    "Started by systemd (linuxio-auth@.service), not by hand. Manage LinuxIO with the linuxio command.\n"
+    "\n"
+    "It is started as:\n"
+    "  linuxio-auth\n"
+    "\n"
+    "It also answers --help, -h and --version.\n";
+
+// Returns -1 when the command line holds no argument, which is how systemd
+// starts the helper. Otherwise the first argument is answered and the helper
+// must not start: 0 after the version or the help went to out, 2 after an
+// argument that is neither was refused on err. There is no "version" word
+// and no -v, as on the other programs.
+static int answer_arguments(int argc, char *argv[], FILE *out, FILE *err)
+{
+  if (argc < 2)
+    return -1;
+  if (strcmp(argv[1], "--version") == 0)
+  {
+    fprintf(out, "LinuxIO Auth %s\n", LINUXIO_VERSION);
+    return 0;
+  }
+  if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
+  {
+    fputs(auth_help, out);
+    return 0;
+  }
+  fprintf(err, "linuxio-auth: unknown argument: \"%s\"\n", argv[1]);
+  return 2;
+}
+
 // -------- main ----------
 int main(int argc, char *argv[])
 {
-  // Handle --version before any other checks
-  if (argc == 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "version") == 0))
-  {
-#ifdef LINUXIO_VERSION
-    printf("LinuxIO Auth %s\n", LINUXIO_VERSION);
-#else
-    printf("LinuxIO Auth (version unknown)\n");
-#endif
-    return 0;
-  }
+  // Before the root check, so the two requests need no privilege.
+  int answered = answer_arguments(argc, argv, stdout, stderr);
+  if (answered >= 0)
+    return answered;
 
   if (geteuid() != 0)
   {

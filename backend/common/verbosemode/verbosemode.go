@@ -36,14 +36,14 @@ var dropins = []dropin{
 		unit: "linuxio-webserver.service",
 		content: `[Service]
 ExecStart=
-ExecStart=` + version.BinDir + `/linuxio-webserver -verbose
+ExecStart=` + version.BinDir + `/linuxio-webserver --verbose
 `,
 	},
 	{
 		unit: "linuxio-indexer.service",
 		content: `[Service]
 ExecStart=
-ExecStart=` + version.BinDir + `/linuxio-indexer --config-file ` + version.ConfigDir + `/indexer/config.yaml --verbose
+ExecStart=` + version.BinDir + `/linuxio-indexer --config ` + version.ConfigDir + `/indexer/config.yaml --verbose
 `,
 	},
 	{

@@ -107,7 +107,7 @@ linuxio-monitoring --version
 linuxio-monitoring --help
 ```
 
-`run` is what the unit executes. There are no other subcommands: status,
+The first line is what the unit executes. There are no subcommands: status,
 configuration, history and database maintenance are reached through LinuxIO,
 which sends them as commands on the control socket. Logging goes to journald
 through `backend/common/logging` under the syslog identifier

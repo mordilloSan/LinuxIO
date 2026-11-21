@@ -12,6 +12,13 @@ import (
 
 func versionOutput(t *testing.T, recorded map[string]string, readErr error) string {
 	t.Helper()
+	return versionOutputOf(t, recorded, readErr, func() { showVersion(nil) })
+}
+
+// versionOutputOf returns what show prints while the installer's record
+// holds recorded.
+func versionOutputOf(t *testing.T, recorded map[string]string, readErr error, show func()) string {
+	t.Helper()
 	orig := readComponentVersions
 	t.Cleanup(func() { readComponentVersions = orig })
 	readComponentVersions = func() (map[string]string, error) { return recorded, readErr }
@@ -22,7 +29,7 @@ func versionOutput(t *testing.T, recorded map[string]string, readErr error) stri
 	}
 	stdout := os.Stdout
 	os.Stdout = w
-	showVersion(nil)
+	show()
 	os.Stdout = stdout
 	_ = w.Close()
 	out, err := io.ReadAll(r)
@@ -58,5 +65,16 @@ func TestShowVersionWithoutARecordNamesEveryOtherProgram(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestDashDashVersionPrintsWhatTheVersionCommandPrints(t *testing.T) {
+	recorded := map[string]string{"LinuxIO Bridge": "v1.2.3"}
+	want := versionOutput(t, recorded, nil)
+
+	var code int
+	got := versionOutputOf(t, recorded, nil, func() { code = runCLI([]string{"linuxio", "--version"}) })
+	if code != 0 || got != want {
+		t.Fatalf("linuxio --version = %d\n%s\nwant what linuxio version prints:\n%s", code, got, want)
 	}
 }

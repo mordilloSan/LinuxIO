@@ -94,14 +94,28 @@ printf '   \033[1;32m✓\033[0m %s\n' "release architecture guard"
 (
 	# shellcheck disable=SC1090
 	source "$RELEASE_INSTALLER"
-	release_version_supported v0.54.0 || fail "v0.54.0 must be supported"
-	release_version_supported v0.54.1 || fail "v0.54.1 must be supported"
+	release_version_supported v0.55.0 || fail "v0.55.0 must be supported"
+	release_version_supported v0.55.1 || fail "v0.55.1 must be supported"
 	release_version_supported v1.0.0 || fail "v1.0.0 must be supported"
-	if release_version_supported v0.53.0; then
-		fail "v0.53.0 must be rejected before downloads"
+	if release_version_supported v0.54.9; then
+		fail "v0.54.9 must be rejected before downloads"
 	fi
+	# --skip-binaries keeps the installed programs, which must be ones the
+	# units start: v0.55.0 is the first whose worker answers --version.
+	fixture_dir=$(mktemp -d)
+	if installed_binaries_supported "$fixture_dir"; then
+		fail "a host with no worker must not pass for a supported install"
+	fi
+	printf '#!/bin/sh\necho "linuxio-worker: unknown command" >&2\nexit 2\n' >"${fixture_dir}/linuxio-worker"
+	chmod 0755 "${fixture_dir}/linuxio-worker"
+	if installed_binaries_supported "$fixture_dir"; then
+		fail "a v0.54 worker must not pass for a supported install"
+	fi
+	printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "LinuxIO Worker v0.55.0"\n' >"${fixture_dir}/linuxio-worker"
+	installed_binaries_supported "$fixture_dir" || fail "a v0.55 worker must pass for a supported install"
+	rm -rf "$fixture_dir"
 )
-printf '   \033[1;32m✓\033[0m %s\n' "first linuxio-worker release floor"
+printf '   \033[1;32m✓\033[0m %s\n' "release floor: the first release whose programs take this installer's unit command lines"
 run_release_integrity_fixtures
 printf '   \033[1;32m✓\033[0m %s\n' "release checksum verification"
 run_atomic_replacement_fixture "$RELEASE_INSTALLER"
@@ -269,7 +283,7 @@ grep -Fqx 'RestrictAddressFamilies=AF_UNIX' "$INDEXER_SERVICE" || fail "indexer 
 if grep -Eq 'linuxio-webserver.socket|linuxio-indexer-tcp.socket' "$INDEXER_SERVICE"; then
 	fail "indexer service must depend only on its Unix activation socket"
 fi
-grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --config-file /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" || fail "indexer service must start the managed daemon directly"
+grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --config /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" || fail "indexer service must start the managed daemon directly"
 grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock' \
 	"${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.service" || fail "index timer must use the private socket trigger"
 if grep -rEq 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' \
@@ -396,15 +410,19 @@ assert_eq "$go_components" "$installer_components" "installer component list vs 
 	fixture_dir=$(mktemp -d)
 	mkdir "${fixture_dir}/bin"
 	printf '#!/bin/sh\n[ "$1 $2" = "version --self" ] && echo "LinuxIO CLI v1.2.3"\n' >"${fixture_dir}/bin/linuxio"
-	for name in webserver:"Web Server" bridge:Bridge indexer:Indexer monitoring:Monitoring; do
+	for name in webserver:"Web Server" bridge:Bridge indexer:Indexer monitoring:Monitoring worker:Worker docker-update:"Docker Updater"; do
 		printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "LinuxIO %s v1.2.3" && echo "more"\n' "${name#*:}" >"${fixture_dir}/bin/linuxio-${name%%:*}"
 	done
+	# The relay answers only without the variable that names Claude Code, so
+	# the installer must not hand it one from its own environment.
+	printf '#!/bin/sh\n[ -z "$LINUXIO_CLAUDE_BIN" ] && [ "$1" = "--version" ] && echo "LinuxIO Claude Relay v1.2.3"\n' >"${fixture_dir}/bin/linuxio-claude-relay"
+	export LINUXIO_CLAUDE_BIN=/opt/claude/bin/claude
 	# A program that cannot run, such as one built for another machine.
 	printf '#!/bin/sh\nexit 1\n' >"${fixture_dir}/bin/linuxio-auth"
 	chmod 0755 "${fixture_dir}/bin/"*
 	write_components_file "${fixture_dir}/bin" "${fixture_dir}/share/components" >/dev/null ||
 		fail "recording the installed versions failed"
-	expected=$'LinuxIO CLI v1.2.3\nLinuxIO Web Server v1.2.3\nLinuxIO Bridge v1.2.3\nLinuxIO Indexer v1.2.3\nLinuxIO Monitoring v1.2.3'
+	expected=$'LinuxIO CLI v1.2.3\nLinuxIO Web Server v1.2.3\nLinuxIO Bridge v1.2.3\nLinuxIO Indexer v1.2.3\nLinuxIO Monitoring v1.2.3\nLinuxIO Worker v1.2.3\nLinuxIO Docker Updater v1.2.3\nLinuxIO Claude Relay v1.2.3'
 	assert_eq "$expected" "$(cat "${fixture_dir}/share/components")" "recorded versions"
 	assert_eq "644" "$(stat -c %a "${fixture_dir}/share/components")" "recorded versions mode"
 	assert_eq "755" "$(stat -c %a "${fixture_dir}/share")" "recorded versions directory mode"
@@ -421,12 +439,15 @@ printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the C
 	fixture_dir=$(mktemp -d)
 	system="${fixture_dir}/system"
 	mkdir -p "${system}/linuxio-webserver.service.d" "${system}/linuxio-monitoring.service.d" \
+		"${system}/linuxio-indexer.service.d" \
 		"${system}/apt-daily-upgrade.service.d" "${system}/apt-daily.service.d" "${system}/other.service.d"
 	printf '[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio-btrfs-timer snapshot run\n' >"${system}/linuxio-btrfs-snapshot.service"
 	printf '[Service]\nExecStart=/usr/local/bin/linuxio-btrfs-timer replicate run\n' >"${system}/linuxio-btrfs-replicate.service"
 	printf '[Service]\nExecStart=/usr/local/bin/linuxio-docker-update run --config /etc/linuxio/docker-update.json\n' >"${system}/linuxio-docker-update.service"
 	printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver run -verbose\n' >"${system}/linuxio-webserver.service.d/verbose.conf"
 	printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-monitoring run --config /etc/linuxio/monitoring/config.yaml --verbose\n' >"${system}/linuxio-monitoring.service.d/verbose.conf"
+	# v0.54 wrote the indexer's flag as --config-file.
+	printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-indexer --config-file /etc/linuxio/indexer/config.yaml --verbose\n' >"${system}/linuxio-indexer.service.d/verbose.conf"
 	printf '[Service]\nExecStartPre=-/usr/local/bin/linuxio-btrfs-timer snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider apt --policy on_change\n' >"${system}/apt-daily-upgrade.service.d/linuxio-alert.conf"
 	printf '[Service]\nExecStopPost=/usr/local/bin/linuxio alert pending-updates --provider apt\n' >"${system}/apt-daily.service.d/linuxio-alert.conf"
 	# A drop-in from before the worker was a program of its own.
@@ -445,8 +466,10 @@ printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the C
 			"$(cat "${system}/linuxio-btrfs-replicate.service")" "${pass} rewrite of the replication unit"
 		assert_eq $'[Service]\nExecStart=/usr/local/bin/linuxio-docker-update --config /etc/linuxio/docker-update.json' \
 			"$(cat "${system}/linuxio-docker-update.service")" "${pass} rewrite of the Docker update unit"
-		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver -verbose' \
+		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver --verbose' \
 			"$(cat "${system}/linuxio-webserver.service.d/verbose.conf")" "${pass} rewrite of the webserver verbose drop-in"
+		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-indexer --config /etc/linuxio/indexer/config.yaml --verbose' \
+			"$(cat "${system}/linuxio-indexer.service.d/verbose.conf")" "${pass} rewrite of the indexer verbose drop-in"
 		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-monitoring --config /etc/linuxio/monitoring/config.yaml --verbose' \
 			"$(cat "${system}/linuxio-monitoring.service.d/verbose.conf")" "${pass} rewrite of the monitoring verbose drop-in"
 		assert_eq $'[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy on_change' \
@@ -458,6 +481,11 @@ printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the C
 	done
 	cmp -s "${system}/other.service.d/mine.conf" "${fixture_dir}/mine.before" || fail "a file LinuxIO did not write was rewritten"
 	assert_eq "644" "$(stat -c %a "${system}/linuxio-btrfs-snapshot.service")" "rewritten unit mode"
+	# The webserver drop-in as v0.54 wrote it, with no "run" to mark it.
+	printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver -verbose\n' >"${system}/linuxio-webserver.service.d/verbose.conf"
+	rewrite_saved_unit_commands "$system" >/dev/null || fail "rewrite of a v0.54 drop-in failed"
+	assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver --verbose' \
+		"$(cat "${system}/linuxio-webserver.service.d/verbose.conf")" "rewrite of the v0.54 webserver verbose drop-in"
 	rm -rf "$fixture_dir"
 )
 printf '   \033[1;32m✓\033[0m %s\n' "saved units and drop-ins get this release's command lines"

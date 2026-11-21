@@ -9,6 +9,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 func TestParseRunArgs(t *testing.T) {
@@ -151,6 +152,42 @@ func TestRunCLISkippedPassCompletes(t *testing.T) {
 	report, reported, _ := failedProxyPass()
 	if code, _, _ := h.run(report, reported); code != 0 {
 		t.Fatalf("reported failure without a stored summary = code %d, want 0", code)
+	}
+}
+
+// refusePass fails the test when a pass starts.
+func refusePass(t *testing.T) {
+	t.Helper()
+	originalRun := runUpdates
+	t.Cleanup(func() { runUpdates = originalRun })
+	runUpdates = func(context.Context, string, func(string)) (dockerupdate.PassReport, error) {
+		t.Error("a pass must not start")
+		return dockerupdate.PassReport{}, nil
+	}
+}
+
+func TestRunCLIAnswersHelpAndVersionWithoutAPass(t *testing.T) {
+	refusePass(t)
+	var stdout bytes.Buffer
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "--version"}, &stdout, &bytes.Buffer{}); code != 0 || stdout.String() != "LinuxIO Docker Updater "+version.Version+"\n" {
+		t.Fatalf("--version = code %d, stdout %q", code, stdout.String())
+	}
+	for _, arg := range []string{"--help", "-h"} {
+		stdout.Reset()
+		if code := runCLI(context.Background(), []string{"linuxio-docker-update", arg}, &stdout, &bytes.Buffer{}); code != 0 || !strings.Contains(stdout.String(), "  linuxio-docker-update [--config PATH]") {
+			t.Fatalf("%s = code %d, stdout %q", arg, code, stdout.String())
+		}
+	}
+}
+
+// The updater takes no word: help, version and -v are unknown arguments.
+func TestRunCLITakesNoWordAndNoShortVersion(t *testing.T) {
+	refusePass(t)
+	for _, arg := range []string{"help", "version", "-v"} {
+		var stderr bytes.Buffer
+		if code := runCLI(context.Background(), []string{"linuxio-docker-update", arg}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "unknown argument") {
+			t.Errorf("%s = code %d, stderr %q", arg, code, stderr.String())
+		}
 	}
 }
 

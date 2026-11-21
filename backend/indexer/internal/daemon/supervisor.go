@@ -20,7 +20,7 @@ import (
 // it never emitted one.
 func (d *daemon) runIndexSubprocess(ctx context.Context, onEvent func(indexWireEvent)) (*IndexRunStats, error) {
 	slog.Debug("starting index process")
-	stats, err := runIndexProcess(exec.CommandContext(ctx, os.Args[0], "--index-mode", "--config-file", d.settings.path), onEvent)
+	stats, err := runIndexProcess(exec.CommandContext(ctx, os.Args[0], "--index-mode", "--config", d.settings.path), onEvent)
 	if err != nil {
 		return nil, err
 	}

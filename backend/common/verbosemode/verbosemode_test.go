@@ -37,7 +37,7 @@ func TestDropinsExecStartMatchesPackagedUnits(t *testing.T) {
 			}
 		}
 		flag, ok := strings.CutPrefix(override, packaged+" ")
-		if packaged == "" || !ok || (flag != "-verbose" && flag != "--verbose") {
+		if packaged == "" || !ok || flag != "--verbose" {
 			t.Errorf("%s: drop-in ExecStart %q is not the packaged %q plus a verbose flag", d.unit, override, packaged)
 		}
 	}

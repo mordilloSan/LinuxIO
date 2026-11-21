@@ -37,7 +37,7 @@ func runCLI(args []string) int {
 		return runRestart(ctx, cmdArgs)
 	case "verbose":
 		return runVerbose(ctx, cmdArgs)
-	case "version":
+	case "version", "--version":
 		showVersion(cmdArgs)
 		return 0
 	case "help", "-h", "--help":

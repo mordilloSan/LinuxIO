@@ -16,17 +16,27 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-const usage = `Usage: linuxio-worker snapshot [--now RFC3339]
-       linuxio-worker snapshot pre-update
-       linuxio-worker replicate [--now RFC3339]
-       linuxio-worker health
-       linuxio-worker degraded
-       linuxio-worker resync <uuid>
-       linuxio-worker rebuild <uuid>
-       linuxio-worker scheduled-run begin|end --unit <unit>
-       linuxio-worker alert raise|resolve|auto-update|pending-updates [flags]`
+// program is what the worker answers to --help and --version. Its usage is
+// every word it takes.
+var program = version.Program{
+	Binary:    "linuxio-worker",
+	About:     "the jobs and hooks LinuxIO runs from systemd timers and units",
+	StartedBy: "systemd",
+	Usage: []string{
+		"linuxio-worker snapshot [--now RFC3339]",
+		"linuxio-worker snapshot pre-update",
+		"linuxio-worker replicate [--now RFC3339]",
+		"linuxio-worker health",
+		"linuxio-worker degraded",
+		"linuxio-worker resync <uuid>",
+		"linuxio-worker rebuild <uuid>",
+		"linuxio-worker scheduled-run begin|end --unit <unit>",
+		"linuxio-worker alert raise|resolve|auto-update|pending-updates [flags]",
+	},
+}
 
 // reportProgress writes the progress of the scheduled run this process belongs
 // to; tests swap it. A negative percentage means unknown.
@@ -72,8 +82,11 @@ func run(args []string) int {
 
 func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, usage)
+		program.WriteHelp(stderr)
 		return 2
+	}
+	if program.Answer(args, stdout) {
+		return 0
 	}
 	switch args[0] {
 	case "snapshot":
@@ -92,11 +105,9 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runScheduledRun(ctx, args[1:], os.Getenv, scheduledrun.DefaultHooks(), stderr)
 	case "alert":
 		return runAlert(ctx, args[1:])
-	case "help", "-h", "--help":
-		fmt.Fprintln(stdout, usage)
-		return 0
 	default:
-		fmt.Fprintf(stderr, "linuxio-worker: unknown command %q\n%s\n", args[0], usage)
+		fmt.Fprintf(stderr, "linuxio-worker: unknown command %q\n\n", args[0])
+		program.WriteHelp(stderr)
 		return 2
 	}
 }

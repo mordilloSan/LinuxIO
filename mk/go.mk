@@ -97,19 +97,19 @@ build-cli: ## Build the CLI tool
 build-docker-update: go_binary_label := Docker update worker
 build-docker-update: go_binary_package := ./docker-update
 build-docker-update: go_binary_output := $(docker_update_binary)
-build-docker-update: go_binary_ldflags := -s -w
+build-docker-update: go_binary_ldflags := $(go_version_ldflags)
 build-docker-update: ## Build the scheduled Docker update worker
 
 build-worker: go_binary_label := worker
 build-worker: go_binary_package := ./worker
 build-worker: go_binary_output := $(worker_binary)
-build-worker: go_binary_ldflags := -s -w
+build-worker: go_binary_ldflags := $(go_version_ldflags)
 build-worker: ## Build the worker that systemd starts for timer jobs and hooks
 
 build-claude-relay: go_binary_label := Claude Code pane relay
 build-claude-relay: go_binary_package := ./claude-relay
 build-claude-relay: go_binary_output := $(claude_relay_binary)
-build-claude-relay: go_binary_ldflags := -s -w
+build-claude-relay: go_binary_ldflags := $(go_version_ldflags)
 build-claude-relay: ## Build the relay that carries Claude Code plugin panes to the Assistant
 
 build-indexer: go_binary_label := filesystem indexer

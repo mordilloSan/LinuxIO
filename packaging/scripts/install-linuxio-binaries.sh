@@ -39,10 +39,10 @@ readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
 readonly BTRFS_DEGRADED_UNIT_NAME="linuxio-btrfs-degraded.service"
 # The oldest release this installer installs: the units and drop-ins it
-# fetches from current main start linuxio-worker and start the webserver,
-# monitoring and the Docker updater with no command word, which older
-# binaries do not have or accept.
-readonly MINIMUM_SUPPORTED_RELEASE="v0.54.0"
+# fetches from current main start linuxio-worker, start the webserver,
+# monitoring and the Docker updater with no command word, and give the
+# indexer --config, which older binaries do not have or accept.
+readonly MINIMUM_SUPPORTED_RELEASE="v0.55.0"
 ENABLE_INDEXER_TIMER=0
 # Install source. Release mode downloads into STAGING; --local reads the build
 # directory and the checkout (set in main).
@@ -81,7 +81,14 @@ release_version_supported() {
 
 	local major=$((10#${BASH_REMATCH[1]}))
 	local minor=$((10#${BASH_REMATCH[2]}))
-	((major > 0 || (major == 0 && minor >= 54)))
+	((major > 0 || (major == 0 && minor >= 55)))
+}
+
+# Whether the programs already in the folder $1 are of
+# MINIMUM_SUPPORTED_RELEASE or newer, for an install that keeps them: v0.55.0
+# is the first release whose worker answers --version.
+installed_binaries_supported() {
+	[[ -x "$1/linuxio-worker" ]] && "$1/linuxio-worker" --version >/dev/null 2>&1
 }
 
 require_release_version() {
@@ -131,7 +138,10 @@ component_binaries() {
 		linuxio-bridge \
 		linuxio-auth \
 		linuxio-indexer \
-		linuxio-monitoring
+		linuxio-monitoring \
+		linuxio-worker \
+		linuxio-docker-update \
+		linuxio-claude-relay
 }
 
 # Record the version line of each program of component_binaries found in $1
@@ -151,7 +161,9 @@ write_components_file() {
 		if [[ "$binary" == linuxio ]]; then
 			line="$("${bin_dir}/${binary}" version --self 2>/dev/null | head -n1)" || line=""
 		else
-			line="$("${bin_dir}/${binary}" --version 2>/dev/null | head -n1)" || line=""
+			# Without the variable that names Claude Code, which the relay
+			# would hand --version to.
+			line="$(env -u LINUXIO_CLAUDE_BIN "${bin_dir}/${binary}" --version 2>/dev/null | head -n1)" || line=""
 		fi
 		if [[ -n "$line" ]]; then
 			printf '%s\n' "$line" >>"$staged"
@@ -221,6 +233,7 @@ saved_unit_files() {
 		linuxio-btrfs-replicate.service \
 		linuxio-docker-update.service \
 		linuxio-webserver.service.d/verbose.conf \
+		linuxio-indexer.service.d/verbose.conf \
 		linuxio-monitoring.service.d/verbose.conf \
 		apt-daily.service.d/linuxio-alert.conf \
 		apt-daily-upgrade.service.d/linuxio-alert.conf \
@@ -229,12 +242,14 @@ saved_unit_files() {
 		mintupdate-automation-upgrade.service.d/linuxio-alert.conf
 }
 
-# Rewrite the command lines of releases up to v0.53 in the files of
-# saved_unit_files inside $1: the worker was linuxio-btrfs-timer (and before
-# that the linuxio words btrfs-snapshot and btrfs-health) and its jobs took
-# "run", the hooks were words of linuxio, and the webserver, monitoring and
-# the Docker updater took "run". Without this, snapshots would stop and
-# the page would not start under verbose logging until each setting was saved
+# Rewrite the command lines of earlier releases in the files of
+# saved_unit_files inside $1. Up to v0.53 the worker was linuxio-btrfs-timer
+# (and before that the linuxio words btrfs-snapshot and btrfs-health) and its
+# jobs took "run", the hooks were words of linuxio, and the webserver,
+# monitoring and the Docker updater took "run". Up to v0.54 the indexer's
+# flag was --config-file, which it no longer takes, and the webserver's was
+# written -verbose. Without this, snapshots would stop and the page and the
+# indexer would not start under verbose logging until each setting was saved
 # again. Running it twice changes nothing.
 rewrite_saved_unit_commands() {
 	local systemd_dir="$1"
@@ -243,13 +258,15 @@ rewrite_saved_unit_commands() {
 	while IFS= read -r file; do
 		path="${systemd_dir}/${file}"
 		[[ -f "$path" && ! -L "$path" ]] || continue
-		grep -Eq '/linuxio-btrfs-timer |/linuxio (alert|scheduled-run|btrfs-snapshot|btrfs-health) |/linuxio-(webserver|monitoring|docker-update) run( |$)' "$path" || continue
+		grep -Eq '/linuxio-btrfs-timer |/linuxio (alert|scheduled-run|btrfs-snapshot|btrfs-health) |/linuxio-(webserver|monitoring|docker-update) run( |$)|/linuxio-webserver -verbose( |$)|/linuxio-indexer --config-file ' "$path" || continue
 		if sed -i -E \
 			-e 's#/linuxio btrfs-(snapshot|health) #/linuxio-btrfs-timer \1 #' \
 			-e 's#/linuxio-btrfs-timer (snapshot|replicate|health|degraded) run( |$)#/linuxio-worker \1\2#' \
 			-e 's#/linuxio-btrfs-timer #/linuxio-worker #' \
 			-e 's#/linuxio (alert|scheduled-run) #/linuxio-worker \1 #' \
 			-e 's#/(linuxio-webserver|linuxio-monitoring|linuxio-docker-update) run( |$)#/\1\2#' \
+			-e 's#/linuxio-webserver -verbose( |$)#/linuxio-webserver --verbose\1#' \
+			-e 's#/linuxio-indexer --config-file #/linuxio-indexer --config #' \
 			"$path"; then
 			Show 0 "Updated the commands in ${file}"
 		else
@@ -1172,7 +1189,7 @@ verify_installation() {
 	local binary
 	while IFS= read -r binary; do
 		case "$binary" in
-		linuxio | linuxio-docker-update | linuxio-worker)
+		linuxio)
 			if "${BIN_DIR}/${binary}" help >/dev/null 2>&1; then
 				Show 0 "${binary}: working"
 			else
@@ -1187,7 +1204,7 @@ verify_installation() {
 				Show 3 "${binary} did not run successfully (may be arch mismatch)"
 			fi
 			;;
-		linuxio-indexer | linuxio-monitoring)
+		linuxio-indexer | linuxio-monitoring | linuxio-docker-update | linuxio-worker)
 			if "${BIN_DIR}/${binary}" --version >/dev/null 2>&1; then
 				Show 0 "${binary}: working"
 			else
@@ -1362,9 +1379,9 @@ main() {
 		fi
 	else
 		Header "Steps 1-3 — Skipping binary installation"
-		# The units installed below start linuxio-worker and start the daemons
-		# with no command word, which binaries before v0.54.0 do not have.
-		if [[ ! -x "${BIN_DIR}/linuxio-worker" ]]; then
+		# The units installed below start the programs with command lines
+		# that binaries before MINIMUM_SUPPORTED_RELEASE do not take.
+		if ! installed_binaries_supported "$BIN_DIR"; then
 			Show 1 "The installed binaries are older than ${MINIMUM_SUPPORTED_RELEASE}; run without --skip-binaries"
 		fi
 	fi
@@ -1469,7 +1486,7 @@ Downloads and installs LinuxIO with all required system configuration, or
 installs a local checkout with --local.
 
 Arguments:
-  VERSION           Optional release tag (v0.54.0 or newer). If omitted, installs latest.
+  VERSION           Optional release tag (v0.55.0 or newer). If omitted, installs latest.
 
 Options:
   --dry-run         Validate writable install targets and exit
@@ -1491,7 +1508,7 @@ What gets installed:
 
 Examples:
   $(basename "$0")                 # Install latest release
-  $(basename "$0") v0.54.0         # Install specific version
+  $(basename "$0") v0.55.0         # Install specific version
   $(basename "$0") --dry-run       # Validate updater write access without installing
   $(basename "$0") --skip-binaries # Only install config/systemd/pam
 

@@ -16,10 +16,12 @@ type Component struct {
 	Binary string
 }
 
-// Components lists every LinuxIO program that reports a version. The
-// installer runs each one as root and records its version line in
-// ComponentsFile (write_components_file in install-linuxio-binaries.sh names
-// the same programs, and installer-fixtures.sh compares the two lists).
+// Components lists every LinuxIO program, in the order `linuxio version`
+// prints them. The installer runs each one as root and records its version
+// line in ComponentsFile (write_components_file in install-linuxio-binaries.sh
+// names the same programs, and installer-fixtures.sh compares the two lists).
+// A program's version line starts with its name here (Program.Answer, and
+// the same text in linuxio-auth.c).
 var Components = []Component{
 	{Name: "LinuxIO CLI", Binary: "linuxio"},
 	{Name: "LinuxIO Web Server", Binary: "linuxio-webserver"},
@@ -27,6 +29,9 @@ var Components = []Component{
 	{Name: "LinuxIO Auth", Binary: "linuxio-auth"},
 	{Name: "LinuxIO Indexer", Binary: "linuxio-indexer"},
 	{Name: "LinuxIO Monitoring", Binary: "linuxio-monitoring"},
+	{Name: "LinuxIO Worker", Binary: "linuxio-worker"},
+	{Name: "LinuxIO Docker Updater", Binary: "linuxio-docker-update"},
+	{Name: "LinuxIO Claude Relay", Binary: "linuxio-claude-relay"},
 }
 
 // ComponentsFile holds the version line of each installed program, one per
