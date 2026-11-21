@@ -13,7 +13,7 @@ Before=docker.service containerd.service smbd.service smb.service nfs-server.ser
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/linuxio-worker degraded
+ExecStart=/usr/libexec/linuxio/linuxio-worker degraded
 # Once per boot: a later start of multi-user.target must not mount a pool an
 # administrator unmounted on purpose.
 RemainAfterExit=yes

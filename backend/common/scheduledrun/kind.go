@@ -46,8 +46,9 @@ const (
 
 // systemUpdateUnits are the services the distributions run their automatic
 // updates in (APT, DNF 4 and 5, Linux Mint). They are not LinuxIO's units:
-// the installer hooks them with the run-record drop-in, and the package's
-// auto-update backends, which own these names, test them against this list.
+// the package hooks them with the run-record drop-in
+// (packaging/scripts/package-root.sh), and the auto-update backends, which
+// own these names, test them against this list.
 var systemUpdateUnits = []string{
 	"apt-daily-upgrade.service",
 	"dnf-automatic.service",

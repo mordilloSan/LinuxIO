@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Install a Go tool with the managed toolchain unless a runnable copy built by
-# that toolchain already exists. Run with the Makefile's GO_CMD_ENV (PATH,
-# GOTOOLCHAIN, GOOS, GOARCH) in the environment.
+# Install a Go tool with the managed toolchain unless a runnable copy of the
+# pinned version (packaging/build/pins.env) built by that toolchain exists.
+# Run with the Makefile's GO_CMD_ENV (PATH, GOTOOLCHAIN, GOOS, GOARCH) in the
+# environment.
 # Usage: ensure-go-tool.sh NAME BIN MODULE VERSION GO_BIN GO_VERSION TOOLS_DIR
 set -euo pipefail
 
@@ -27,7 +28,14 @@ generic_check() {
 	[ "$tool_go_version" = "$go_version" ] && "$bin" -h >/dev/null 2>&1
 }
 
+# The module version the binary was built from must be the one asked for.
+version_check() {
+	[ "$version" = "latest" ] && return 0
+	"$go_bin" version -m "$bin" 2>/dev/null | awk -v want="$version" '$1 == "mod" { found = ($3 == want) } END { exit !found }'
+}
+
 check() {
+	version_check || return 3
 	if [ "$name" = "golangci-lint" ]; then golangci_check; else generic_check; fi
 }
 
@@ -40,6 +48,10 @@ fi
 if [ "$name" = "golangci-lint" ]; then
 	"$bin" version | head -n1
 	rc=0
+	version_check || {
+		echo " golangci-lint is not $version"
+		exit 1
+	}
 	golangci_check || rc=$?
 	[ "$rc" -ne 1 ] || {
 		echo " not a v2 golangci-lint"
@@ -51,6 +63,10 @@ if [ "$name" = "golangci-lint" ]; then
 	}
 	echo "✅ golangci-lint v2 ready."
 else
+	version_check || {
+		echo "❌ $name is not $version"
+		exit 1
+	}
 	"$bin" -h >/dev/null 2>&1 || {
 		echo "❌ $name is installed but not runnable"
 		exit 1

@@ -9,6 +9,10 @@
 # calls it with <domain> <operation> <sub-operation> <extra> and the domain XML
 # on stdin. A non-zero exit would abort the VM start, so this always exits 0.
 
+# A Debian-family package removal leaves this configuration file in place
+# until a purge; with LinuxIO gone, the hook does nothing.
+[ -e /usr/bin/linuxio ] || exit 0
+
 [ "$2" = "start" ] || exit 0
 
 bridges=$(grep -o "<source bridge=['\"][^'\"]*['\"]" | sed "s/.*=['\"]//; s/['\"]\$//" | sort -u)

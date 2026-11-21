@@ -42,14 +42,23 @@ func (p Program) Answer(args []string, w io.Writer) bool {
 	return true
 }
 
-// name returns the program's name in Components, which starts its version
-// line: the installer's record is read by that name. A program the list does
-// not hold has its file name.
+// names holds the name that starts the version line of each Go program
+// other than linuxio; linuxio-auth.c prints "LinuxIO Auth" itself.
+var names = map[string]string{
+	"linuxio-webserver":     "LinuxIO Web Server",
+	"linuxio-bridge":        "LinuxIO Bridge",
+	"linuxio-indexer":       "LinuxIO Indexer",
+	"linuxio-monitoring":    "LinuxIO Monitoring",
+	"linuxio-worker":        "LinuxIO Worker",
+	"linuxio-docker-update": "LinuxIO Docker Updater",
+	"linuxio-claude-relay":  "LinuxIO Claude Relay",
+}
+
+// name returns the name that starts the program's version line: its name in
+// names, or its file name for a program the table does not hold.
 func (p Program) name() string {
-	for _, c := range Components {
-		if c.Binary == p.Binary {
-			return c.Name
-		}
+	if name, ok := names[p.Binary]; ok {
+		return name
 	}
 	return p.Binary
 }

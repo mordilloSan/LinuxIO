@@ -115,31 +115,30 @@ func itReplicationJob(t *testing.T, ctx context.Context, dir string) (BtrfsRepli
 	return job, snap
 }
 
-// itReplicateUnit is a runtime unit that runs this test binary as
-// TestBtrfsReplicateUnitHelper with the state in dir. Its name matches no
-// LinuxIO drop-in, so the host's own units and run records are left alone.
-// The unit is stopped and removed when the test ends.
-func itReplicateUnit(t *testing.T, dir string) UnitFile {
+// itReplicateUnit writes and loads a runtime unit that runs this test binary
+// as TestBtrfsReplicateUnitHelper with the state in dir, and returns its
+// name. Its name matches no LinuxIO drop-in, so the host's own units and run
+// records are left alone. The unit is stopped and removed when the test ends.
+func itReplicateUnit(t *testing.T, ctx context.Context, dir string) string {
 	t.Helper()
 	exe, err := os.Executable()
 	mustIT(t, "test binary", err)
 	name := fmt.Sprintf("btrfs-it-replicate-%d.service", os.Getpid())
-	u := UnitFile{
-		Name: name,
-		Path: filepath.Join("/run/systemd/system", name),
-		// "$$" is systemd's escape for a literal "$".
-		Content: fmt.Appendf(nil, "[Unit]\nDescription=LinuxIO btrfs replication integration test\n\n[Service]\nType=oneshot\nEnvironment=%s=%s\nExecStart=%q -test.run=^TestBtrfsReplicateUnitHelper$$ -test.count=1 -test.v\n",
-			replicateHelperEnv, dir, exe),
-	}
+	path := filepath.Join("/run/systemd/system", name)
+	// "$$" is systemd's escape for a literal "$".
+	content := fmt.Appendf(nil, "[Unit]\nDescription=LinuxIO btrfs replication integration test\n\n[Service]\nType=oneshot\nEnvironment=%s=%s\nExecStart=%q -test.run=^TestBtrfsReplicateUnitHelper$$ -test.count=1 -test.v\n",
+		replicateHelperEnv, dir, exe)
 	t.Cleanup(func() {
-		ctx := context.Background()
-		_ = systemd.StopUnit(ctx, name)
-		waitForState(t, ctx, name, time.Minute, "inactive", "failed")
-		_ = os.Remove(u.Path)
-		_ = systemd.ResetFailedUnit(ctx, name)
-		_ = systemd.DaemonReload(ctx)
+		bg := context.Background()
+		_ = systemd.StopUnit(bg, name)
+		waitForState(t, bg, name, time.Minute, "inactive", "failed")
+		_ = os.Remove(path)
+		_ = systemd.ResetFailedUnit(bg, name)
+		_ = systemd.DaemonReload(bg)
 	})
-	return u
+	mustIT(t, "write unit", os.WriteFile(path, content, 0o644))
+	mustIT(t, "reload", systemd.DaemonReload(ctx))
+	return name
 }
 
 // itReplicated checks the helper ran once, the job's outcome was recorded
@@ -165,7 +164,7 @@ func itReplicated(t *testing.T, ctx context.Context, dir string, job BtrfsReplic
 }
 
 // TestBtrfsReplicateIntegration starts a replication in a oneshot unit the
-// way the snapshot pass does, through UnitFile.Start, against a running
+// way the snapshot pass does, through systemd's StartUnit, against a running
 // systemd and two pools on loop devices. It shows that the start returns
 // while the replication still runs, that the next pass's start joins that
 // run instead of queuing another, and that the replication then completes:
@@ -187,29 +186,29 @@ func TestBtrfsReplicateIntegration(t *testing.T) {
 	dir := t.TempDir()
 	stubReplicationState(t, dir)
 	job, snap := itReplicationJob(t, ctx, dir)
-	u := itReplicateUnit(t, dir)
+	unit := itReplicateUnit(t, ctx, dir)
 
 	// The pass's start returns with the replication held, so before the
 	// replication could have finished.
-	mustIT(t, "start", u.Start(ctx))
-	waitForState(t, ctx, u.Name, 30*time.Second, "activating")
+	mustIT(t, "start", systemd.StartUnit(ctx, unit))
+	waitForState(t, ctx, unit, 30*time.Second, "activating")
 	waitForFile(t, filepath.Join(dir, "waiting"), 30*time.Second)
-	first, err := systemd.GetInvocationID(ctx, u.Name)
+	first, err := systemd.GetInvocationID(ctx, unit)
 	if err != nil || first == "" {
 		t.Fatalf("invocation id = %q, %v", first, err)
 	}
 
 	// The next pass's start while the send runs joins the running start job.
-	mustIT(t, "second start", u.Start(ctx))
-	waitForState(t, ctx, u.Name, time.Second, "activating")
-	again, err := systemd.GetInvocationID(ctx, u.Name)
+	mustIT(t, "second start", systemd.StartUnit(ctx, unit))
+	waitForState(t, ctx, unit, time.Second, "activating")
+	again, err := systemd.GetInvocationID(ctx, unit)
 	if err != nil || again != first {
 		t.Fatalf("invocation after the second start = %q, %v; want %q", again, err, first)
 	}
 
 	mustIT(t, "release", os.WriteFile(filepath.Join(dir, "release"), nil, 0o600))
-	if state := waitForState(t, ctx, u.Name, 5*time.Minute, "inactive", "failed"); state != "inactive" {
-		t.Fatalf("replication unit ended %s\n%s", state, unitJournal(ctx, u.Name))
+	if state := waitForState(t, ctx, unit, 5*time.Minute, "inactive", "failed"); state != "inactive" {
+		t.Fatalf("replication unit ended %s\n%s", state, unitJournal(ctx, unit))
 	}
 	// A start merged into the running job does not run the unit again.
 	time.Sleep(2 * time.Second)

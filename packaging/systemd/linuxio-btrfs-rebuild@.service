@@ -4,6 +4,6 @@ Documentation=https://github.com/mordilloSan/LinuxIO
 
 [Service]
 Type=oneshot
-ExecStartPre=-+/usr/local/bin/linuxio-worker scheduled-run begin --unit %n
-ExecStart=/usr/local/bin/linuxio-worker rebuild %i
-ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n
+ExecStartPre=-+/usr/libexec/linuxio/linuxio-worker scheduled-run begin --unit %n
+ExecStart=/usr/libexec/linuxio/linuxio-worker rebuild %i
+ExecStopPost=-+/usr/libexec/linuxio/linuxio-worker scheduled-run end --unit %n

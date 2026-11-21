@@ -47,9 +47,8 @@ quiet_targets := \
 	test-auth \
 	test-auth-protocol \
 	test-auth-pam \
-	test-installation-scripts \
+	test-packaging-scripts \
 	test-indexer-systemd-integration \
-	test-updater \
 	test-docker-update-integration \
 	test-assistant-agent-integration \
 	test-btrfs-integration \
@@ -108,8 +107,14 @@ GO_VERSION ?= $(go_version)
 ifneq ($(words $(subst ., ,$(go_version))),3)
 $(error GO_VERSION must be a full release like 1.27.3, got '$(go_version)')
 endif
-node_version := $(if $(NODE_VERSION),$(NODE_VERSION),$(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('$(frontend_dir)/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null))
+# Node and the Go check tools come from the build pins (make update-build-pins).
+build_pins_file := $(repo_root)/packaging/build/pins.env
+build_pin = $(shell sed -n 's/^$(1)=//p' "$(build_pins_file)")
+node_version := $(if $(NODE_VERSION),$(NODE_VERSION),$(call build_pin,NODE_VERSION))
 NODE_VERSION ?= $(node_version)
+ifneq ($(words $(subst ., ,$(node_version))),3)
+$(error NODE_VERSION must be a full release like 26.13.1, got '$(node_version)')
+endif
 CC ?= cc
 
 # Helpers
@@ -227,6 +232,7 @@ include $(mk_dir)/frontend.mk
 include $(mk_dir)/auth.mk
 include $(mk_dir)/quality.mk
 include $(mk_dir)/install.mk
+include $(mk_dir)/package.mk
 include $(mk_dir)/vm.mk
 
 # ---- help -------------------------------------------------------------------
@@ -238,12 +244,12 @@ include $(mk_dir)/vm.mk
 ##@ Test VM|yellow
 ##@ Development|yellow
 ##@ Build|yellow
-##@ Install / Uninstall|red
+##@ Install|red
 ##@ Run / Clean|red
 # `make help` lists only help_common; `make help-full` (or `make help FULL=1`)
 # lists every annotated target. `make --full` is not possible: Make parses
 # dashed words itself and rejects unknown ones.
-help_common := setup dev dev-stop generate test test-vm-backend test-vm-browser build fastbuild localinstall reinstall uninstall clean help-overrides
+help_common := setup dev dev-stop generate test test-vm-backend test-vm-browser build fastbuild localinstall clean help-overrides
 help_awk = awk -v blue='$(COLOR_BLUE)' -v cyan='$(COLOR_CYAN)' -v green='$(COLOR_GREEN)' \
 	  -v yellow='$(COLOR_YELLOW)' -v red='$(COLOR_RED)' -v reset='$(COLOR_RESET)' \
 	  -v go='$(GO_VERSION)' -v node='$(NODE_VERSION)' -v bin='$(bin_dir)' \
@@ -270,14 +276,14 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 # placeholder assets, the auth frame tool) are deliberately not phony.
 .PHONY: default help help-full help-overrides $(quiet_aliases)
 .PHONY: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck
-.PHONY: setup setup-frontend update-deps update-go-deps ci-frontend-deps
+.PHONY: setup setup-frontend update-deps update-go-deps update-build-pins ci-frontend-deps
 .PHONY: lint lint-only lint-ci lint-ci-only tsc tsc-only tsc-ci golint golint-only
 .PHONY: test check-actions check-docs check-systemd check-frontend check-backend
 .PHONY: test-frontend test-frontend-only test-frontend-ci setup-frontend-browser test-frontend-browser update-frontend-screenshots
 .PHONY: test-backend test-go test-auth test-auth-protocol test-auth-pam
-.PHONY: test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration test-assistant-agent-integration test-btrfs-integration
+.PHONY: test-packaging-scripts test-indexer-systemd-integration test-docker-update-integration test-assistant-agent-integration test-btrfs-integration
 .PHONY: deadcode deadcode-only analyze analyze-auth bundle-metrics compiler-coverage check-c-build-deps
 .PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-worker build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
-.PHONY: localinstall reinstall uninstall clean cloc
+.PHONY: localinstall package-root package-deb package-rpm clean cloc
 .PHONY: vm-create vm-install vm-ssh vm-stop vm-reset vm-update vm-update-build vm-destroy test-vm-browser vm-test-btrfs-integration vm-test-memory-integration vm-test-filebrowser-root vm-test-relay-root test-vm-browser-rerun test-vm-backend

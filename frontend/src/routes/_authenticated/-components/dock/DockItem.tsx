@@ -7,7 +7,6 @@ import { useSortableNavItem } from "../sidebar/useSortableNavItem";
 import DockTile from "./DockTile";
 
 type DockItemProps = SidebarItem & {
-  disabled?: boolean;
   /** Layout mode is open: the tile is being rearranged, not followed. */
   editMode?: boolean;
   gradient: readonly [string, string];
@@ -21,12 +20,11 @@ const DockItem = memo<DockItemProps>(
     title,
     icon,
     params,
-    disabled = false,
     editMode = false,
     gradient,
     pending = false,
   }) => {
-    const { describedBy, itemProps } = useSortableNavItem(to, disabled);
+    const { describedBy, itemProps } = useSortableNavItem(to);
 
     const renderIcon = () => {
       if (!icon) return null;
@@ -45,19 +43,6 @@ const DockItem = memo<DockItemProps>(
     const itemClassName = pending
       ? "app-dock__item app-dock__item--reorder-pending"
       : "app-dock__item";
-
-    if (disabled) {
-      return (
-        <li className={itemClassName} {...itemProps}>
-          <span
-            aria-disabled="true"
-            className="app-dock-link app-dock-link--disabled"
-          >
-            {content}
-          </span>
-        </li>
-      );
-    }
 
     return (
       <li className={itemClassName} {...itemProps}>

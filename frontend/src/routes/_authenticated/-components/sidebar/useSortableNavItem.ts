@@ -9,7 +9,7 @@ import { REORDER_HOLD_MS } from "@/components/reorder/constants";
  * holding anywhere on the entry picks it up, while the link inside keeps its
  * link semantics instead of taking dnd-kit's button role and extra tab stop.
  */
-export function useSortableNavItem(id: string, disabled: boolean) {
+export function useSortableNavItem(id: string) {
   const {
     attributes,
     isDragging,
@@ -17,7 +17,7 @@ export function useSortableNavItem(id: string, disabled: boolean) {
     setNodeRef,
     transform,
     transition,
-  } = useSortable({ id, disabled });
+  } = useSortable({ id });
 
   return {
     /** dnd-kit's keyboard instructions, for the link to describe itself with. */

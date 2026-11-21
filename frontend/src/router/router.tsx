@@ -21,7 +21,6 @@ export const router = createRouter({
   context: {
     access: undefined!,
     auth: undefined!,
-    isUpdateBlocked: undefined!,
     queryClient: appQueryClient,
   } satisfies LinuxIORouterContext,
   defaultErrorComponent: RouteError,

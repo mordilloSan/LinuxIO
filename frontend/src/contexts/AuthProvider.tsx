@@ -25,7 +25,6 @@ import {
 } from "@/api";
 import { cacheUserId } from "@/api/user-scope";
 import { login, logout } from "@/api/webserver";
-import { isAppUpdateInProgress } from "@/contexts/appUpdateInProgress";
 import {
   AuthContext,
   type AuthState,
@@ -303,11 +302,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (status === "error") {
           // "error" status means close code 1008 (session expired/invalid)
           // or WebSocket connection failed (session cookie invalid)
-          // A self-update restarts the webserver, which drops every session.
-          // The update dialog owns that exit so its output stays readable.
           // A reboot or power-off ends the session the same way, and the
           // power overlay owns that exit.
-          if (isAppUpdateInProgress() || isPowerActionPending()) return;
+          if (isPowerActionPending()) return;
           console.log("[AuthContext] Session invalid or expired");
           sessionExpired();
         } else if (status === "closed") {

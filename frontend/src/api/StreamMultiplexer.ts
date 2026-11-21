@@ -482,10 +482,8 @@ export class StreamMultiplexer {
   private streamsByType = new Map<StreamType, StreamImpl>();
   private nextStreamID = 1; // Client uses odd numbers
   private _status: MuxStatus = "connecting";
-  private _isUpdating = false; // Flag to pause all API requests during system update
   private url: string;
   private statusListeners = new Set<(status: MuxStatus) => void>();
-  private updatingListeners = new Set<(isUpdating: boolean) => void>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private shouldReconnect = true;
@@ -736,41 +734,14 @@ export class StreamMultiplexer {
     }
   }
 
-  private notifyUpdatingChange(isUpdating: boolean): void {
-    for (const listener of this.updatingListeners) {
-      listener(isUpdating);
-    }
-  }
-
   /** Subscribe to status changes */
   addStatusListener(listener: (status: MuxStatus) => void): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
   }
 
-  /** Subscribe to updating flag changes */
-  addUpdatingListener(listener: (isUpdating: boolean) => void): () => void {
-    this.updatingListeners.add(listener);
-    return () => this.updatingListeners.delete(listener);
-  }
-
   get status(): MuxStatus {
     return this._status;
-  }
-
-  get isUpdating(): boolean {
-    return this._isUpdating;
-  }
-
-  /**
-   * Set update-in-progress flag to pause/resume all API requests.
-   * When true, all React Query hooks will be disabled.
-   */
-  setUpdating(value: boolean): void {
-    if (this._isUpdating !== value) {
-      this._isUpdating = value;
-      this.notifyUpdatingChange(value);
-    }
   }
 
   /**

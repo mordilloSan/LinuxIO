@@ -20,7 +20,6 @@ function context(
       isInitialized: true,
       user: null,
     },
-    isUpdateBlocked: () => false,
     queryClient: new QueryClient(),
     ...overrides,
   };

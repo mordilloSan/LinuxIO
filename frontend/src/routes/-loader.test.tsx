@@ -15,8 +15,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   ensureLoaderRequestReady: vi.fn(),
-  getStreamMux: vi.fn(),
-  subscribeRequestAvailability: vi.fn(),
 }));
 
 vi.mock("@/api", async () => {
@@ -24,8 +22,6 @@ vi.mock("@/api", async () => {
   return {
     ...actual,
     ensureLoaderRequestReady: apiMocks.ensureLoaderRequestReady,
-    getStreamMux: apiMocks.getStreamMux,
-    subscribeRequestAvailability: apiMocks.subscribeRequestAvailability,
   };
 });
 
@@ -33,10 +29,6 @@ import { emptyCapabilityState } from "@/api/capabilities";
 import { scopedConfigQueryKey } from "@/api/config-query";
 import linuxio from "@/api/generated/client";
 import type { DirectoryListing } from "@/api/generated/linuxio-types";
-import {
-  isAppUpdateInProgress,
-  publishAppUpdateInProgress,
-} from "@/contexts/appUpdateInProgress";
 import type { LinuxIORouterContext } from "@/routes/-auth";
 import {
   LOADER_FRESHNESS,
@@ -53,10 +45,7 @@ function createClient(queryCache?: QueryCache) {
   });
 }
 
-function createRouterContext(
-  queryClient: QueryClient,
-  isUpdateBlocked = () => false,
-): LinuxIORouterContext {
+function createRouterContext(queryClient: QueryClient): LinuxIORouterContext {
   return {
     access: { ...emptyCapabilityState, privileged: false },
     auth: {
@@ -64,7 +53,6 @@ function createRouterContext(
       isInitialized: true,
       user: { id: "root", name: "root" },
     },
-    isUpdateBlocked,
     queryClient,
   };
 }
@@ -96,15 +84,21 @@ describe("loadRouteQueries", () => {
   beforeEach(() => {
     apiMocks.ensureLoaderRequestReady.mockReset();
     apiMocks.ensureLoaderRequestReady.mockResolvedValue(undefined);
-    apiMocks.getStreamMux.mockReset();
-    apiMocks.getStreamMux.mockReturnValue(null);
-    apiMocks.subscribeRequestAvailability.mockReset();
-    apiMocks.subscribeRequestAvailability.mockReturnValue(vi.fn());
   });
 
   it("accepts typed Call descriptors from generated endpoints", async () => {
+    apiMocks.ensureLoaderRequestReady.mockImplementation(
+      (_timeout: number | undefined, signal: AbortSignal | undefined) =>
+        new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(signal.reason ?? new Error("aborted")),
+            { once: true },
+          );
+        }),
+    );
     const controller = new AbortController();
-    const context = createRouterContext(createClient(), () => true);
+    const context = createRouterContext(createClient());
     const loading = loadRouteQueries(
       createLoaderArgs(context, { controller }),
       [linuxio.system.get_host_info],
@@ -113,26 +107,6 @@ describe("loadRouteQueries", () => {
     controller.abort(new DOMException("superseded", "AbortError"));
 
     await expect(loading).rejects.toMatchObject({ name: "AbortError" });
-  });
-
-  it("defers readiness and queries while updates block route loading", async () => {
-    const queryFn = vi.fn().mockResolvedValue("ready");
-    const queryOptions = { queryKey: ["blocked"], queryFn };
-    const context = createRouterContext(createClient(), isAppUpdateInProgress);
-    const releaseUpdateBlock = publishAppUpdateInProgress({}, true);
-    const loading = loadRouteQueries(createLoaderArgs(context), [queryOptions]);
-
-    try {
-      await Promise.resolve();
-      expect(apiMocks.ensureLoaderRequestReady).not.toHaveBeenCalled();
-      expect(queryFn).not.toHaveBeenCalled();
-    } finally {
-      releaseUpdateBlock();
-    }
-
-    await expect(loading).resolves.toBeUndefined();
-    expect(apiMocks.ensureLoaderRequestReady).toHaveBeenCalledTimes(1);
-    expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
   it("refetches a loader result on mount when staleTime is zero", async () => {
@@ -651,58 +625,6 @@ describe("loadRouteQueries", () => {
       silent: true,
     });
     expect(onError).toHaveBeenCalledWith(expect.any(Error), query);
-  });
-
-  it("rechecks update state after waiting for request readiness", async () => {
-    let isUpdating = false;
-    let notifyRequestAvailability = () => undefined;
-    apiMocks.ensureLoaderRequestReady.mockImplementation(async () => {
-      isUpdating = true;
-    });
-    apiMocks.subscribeRequestAvailability.mockImplementation((listener) => {
-      notifyRequestAvailability = listener;
-      return vi.fn();
-    });
-    const queryFn = vi.fn().mockResolvedValue("ready");
-    const context = createRouterContext(createClient(), () => isUpdating);
-    const loading = loadRouteQueries(createLoaderArgs(context), [
-      { queryKey: ["update-race"], queryFn },
-    ]);
-
-    await Promise.resolve();
-    expect(queryFn).not.toHaveBeenCalled();
-
-    isUpdating = false;
-    notifyRequestAvailability();
-
-    await expect(loading).resolves.toBeUndefined();
-    expect(queryFn).toHaveBeenCalledTimes(1);
-  });
-
-  it("defers the first route load from the live mux update flag", async () => {
-    const mux = { isUpdating: true };
-    let notifyRequestAvailability = () => undefined;
-    apiMocks.getStreamMux.mockReturnValue(mux);
-    apiMocks.subscribeRequestAvailability.mockImplementation((listener) => {
-      notifyRequestAvailability = listener;
-      return vi.fn();
-    });
-    const queryFn = vi.fn().mockResolvedValue("ready");
-    const context = createRouterContext(createClient(), () => false);
-    const loading = loadRouteQueries(createLoaderArgs(context), [
-      { queryKey: ["first-load-update"], queryFn },
-    ]);
-
-    await Promise.resolve();
-    expect(apiMocks.ensureLoaderRequestReady).not.toHaveBeenCalled();
-    expect(queryFn).not.toHaveBeenCalled();
-
-    mux.isUpdating = false;
-    notifyRequestAvailability();
-
-    await expect(loading).resolves.toBeUndefined();
-    expect(apiMocks.ensureLoaderRequestReady).toHaveBeenCalledTimes(1);
-    expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
   it("does not multiply transport retries with Query retries", async () => {

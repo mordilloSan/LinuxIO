@@ -13,22 +13,29 @@ var testProgram = Program{
 	Usage:     []string{"linuxio-example [--config PATH] [--verbose]"},
 }
 
-// The version line starts with the program's name in Components, since that
-// is the name the installer's record is read by.
-func TestProgramAnswersVersionWithItsComponentNameAndTheBuild(t *testing.T) {
-	for _, c := range Components {
+// The version line starts with the program's name and ends with the build.
+func TestProgramAnswersVersionWithItsNameAndTheBuild(t *testing.T) {
+	for binary, name := range map[string]string{
+		"linuxio-webserver":     "LinuxIO Web Server",
+		"linuxio-bridge":        "LinuxIO Bridge",
+		"linuxio-indexer":       "LinuxIO Indexer",
+		"linuxio-monitoring":    "LinuxIO Monitoring",
+		"linuxio-worker":        "LinuxIO Worker",
+		"linuxio-docker-update": "LinuxIO Docker Updater",
+		"linuxio-claude-relay":  "LinuxIO Claude Relay",
+	} {
 		var out bytes.Buffer
-		if !(Program{Binary: c.Binary}).Answer([]string{"--version"}, &out) {
-			t.Fatalf("%s: --version was not answered", c.Binary)
+		if !(Program{Binary: binary}).Answer([]string{"--version"}, &out) {
+			t.Fatalf("%s: --version was not answered", binary)
 		}
-		if want := c.Name + " " + Version + "\n"; out.String() != want {
-			t.Errorf("%s: --version printed %q, want %q", c.Binary, out.String(), want)
+		if want := name + " " + Version + "\n"; out.String() != want {
+			t.Errorf("%s: --version printed %q, want %q", binary, out.String(), want)
 		}
 	}
 }
 
-// A program the list does not hold has only its file name to go by.
-func TestProgramOutsideComponentsAnswersVersionWithItsFileName(t *testing.T) {
+// A program the table does not hold has only its file name to go by.
+func TestProgramOutsideTheTableAnswersVersionWithItsFileName(t *testing.T) {
 	var out bytes.Buffer
 	if !testProgram.Answer([]string{"--version"}, &out) {
 		t.Fatal("--version was not answered")

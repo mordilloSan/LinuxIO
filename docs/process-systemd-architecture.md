@@ -34,14 +34,18 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
 | `linuxio-claude-relay` | Go | `backend/claude-relay/` | logged-in user, never root | one per `claude` an Assistant chat starts | Runs the real `claude` for the ACP adapter and carries plugin pane requests to the bridge ([Assistant](./AI-assistant.md#plugin-panes)) |
 
-These binaries install to `/usr/local/bin/`. The CLI is a thin management
+`linuxio` installs to `/usr/bin/`, on `PATH`, and the other eight programs to
+`/usr/libexec/linuxio/`, a folder root owns and only root may write, which is
+not on `PATH`: systemd, `linuxio-auth` and LinuxIO's own programs start them
+by their full path (`version.LibexecDir`). The CLI is a thin management
 front-end; the remaining processes are independently constrained by their
 responsibilities.
 
 **Who may start each program.** `linuxio` is the only program meant to be
-typed. The installer gives the programs systemd runs as root (`linuxio-worker`,
+typed. The package installs the programs systemd runs as root (`linuxio-worker`,
 `linuxio-docker-update`, `linuxio-auth`, `linuxio-indexer`,
-`linuxio-monitoring`) mode `0700`, so another local user cannot run a private
+`linuxio-monitoring`) at mode `0700` ([Packages](./packaging.md#what-is-installed-where)),
+so another local user cannot run a private
 word or flag of theirs, and the rest `0755` because they run as someone else:
 `linuxio` as whoever types it, `linuxio-bridge` and `linuxio-claude-relay` as
 the signed-in user, and `linuxio-webserver` as a dynamic user, whose ids
@@ -50,22 +54,19 @@ nothing by hand: the bridge and the relay stop without the connection their
 parent hands them, and a webserver started by a user has that user's rights
 and cannot open `auth.sock`. None of the programs is setuid.
 
-**Versions.** Because most programs are root only, nothing runs them to ask
-for a version. The installer runs each one as root and records its version
-line in `/usr/share/linuxio/components` (mode `0644`,
-`backend/common/version`); `linuxio version` and the webserver's
-unauthenticated `/api/version` read that file and add their own compiled-in
-version. A build run without the installer has no record and lists the other
-programs as not recorded.
+**Versions.** The package installs all nine programs from one build, so they
+have one version, `common/version.Version`. `linuxio version` (also
+`linuxio --version`) prints its own, and the webserver's unauthenticated
+`/api/version` answers `{"version": "..."}` with its own
+(`backend/webserver/versionapi`); neither runs or reads about another
+program, several of which are root only. The page polls `/api/version` only
+to see that a restarted webserver answers again; the footer shows the
+version the bridge's `control.version` reports.
 
-Known limits: a program replaced by hand keeps its recorded version until the
-installer runs again. On an update the installer rewrites the command lines
-in the units and drop-ins LinuxIO itself wrote (`saved_unit_files`); an
-administrator's own unit or override that calls `linuxio alert ...`, starts
-a daemon with `run` or passes the indexer `--config-file` (`--config` since
-v0.55) is not touched and needs the new command line. The installer takes its
-units from current `main`, so it installs v0.55.0 or newer only, and with
-`--skip-binaries` it refuses a host whose programs are older.
+Known limits: an administrator's own unit or override that calls
+`linuxio alert ...`, starts a daemon with `run` or passes the indexer
+`--config-file` (`--config` since v0.55) needs the current command line; the
+package never rewrites an administrator's files.
 
 ### Binary invocation map
 
@@ -80,8 +81,8 @@ command of `linuxio` and never a word on a daemon.
 `--version`, spelled the same on every program, and nothing else on them is
 meant for a person.
 
-- `--version` prints one line, the program's name and its build. It is the
-  line the installer records ([Versions](#binaries)).
+- `--version` prints one line, the program's name and its build
+  ([Versions](#binaries)).
 - `--help` says what the program is, what starts it and with which command
   line. It lists the flags systemd passes so that someone reading a unit file
   can tell what they mean, not so that they are typed.
@@ -98,13 +99,13 @@ C. A program installed `0700` cannot be started by another user at all, so
 for that user the shell answers "Permission denied" to `--help` and
 `--version` as to everything else. That is on purpose: the refusal comes from
 the kernel before any code of the program runs, and `linuxio version` shows
-anyone the version of all nine programs, as the installer recorded them.
+anyone the version, which is that of all nine programs.
 
 #### What each program accepts
 
 | Program | Mode | What a person can type | What it really runs as |
 |---|---|---|---|
-| `linuxio` | open | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version [--self]` (also `--version`), `help` (also `-h`, `--help`) | Nothing else; it is the admin tool |
+| `linuxio` | open | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version` (also `--version`), `help` (also `-h`, `--help`) | Nothing else; it is the admin tool |
 | `linuxio-webserver` | open | `--help`, `-h`, `--version` | The web server, started by `linuxio-webserver.service` with `[--port N] [--verbose]` |
 | `linuxio-bridge` | open | `--help`, `-h`, `--version` | One process per signed-in user, started by `linuxio-auth` with no arguments, the inherited fd 3 and the auth bootstrap; also the job host, started by systemd (`linuxio-jobs@<uid>.service`) with no arguments and the `linuxio-jobs` socket |
 | `linuxio-claude-relay` | open | `--help`, `-h`, `--version`, outside a chat only | Started only by `claude-agent-acp` in an Assistant chat, with Claude Code's own arguments and `LINUXIO_CLAUDE_BIN` naming the real CLI. While that variable is set every argument goes to Claude Code, those three too; without it, anything else exits 2 |
@@ -131,7 +132,7 @@ Seven programs start with flags only. These are all of them, beside `--help`,
 | `linuxio-bridge` | none | | Started with no arguments |
 | `linuxio-auth` | none | | Started with no arguments |
 | `linuxio-claude-relay` | none of its own | | Every argument is Claude Code's |
-| `linuxio-docker-update` | `--config PATH` | `/etc/linuxio/docker-update.json` | The saved `linuxio-docker-update.service`, with the default path |
+| `linuxio-docker-update` | `--config PATH` | `/etc/linuxio/docker-update.json` | `linuxio-docker-update.service`, with the default path |
 | `linuxio-indexer` | `--config PATH` | `/etc/linuxio/indexer/config.yaml` | `linuxio-indexer.service`, with the default path; the daemon passes it on to its scanner |
 | `linuxio-indexer` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
 | `linuxio-indexer` | `--trigger-index` | | `linuxio-indexer-index.service`, for the timer: it asks the running daemon for a full index and exits |
@@ -185,7 +186,7 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-monitoring.service        runs `linuxio-monitoring`; root; owns
 │                                    /run/linuxio/monitoring/{api,control}.sock
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group
-└─ linuxio-issue.service             oneshot: updates the login issue/MOTD
+└─ linuxio-issue.service             oneshot: writes the login banner; its stop writes how to start LinuxIO
 ```
 
 Outside `linuxio.target`, so restarting LinuxIO never cancels them:
@@ -216,7 +217,7 @@ linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned b
 Key unit facts (see `packaging/systemd/`):
 
 - **`linuxio-webserver.socket`** — `ListenStream=8090`, `BindIPv6Only=both` (one socket answers both the A and AAAA records Avahi publishes). systemd owns the listening fd; the service inherits it. `After=linuxio-auth.socket` makes a restart of `linuxio.target` stop this socket before the auth socket and start it after: with no ordering, systemd started `linuxio-auth.socket` in the same window, its `sd-chown` helper (a fork of PID 1) inherited the old :8090 fd and held it a few ms past PID 1's close, and the new bind failed with "Address already in use" (3 of 10 `linuxio restart --full` runs on Ubuntu 24.04, systemd 255; 0 of 50 with the ordering).
-- **`linuxio-webserver.service`** — `ExecStart=/usr/local/bin/linuxio-webserver`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. `RuntimeDirectory=linuxio/webserver` is an indexer activity marker whose lifetime is owned by systemd; `Wants=linuxio-indexer.service` warms the indexer without making it a prerequisite. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
+- **`linuxio-webserver.service`** — `ExecStart=/usr/libexec/linuxio/linuxio-webserver`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. `RuntimeDirectory=linuxio/webserver` is an indexer activity marker whose lifetime is owned by systemd; `Wants=linuxio-indexer.service` warms the indexer without making it a prerequisite. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
 - **`linuxio-auth.socket`** — `ListenStream=/run/linuxio/auth.sock`, `SocketUser=root`, `SocketGroup=linuxio-bridge-socket`, `SocketMode=0660`, **`Accept=yes`**, `MaxConnections=64`. The group+mode is the access-control boundary: only members of `linuxio-bridge-socket` (i.e. the webserver) may connect. Each accepted connection stays open as the bridge's transport until the session ends (sign-out, or the webserver's 60 min idle or 12 h absolute expiry), so `MaxConnections` caps live sessions host-wide, including those of browsers closed without signing out; concurrent login attempts are capped separately by the webserver (`maxConcurrentLogins`, 8).
 - **`linuxio-auth@.service`** — template; one instance per accepted connection, with the connected socket as `StandardInput=socket`. `User=root`. It declares no `TasksMax` or `MemoryMax`: a login is not capped (see below). The bridge inherits its rlimits (`LimitNOFILE=2048`, `LimitCORE=0`).
 - **`linuxio-indexer.socket` / `linuxio-indexer.service`** — the `root:root`,
@@ -240,7 +241,7 @@ Key unit facts (see `packaging/systemd/`):
   [monitoring daemon guide](./monitoring.md).
 - **`linuxio-bridge-socket-user.service`** — `Type=oneshot`, `DynamicUser=yes`, `User=linuxio-bridge-socket`, `Before=linuxio-auth.socket`. Its only job is to make the `linuxio-bridge-socket` user/group exist *before* the auth socket is created with that group ownership.
 - **`linuxio-jobs@.socket`** — template, instance = uid. `ListenStream=/run/linuxio/jobs/%i.sock`, `SocketUser=%i`, `SocketMode=0600`, `Accept=no`, `FileDescriptorName=linuxio-jobs`, deliberately not `PartOf=linuxio.target`. systemd holds the socket and starts the host on a connection that finds it down: after an idle exit, a crash, an OOM kill of the host process, or an update that replaced its binary. A connection that arrives while the host is exiting waits in the socket's queue and starts the next host. A host that cannot start closes the connections that were waiting, so the clients' backoff paces the next attempt instead of systemd's start limit failing the socket.
-- **`linuxio-jobs@.service`** — template, instance = uid. `Type=notify` (READY once it serves, STOPPING on idle exit), `User=%i`, `ExecStart=/usr/local/bin/linuxio-bridge` with no arguments: the binary is the job host when systemd passes it the socket named `linuxio-jobs`, and refuses to run by hand without it. `Wants=` and `After=` its socket. `StateDirectory=linuxio/jobs/%i` and `RuntimeDirectory=linuxio/jobs/%i`, both `0700` and owned by the uid, hold the job store and live progress; `RuntimeDirectoryPreserve=yes`. `TimeoutStopSec=2min`, `KillMode=mixed`, `NoNewPrivileges=yes`, `TasksMax=8192` (room for 256 jobs each waiting on a subprocess tree) and `MemoryMax=2G` with `OOMPolicy=continue`, so an OOM kill of one job's subprocess fails that job instead of stopping the host. Ordered after local filesystems and `linuxio-btrfs-degraded.service`, and deliberately not `PartOf=linuxio.target`, so updates and `linuxio restart --full` never stop a running job. `WantedBy=multi-user.target`, enabled for uid 0 only, so the root host starts at boot. At every start a host marks the jobs its uid's last host left running as interrupted, `reboot` when that host ran in an earlier boot and `crash` otherwise; the root host then resumes the resumable jobs the last shutdown or a power loss interrupted (reason `shutdown` or `reboot`, no `cancel_requested`, an executor from an earlier boot), picks up, before it serves, those of a route that resumes after a crash or a stop by hand in this boot (`packages.update` after a crash, `storage.run_smart_test` after either), starts the resumes after a reboot once it serves (any other interrupted record loses `Resumable`), and alerts on the others. A host touches only its own uid's store. It accepts a connection only from its own uid (`SO_PEERCRED`) and a hello of its protocol number, stays up while a bridge is connected or a job runs, exits after 60 s with neither, and refuses new jobs above 256 running.
+- **`linuxio-jobs@.service`** — template, instance = uid. `Type=notify` (READY once it serves, STOPPING on idle exit), `User=%i`, `ExecStart=/usr/libexec/linuxio/linuxio-bridge` with no arguments: the binary is the job host when systemd passes it the socket named `linuxio-jobs`, and refuses to run by hand without it. `Wants=` and `After=` its socket. `StateDirectory=linuxio/jobs/%i` and `RuntimeDirectory=linuxio/jobs/%i`, both `0700` and owned by the uid, hold the job store and live progress; `RuntimeDirectoryPreserve=yes`. `TimeoutStopSec=2min`, `KillMode=mixed`, `NoNewPrivileges=yes`, `TasksMax=8192` (room for 256 jobs each waiting on a subprocess tree) and `MemoryMax=2G` with `OOMPolicy=continue`, so an OOM kill of one job's subprocess fails that job instead of stopping the host. Ordered after local filesystems and `linuxio-btrfs-degraded.service`, and deliberately not `PartOf=linuxio.target`, so updates and `linuxio restart --full` never stop a running job. `WantedBy=multi-user.target`, enabled for uid 0 only, so the root host starts at boot. At every start a host marks the jobs its uid's last host left running as interrupted, `reboot` when that host ran in an earlier boot and `crash` otherwise; the root host then resumes the resumable jobs the last shutdown or a power loss interrupted (reason `shutdown` or `reboot`, no `cancel_requested`, an executor from an earlier boot), picks up, before it serves, those of a route that resumes after a crash or a stop by hand in this boot (`packages.update` after a crash, `storage.run_smart_test` after either), starts the resumes after a reboot once it serves (any other interrupted record loses `Resumable`), and alerts on the others. A host touches only its own uid's store. It accepts a connection only from its own uid (`SO_PEERCRED`) and a hello of its protocol number, stays up while a bridge is connected or a job runs, exits after 60 s with neither, and refuses new jobs above 256 running.
 - **Who starts a host** — a connection to its socket. `linuxio-auth` runs `systemctl start --no-block linuxio-jobs@<uid>.socket` as root once PAM has authenticated an unprivileged login, before the PAM session opens and the bridge spawns, so `pam_selinux` cannot hand systemctl the user's context; a failure is logged as a warning and the login proceeds. A privileged bridge starts uid 0's socket itself. A socket stays until reboot, so a user's socket exists only after that user authenticated through LinuxIO, or when root starts it, and only that user can connect to it.
 - **tmpfiles** — `/var/lib/linuxio/jobs` and `/run/linuxio/jobs` are `0755 root:root`, so each host's `0700` uid directory below them is reachable.
 
@@ -267,15 +268,15 @@ scripts (`linuxio-schedule-<id>.service`), btrfs snapshots
 
 ```ini
 [Service]
-ExecStartPre=-+/usr/local/bin/linuxio-worker scheduled-run begin --unit %n
-ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n
+ExecStartPre=-+/usr/libexec/linuxio/linuxio-worker scheduled-run begin --unit %n
+ExecStopPost=-+/usr/libexec/linuxio/linuxio-worker scheduled-run end --unit %n
 ```
 
 - **Where they are.** Never in a rendered unit: `schedules.run_now` refuses a
   schedule whose unit file differs from what the build renders, so the hooks
-  live in packaged files. The installer copies
-  `packaging/systemd/linuxio-run-record.conf` to `10-linuxio-run.conf` in
-  `/etc/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
+  live in packaged files. The package installs
+  `packaging/systemd/linuxio-run-record.conf` as `10-linuxio-run.conf` in
+  `/usr/lib/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
   every `linuxio-schedule-<id>.service` gets it),
   `linuxio-btrfs-snapshot.service.d/`, `linuxio-btrfs-replicate.service.d/`
   and `linuxio-docker-update.service.d/`,
@@ -284,14 +285,16 @@ ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n
   `dnf5-automatic.service.d/`, `mintupdate-automation-upgrade.service.d/`),
   so a system update is recorded like LinuxIO's own timer runs; a host has
   one of those services at most, and systemd ignores a drop-in of a unit that
-  does not exist. Then it reloads systemd. The uninstaller removes the
-  drop-in from the update services by its name, with the alert drop-in the
-  bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` and
-  `linuxio-btrfs-rebuild@.service` carry the two lines themselves. A drop-in alone loads no unit: until a snapshot rule, a replication
-  job or the Docker update settings are saved, that unit stays `not-found`.
+  does not exist. The drop-ins go with the package, and its removal deletes
+  the alert drop-in the bridge writes beside them
+  ([Removal](./packaging.md#removal)). `linuxio-btrfs-resync@.service` and
+  `linuxio-btrfs-rebuild@.service` carry the two lines themselves. The
+  snapshot, replication and Docker update services are package units, as
+  the resync and rebuild templates are: a save writes only their timers,
+  which hold a schedule and no command line
+  ([Btrfs](./btrfs.md#replication), [Docker updates](./docker-updates.md#the-scheduled-pass)).
   Schedules saved before an update record their runs after it without being
-  saved again, and so does the replication unit an upgraded install's first
-  snapshot pass writes ([Btrfs](./btrfs.md#replication)).
+  saved again.
 - **`+` and `-`.** `+` runs the hook as root, outside the unit's `User=` and
   sandbox: a script runs as the user it was given, and the Docker update unit
   has `ProtectSystem=strict`. `-` makes systemd ignore a failed hook, a missing
@@ -452,57 +455,9 @@ the same uid reconnects to the same host if it is still up.
 
 **needrestart.** On Ubuntu, needrestart, whose apt hook runs after every dpkg
 run, restarts each service still running a replaced binary; for an older host
-that interrupts its jobs (seen once in the test VM, during an unattended-upgrades
-run; [Jobs](./jobs.md#updates)). Where `/etc/needrestart`
-exists the installer therefore installs
-`packaging/etc/needrestart/conf.d/linuxio.conf` as
-`/etc/needrestart/conf.d/linuxio.conf`, after the release binaries are
-verified and before it replaces any of them. Each of its lines adds one
-regular expression with the value 0 ("do not restart") to needrestart's
-`$nrconf{override_rc}` and keeps the distribution's entries:
-`linuxio-jobs@<uid>.service`, the timer-run units `linuxio-schedule-*`,
-`linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`,
-`linuxio-btrfs-rebuild@*` and `linuxio-docker-update`, and the updater's
-`linuxio-updater-*` unit.
-needrestart then lists them under "Service restarts being deferred" instead of
-restarting them. The daemons the installer restarts itself (`linuxio-webserver`,
-`linuxio-monitoring`, `linuxio-indexer`, `linuxio-auth`) are not listed, and
-needrestart restarts them as before. The uninstaller removes the file.
-needrestart evaluates the file as Perl, as root, and a release install fetches
-it from `main` without a checksum; a file needrestart cannot load stops all its
-restarts. So the installer installs it only when every line is blank, a
-comment, or one such entry whose pattern has, token by token, the shipped form
-(`^linuxio-`, lowercase words joined by `-`, at most one `@` or `-` followed
-by `\d+` or `.+`, then `\.service$`), never for one of the four always-on
-daemons, and, where Perl is present, only when the file compiles under
-`strict` as needrestart loads it (`needrestart_override_valid`). Any other
-file is not installed, an installed copy stays as it is, and the installer
-prints a notice.
-
-In the test VM, against needrestart 3.11-1ubuntu2 on Ubuntu 26.04
-(`frontend/src/test/vm/jobs-needrestart.spec.ts`): in list mode needrestart put
-`linuxio-jobs@0.service` under "Service restarts being deferred" and
-`linuxio-monitoring.service` under "Services to be restarted"; in automatic
-mode it deferred the job host, whose `MainPID` stayed, and restarted
-`linuxio-monitoring.service`, which got a new one. That the other five
-expressions match their units and no daemon, that the content check refuses
-other files, and that the uninstaller removes the file is covered by the
-installer's fixture tests, not seen in the VM.
-
-An in-app update runs the installer in a `linuxio-updater-<n>.service` unit
-with `ProtectSystem=full`, which keeps `/etc` read-only except for the unit's
-writable paths; the bridge installed *before* the update starts that unit with
-its own list (`updaterWritablePaths` in `backend/bridge/handlers/appupdate`).
-The list has `/etc/needrestart/conf.d` as an optional entry (`-` in
-`ReadWritePaths`: a system without it is unaffected, and the updater creates
-nothing there), so the first in-app update launched by a build with that entry
-installs the file (where `conf.d` exists, as Ubuntu's package ships it). An
-update launched by an earlier build, which includes every release up to now,
-cannot write it: the installer then prints a notice and the install goes on;
-a run of the installer from a terminal, or the next in-app update, which the
-newly installed bridge launches, installs it. That is read from the source and
-the installer's fixture tests, which simulate a read-only directory; no in-app
-update was run.
+that interrupts its jobs ([Jobs](./jobs.md#updates)). The DEB ships an
+override that keeps it from restarting the job hosts and the timer-run units
+([The needrestart override](./packaging.md#the-needrestart-override)).
 
 ### After login — the connection becomes the yamux transport
 
@@ -539,20 +494,35 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
 | `make build-worker` | `linuxio-worker` | Go; the timer jobs and unit hooks systemd starts with a word |
 
-`make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and installer tests read. Only `common/version.Version` is stamped into the binaries that report a version. Install via `make localinstall`, which runs `packaging/scripts/localinstall.sh` (a wrapper for `install-linuxio-binaries.sh --local --build-dir build/`):
+`make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and the package tests read. Only `common/version.Version` is stamped into the binaries that report a version. `make localinstall` assembles the DEB or the RPM for the host's family from them and installs it with `apt` or `dnf` ([Development](./development.md)). Where the package puts each file, and what its install, upgrade and removal steps do, is in [Packages, installation and updates](./packaging.md).
 
-- binaries → `/usr/local/bin/`
-- units → `/etc/systemd/system/linuxio*`
-- tmpfiles → `/usr/lib/tmpfiles.d/linuxio.conf`
-- PAM stack → `/etc/pam.d/linuxio`, from `packaging/etc/pam.d/linuxio` on the Debian family and from `packaging/etc/pam.d/linuxio.rhel` on the RHEL family, which has `password-auth` and `postlogin` where Debian has the `common-*` files, and `/etc/locale.conf` for `/etc/default/locale`. The installer tells the families apart with `install-dependencies.sh`'s `detect_distro` and `is_fedora`, of which it carries a copy, and installs the file through a staged copy (`atomic_replace_file`, 0644 root:root), so a download cut half-way leaves the installed file as it was. The installer fixtures keep the copy identical and check that the RHEL file is the Debian one line for line and in the same order, with `common-auth` mapped to `substack password-auth` and `include postlogin`, `common-account` and `common-password` to `password-auth`, `common-session-noninteractive` to `password-auth` and `postlogin`, and `/etc/default/locale` to `/etc/locale.conf`. Order matters on RHEL: a `sufficient` line in `password-auth` ends the stack where it is included, so LinuxIO's own lines stay above each include.
-- config → `/etc/linuxio/`
-- needrestart override → `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart` exists (see the **needrestart.** paragraph in "Login and jobs — the bridge connects to its job host")
-- SELinux module `linuxio` → the policy store, with `semodule -i` and a relabel of `/usr/local/bin/linuxio-auth`, on the RHEL family only (see [SELinux](#selinux))
+### Login banner
+
+`linuxio-issue.service`, which `linuxio-webserver.socket` pulls in, runs
+`/usr/share/linuxio/issue/update-issue` once. It writes the addresses
+LinuxIO answers on into `/run/linuxio/issue`: the host name and the source
+address of the default route (with no default route, the first global IPv4
+address on an interface that is not `lo`, `docker*`, `virbr*` or `br-*`), on
+the port of the last line of `systemctl show --property Listen
+linuxio-webserver.socket`, so a port set in a drop-in is the port shown. The
+service is `PartOf=linuxio.target`, and its stop (`update-issue stop`) writes
+"Start LinuxIO with: linuxio start" into the same file, so a stopped LinuxIO
+advertises no address that does not answer. The design is Cockpit's
+(`src/systemd/update-issue`), with one file rather than an active and an
+inactive file and a link switched between them: the SELinux module names
+`/run/linuxio/issue`, and `update-issue` relabels it after each write.
+
+Links to `../../run/linuxio/issue`, which the package makes, show the file
+on both families: `/etc/motd.d/linuxio` at an SSH login and
+`/etc/issue.d/linuxio.issue` on the console
+([The login banner](./packaging.md#the-login-banner)). On the RHEL family
+the SELinux module lets the console's programs read the file
+([SELinux](#selinux)).
 
 ## SELinux
 
 On the RHEL family SELinux enforces by default, and without a policy of its
-own nobody could sign in: systemd ran `/usr/local/bin/linuxio-auth` (`bin_t`)
+own nobody could sign in: systemd ran `/usr/libexec/linuxio/linuxio-auth` (`bin_t`)
 as `unconfined_service_t`, the domain of a service the policy knows nothing
 about; PAM authenticated, `pam_selinux.so open` set the context the user's
 programs start in, `unconfined_u:unconfined_r:unconfined_t:s0`, and the
@@ -562,7 +532,7 @@ from `unconfined_service_t` to `unconfined_t`). Only a login program's domain
 SELinux policy module, `linuxio` (`packaging/selinux/linuxio.cil`), as Cockpit
 does for `cockpit-session`.
 
-- **`linuxio_auth_exec_t`** is the type of `/usr/local/bin/linuxio-auth`, and
+- **`linuxio_auth_exec_t`** is the type of `/usr/libexec/linuxio/linuxio-auth`, and
   **`linuxio_auth_t`** the domain systemd enters when it runs that file.
 - **`linuxio_auth_t` is a `daemon`.** systemd creates the listening socket of
   `linuxio-auth.socket` in the domain of the program the service runs, and
@@ -595,11 +565,32 @@ does for `cockpit-session`.
   get an unconfined bridge. The constraint allows the switch out of
   `linuxio_auth_t` only into the SELinux user `unconfined_u` (or the same
   user, as for programs `linuxio-auth` runs before the session).
-- **The SSH banner.** The module also gives `/run/linuxio/issue`, which
+- **The login banner.** The module also gives `/run/linuxio/issue`, which
   `/etc/motd.d/linuxio` links to, the type of `/run/motd.d`,
   `motd_var_run_t`: in its folder's type, `var_run_t`, `pam_motd` in `sshd`
   may not read it, and the banner never showed on Fedora. `update-issue`
   relabels the file after each write.
+- **Two permissions for domains that are not LinuxIO's**, so the console
+  shows the banner through `/etc/issue.d/linuxio.issue`: `getty_t`
+  (`agetty`, the serial console) and `kmscon_t` (`kmscon`, Fedora's console
+  on the screen, which reads `/etc/issue.d` itself) get `getattr`, `open`
+  and `read` on files (class `file`) of type `motd_var_run_t`. The policy
+  gives `login_pgm` (`sshd`, `login`) that read and neither of the two; with
+  `var_run_t` `agetty` could read the file and `sshd` could not. They may
+  now read every file of that type, which on Fedora 45 are
+  `/run/linuxio/issue`, `/run/motd` and what is in `/run/motd.d`: messages
+  shown at every login, and `getty_t` already reads every `var_run_t` file.
+  Each rule is in an `optional` block of its own (`linuxio_banner` with the
+  file context, `linuxio_banner_kmscon`), so a policy without `kmscon_t`
+  drops only that rule. Measured on Fedora 45 in permissive mode: those
+  three permissions are all either program asks for.
+  `package-files-fixtures.sh` holds the module's rules for other domains to
+  these two lines.
+- **Finding a denial.** `agetty`'s refusal was logged
+  (`avc: denied { read } ... comm="agetty" ... tcontext=...motd_var_run_t`)
+  in `/var/log/audit/audit.log` and the journal. `ausearch` run over a
+  non-interactive SSH command reads its standard input instead of the log
+  and prints `<no matches>`; give it `--input-logs`.
 
 What runs where, seen on Fedora 45 with SELinux enforcing after a fresh
 install and a reboot:
@@ -609,7 +600,7 @@ install and a reboot:
 | The listening socket of `linuxio-auth.socket`, the connections it accepts, `linuxio-auth` | `system_u:system_r:linuxio_auth_t:s0` |
 | The bridge of a sudo user (uid 0) and of a user without sudo | `unconfined_u:unconfined_r:unconfined_t:s0` |
 | Job hosts, web server, monitoring, indexer | `system_u:system_r:unconfined_service_t:s0`, as without the module |
-| `/usr/local/bin/linuxio-auth` | `linuxio_auth_exec_t` |
+| `/usr/libexec/linuxio/linuxio-auth` | `linuxio_auth_exec_t` |
 | `/run/linuxio/issue` | `motd_var_run_t` |
 
 Who gets in:
@@ -625,11 +616,11 @@ Who gets in:
 time needs `selinux-policy-devel` and what it pulls in (3 MiB to download,
 26 MiB installed). The CIL converted from such a module is 259 lines
 nobody reviews. Neither can carry the constraint: `checkmodule` refuses
-`constrain` in a module, and CIL takes it. The hand-written file is about 70
+`constrain` in a module, and CIL takes it. The hand-written file is about 90
 lines and needs no build step and nothing beyond `semodule` and
 `restorecon`, which a host with an SELinux policy has. Only the banner's file
-context is in an `optional` block, so a policy that lacks one of the other
-names it uses refuses the whole module.
+context and the console's two reads are in `optional` blocks, so a policy
+that lacks one of the other names it uses refuses the whole module.
 
 **Why confined users are refused, not given a confined session.** A session
 in the user's own domain (`user_t`, `staff_t`) was tried. It needs lines added
@@ -643,47 +634,21 @@ the domain may not stat (`/etc/audit`) fails whole. And a job host, which
 systemd starts, runs as `unconfined_service_t` whoever it works for, so
 opening its socket to a confined user would run that user's jobs unconfined.
 
-**Install and uninstall.** `install_selinux_module` in
-`install-linuxio-binaries.sh` runs on the RHEL family only, at the top level
-of `main`:
-
-1. **Right after the binaries**, also with `--skip-binaries`, and before any
-   later step that can end the install. The installer replaces a binary
-   through a new file, which is `bin_t` again, and every sign-in is refused
-   until it is relabelled. A binary that fails inside `install_binaries`
-   still ends the install first, and a `linuxio-auth` it already replaced
-   stays `bin_t` until the next install.
-2. **The module**, where `semodule -l` lists the modules of a policy store.
-   It is fetched from main like the other packaging assets and loaded as
-   root with no checksum, so `selinux_module_valid` first checks it has the
-   shipped form: every line is one the module uses, about LinuxIO's own types
-   and paths only (rules from `linuxio_auth_t`, the two file contexts, the
-   constraint as shipped). A store that already holds the same file
-   (`semodule -E linuxio`, compared with the fetched one) is not loaded
-   again, since a load takes about 5 s; and where `/etc/selinux` is not
-   writable (the in-app updater's sandbox) a new or changed module is not
-   tried, and the notice names the root command that loads it.
-3. **Then `restorecon /usr/local/bin/linuxio-auth`**, whenever `restorecon`
-   exists, whatever happened to the module: the file context lives in the
-   module, and a binary just replaced needs it. When SELinux is on and
-   `semodule` cannot read the store (another program holding its lock), the
-   module is left as it is with a notice, and the relabel still runs.
-4. **All before the systemd steps and the restart**, which recreates the
-   auth socket in `linuxio_auth_t`. On a running host the next sign-in uses
-   the domain at once; the listening socket keeps its old type until the
-   socket unit restarts, which does not stop sign-in.
-
-A module that does not load, or is not of the shipped form, is reported, and
-the install goes on: a module loaded before stays, and without one sign-in is
-refused where SELinux enforces, as before. On a host with SELinux disabled
-`semodule` works on the store and `restorecon` does nothing; switching
-SELinux on asks for a relabel, which gives the binary its type. The Debian
-family is left alone: `unconfined_service_t` is a name of Fedora's policy.
-The banner's file context sits in an optional block, so a policy without
-`motd_var_run_t` loads the rest and only the banner keeps `var_run_t`.
-`uninstall.sh` removes the module after the binaries: removed while
-`linuxio-auth` is still there, it would leave that file `unlabeled_t`, which
-systemd cannot run (status `203/EXEC`).
+**Install and removal.** The RPM carries the module and loads it in its
+post-install step, then relabels `/usr/libexec/linuxio/linuxio-auth`, before
+any unit is enabled or started, and an upgrade loads the new package's module
+the same way; an erase removes the module after the files, since removed
+while `linuxio-auth` is still there it would leave that file `unlabeled_t`,
+which systemd cannot run (status `203/EXEC`)
+([The SELinux module](./packaging.md#the-selinux-module)). A module that does
+not load does not stop the install: without it sign-in is refused where
+SELinux enforces. On a host with SELinux disabled `semodule` works on the
+store and `restorecon` does nothing; switching SELinux on asks for a relabel,
+which gives the binary its type. The Debian family is left alone:
+`unconfined_service_t` is a name of Fedora's policy. The banner's file
+context and the `getty_t` read sit in an optional block, so a policy without
+`motd_var_run_t` loads the rest and only the banner keeps `var_run_t`; the
+`kmscon_t` read sits in one of its own.
 
 **Turned down, likely to be proposed again** (one line each under Rejected
 in the [backlog](./TODO/backlog.md#rejected)): dropping `pam_selinux.so open`
@@ -705,24 +670,17 @@ policy refuses `init_t` an `unconfined_t` socket.
 - A user SELinux refuses (`user_u` when the session opens, `staff_u` when
   the bridge starts) still has their `linuxio-jobs@<uid>.socket` started:
   `linuxio-auth` starts it before the session opens.
-- The file context names `/usr/local/bin`, the installer's `BIN_DIR`.
+- The file context names `/usr/libexec/linuxio/linuxio-auth`, where the package installs it.
 - A policy that lacks a name the module uses (a strict or MLS policy, or one
   with `unconfined` removed) does not load it, and sign-in is refused there
   as before.
-- An in-app update cannot load a module that is new or changed: its sandbox
-  (`ProtectSystem=full`) has `/etc/selinux` read-only, and adding that folder
-  to its `ReadWritePaths` makes the policy refuse `init_t` the bind mount
-  (`mounton` on `selinux_config_t`), so the updater's unit fails to start
-  (status 226). The binary is still relabelled and the module loaded before
-  stays. So a host updated in-app while SELinux was permissive or disabled
-  gets no module, a later tightening of the module reaches a host only
-  through an install from a shell, and a binary that needs a rule the old
-  module lacks is refused sign-in until then.
 - A Debian-family host with SELinux enforcing is not handled: no module is
   installed there.
-- The banner's label was checked on Fedora 45 only; a policy whose
-  file-context substitutions map `/run` to `/var/run` may not match
-  `/run/linuxio/issue`, and the banner then stays unreadable to `sshd`.
+- The banner's label and the console's reads were checked on Fedora 45
+  only; the screen console's reading by `kmscon` was seen with `strace` on a
+  VM with no display, not on a screen. A policy whose file-context
+  substitutions map `/run` to `/var/run` may not match `/run/linuxio/issue`,
+  and the banner then stays unreadable to `sshd`.
 - Checked on Fedora 45 only. That RHEL, CentOS Stream, Rocky Linux and
   AlmaLinux have every name the module uses is expected, not seen; an update
   of the policy package to a newer version was not seen either (a reinstall
@@ -737,8 +695,12 @@ linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
 linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring (SIGHUP reload; open sessions switch at next login); persists across restarts
-linuxio version [--self]    # version of the CLI + of each program as the installer recorded it; also linuxio --version
+linuxio version             # the version of the build, which is the package's; also linuxio --version
 ```
+
+With no command, or with `help`, `-h` or `--help`, it prints the list of
+commands. `man linuxio` describes each command, which need root, the files
+and the units (`packaging/man/linuxio.8`).
 
 The Services page warns before it cuts LinuxIO off. Stop, Restart, Disable and
 Mask on `linuxio.target` or a `linuxio-*` unit ask for confirmation first
@@ -762,7 +724,7 @@ reads the drop-ins when it starts; one already running keeps its level until it
 idles out. `set_debug` stays a Call rather than a Mutation: it is an instant,
 idempotent switch whose point is the calling bridge's own level.
 
-Neither `restart`, `stop` nor the installer stops a job host: they are outside
+Neither `restart`, `stop` nor a package upgrade stops a job host: they are outside
 `linuxio.target`. `systemctl stop linuxio-jobs@<uid>` does, and marks that
 host's running jobs `interrupted`. The next connection to its socket starts it
 again, within 1–30 s while a bridge is connected, so stop
@@ -781,13 +743,14 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 |-----------|------|
 | Systemd units | `packaging/systemd/*.{target,socket,service}` |
 | libvirt QEMU hook (bridged VM forwarding past Docker's FORWARD DROP) | `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` → `/etc/libvirt/hooks/qemu.d/` |
-| needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, only where `/etc/needrestart` exists |
+| needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, DEB only |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
-| Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout); `packaging/scripts/localinstall.sh` is a wrapper for it |
-| SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → the policy store, loaded by `install_selinux_module` in the install script and removed by `packaging/scripts/uninstall.sh`; `packaging/scripts/update-issue` relabels the banner |
-| CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
+| Packages | `packaging/debian`, `packaging/rpm/linuxio.spec`, the shared tree `packaging/scripts/package-root.sh` ([Packages](./packaging.md)) |
+| SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → `/usr/share/selinux/packages/targeted/`, loaded into the policy store by the RPM's `%post` and removed by its `%postun`; `packaging/scripts/update-issue` relabels the banner |
+| CLI (commands) | `backend/cli/` (`main.go` dispatch and help, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
+| CLI man page | `packaging/man/linuxio.8`, handwritten roff → `/usr/share/man/man8/linuxio.8.gz` by both packages (`debian/linuxio.manpages`, the RPM's `%install`) |
 | Worker (timer jobs and unit hooks) | `backend/worker/` (`main.go` dispatch; `snapshot.go`, `replicate.go`, `health.go`, `degraded.go`; `scheduled_run.go`, `alert.go`) |
-| Program modes, recorded versions, saved-unit rewrite | `binary_mode`, `write_components_file` and `rewrite_saved_unit_commands` in `packaging/scripts/install-linuxio-binaries.sh`; `backend/common/version/components.go` |
+| Program folders and modes | `packaging/scripts/package-root.sh` |
 | Shared socket-activation adopt | `backend/common/socketactivation`, `backend/webserver/cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |

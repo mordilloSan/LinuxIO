@@ -122,7 +122,7 @@ The bridge is **not** a long-running server that the webserver dials. Instead:
 
 1. On login, `bridge.StartBridge()` dials the auth daemon over a Unix socket.
 2. PAM authenticates the user once. The root auth daemon then runs
-   `sudo -n -l -U <user> -u root -- /usr/local/bin/linuxio-bridge` as a
+   `sudo -n -l -U <user> -u root -- /usr/libexec/linuxio/linuxio-bridge` as a
    non-interactive policy query and forks `linuxio-bridge`; sudo does not
    execute the bridge.
 3. No new data-path socketpair is created. The auth daemon **reuses the accepted

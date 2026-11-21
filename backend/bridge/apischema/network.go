@@ -56,6 +56,27 @@ type NetworkBridgeCandidate struct {
 type NetworkBridgeOptions struct {
 	Candidates []NetworkBridgeCandidate `json:"candidates"`
 	Warnings   []string                 `json:"warnings,omitempty"`
+	// BridgeHook is absent unless the host firewall drops bridged traffic.
+	BridgeHook *NetworkBridgeHook `json:"bridgeHook,omitzero"`
+}
+
+// NetworkBridgeHookState is what libvirt makes of the LinuxIO libvirt hook
+// that lets bridged VM traffic through a FORWARD policy of DROP.
+type NetworkBridgeHookState string
+
+const (
+	NetworkBridgeHookInstalled     NetworkBridgeHookState = "installed"
+	NetworkBridgeHookMissing       NetworkBridgeHookState = "missing"
+	NetworkBridgeHookNotExecutable NetworkBridgeHookState = "not_executable"
+)
+
+// NetworkBridgeHook is the LinuxIO libvirt hook, reported in the bridge
+// options and the VM preflight only while bridge netfilter hands bridged
+// traffic to an iptables FORWARD policy of DROP. Restorable says
+// network.restore_bridge_hook has the package's copy to restore it from.
+type NetworkBridgeHook struct {
+	State      NetworkBridgeHookState `json:"state"`
+	Restorable bool                   `json:"restorable"`
 }
 
 type NetworkBridgeCreateResult struct {

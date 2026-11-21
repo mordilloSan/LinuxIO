@@ -11,10 +11,11 @@ import { defineConfig, devices } from "@playwright/test";
 // parallel index in TEST_PARALLEL_INDEX, so baseURL below is that worker's VM
 // (src/test/vm/vm.ts does the same for the rig commands).
 //
-// jobs-update.spec.ts is a project of its own, release-update: it installs an
-// older release over whatever is there and leaves the VM changed for good, so
-// it runs alone on a VM reverted to clean, which `make test-vm-browser` does
-// after the specs project.
+// jobs-update.spec.ts is a project of its own, release-update: it installs
+// package A from the VM's signed repository on a VM with no LinuxIO, updates
+// it to B and leaves the VM changed for good, so it runs alone on a VM
+// reverted to clean, which `make test-vm-browser` does after the specs
+// project.
 const vmUrls = (process.env.LINUXIO_VM_URLS ?? "")
   .trim()
   .split(/\s+/)

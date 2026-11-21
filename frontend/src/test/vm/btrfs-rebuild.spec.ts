@@ -18,7 +18,7 @@ import {
 // disk of the mounted test pool drops off the guest's PCI bus and comes back,
 // while the pool holds its dead block device. The health
 // checks, started by hand, see it back twice, start the rebuild unit as the
-// installer put it, which erases the disk and replaces the member onto it,
+// package installed it, which erases the disk and replaces the member onto it,
 // and the resync then makes the pool whole. The pool page shows each step.
 // The same holds after a reboot, for the other disk. The rig's data disks
 // carry serials (packaging/vm/linuxio-vm.sh), the identity the rebuild
@@ -313,10 +313,10 @@ async function dropAndRebuild(uuid: string, disk: string, page?: Page) {
     message: expect.stringContaining(`/dev/${back}`),
   });
   expect(await storedAlert(`btrfs/health-${uuid}`)).toBeNull();
-  // The unit ran as the installer put it.
+  // The unit ran as the package installs it.
   expect(
     (await vmSsh(`systemctl show -P FragmentPath ${rebuildUnit}`)).trim(),
-  ).toBe("/etc/systemd/system/linuxio-btrfs-rebuild@.service");
+  ).toBe("/usr/lib/systemd/system/linuxio-btrfs-rebuild@.service");
   return back;
 }
 

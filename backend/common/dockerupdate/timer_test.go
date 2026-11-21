@@ -3,9 +3,13 @@ package dockerupdate
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -43,12 +47,9 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 	if timer := readTestFile(t, store.timerPath); !strings.Contains(timer, "OnCalendar=*-*-* 06:15:00") || !strings.Contains(timer, "RandomizedDelaySec=1m\n") || !strings.Contains(timer, "Unit="+dockerUpdateUnitName) {
 		t.Fatalf("timer file did not render schedule:\n%s", timer)
 	}
-	unit := readTestFile(t, store.unitPath)
-	if !strings.Contains(unit, "ExecStart=/usr/local/bin/linuxio-docker-update --config "+ConfigPath) {
-		t.Fatalf("unit file does not invoke the LinuxIO runner directly:\n%s", unit)
-	}
-	if strings.Contains(unit, "/bin/sh") {
-		t.Fatalf("unit file contains a legacy shell:\n%s", unit)
+	// The service is a package unit: a save writes the timer alone.
+	if _, err := os.Lstat(filepath.Join(filepath.Dir(store.timerPath), dockerUpdateUnitName)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("a save wrote %s beside the timer: %v", dockerUpdateUnitName, err)
 	}
 
 	wantCalls := []string{"reload", "enable:" + dockerUpdateTimerName, "start:" + dockerUpdateTimerName}
@@ -209,7 +210,6 @@ func testAutoUpdateStore(t *testing.T) containerAutoUpdateStore {
 	return containerAutoUpdateStore{
 		configPath: filepath.Join(root, "etc", "linuxio", "docker-update.json"),
 		timerPath:  filepath.Join(root, "etc", "systemd", "system", dockerUpdateTimerName),
-		unitPath:   filepath.Join(root, "etc", "systemd", "system", dockerUpdateUnitName),
 	}
 }
 
@@ -222,8 +222,12 @@ func readTestFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-func TestRenderDockerUpdateUnitDerivesFromUpdaterUnit(t *testing.T) {
-	unit := string(renderDockerUpdateUnit())
+// The service is the package unit packaging/systemd/linuxio-docker-update.service.
+// It runs the updater this package names with the configuration it saves,
+// writes only where the updater keeps its state, and gives a rollback in
+// progress the time it needs when the pass is stopped.
+func TestPackagedDockerUpdateUnit(t *testing.T) {
+	unit := readTestFile(t, filepath.Join("..", "..", "..", "packaging", "systemd", dockerUpdateUnitName))
 	for _, want := range []string{
 		"After=docker.service network-online.target\n",
 		"Requires=docker.service\n",
@@ -234,14 +238,9 @@ func TestRenderDockerUpdateUnitDerivesFromUpdaterUnit(t *testing.T) {
 		"ProtectHome=read-only\n",
 		"ProtectSystem=strict\n",
 		"ReadWritePaths=" + version.DataDir + " /run\n",
+		"KillMode=mixed\n",
+		fmt.Sprintf("TimeoutStopSec=%d\n", int(dockerUpdateStopTimeout.Seconds())),
 	} {
-		if !strings.Contains(unit, want) {
-			t.Errorf("unit file is missing %q:\n%s", want, unit)
-		}
-	}
-	// A stop signals the program alone, which cancels its work but lets a
-	// rollback in progress finish before systemd kills what is left.
-	for _, want := range []string{"KillMode=mixed\n", "TimeoutStopSec=250\n"} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit file is missing %q:\n%s", want, unit)
 		}
@@ -250,14 +249,30 @@ func TestRenderDockerUpdateUnitDerivesFromUpdaterUnit(t *testing.T) {
 		t.Errorf("stop timeout %v leaves no room for a rollback of %v", dockerUpdateStopTimeout, composeRollbackTimeout)
 	}
 	// The scheduled run hooks live in the packaged drop-in
-	// (linuxio-run-record.conf), never in the rendered unit.
+	// (linuxio-run-record.conf), never in the unit.
 	if strings.Contains(unit, "scheduled-run") {
-		t.Errorf("rendered unit carries a run hook:\n%s", unit)
+		t.Errorf("unit carries a run hook:\n%s", unit)
 	}
 }
 
 func TestScheduledRunKnowsTheDockerUpdateUnit(t *testing.T) {
 	if kind, ok := scheduledrun.KindOf(dockerUpdateUnitName, ""); !ok || kind.Route != scheduledrun.RouteDockerUpdate {
 		t.Errorf("KindOf(%q) = %+v, %v", dockerUpdateUnitName, kind, ok)
+	}
+}
+
+// Removing the package deletes the Docker update timer, which LinuxIO wrote while it ran:
+// each path is in the removal lists of both packages.
+func TestPackageRemovalDeletesTheTimer(t *testing.T) {
+	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "packaging", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{dockerUpdateTimerPath} {
+			if !slices.Contains(strings.Fields(string(data)), path) {
+				t.Errorf("packaging/%s does not delete %s", script, path)
+			}
+		}
 	}
 }

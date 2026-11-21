@@ -1,22 +1,31 @@
-import { createHash, randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import {
+  activeSince,
   bridgeCall,
+  checkoutVersion,
   createSchedule,
   fillSchedule,
   fixture,
+  hostSha256,
+  INSTALL_FROM_REPO,
+  installedVersion,
   jobIds,
   jobRecord,
   jobRecords,
   type JobRecord,
   type Login,
+  mainPid,
   MiB,
+  newJob,
+  nextVersion,
   noSessions,
+  packageKitVersion,
+  plainBuild,
+  publish,
   rig,
   runNow,
   SCRUB_LABEL,
@@ -31,77 +40,57 @@ import {
   throttle,
   uniqueName,
   unitOf,
+  updateBuild,
+  vmDistro,
   vmSsh,
   waitForIdle,
   waitForJob,
   waitForRun,
 } from "./vm";
 
-// docs/jobs.md (Updates): a LinuxIO update never stops a job host. A host of
-// an older protocol refuses the new bridge's hello, the update waits for its
-// jobs, and new jobs are refused with `update_pending` until the older host
-// exits. This file does it from a published release: the VM runs v0.53.0
-// (which has job hosts), long jobs run in its hosts, and the build under test
-// is installed over it.
+// docs/packaging.md (LinuxIO's own update) and docs/jobs.md (Updates):
+// LinuxIO's own update is the package `linuxio` on the Updates page. The VM
+// installs package A from its signed repository (linuxio-vm.sh repo-publish,
+// then apt or dnf, as an administrator does), long jobs run in A's job
+// hosts, and package B is published. A sudo session's banner names B and opens the Updates page,
+// where the administrator updates it: `packages.update`, a job in the root job
+// host, PackageKit verifies the repository and the package, and the package's
+// own step restarts linuxio.target. The job hosts are outside the target and
+// run on: the update job runs to its end and is recorded, and the jobs that
+// were running keep the new build waiting.
 //
-// Two things the VM needs that nothing in a release gives:
-//  - jobs.Protocol of v0.53.0 is 2, as it is in this tree, so a plain build of
-//    this tree would be accepted by the older host and nothing would wait. The
-//    build in LINUXIO_VM_UPDATE_BUILD must be this tree with jobs.Protocol one
-//    higher (make vm-update-build builds it with a Go overlay; docs/jobs.md,
-//    Testing). Without it the tests are skipped.
-//  - the in-app updater (`control.app_update`) installs a published release
-//    only, so the update is the installer script itself, which is what the
-//    updater runs (the VM rig's install, as in jobs-phase5a.spec.ts).
-//
-// The release is downloaded on the host from GitHub into
-// .cache/vm-release/<tag>, checked against the release's SHA256SUMS, and
-// installed with the rig's install and the release's own installer and
-// packaging (units, PAM, needrestart override), which the rig takes from the
-// release's git tag. The update build is then installed with this checkout's,
-// as an update does.
+// B is the update build (LINUXIO_VM_UPDATE_BUILD, `make vm-update-build`):
+// this tree with jobs.Protocol one higher, so A's hosts are older ones to B's
+// bridge and it waits for their jobs (docs/jobs.md, Testing), and a version of
+// its own, which `linuxio --version` reports. On Fedora B also carries a
+// changed SELinux module: the rig appends a comment to the copy of
+// linuxio.cil B is assembled from. A is the plain build (LINUXIO_VM_BUILD_DIR)
+// at this checkout's package version; B is that version with +e2e1. Without
+// the two builds the tests are skipped.
 //
 // The tests are one serial group sharing one update, because each update costs
-// minutes (an install, then the older host's idle minute and the relay's
-// backoff): the first test sets it up, the others read the wait from a
-// different side, and the last ends the jobs. The jobs are two in the root
+// minutes (two packages assembled and installed, then the older host's idle
+// minute and the relay's backoff): the first test sets it up, the others read
+// the wait from a different side, the fifth ends the jobs, and on Fedora the
+// last checks the SELinux module across a reboot. The jobs are two in the root
 // host (a throttled btrfs scrub and a throttled copy) and one in the host of a
 // user without sudo (a throttled copy). The copies read an ext4 on vdd that
 // the VM rig throttles, so lifting the throttle ends both copies and leaves
 // the scrub, which ends by raising its own speed cap.
 //
-// It runs alone, on a freshly reset VM that needs no `make vm-install`: the
-// file is the Playwright project release-update, which `make test-vm-browser`
-// runs after the other files, on its first VM reverted to clean. By hand:
+// It runs alone, on a freshly reset VM with no LinuxIO: the file is the
+// Playwright project release-update, which `make test-vm-browser` runs after
+// the other files, on its first VM reverted to clean. By hand:
 //   make vm-reset vm-update-build
 //   LINUXIO_VM_UPDATE_BUILD=.cache/vm-update-build/build make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=--project=release-update
-// The file needs vdd to hold nothing and changes the VM: it leaves the
-// release's files in .cache, the update build installed, the apt timers
-// stopped, the e2e pool on vdb and vdc, a user without sudo, an ext4 on vdd
-// mounted at /mnt/e2e-slow and a schedule. Run `make vm-reset` (and
+// (DISTRO=fedora on each for Fedora). The file needs vdd to hold nothing and
+// changes the VM: it leaves B installed from the VM's repository, the apt
+// timers stopped, the e2e pool on vdb and vdc, a user without sudo, an ext4
+// on vdd mounted at /mnt/e2e-slow and a schedule. Run `make vm-reset` (and
 // `make vm-install` for the other files) before anything else.
 
-const OLD_RELEASE = "v0.53.0";
-const RELEASE_URL = `https://github.com/mordilloSan/LinuxIO/releases/download/${OLD_RELEASE}`;
-/** The binaries of OLD_RELEASE, as that release named them. */
-const BINARIES = [
-  "linuxio",
-  "linuxio-webserver",
-  "linuxio-bridge",
-  "linuxio-auth",
-  "linuxio-docker-update",
-  "linuxio-indexer",
-  "linuxio-monitoring",
-  "linuxio-btrfs-timer",
-  "linuxio-claude-relay",
-];
-const RELEASE_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../.cache/vm-release",
-  OLD_RELEASE,
-);
-
 const COPY = "filebrowser.copy_batch";
+const PACKAGE_UPDATE = "packages.update";
 /** A user without sudo: its job host is the older host of the second check. */
 const PLAIN_USER = "e2e-plain";
 const SLOW_DISK = "vdd";
@@ -111,9 +100,18 @@ const SLOW_MOUNT = "/mnt/e2e-slow";
  * copy moves 2 GiB through it, so they outlast the checks by far.
  */
 const SLOW_RATE = 2 * MiB;
+/**
+ * The scrub's per-disk cap: half a MiB a second takes over half an hour on
+ * the 1 GiB the pool holds, longer than the two publishes, the update and the
+ * checks before the fifth test lifts it.
+ */
+const SCRUB_RATE = MiB / 2;
+/** What B's SELinux module carries, and A's does not (Fedora). */
+const MODULE_NOTE = `linuxio e2e update ${randomBytes(6).toString("hex")}`;
+/** The suffix vm-update-build gives the update build's version. */
+const UPDATE_BUILD_VERSION = /\S+\+update\b/;
 
 const vmUser = () => process.env.LINUXIO_VM_USER ?? "";
-const updateBuild = () => process.env.LINUXIO_VM_UPDATE_BUILD ?? "";
 
 /** What the first test sets up and the others read. */
 interface Waiting {
@@ -122,17 +120,21 @@ interface Waiting {
   scrub: JobRecord;
   copy: JobRecord;
   userCopy: JobRecord;
-  /** A scheduled run that ended before the update (the older hooks wrote it). */
+  /** The Updates page's update of the linuxio package. */
+  update: JobRecord;
+  /** A scheduled run that ended before the update (A's hooks wrote it). */
   run: ScheduledRecord;
   marker: string;
   user: Login;
   uid: number;
-  /** The older hosts' main PIDs. */
+  /** A's hosts' main PIDs. */
   rootPid: string;
   userPid: string;
-  /** The SHA-256 of linuxio-bridge in the release and in the update build. */
+  /** The SHA-256 of linuxio-bridge in A and in B. */
   oldSha: string;
   newSha: string;
+  /** B's package version. */
+  version: string;
 }
 let waiting: Waiting | undefined;
 
@@ -148,44 +150,7 @@ const ui = expect.configure({ timeout: 15_000 });
 
 test.afterEach(({ page }) => signOutIfSignedIn(page));
 
-const sha256 = async (file: string) =>
-  createHash("sha256")
-    .update(await readFile(file))
-    .digest("hex");
-
-/**
- * Downloads the binaries of OLD_RELEASE into RELEASE_DIR, each checked
- * against the release's SHA256SUMS, and returns the directory and the SHA-256
- * of its linuxio-bridge. A file already there with the right sum is kept.
- */
-async function oldRelease() {
-  const response = await fetch(`${RELEASE_URL}/SHA256SUMS`);
-  expect(response.ok, `GET ${RELEASE_URL}/SHA256SUMS`).toBe(true);
-  const sums = new Map<string, string>();
-  for (const line of (await response.text()).split("\n")) {
-    const [sum, name] = line.trim().split(/\s+/);
-    if (sum && name) sums.set(name, sum);
-  }
-  await mkdir(RELEASE_DIR, { recursive: true });
-  for (const name of BINARIES) {
-    const file = path.join(RELEASE_DIR, name);
-    const want = sums.get(name);
-    expect(want, `${name} in the release's SHA256SUMS`).toBeTruthy();
-    if ((await sha256(file).catch(() => "")) === want) continue;
-    const asset = await fetch(`${RELEASE_URL}/${name}`);
-    expect(asset.ok, `GET ${RELEASE_URL}/${name}`).toBe(true);
-    await writeFile(`${file}.part`, Buffer.from(await asset.arrayBuffer()));
-    expect(await sha256(`${file}.part`), `${name} against SHA256SUMS`).toBe(
-      want,
-    );
-    await chmod(`${file}.part`, 0o755);
-    await rename(`${file}.part`, file);
-  }
-  return { dir: RELEASE_DIR, bridgeSha: sums.get("linuxio-bridge")! };
-}
-
-const hostPid = async (uid: number) =>
-  (await vmSsh(`systemctl show -P MainPID linuxio-jobs@${uid}.service`)).trim();
+const hostPid = (uid: number) => mainPid(`linuxio-jobs@${uid}.service`);
 
 /** The SHA-256 of the binary uid's job host runs (a replaced one still counts). */
 async function hostSha(uid: number) {
@@ -199,25 +164,6 @@ const scrubSpeed = (uuid: string, bytesPerSecond: number) =>
   vmSsh(
     `for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo ${bytesPerSecond} | sudo tee $f >/dev/null; done`,
   );
-
-/**
- * Puts the release in the VM's place: no session holds a host, the job hosts
- * are stopped so that the next login starts one from the release, and the
- * release is installed over whatever build is there.
- */
-async function installOldRelease() {
-  const release = await oldRelease();
-  await noSessions();
-  expect(
-    (await jobRecords()).filter((r) => r.state === "running"),
-    "jobs running in the root job host: a fresh VM has none",
-  ).toEqual([]);
-  await vmSsh("sudo systemctl stop 'linuxio-jobs@*.service'");
-  // With the release's own installer and packaging: this checkout's units
-  // start programs and words the release does not have.
-  console.log(await rig(["install", release.dir, OLD_RELEASE]));
-  return release.bridgeSha;
-}
 
 /** An ext4 on vdd with a 1 GiB file for each of the root and the plain user. */
 async function prepareSlowDisk() {
@@ -247,6 +193,10 @@ async function pasteCopy(page: Page, dir: string) {
 
 const banner = (page: Page) =>
   page.getByRole("status").filter({ hasText: "LinuxIO was updated." });
+
+/** The banner that names a LinuxIO update PackageKit lists (AppUpdateBanner). */
+const available = (page: Page) =>
+  page.getByRole("status").filter({ hasText: /LinuxIO \S+ is available\./ });
 
 /** The tasks.host answer of the signed-in session. */
 interface HostStatus {
@@ -295,10 +245,18 @@ async function upload(page: Page, rightClick: Locator, files: string[]) {
   await ui(dialog).toBeHidden();
 }
 
-test.describe.serial("an update from a release with job hosts", () => {
+/** The SHA-256 of what the web server's process runs. */
+const webserverSha = async () => {
+  const pid = await mainPid("linuxio-webserver.service");
+  expect(pid, "the web server runs").not.toBe("0");
+  return (await vmSsh(`sudo sha256sum /proc/${pid}/exe`)).split(" ")[0];
+};
+
+test.describe
+  .serial("an update from package A to package B on the Updates page", () => {
   test.skip(
-    updateBuild() === "",
-    "needs LINUXIO_VM_UPDATE_BUILD: make vm-update-build builds this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
+    updateBuild() === "" || plainBuild() === "",
+    "needs LINUXIO_VM_BUILD_DIR and LINUXIO_VM_UPDATE_BUILD: make test-vm-browser passes both, make vm-update-build builds the second (docs/jobs.md, Testing)",
   );
 
   test.afterAll(async () => {
@@ -311,15 +269,17 @@ test.describe.serial("an update from a release with job hosts", () => {
     }
   });
 
-  test("the banner counts the two jobs the root host runs", async ({
+  test("the banner names B, the update runs as a job across the restart, and two root jobs keep B waiting", async ({
     page,
   }) => {
-    // The bounds: an apt run 600 s; the release's download 120 s; the two
-    // installs 2 x 90 s; the pool on a fresh VM 120 s; the files on vdd 60 s;
-    // the scrub, the schedule and the two copies 180 s; the banner 30 s; the
-    // reads 60 s: some 1350 s.
-    test.setTimeout(1_500_000);
+    // The bounds: an apt run 600 s; A assembled and published 180 s and
+    // installed 180 s; the pool on a fresh VM 120 s; the files on vdd 60 s;
+    // the scrub, the schedule and the two copies 180 s; B assembled and
+    // published 180 s; the refresh and the banner 240 s; the update 600 s;
+    // the reads 120 s: some 2460 s.
+    test.setTimeout(2_700_000);
     await stopAptRuns();
+    expect(await installedVersion(), "a VM reverted to clean").toBe("");
 
     // The user without sudo, whose job host is the second older host. The VM
     // is reset before each run; where the user exists, it gets a new password.
@@ -331,22 +291,38 @@ test.describe.serial("an update from a release with job hosts", () => {
       `id -u ${PLAIN_USER} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash ${PLAIN_USER}`,
     );
     await vmSsh("sudo chpasswd", `${user.username}:${user.password}\n`);
-    expect(await vmSsh(`id -nG ${PLAIN_USER}`)).not.toMatch(/\bsudo\b/);
+    expect(await vmSsh(`id -nG ${PLAIN_USER}`)).not.toMatch(/\b(sudo|wheel)\b/);
     const uid = Number((await vmSsh(`id -u ${PLAIN_USER}`)).trim());
 
-    const oldSha = await installOldRelease();
-    const newSha = await sha256(path.join(updateBuild(), "linuxio-bridge"));
-    expect(newSha, "the update build is not the release").not.toBe(oldSha);
+    // A, installed from the VM's signed repository.
+    const versionA = await checkoutVersion();
+    const version = nextVersion(versionA);
+    await publish(plainBuild(), versionA);
+    console.log(
+      await vmSsh(`set -o pipefail; ${INSTALL_FROM_REPO} 2>&1 | tail -n 5`),
+    );
+    expect(await installedVersion()).toBe(versionA);
+    expect(
+      (await vmSsh("systemctl is-active linuxio.target || true")).trim(),
+    ).toBe("active");
+    expect(await vmSsh("linuxio --version")).not.toMatch(UPDATE_BUILD_VERSION);
+    const oldSha = await hostSha256(path.join(plainBuild(), "linuxio-bridge"));
+    const newSha = await hostSha256(path.join(updateBuild(), "linuxio-bridge"));
+    expect(newSha, "the update build is not the plain one").not.toBe(oldSha);
     await prepareSlowDisk();
 
-    // The root host's jobs, started in the release's UI: a scrub at 1 MiB/s
-    // per disk, and a copy that reads the throttled disk.
+    // The root host's jobs, started in A's UI: a capped scrub and a copy
+    // that reads the throttled disk.
     const beforeScrub = await jobIds();
-    const { uuid, job: scrub } = await startScrub(page, beforeScrub, MiB);
-    expect(await hostSha(0), "the root host runs the release").toBe(oldSha);
+    const { uuid, job: scrub } = await startScrub(
+      page,
+      beforeScrub,
+      SCRUB_RATE,
+    );
+    expect(await hostSha(0), "the root host runs A").toBe(oldSha);
 
-    // A scheduled run that ends before the update: the release's hooks write
-    // its record and its saved output, which the new build reads afterwards.
+    // A scheduled run that ends before the update: A's hooks write its
+    // record and its saved output, which B reads afterwards.
     const marker = `update-marker-${randomBytes(6).toString("hex")}`;
     const name = uniqueName("before the update");
     const scheduleId = await createSchedule(page, name, `echo ${marker}`);
@@ -376,19 +352,85 @@ test.describe.serial("an update from a release with job hosts", () => {
         { intervals: [2_000], message: `${COPY} of ${PLAIN_USER}` },
       )
       .toBe("running");
-    expect(await hostSha(uid), "the user's host runs the release").toBe(oldSha);
+    expect(await hostSha(uid), "the user's host runs A").toBe(oldSha);
     await signOut(page);
-
-    // A bridge still connected would keep an older host up after its jobs.
     await noSessions();
+
+    // B, published. PackageKit lists it once its lists are refreshed, which
+    // control.version never does by itself: the Updates page's refresh.
+    await publish(updateBuild(), version, MODULE_NOTE);
+    await signIn(page);
+    await page.goto("/updates");
+    await page.getByRole("button", { name: "Refresh Sources" }).click();
+    await ui(page.getByText("Refreshing", { exact: true })).toBeHidden({
+      timeout: 240_000,
+    });
+    // The banner names B as PackageKit does, and its button opens the
+    // Updates page.
+    await page.goto("/");
+    const offer = available(page);
+    await ui(offer).toContainText(
+      `LinuxIO ${packageKitVersion(version)} is available.`,
+      { timeout: 30_000 },
+    );
+    await offer.getByText("Open Updates", { exact: true }).click();
+    await ui(page).toHaveURL(/\/updates$/);
+
+    // The update, on the Updates page, while the three jobs run.
     expect(await scrubRunning(), "the scrub ended: lower its speed").toBe(true);
     const rootPid = await hostPid(0);
     const userPid = await hostPid(uid);
+    const targetSince = await activeSince("linuxio.target");
+    const beforeUpdate = await jobIds();
+    const card = page
+      .locator("div")
+      .filter({
+        has: page.getByText(`linuxio · ${packageKitVersion(version)}`, {
+          exact: true,
+        }),
+      })
+      .filter({
+        has: page.getByRole("button", { name: "Update", exact: true }),
+      })
+      .last();
+    await card.getByRole("button", { name: "Update", exact: true }).click();
+    // The package restarts linuxio.target, and this session with it; the job
+    // runs on in the root host, which is outside the target.
+    let update: JobRecord | undefined;
+    await expect
+      .poll(
+        async () => {
+          update = await newJob(PACKAGE_UPDATE, beforeUpdate);
+          return update?.state;
+        },
+        {
+          intervals: [2_000],
+          message: "the package update job ends",
+          timeout: 600_000,
+        },
+      )
+      .toMatch(/^(completed|failed|canceled|interrupted)$/);
+    expect(update, JSON.stringify(update)).toMatchObject({
+      state: "completed",
+    });
+    expect(await installedVersion(), "the host has B").toBe(version);
+    expect(await vmSsh("linuxio --version")).toMatch(UPDATE_BUILD_VERSION);
+    expect(
+      await activeSince("linuxio.target"),
+      "the package restarted linuxio.target",
+    ).toBeGreaterThan(targetSince);
+    expect(await hostPid(0), "the update left the root host").toBe(rootPid);
+    expect(await hostPid(uid), "the update left the user's host").toBe(userPid);
+    expect(await hostSha(0), "the root host still runs A").toBe(oldSha);
+    for (const id of [scrub.id, copy.id]) {
+      expect((await jobRecord(id))?.state).toBe("running");
+    }
     waiting = {
       uuid,
       scrub,
       copy,
       userCopy: userCopy!,
+      update: update!,
       run,
       marker,
       user,
@@ -397,35 +439,27 @@ test.describe.serial("an update from a release with job hosts", () => {
       userPid,
       oldSha,
       newSha,
+      version,
     };
 
-    // The update. Installing over running hosts is what an update does; the
-    // hosts keep their (replaced) binaries and their jobs.
-    console.log(await rig(["install", updateBuild()]));
-    expect(await hostPid(0), "the install left the root host").toBe(rootPid);
-    expect(await hostPid(uid), "the install left the user's host").toBe(
-      userPid,
-    );
-    expect(await hostSha(0), "the root host still runs the release").toBe(
-      oldSha,
-    );
-    for (const id of [scrub.id, copy.id]) {
-      expect((await jobRecord(id))?.state).toBe("running");
-    }
-
+    // Signed in again: B's bridge, and B's web server.
     await signIn(page);
+    expect(await webserverSha()).toBe(
+      await hostSha256(path.join(updateBuild(), "linuxio-webserver")),
+    );
     const waitingBanner = banner(page);
     await ui(waitingBanner).toContainText(
       "LinuxIO was updated. New jobs wait for 2 running jobs to finish.",
       { timeout: 30_000 },
     );
-    // The older host refused the new bridge's hello on the protocol number:
-    // the release's protocol is 2.
+    // PackageKit lists no newer LinuxIO now.
+    await ui(available(page)).toHaveCount(0);
+    // The older host refused the new bridge's hello on the protocol number.
     const refused = await vmSsh(
       "sudo journalctl -b -u linuxio-jobs@0.service -o cat --no-pager | grep -F 'job host refused a bridge hello' || true",
     );
     const [, theirs, ours] = refused.match(/protocol (\d+), want (\d+)/) ?? [];
-    expect(Number(ours), refused).toBe(2);
+    expect(Number(ours), refused).toBeGreaterThan(0);
     expect(Number(theirs), refused).toBe(Number(ours) + 1);
 
     await waitingBanner
@@ -471,6 +505,8 @@ test.describe.serial("an update from a release with job hosts", () => {
     await ui(listed).toContainText(/Copying/);
     await ui(listed).toContainText(` · ${PLAIN_USER} · started `);
     await ui(waitingBanner).not.toContainText(SCRUB_LABEL);
+    // A session without sudo is not offered LinuxIO's update.
+    await ui(available(page)).toHaveCount(0);
 
     const status = await taskHost(page);
     expect(status.update_pending).toBe(true);
@@ -478,11 +514,11 @@ test.describe.serial("an update from a release with job hosts", () => {
     expect(status.jobs?.map((j) => j.id)).toEqual([w.userCopy.id]);
 
     // The user's host refused the hello as the root host did, and still runs
-    // the release with the job.
+    // A with the job.
     const refused = await vmSsh(
       `sudo journalctl -b -u linuxio-jobs@${w.uid}.service -o cat --no-pager | grep -F 'job host refused a bridge hello' || true`,
     );
-    expect(refused).toMatch(/protocol \d+, want 2/);
+    expect(refused).toMatch(/protocol \d+, want \d+/);
     expect(await hostPid(w.uid)).toBe(w.userPid);
     expect(await hostSha(w.uid)).toBe(w.oldSha);
     expect(
@@ -549,7 +585,7 @@ test.describe.serial("an update from a release with job hosts", () => {
       await Promise.all(
         names.map(async (name) => [
           name,
-          await sha256(fixture(`upload/${name}`)),
+          await hostSha256(fixture(`upload/${name}`)),
         ]),
       ),
     );
@@ -589,7 +625,7 @@ test.describe.serial("an update from a release with job hosts", () => {
     expect((await jobRecord(w.scrub.id))?.state).toBe("running");
   });
 
-  test("the update proceeds after the last job ends and the records survive it", async ({
+  test("the update proceeds after the last job ends, and the update job and the records survive it", async ({
     page,
   }) => {
     // The bounds: the copies' end 120 s, the banner 45 s, the scrub's end
@@ -654,18 +690,19 @@ test.describe.serial("an update from a release with job hosts", () => {
     const newerPid = await hostPid(0);
     expect(newerPid, "a host of the new build runs").not.toBe("0");
     expect(newerPid).not.toBe(w.rootPid);
-    expect(await hostSha(0), "the new host runs the update build").toBe(
-      w.newSha,
-    );
+    expect(await hostSha(0), "the new host runs B").toBe(w.newSha);
 
-    // The records the release's host wrote are read by the new one.
-    const scrub = await bridgeCall(page, "tasks.get", { taskId: w.scrub.id });
-    expect(scrub).toEqual(
-      expect.objectContaining({
-        status: "ok",
-        data: expect.objectContaining({ id: w.scrub.id, state: "completed" }),
-      }),
-    );
+    // The records A's host wrote are read by B's: the update job that ran
+    // across the restart is in the history as finished, with the jobs it
+    // ran beside.
+    for (const id of [w.update.id, w.scrub.id]) {
+      expect(await bridgeCall(page, "tasks.get", { taskId: id })).toEqual(
+        expect.objectContaining({
+          status: "ok",
+          data: expect.objectContaining({ id, state: "completed" }),
+        }),
+      );
+    }
     // Cancelling an ended job finds it ended; watching it answers its end.
     expect(
       await bridgeCall(page, "tasks.cancel", { taskId: w.scrub.id }),
@@ -683,11 +720,19 @@ test.describe.serial("an update from a release with job hosts", () => {
     expect(output).toEqual(expect.objectContaining({ status: "ok" }));
     expect((output.data as { content: string }).content).toContain(w.marker);
     expect(await historyIds(page)).toEqual(
-      expect.arrayContaining([w.scrub.id, w.copy.id, w.run.id]),
+      expect.arrayContaining([w.update.id, w.scrub.id, w.copy.id, w.run.id]),
     );
     for (const id of [w.scrub.id, w.copy.id]) {
       expect((await jobRecord(id))?.state).toBe("completed");
     }
+    // The history page shows the update finished.
+    await page.goto("/history");
+    const updateRow = page
+      .getByRole("table", { name: "Job history" })
+      .getByRole("row")
+      .filter({ hasText: "Updating packages" });
+    await ui(updateRow).toHaveCount(1);
+    await ui(updateRow).toContainText("Completed");
     await signOut(page);
 
     // The user's host exited a minute after its copy; the next sign-in of the
@@ -696,9 +741,43 @@ test.describe.serial("an update from a release with job hosts", () => {
     await ui(page.getByRole("button", { name: "Account" })).toBeVisible();
     expect(await historyIds(page)).toContain(w.userCopy.id);
     expect(await hostPid(w.uid), "a new host of the user").not.toBe(w.userPid);
-    expect(await hostSha(w.uid), "the user's host runs the update build").toBe(
-      w.newSha,
-    );
+    expect(await hostSha(w.uid), "the user's host runs B").toBe(w.newSha);
     await ui(banner(page)).toHaveCount(0);
+  });
+
+  test("Fedora: B's SELinux module is loaded, and sign-in works after the update and after a reboot", async ({
+    page,
+  }) => {
+    test.skip(
+      vmDistro !== "fedora",
+      "the DEB carries no SELinux module; Ubuntu runs AppArmor, not SELinux",
+    );
+    // The bounds: two checks 60 s each, the reboot 300 s: some 420 s.
+    test.setTimeout(600_000);
+    const w = current();
+    expect((await vmSsh("getenforce")).trim()).toBe("Enforcing");
+    const check = async (when: string) => {
+      // semodule -E writes the module as the store holds it, linuxio.cil,
+      // into the folder it runs in.
+      const module = await vmSsh(
+        'd="$(mktemp -d)" && cd "$d" && sudo semodule -E linuxio >/dev/null 2>&1 && cat linuxio.cil; rm -rf "$d"',
+      );
+      expect(module, `B's module ${when}`).toContain(`; ${MODULE_NOTE}`);
+      expect(
+        await vmSsh("ls -Z /usr/libexec/linuxio/linuxio-auth"),
+        `linuxio-auth's type ${when}`,
+      ).toContain(":linuxio_auth_exec_t:");
+      await signIn(page);
+      await ui(page.getByRole("button", { name: "Account" })).toBeVisible();
+      await signOut(page);
+      const denials = await vmSsh(
+        "sudo ausearch -m AVC,USER_AVC,SELINUX_ERR -ts boot -i 2>/dev/null | grep -i linuxio || true",
+      );
+      expect(denials, `SELinux denials for LinuxIO ${when}`).toBe("");
+    };
+    expect(await installedVersion()).toBe(w.version);
+    await check("after the update");
+    await rig(["reboot"]);
+    await check("after a reboot");
   });
 });
