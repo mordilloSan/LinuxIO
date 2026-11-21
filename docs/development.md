@@ -158,10 +158,20 @@ and leaves the VM changed; a run narrowed with `PLAYWRIGHT_ARGS` skips that
 stage. At the end it shuts the VMs down. `make test-vm-backend` is
 the same for the root suites, without the install. A VM needs 4 GiB of free
 memory (`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and
-4 CPUs, so a host with 12 CPUs and 14 GiB free runs three; four is the most
-either takes, since a fifth would not shorten the run, and `test-vm-backend`
-takes no more than it has suites. `VMS=2` asks for two. Both work from a host
-with no VM yet; the first run waits for each VM's first boot.
+counts as two of the host's threads (`nproc`, hyperthreads and not cores),
+though it has 4 vCPUs: the VMs share threads, since they mostly wait (below).
+So a host with 12 threads runs six with 26 GiB free and three with 14 GiB;
+nine is the most, the numbers a release has, and `test-vm-backend` takes no
+more than it has suites. A test VM that already runs, or that another target
+holds, takes one from the count, so runs side by side divide the threads.
+`VMS=2` asks for two, and `VMS` is taken as given, with only the memory
+checked. Both work from a host with no VM yet; the first run waits for each
+VM's first boot.
+
+The longest spec file sets the floor of a browser run, about a third of the
+time of all the files when this was measured, so VMs past three or four
+shorten the full browser run little; they serve the root suites and runs
+side by side.
 
 The VMs are numbered from 1: `linuxio-e2e`, then `linuxio-e2e-2` with its
 `linuxio-e2e-2-*` volumes and `~/.cache/linuxio-vm-2`, up to 9. They share
@@ -225,12 +235,13 @@ it refuses to start it again.
 
 A test target given no `VM` (`test-vm-backend`, `test-vm-browser` and the
 `vm-test-*` suites) picks its VMs. It first tries the lock of each of VMs 1
-to 4, so it sees every VM of its release other targets hold, then takes, in order, the free
+to 9, so it sees every VM of its release other targets hold, then takes, in order, the free
 ones that exist and are off and hold no installed build, then those that
 hold one (`install` leaves `installed` in the VM's state folder; a revert, a
 create and a destroy remove it), then numbers that do not exist yet, which it
 creates (a first boot takes a few minutes), until it has what it wants: one
-for a `vm-test-*` suite, and for the others as many as the CPUs allow
+for a `vm-test-*` suite, and for the others as many as the host's threads
+allow, two for each VM, less the test VMs that run or that other targets hold
 (`test-vm-backend` no more than it has suites), or `VMS`. It takes a VM only
 when the memory has room for it: 4 GiB for each of the run's VMs and 1.5 GiB
 kept for the host, where other test VMs count as spent (what the running
@@ -291,8 +302,9 @@ Known limits:
   little more than its 4 GiB. A busy VM that is off, or still being
   created, counts as 4 GiB to come even when its target only stops or
   reverts it, so a run beside `vm-reset` may take fewer VMs than the host
-  holds. A run plans the CPUs for itself, so
-  runs side by side share them.
+  holds. Only a run that plans its own number is
+  held to the threads: one given `VMS` or `VM`, and a `vm-test-*` suite's one
+  VM, start whatever else runs, with the memory checked.
 - Picking counts the VMs of its own release only: a VM of another release
   or distribution that another target holds and has not started yet is not
   counted, so one of the two can be refused at its start.
@@ -323,7 +335,7 @@ Known limits:
 
 The full runs are long: the browser specs take 15 minutes on three VMs and
 42 on one, the root suites about 6 on three, and either holds every VM it
-runs on, up to four, meanwhile. An agent therefore runs only the suite
+runs on, up to nine, meanwhile. An agent therefore runs only the suite
 (`SUITES=...`) or the spec file (`PLAYWRIGHT_ARGS=...`) its change needs and
 leaves the full runs to the owner (`AGENTS.md`).
 

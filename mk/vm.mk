@@ -223,7 +223,7 @@ vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root 
 	@$(call vm_suite,relay)
 
 ##@ Tests|green
-# As many free VMs as the CPUs and the memory allow, one for each suite at
+# As many free VMs as the host's threads and the memory allow, one for each suite at
 # most, since a VM without a suite would only be reverted (pick); VMS=1 runs
 # them one after another on one. Each is created when it is missing and
 # reverted to clean, so a run starts from clean whatever ran before it, and
@@ -300,7 +300,7 @@ $(call vm_browser_specs,$$vm_first,--project=release-update,LINUXIO_VM_LOG=test-
 endef
 
 ##@ Tests|green
-# The whole run in one target: as many free VMs as the CPUs and the memory
+# The whole run in one target: as many free VMs as the host's threads and the memory
 # allow (pick; VMS=2 for two), each created when it is missing, reverted to clean and given
 # this build, then the specs, then the release-update spec. A run narrowed
 # with PLAYWRIGHT_ARGS runs those specs only.

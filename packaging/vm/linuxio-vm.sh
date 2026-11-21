@@ -84,9 +84,13 @@ readonly VM_MEMORY_GIB=4 VM_VCPUS=4
 # What the host keeps when VMs are counted against its free memory: the
 # browsers of a run and whatever else grows while it lasts.
 readonly HOST_RESERVE_MIB=1536
-# The longest spec file takes a third of the time of all of them, so a fifth
-# VM would only cost its disk and its first boot.
-readonly MOST_VMS=4
+# What a run that plans its own VMs counts for each: two of the host's threads
+# (nproc: hyperthreads, not cores). The suites and the specs wait on reboots,
+# throttled disks and timers and hardly use the CPU, so a VM's 4 vCPUs, which
+# its boot and an install use for a moment, share threads with another's.
+readonly VM_HOST_THREADS=2
+# The VMs of a release are numbered 1 to 9.
+readonly MOST_VMS=9
 readonly SNAPSHOT=clean
 readonly POOL=default
 readonly BASE_VOL="${DOMAIN}-base.qcow2"
@@ -1219,20 +1223,16 @@ lock_vms() {
 # host), it takes the free VMs that hold no build install put there, then
 # those that do, which their reset loses, then numbers that do not exist yet,
 # which prepare creates; each in order. WANT is a number, or plan for as many
-# as the CPUs allow (plan:MAX for MAX at most). It says on stderr what it took,
-# why no more and the memory it counted, and fails when it took none.
+# as the host's threads allow (plan:MAX for MAX at most): VM_HOST_THREADS for
+# each, less one VM for each test VM that runs or that another target holds,
+# and one at least. It says on stderr what it took, why no more and the
+# threads and memory it counted, and fails when it took none.
 pick() {
-	local want=${1:-} cpus vm_kib reserve_kib avail_kib others_kib=0 vms pair n fd name kib left_kib short="" line memory
+	local want=${1:-} threads others=0 room vm_kib reserve_kib avail_kib others_kib=0 vms pair n fd name kib left_kib short="" line memory cpus=""
 	local -a busy=() plain=() built=() missing=() got=() new=() reverted=()
 	local -A spent=() fds=()
 	shift
-	cpus=$(($(nproc) / VM_VCPUS))
-	case $want in
-	plan) want=$cpus ;;
-	plan:*) want=$((${want#plan:} < cpus ? ${want#plan:} : cpus)) ;;
-	esac
-	[[ $want =~ ^[0-9]+$ ]] || die "usage: pick WANT|plan[:MAX] N:FD..."
-	((want >= 1)) || want=1
+	[[ $want =~ ^([0-9]+|plan(:[0-9]+)?)$ ]] || die "usage: pick WANT|plan[:MAX] N:FD..."
 	vm_kib=$((VM_MEMORY_GIB * 1048576)) reserve_kib=$((HOST_RESERVE_MIB * 1024))
 	take_guard
 	avail_kib="$(available_kib)"
@@ -1241,13 +1241,14 @@ pick() {
 		[[ -n $name ]] || continue
 		spent[$name]=$kib
 		others_kib=$((others_kib + kib))
+		others=$((others + 1))
 	done <<<"$vms"
 	for pair in "$@"; do
 		n=${pair%%:*} fd=${pair#*:}
 		name="$(domain_name "$n")"
 		if ! flock -n "$fd"; then
 			busy+=("$name")
-			[[ -n ${spent[$name]+x} ]] || others_kib=$((others_kib + vm_kib))
+			[[ -n ${spent[$name]+x} ]] || others_kib=$((others_kib + vm_kib)) others=$((others + 1))
 		elif [[ -n ${spent[$name]+x} ]]; then
 			flock -u "$fd"
 			busy+=("${name} (running with no target: VM_KEEP=1?)")
@@ -1259,6 +1260,14 @@ pick() {
 			fds[$n]=$fd plain+=("$n")
 		fi
 	done
+	if [[ $want == plan* ]]; then
+		threads="$(nproc)"
+		room=$((threads / VM_HOST_THREADS - others))
+		cpus="; CPUs: ${threads} threads, ${VM_HOST_THREADS} for each VM, ${others} other test VMs"
+		[[ $want != plan:* ]] || room=$((${want#plan:} < room ? ${want#plan:} : room))
+		want=$room
+	fi
+	((want >= 1)) || want=1
 	for n in "${plain[@]}" "${built[@]}" "${missing[@]}"; do
 		((${#got[@]} < want)) || break
 		left_kib=$((avail_kib - others_kib - reserve_kib - ${#got[@]} * vm_kib))
@@ -1279,7 +1288,7 @@ pick() {
 	line="VM ${got[*]} for this run${new[*]:+ (created first: ${new[*]})}${reverted[*]:+ (VM ${reverted[*]} held an installed build, which the revert removes)}"
 	((${#got[@]} == want)) || line+=", ${#got[@]} of ${want} wanted${short:+ (${short})}"
 	((${#busy[@]} == 0)) || line+="; in use: ${busy[*]}"
-	line+="; memory: ${memory}"
+	line+="${cpus}; memory: ${memory}"
 	if ((${#got[@]} == 1)); then line+="; VM=${got[0]} names it again"; else line+="; VM='${got[*]}' names them again"; fi
 	say "$line"
 	echo "${got[*]}"
