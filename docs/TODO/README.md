@@ -9,6 +9,7 @@ Plans for things that are not built yet each have their own document:
 - [Memory overflow: swap files LinuxIO creates, resizes and removes](./memory-own-swap-file.md)
 - [Package-managed installation](./packaging.md)
 - [SELinux module in in-app updates](./selinux-module-in-app-update.md)
+- [Third-party notices for what LinuxIO ships](./third-party-notices.md)
 - [Watched conditions: checks that raise alerts on a schedule](./watched-conditions.md)
 
 ## Dependency maintenance

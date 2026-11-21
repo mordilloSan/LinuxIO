@@ -335,6 +335,8 @@ Use this common layout:
 - [ ] Install licenses using each distribution's native locations:
   - DEB: `/usr/share/doc/linuxio/copyright` and third-party notices.
   - RPM: `%license LICENSE` and `%doc THIRD_PARTY_NOTICES.md`.
+  - The notices name six projects today, far fewer than the packages ship;
+    see [Third-party notices](./third-party-notices.md).
 - [ ] Stop rewriting the package-owned socket unit during installation. Use
       port `8090` by default and document a systemd socket drop-in for changing
       it.
