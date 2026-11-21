@@ -144,6 +144,7 @@ jobs:
     name: Read the build pins
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -178,6 +179,7 @@ jobs:
     name: Compile and assemble the DEB
     needs: prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: ${{ needs.prepare.outputs.compile_image }}
     permissions:
@@ -287,6 +289,7 @@ jobs:
     name: Assemble the RPM
     needs: [prepare, compile]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     container:
       image: ${{ needs.prepare.outputs.rpm_image }}
     permissions:
@@ -340,6 +343,7 @@ jobs:
     needs: [prepare, compile, rpm]
     if: inputs.publish && needs.prepare.outputs.tag != ''
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       image: ${{ needs.prepare.outputs.rpm_image }}
     # Holds LINUXIO_SIGNING_KEY. It admits only v* tags and waits for a
@@ -471,6 +475,7 @@ jobs:
     name: Deploy the repositories to Pages
     needs: repositories
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: https://${{ env.PACKAGES_DOMAIN }}/
@@ -485,6 +490,7 @@ jobs:
     name: Publish the GitHub release
     needs: [prepare, deploy]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:

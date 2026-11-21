@@ -1,4 +1,4 @@
-name: Lint and Test
+name: Check
 
 on:
   workflow_dispatch:
@@ -19,8 +19,11 @@ concurrency:
 jobs:
   lint-backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Node and the Go check tools at the versions packaging/build/pins.env pins.
       - name: Read the build pins
         run: grep -E '^[A-Z][A-Z0-9_]*=' packaging/build/pins.env >>"$GITHUB_ENV"
@@ -58,8 +61,11 @@ jobs:
 
   format-backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: backend/go.mod
@@ -76,8 +82,11 @@ jobs:
 
   auth-analysis:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install authentication analysis dependencies
         run: |
           sudo apt-get update
@@ -87,8 +96,11 @@ jobs:
 
   lint-frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Node and the Go check tools at the versions packaging/build/pins.env pins.
       - name: Read the build pins
         run: grep -E '^[A-Z][A-Z0-9_]*=' packaging/build/pins.env >>"$GITHUB_ENV"
@@ -100,8 +112,11 @@ jobs:
       - run: make lint-ci
   typescript-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Node and the Go check tools at the versions packaging/build/pins.env pins.
       - name: Read the build pins
         run: grep -E '^[A-Z][A-Z0-9_]*=' packaging/build/pins.env >>"$GITHUB_ENV"
@@ -114,8 +129,11 @@ jobs:
 
   frontend-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Node and the Go check tools at the versions packaging/build/pins.env pins.
       - name: Read the build pins
         run: grep -E '^[A-Z][A-Z0-9_]*=' packaging/build/pins.env >>"$GITHUB_ENV"
@@ -129,8 +147,11 @@ jobs:
 
   backend-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: backend/go.mod
