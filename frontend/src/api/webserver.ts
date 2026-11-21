@@ -25,22 +25,6 @@ interface LoginErrorResponse {
   error?: string;
 }
 
-export interface AppUpdateInfo {
-  available: boolean;
-  current_version: string;
-  latest_version?: string;
-  release_url?: string;
-}
-
-export interface AppUpdateStatus {
-  exit_code?: number;
-  finished_at?: number;
-  id?: string;
-  message?: string;
-  started_at?: number;
-  status: "unknown" | "running" | "ok" | "error";
-}
-
 const loginErrorMessage = (
   code?: LoginErrorCode,
   fallback?: string,
@@ -102,71 +86,4 @@ export async function webserverResponds(signal?: AbortSignal) {
     signal,
   });
   return response.ok;
-}
-
-type ComponentVersions = Record<string, unknown>;
-
-/** Component versions keyed by name, or null when the server is unreachable. */
-export async function fetchComponentVersions(): Promise<ComponentVersions | null> {
-  try {
-    const response = await fetch("/api/version", {
-      method: "GET",
-      cache: "no-store",
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as ComponentVersions;
-  } catch {
-    return null;
-  }
-}
-
-/** Progress of one self-update run, or null when it cannot be read. */
-export async function fetchAppUpdateStatus(
-  runId: string,
-): Promise<AppUpdateStatus | null> {
-  try {
-    const response = await fetch(
-      `/api/update-status?id=${encodeURIComponent(runId)}`,
-      { method: "GET", cache: "no-store" },
-    );
-    if (!response.ok) return null;
-    return (await response.json()) as AppUpdateStatus;
-  } catch {
-    return null;
-  }
-}
-
-export const isAppUpdateInfo = (value: unknown): value is AppUpdateInfo => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.available === "boolean" &&
-    typeof candidate.current_version === "string" &&
-    (candidate.latest_version === undefined ||
-      typeof candidate.latest_version === "string") &&
-    (candidate.release_url === undefined ||
-      typeof candidate.release_url === "string")
-  );
-};
-
-/**
- * Latest-release lookup. Resolves `null` when the server has nothing to report
- * (204), `undefined` when the answer is unusable and should be retried later,
- * and rejects on network failure.
- */
-export async function fetchAppUpdateInfo(
-  signal?: AbortSignal,
-): Promise<AppUpdateInfo | null | undefined> {
-  const response = await fetch("/api/update-info", {
-    cache: "no-store",
-    credentials: "include",
-    signal,
-  });
-  if (response.status === 204) return null;
-  if (!response.ok) return undefined;
-  const payload: unknown = await response.json();
-  return isAppUpdateInfo(payload) ? payload : undefined;
 }

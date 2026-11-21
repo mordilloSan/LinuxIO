@@ -348,6 +348,24 @@ func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 	return updates, nil
 }
 
+// FindUpdateByName returns the version of the update PackageKit lists for the
+// package called name, as PackageKit gives it, or "" when it lists none. It
+// reads the same list as the Updates page (GetUpdates on PackageKit's cache)
+// and refreshes nothing; an error wrapping dbusclient.ErrPackageKitUnavailable
+// means the host has no PackageKit.
+func FindUpdateByName(ctx context.Context, name string) (string, error) {
+	updates, err := getUpdatesBasic(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, update := range updates {
+		if pkgName, _, _ := strings.Cut(update.PackageID, ";"); pkgName == name {
+			return update.Version, nil
+		}
+	}
+	return "", nil
+}
+
 // RefreshUpdateCache refreshes configured package repositories, matching the
 // PackageKit operation behind apt update / dnf makecache.
 func RefreshUpdateCache(ctx context.Context) error {

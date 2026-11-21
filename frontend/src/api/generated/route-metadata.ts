@@ -39,7 +39,6 @@ export const ROUTE_MODES = {
   "config.set": "mutation",
   "config.set_ui": "mutation",
   "container.open": "duplex",
-  "control.app_update": "mutation",
   "control.power_off": "mutation",
   "control.reboot": "mutation",
   "control.version": "call",

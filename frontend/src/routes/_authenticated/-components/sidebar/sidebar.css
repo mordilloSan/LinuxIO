@@ -123,12 +123,6 @@
   }
 }
 
-.app-sidebar-link--disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
 .app-sidebar-link--collapsed {
   /* Center the lone icon via padding (animatable) rather than
      justify-content: center, which snaps in one frame and yanks the icon

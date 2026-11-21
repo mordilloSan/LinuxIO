@@ -709,32 +709,34 @@ Browser
   -> the browser signs in again and finds the job in the task tray
 ```
 
-- [ ] Keep all privileged package operations in `linuxio-bridge`.
-- [ ] Delete `control.app_update`, its operation
-      (`backend/bridge/handlers/appupdate`), the update dialog
+- [x] Keep all privileged package operations in `linuxio-bridge`.
+- [x] Delete `control.app_update`, its operation
+      (the `appupdate` bridge handler), the update dialog
       (`AppUpdateDialog.tsx`) and the code only they use; arbitrary download
       URLs and version selection go with them.
-- [ ] Reduce `AppUpdateBanner.tsx` to one line that names the new version and
+- [x] Reduce `AppUpdateBanner.tsx` to one line that names the new version and
       has a button to the Updates page.
-- [ ] Export a narrow `FindUpdateByName` from the existing packages handler
+- [x] Export a narrow `FindUpdateByName` from the existing packages handler
       for the banner. No `UpdateByName`: the update itself is the Updates
       page's own `packages.update`.
-- [ ] Replace GitHub release checks in both the bridge app-update handler and
-      the webserver update-info implementation with that PackageKit lookup.
-- [ ] Have the authenticated frontend query `control.version` through the
+- [x] Replace the GitHub release check with that PackageKit lookup, in the
+      bridge's `control.version`. The webserver's `/api/update-info` and
+      `/api/update-status` are deleted, not ported: the webserver is
+      unprivileged and does not reach PackageKit.
+- [x] Have the authenticated frontend query `control.version` through the
       bridge for update availability.
-- [ ] Keep `/api/version` only for detecting that the restarted webserver is
+- [x] Keep `/api/version` only for detecting that the restarted webserver is
       running.
-- [ ] Delete the `/run/linuxio/update-status.json` record
-      (`backend/common/updatestatus`) and its reader in the webserver: only
+- [x] Delete the `/run/linuxio/update-status.json` record
+      (the `updatestatus` package) and its reader in the webserver: only
       the app-update operation wrote it. The job's own record carries the
       result.
-- [ ] The bridge restarts nothing after an update. The package does it (see
+- [x] The bridge restarts nothing after an update. The package does it (see
       "Build native DEB and RPM packages"), and a failed or cancelled
       transaction leaves the package as it was, so no restart follows.
-- [ ] Keep `JobsUpdateBanner.tsx`: it tells signed-in users that an update
+- [x] Keep `JobsUpdateBanner.tsx`: it tells signed-in users that an update
       waits for running jobs, whichever way the update arrived.
-- [ ] Regenerate API contracts with `make generate`.
+- [x] Regenerate API contracts with `make generate`.
 
 ## 5. Delete obsolete installation and update machinery
 

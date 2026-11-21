@@ -153,7 +153,7 @@ func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
 	release := make(chan struct{})
 	runnerStarted := make(chan struct{})
 	var runs atomic.Int32
-	route := registeredMutation(t, router, "control.app_update", func(context.Context, *Task, any) (any, error) {
+	route := registeredMutation(t, router, "test.exclusive", func(context.Context, *Task, any) (any, error) {
 		runs.Add(1)
 		close(runnerStarted)
 		<-release

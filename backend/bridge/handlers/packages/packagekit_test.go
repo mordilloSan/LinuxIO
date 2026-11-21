@@ -720,6 +720,46 @@ func TestGetUpdatesBasicSanitizesOutOfRangePackageInfo(t *testing.T) {
 	}
 }
 
+// The lookup matches the package name exactly, answers with the version
+// PackageKit gives, and refreshes nothing.
+func TestFindUpdateByNameReturnsTheListedVersion(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setUpdates([]fakePackage{
+		{info: 11, id: "linuxio-extra;9.9.9;x86_64;repo", summary: "Not it"},
+		{info: 11, id: "linuxio;0.56.0-1;x86_64;linuxio", summary: "LinuxIO"},
+	})
+
+	got, err := FindUpdateByName(context.Background(), "linuxio")
+	if err != nil {
+		t.Fatalf("FindUpdateByName: %v", err)
+	}
+	if got != "0.56.0-1" {
+		t.Fatalf("version = %q, want 0.56.0-1", got)
+	}
+	if n := service.refreshCount(); n != 0 {
+		t.Fatalf("refresh count = %d, want 0", n)
+	}
+}
+
+func TestFindUpdateByNameWithoutAnUpdate(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setUpdates([]fakePackage{{info: 11, id: "demo;1.2.3;x86_64;repo", summary: "Demo"}})
+
+	got, err := FindUpdateByName(context.Background(), "linuxio")
+	if err != nil || got != "" {
+		t.Fatalf("FindUpdateByName = %q, %v; want empty, nil", got, err)
+	}
+}
+
+func TestFindUpdateByNameWithoutPackageKit(t *testing.T) {
+	testdbus.Start(t).SetSystemBus(t)
+
+	got, err := FindUpdateByName(context.Background(), "linuxio")
+	if !errors.Is(err, dbusclient.ErrPackageKitUnavailable) || got != "" {
+		t.Fatalf("FindUpdateByName = %q, %v; want empty, ErrPackageKitUnavailable", got, err)
+	}
+}
+
 func TestRefreshUpdateCacheCallsRefreshCache(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 

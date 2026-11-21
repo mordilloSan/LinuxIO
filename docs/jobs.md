@@ -122,11 +122,11 @@ The rules a route author follows:
   duplicate; quick mutations mostly have none, since a refused double click
   needs UI handling of its own.
 - **`apischema.Exclusive()`** runs one job of the route at a time, whatever
-  its target, for work that owns a whole system resource. Five routes declare
-  it (`control.app_update`, `docker.apply_daemon_storage`, `packages.update`,
+  its target, for work that owns a whole system resource. Four routes declare
+  it (`docker.apply_daemon_storage`, `packages.update`,
   `system.install_capability`, `filebrowser.index`): two overlapping runs
-  would race on the binaries, Docker's data directory, the package manager or
-  the index, and their targets could not express that.
+  would race on Docker's data directory, the package manager or the index,
+  and their targets could not express that.
 - **Tag secrets.** A request field tagged `secret:"true"` is left out of the
   stored request. `TestMutationRequestsKeepTheirSecretsOutOfTheRecord` fails
   for a field named like a password or key without the tag.
@@ -564,6 +564,26 @@ stopped Docker nothing would run on to follow.
 | LinuxIO update | Nothing: hosts are outside `linuxio.target` and the installer never stops them |
 
 ## Updates
+
+LinuxIO's own update is one of the host's package updates. `control.version`
+(a Call any session may make) answers with the running build and the version
+PackageKit gives for the pending update to the package `linuxio`
+(`FindUpdateByName` in `backend/bridge/handlers/packages`): it reads the same
+`GetUpdates` list as the Updates page, from PackageKit's cache, and refreshes
+nothing. A host without PackageKit, without that package, or whose PackageKit
+fails or takes more than 20 s gets the running build alone; the failure is
+logged at Debug when PackageKit is missing and at Warn otherwise. The footer
+shows the running build, and to a sudo session the main layout shows
+`LinuxIO <version> is available.` (`AppUpdateBanner`), the version as
+PackageKit gives it (`0.56.0` from a DEB, `0.56.0-1` from an RPM), with
+`Open Updates`, a link to the Updates page. Both read the one cached answer,
+fresh for 5 minutes; `packages.update` and `updates.refresh_cache` invalidate
+it. Closing the banner hides that version until the page is loaded again.
+The administrator installs the update there like any package
+(`packages.update`, a job in the root job host). The bridge restarts nothing
+after it: what installs the new build restarts `linuxio.target`, and a failed
+or cancelled transaction leaves the package as it was. The session ends with
+the restart; after the next sign-in the job is in the task tray.
 
 The installer replaces the binaries and may reload systemd, but never stops
 or restarts a job host: an old host finishes its jobs and exits under its
@@ -1044,14 +1064,10 @@ Covered at one level only:
 - The update wait was run in the VM as a real update from the published
   release v0.53.0 to a protocol-bumped build of the same tree
   (`jobs-update.spec.ts`), since no published release has a higher
-  `jobs.Protocol`. The updater's own path (`control.app_update`, which installs
-  a published release only, with `--defer-restart` and a restart of
-  `linuxio.target`) was not run, nor was `tasks.watch` streaming a running job
-  or a cancel taking effect during the wait: nothing can cancel those jobs.
+  `jobs.Protocol`. `tasks.watch` streaming a running job and a cancel taking
+  effect during the wait were not run: nothing can cancel those jobs.
 - The fsync of `begin` is read from the source; the power-cut checks run
   `sync` first, because a job's first record write is not fsynced.
-- An in-app update that installs the needrestart override is covered by the
-  installer fixtures, not by a run.
 - A scrub across a frozen cgroup runs only in the test VM, on its kernel; the
   root tests, which also run on the owner's machine, freeze the filesystem
   with `FIFREEZE` instead. No test suspends to RAM: the test VM wakes at once

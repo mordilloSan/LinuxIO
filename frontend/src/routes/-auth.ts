@@ -22,7 +22,6 @@ export type RouterAuthSnapshot = Omit<
 export interface LinuxIORouterContext {
   access: AccessContext;
   auth: RouterAuthSnapshot;
-  isUpdateBlocked: () => boolean;
   queryClient: QueryClient;
 }
 

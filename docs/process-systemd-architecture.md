@@ -492,21 +492,6 @@ expressions match their units and no daemon, that the content check refuses
 other files, and that the uninstaller removes the file is covered by the
 installer's fixture tests, not seen in the VM.
 
-An in-app update runs the installer in a `linuxio-updater-<n>.service` unit
-with `ProtectSystem=full`, which keeps `/etc` read-only except for the unit's
-writable paths; the bridge installed *before* the update starts that unit with
-its own list (`updaterWritablePaths` in `backend/bridge/handlers/appupdate`).
-The list has `/etc/needrestart/conf.d` as an optional entry (`-` in
-`ReadWritePaths`: a system without it is unaffected, and the updater creates
-nothing there), so the first in-app update launched by a build with that entry
-installs the file (where `conf.d` exists, as Ubuntu's package ships it). An
-update launched by an earlier build, which includes every release up to now,
-cannot write it: the installer then prints a notice and the install goes on;
-a run of the installer from a terminal, or the next in-app update, which the
-newly installed bridge launches, installs it. That is read from the source and
-the installer's fixture tests, which simulate a read-only directory; no in-app
-update was run.
-
 ### After login — the connection becomes the yamux transport
 
 The webserver keeps its end of the socket it dialed; it is now wired straight to the forked bridge (the auth daemon is out of the data path). The webserver wraps it as a yamux **client** and multiplexes WebSocket streams over it. From here on, see [Server Yamux Protocol](./server-yamux-protocol.md). When the bridge exits, the auth instance reaps it and closes the PAM session; the webserver's yamux session closes → the HTTP session is terminated. Jobs in the job host keep running.
@@ -664,8 +649,8 @@ of `main`:
    constraint as shipped). A store that already holds the same file
    (`semodule -E linuxio`, compared with the fetched one) is not loaded
    again, since a load takes about 5 s; and where `/etc/selinux` is not
-   writable (the in-app updater's sandbox) a new or changed module is not
-   tried, and the notice names the root command that loads it.
+   writable a new or changed module is not tried, and the notice names the
+   root command that loads it.
 3. **Then `restorecon /usr/libexec/linuxio/linuxio-auth`**, whenever `restorecon`
    exists, whatever happened to the module: the file context lives in the
    module, and a binary just replaced needs it. When SELinux is on and
@@ -712,15 +697,6 @@ policy refuses `init_t` an `unconfined_t` socket.
 - A policy that lacks a name the module uses (a strict or MLS policy, or one
   with `unconfined` removed) does not load it, and sign-in is refused there
   as before.
-- An in-app update cannot load a module that is new or changed: its sandbox
-  (`ProtectSystem=full`) has `/etc/selinux` read-only, and adding that folder
-  to its `ReadWritePaths` makes the policy refuse `init_t` the bind mount
-  (`mounton` on `selinux_config_t`), so the updater's unit fails to start
-  (status 226). The binary is still relabelled and the module loaded before
-  stays. So a host updated in-app while SELinux was permissive or disabled
-  gets no module, a later tightening of the module reaches a host only
-  through an install from a shell, and a binary that needs a rule the old
-  module lacks is refused sign-in until then.
 - A Debian-family host with SELinux enforcing is not handled: no module is
   installed there.
 - The banner's label was checked on Fedora 45 only; a policy whose

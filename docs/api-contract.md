@@ -96,7 +96,7 @@ For request routes:
 | `frontend/src/api/mutation-react-query.ts` | Mutation endpoints: `defineMutation`, `start`, and `useMutation` with `onStart`, `onProgress`, `signal` and `watch`. Transport recovery lives in `linuxio-core.ts`. |
 | `frontend/src/api/endpoint-types.ts` | Type-only aggregate that maps generated routes to Call descriptors or Mutation endpoints without merging their runtime factories. |
 | `frontend/src/api/linuxio-core.ts` | Low-level JSON Call path, deadline ownership, bounded retry, and connection-outcome classification; the Mutation stream path (`mutationRequest`, `watchMutation`, `startJob`) with its job `id`, resend and reattach. API internals only. |
-| `frontend/src/api/linuxio.ts` | Typed `openChannel()` transport, connection hooks, terminal/Task stream helpers, and the app-update Task data stream. |
+| `frontend/src/api/linuxio.ts` | Typed `openChannel()` transport, connection hooks, and terminal/Task stream helpers. |
 | `frontend/src/api/StreamMultiplexer.ts` | WebSocket stream multiplexer, relay frame encoding, stream lifecycle, singleton connection management. |
 | `frontend/src/api/stream-helpers.ts` | Helpers for binding stream callbacks, awaiting result frames, and writing byte chunks. |
 | `frontend/src/api/tasks.ts` | Terminal-state and cancellation classification. |
@@ -256,7 +256,7 @@ imperative cache work uses QueryClient directly. Feature code does not
 invent query keys/functions or use raw mutations. Guard tests
 (`frontend/src/test/guards/apiLayering.test.ts`) enforce that boundary.
 
-Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for the request transport and pass typed Call descriptors to the shared browser QueryClient. It requires a live `isUpdateBlocked` getter from router context rather than the mux, rechecks it after readiness, and rejects without querying while an update is active. Loader failures propagate to TanStack Router; intent preloads are marked speculative so QueryCache suppresses their global error toast.
+Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for the request transport and pass typed Call descriptors to the shared browser QueryClient. Loader failures propagate to TanStack Router; intent preloads are marked speculative so QueryCache suppresses their global error toast.
 
 The same guard file also fences the byte/mux-level transport primitives (`encodeString`, `bindStreamHandlers`, `getStreamMux`, …): feature code opens typed Channels with `openChannel(route, request)` and uses the stream lifecycle hooks (`useLiveStream`/`useLogStream`/`useStreamResult`). Only a short, shrink-only allowlist may import lower-level primitives from `@/api`.
 
@@ -432,9 +432,8 @@ ordinary 500 is a handler that ran and failed, so it is a failure, not unknown.
   the host is gone.
 - **Both overlays.** Each answer is tied to the request that started the
   overlay: a late answer of an earlier request is ignored. While an overlay is
-  up, `AuthProvider` leaves a session-expired report of the stream to it, as it
-  does during a self-update, because the host stops the bridge before the
-  webserver exits.
+  up, `AuthProvider` leaves a session-expired report of the stream to it,
+  because the host stops the bridge before the webserver exits.
 - **Network changes.** The interface editor's DHCP, manual address, MTU, enable
   and disable mutations show a warning, not an error, for an unknown outcome:
   the host did not confirm the change, check the interface once connected
@@ -820,8 +819,8 @@ is canceled. These checks refuse with `409` instead of waiting:
   without `Target()` has no target and is never refused as a duplicate.
 - **Exclusive routes** (`apischema.Exclusive()`) run one at a time because
   they own a whole system resource: `packages.update`,
-  `system.install_capability`, `control.app_update`,
-  `docker.apply_daemon_storage` and `filebrowser.index`.
+  `system.install_capability`, `docker.apply_daemon_storage` and
+  `filebrowser.index`.
 - **Host ceiling.** A job host refuses a new job while it runs 256.
 
 Mutation admission is per job host, that is per uid; the root host is shared
@@ -1122,21 +1121,6 @@ holds every frame. Explicit transient output on `tasks.watch`
 and payload-specific `tasks.data` flow-control frames remain route protocols;
 they are not stored as Task progress or published on `tasks.events`.
 
-`control.app_update` is intentionally session-bound. It downloads and verifies
-the installer, then executes it with `systemd-run --wait --pipe` and
-`--defer-restart`, relaying sanitized stdout/stderr directly as Task data. On
-success it reloads systemd, writes the terminal status projection, reports the
-terminal Task output/result, and only then restarts `linuxio.target`. It does
-not claim page-, session-, or bridge-restart recovery.
-
-For `control.app_update`, `GET /api/update-status?id=<uuid>` is
-session-authenticated and UID-scoped. It reads a versioned, sanitized projection
-under `/run/linuxio` and reports `running`, `ok`, `error`, or `unknown`. Missing,
-legacy, mismatched-ID, and different-UID projections are indistinguishable. The
-browser treats an exact target value from the public `LinuxIO Web Server`
-version entry as restart proof even when the restart invalidates the previous
-in-memory login session and the authenticated status request returns `401`.
-
 Built-in Task routes:
 
 | Route | Use |
@@ -1185,17 +1169,12 @@ payload-specific helper instead of constructing envelopes directly.
 | `openChannel("docker.logs.follow_all", request)` | `docker.logs.follow_all` | Direct server-producing merged log Channel for every running container; NDJSON records `{id, name, ts, line, stderr?}`, containers that start later are attached. |
 | `openChannel("logs.service.follow", request)` | `logs.service.follow` | Direct server-producing unit log Channel. With `invocationId` (32 lowercase hex characters, `400` otherwise) it follows one run: only the lines of that invocation's own processes, control characters kept (`journalctl --all`), in the `short-iso` format a scheduled run's saved output uses. |
 | `openChannel("logs.general.follow", request)` | `logs.general.follow` | Direct journal Channel with backlog progress and cursor resume. |
-| `openAppUpdateStream(runId, version?)` | `control.app_update` | Task-backed app update output. |
 | `openTaskWatchStream(taskId)` | `tasks.watch` | Task progress/result. |
 | `openTaskDataStream(taskId, offset?)` | `tasks.data` | Binary Task data. |
 | `openTaskEventsStream()` | `tasks.events` | Task lifecycle events. |
 
 Terminal and container sessions are bidirectional Channels. The three log
-routes are direct server-producing Channels and never create a Task. App update
-uses a Task plus its binary data Channel because the operation survives the
-watching component and deliberately severs the bridge during restart. Its
-persistent UID-owned record and external systemd executor, rather than the
-in-memory Task or stream, are authoritative across that bridge exit.
+routes are direct server-producing Channels and never create a Task.
 
 ### Channel lifecycle and ownership
 
@@ -1297,8 +1276,7 @@ For a stream-only route, use `apischema.NoEndpoint()` in the route declaration a
 
 Keep each domain route contract in the same binding table that attaches its
 handler or runner, even when the public route name belongs to a different
-frontend namespace. For example, `appupdate` owns the `control.version` binding
-because it owns the implementation, and `packages` owns the
+frontend namespace. For example, `packages` owns the
 `system.install_capability` binding because it runs the installer Task. The
 reserved Task-service catalog is the deliberate exception described above.
 

@@ -99,7 +99,7 @@ func newHTTPServer(cfg ServerConfig, sm *sessions.Manager) (*http.Server, *serve
 		UI: ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
 			auth.RegisterAuthRoutes(mux, sm)
-			appupdate.RegisterRoutes(mux, sm)
+			appupdate.RegisterRoutes(mux)
 		},
 	}, sm)
 

@@ -130,7 +130,12 @@ const MEMORY_STATUS_KEYS = [endpointQueryPrefix("memory.get_swap_status")];
 export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   // Package-update streams may detach when the Updates layout unmounts; the
   // global tasks event owner performs this invalidation on terminal state.
-  "packages.update": [endpointQueryPrefix("updates.get_updates_basic")],
+  // control.version carries the pending linuxio update the banner names.
+  "packages.update": [
+    endpointQueryPrefix("updates.get_updates_basic"),
+    endpointQueryPrefix("control.version"),
+  ],
+  "updates.refresh_cache": [endpointQueryPrefix("control.version")],
 
   "filebrowser.index": INDEXER_KEYS,
   "filebrowser.copy_batch": FILEBROWSER_LISTING_KEYS,

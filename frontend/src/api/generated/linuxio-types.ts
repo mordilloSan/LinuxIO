@@ -164,11 +164,6 @@ export interface AppSettings {
   showHiddenFiles: boolean;
 }
 
-export interface AppUpdateRequest {
-  runId: string;
-  version?: string;
-}
-
 export interface AssistantAgentRequest {
   agent: string;
 }
@@ -3822,11 +3817,8 @@ export interface ValidateComposeResponse {
 export type ValidationIssueType = "error" | "warning";
 
 export interface VersionResponse {
-  checked_at: string;
   current_version: string;
-  error?: string;
-  latest_version?: string;
-  update_available: boolean;
+  update_version?: string;
 }
 
 export interface VirtualMachine {
@@ -5760,7 +5752,6 @@ export type CommandProgress<
 export interface LinuxIOStreamSchema {
   "assistant.open": AssistantOpenRequest;
   "container.open": ContainerOpenRequest;
-  "control.app_update": AppUpdateRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.logs.follow_all": DockerLogsFollowAllRequest;
   "filebrowser.download_stream": PathRequest;

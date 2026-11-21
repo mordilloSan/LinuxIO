@@ -7,7 +7,6 @@ import type { CSSProperties } from "react";
 
 import type { ConfigDockAccentGradient, DockTileColors } from "@/api";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
-import { useAppUpdateInProgress } from "@/hooks/useAppUpdater";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { fromHsl, lighten, toHsl } from "@/theme/colorUtils";
@@ -106,9 +105,7 @@ const gradientFor = (
 const getNavItemId = (item: SidebarItem) => item.to;
 
 const Dock = () => {
-  const canNavigate = !useAppUpdateInProgress();
   const surface = useReorderableSurface({
-    disabled: !canNavigate,
     getId: getNavItemId,
     items: useSidebarItems(),
     surface: "navigation.dock",
@@ -164,7 +161,6 @@ const Dock = () => {
             {items.map((page, index) => (
               <DockItem
                 {...page}
-                disabled={!canNavigate}
                 editMode={surface.editMode}
                 gradient={gradientFor(
                   palette,

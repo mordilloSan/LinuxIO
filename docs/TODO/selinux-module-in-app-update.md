@@ -2,11 +2,11 @@
 
 ## Status
 
-Replaced, not built. Decided 2026-11-21: the fix planned here is not built, because [Package-managed installation and updates](./packaging.md) removes the installer script and the in-app updater's sandbox, and the RPM loads the module itself. This file is deleted when that lands, together with the Known limits line "An in-app update cannot load a module that is new or changed" in [Process & Systemd Architecture](../process-systemd-architecture.md#known-limits).
+Replaced, not built. Decided 2026-11-21: the fix planned here is not built, because [Package-managed installation and updates](./packaging.md) removes the installer script and the in-app updater's sandbox, and the RPM loads the module itself. The in-app updater and its sandbox are deleted, so no update runs the installer in that sandbox any more; this file is deleted when [Package-managed installation and updates](./packaging.md) stops linking it.
 
 ## The problem, until the packages ship
 
-- An in-app update runs the target release's installer in `linuxio-updater-<n>.service`, a transient unit with `ProtectSystem=full` (`backend/bridge/handlers/appupdate/appupdate.go`). `/etc/selinux` is read-only in it.
+- An in-app update runs the target release's installer in `linuxio-updater-<n>.service`, a transient unit with `ProtectSystem=full`. `/etc/selinux` is read-only in it.
 - There `load_selinux_module` (`packaging/scripts/install-linuxio-binaries.sh`) does not try a module that is new or changed. It prints a notice and keeps the module loaded before.
 - So, on the RHEL family:
   - a host updated in-app while SELinux was permissive or disabled gets no module;

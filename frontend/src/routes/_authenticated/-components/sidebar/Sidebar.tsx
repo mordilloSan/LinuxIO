@@ -11,7 +11,6 @@ import { useReorderableSurface } from "@/components/reorder/useReorderableSurfac
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { useAppUpdateInProgress } from "@/hooks/useAppUpdater";
 
 import { collapsedDrawerWidth, drawerWidth } from "./sidebarLayout";
 import SidebarNavList from "./SidebarNavList";
@@ -30,9 +29,7 @@ interface SidebarProps {
 const Sidebar = ({ items }: SidebarProps) => {
   const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
     useSidebar();
-  const canNavigate = !useAppUpdateInProgress();
   const surface = useReorderableSurface({
-    disabled: !canNavigate,
     getId: getNavItemId,
     items,
     surface: "navigation.sidebar",
@@ -130,7 +127,6 @@ const Sidebar = ({ items }: SidebarProps) => {
                   <SidebarNavList
                     {...page}
                     collapsed={isDesktop && collapsed && !hovered}
-                    disabled={!canNavigate}
                     editMode={surface.editMode}
                     key={page.title}
                     pending={surface.pendingId === page.to}
