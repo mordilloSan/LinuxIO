@@ -12,13 +12,14 @@ packages must not delete administrator-owned files under `/usr/local` or
 
 ## Decisions
 
-- [ ] Ship one package named `linuxio` containing all six binaries and system
-      integration.
+- [ ] Ship one package named `linuxio` containing all nine programs and
+      system integration.
 - [ ] Publish DEB and RPM together. A failure in either format blocks the
       release.
 - [ ] Initially support `amd64`/`x86_64`, matching the current release.
-- [ ] Support Debian stable, Ubuntu LTS, and the current and previous Fedora
-      releases as release-gated platforms.
+- [ ] Support Debian stable, Ubuntu LTS from 24.04 on (decided 2026-11-21),
+      and the current and previous Fedora releases as release-gated
+      platforms.
 - [ ] Publish only a `stable` channel initially.
 - [ ] Host both repositories as a static GitHub Pages deployment behind a
       name under the owner's domain `engmariz.com` (working name
@@ -159,6 +160,27 @@ make localinstall
       valid only after every supported install path installs one complete
       package.
 
+### Test VMs
+
+The rig (`packaging/vm/linuxio-vm.sh`, `mk/vm.mk`) builds on the developer's
+machine, copies the build and `packaging/` into the VM and runs the installer
+there with `--local`. With the installer deleted it installs a package
+instead. Decided 2026-11-21.
+
+- [ ] `install` copies the DEB or the RPM made from the developer's build
+      into the VM and installs it with `apt` or `dnf`. It is the package
+      `make localinstall` builds, and the same shape as a release, which
+      also puts one compile in both packages.
+- [ ] The specs that install an older release with its own installer and
+      update it (`jobs-update.spec.ts`, `jobs-phase5a.spec.ts`,
+      `vm-update-build` in `mk/vm.mk`) install package A and update to
+      package B from a signed test repository inside the VM, the path of the
+      release gate.
+- [ ] The updater suite goes with the app updater it tests
+      (`appupdate_integration_test.go`, `suite_updater`).
+- [ ] No separate native build is a gate: the Fedora VM runs on the release
+      packages are.
+
 ## 1. Establish the package-owned filesystem layout
 
 Use this common layout:
@@ -173,6 +195,7 @@ Use this common layout:
     linuxio-indexer
     linuxio-monitoring
     linuxio-worker
+    linuxio-claude-relay
 /usr/lib/systemd/system/linuxio*
 /usr/lib/tmpfiles.d/linuxio.conf
 /usr/share/linuxio/
@@ -208,6 +231,16 @@ Use this common layout:
       and load it from the package, with its file context changed to the
       installed path of `linuxio-auth`, `/usr/libexec/linuxio/linuxio-auth`
       ([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)).
+      - This is what makes a changed module reach a host at an update: `dnf`
+        runs the package's own scripts with no sandbox, where the in-app
+        updater today has `/etc/selinux` read-only. It replaces the fix
+        planned in
+        [SELinux module in in-app updates](./selinux-module-in-app-update.md),
+        which is not built. Decided 2026-11-21.
+      - When it lands, delete that file and its link in `README.md` here,
+        delete the Known limits line "An in-app update cannot load a module
+        that is new or changed", and reword the `AGENTS.md` rule that says
+        the installer loads the module and relabels the binary.
 - [ ] Install package-owned units under `/usr/lib/systemd/system`.
 - [ ] Continue using `/etc/systemd/system` only for administrator or
       runtime-generated drop-ins.
@@ -362,9 +395,29 @@ Checks, each in the VM as the package installs it and again after a reboot:
 - [ ] Add `packaging/rpm/linuxio.spec` using `rpmbuild`.
 - [ ] Make both formats consume the shared package-root target instead of
       maintaining two file-copy implementations.
-- [ ] Build the DEB in the oldest supported Debian baseline.
-- [ ] Build the RPM in the oldest supported Fedora baseline; do not package
-      Ubuntu-built CGO/PAM binaries for Fedora.
+- [ ] Compile the programs once and put the same programs in both packages.
+      Decided 2026-11-21; it replaces "build the RPM on Fedora and never
+      package Ubuntu-built programs for Fedora". Releases already ship one
+      build to both families through the installer, and the test VMs run it
+      on Fedora.
+      - The compile runs on the supported system with the oldest C library,
+        since a program runs where the libraries are at least as new as
+        where it was built. That is not Debian by default: Ubuntu 24.04 has
+        C library 2.39 and Debian 13 has 2.41 (from memory; read both when
+        the image is chosen). With Ubuntu 24.04 supported, the compile image
+        is Ubuntu 24.04 unless those numbers turn out otherwise.
+      - A DEB assembled on Ubuntu takes the names of the packages it
+        depends on from Ubuntu. The fresh-install gate on Debian stable
+        shows whether Debian has them under the same names.
+      - The DEB is assembled in that same image. The RPM is assembled from
+        the compiled programs in a Fedora image, which has the RPM tools and
+        the systemd and SELinux macros the spec uses; nothing is compiled
+        there.
+      - The other libraries the programs load (`libpam.so.0`,
+        `libsystemd.so.0`, `libaudit.so.1`, `libcap-ng.so.0`) have the same
+        names on both families today. Each package lists the libraries it
+        needs, so a family that lacks one refuses the install, which the
+        Fedora release gate would show before a release.
 - [ ] Let native tooling derive shared-library requirements.
 - [ ] Declare PackageKit, PAM, polkit, systemd, and other runtime dependencies
       with the correct distribution-specific package names.
@@ -403,6 +456,51 @@ Checks, each in the VM as the package installs it and again after a reboot:
 - [ ] Add `make package-deb` and `make package-rpm`.
 - [ ] Replace the current `make localinstall` implementation with the
       package-based development workflow above.
+
+### Pinned build environment
+
+A program records which system libraries it needs, and at least which
+version, from the machine that built it. The build of 2026-11-21 on the
+owner's Ubuntu (C library 2.43) gives a `linuxio-auth` that needs C library
+2.38 or newer, with PAM, systemd, audit and libcap-ng; all nine programs need
+the system's C library. A release therefore runs only where the libraries are
+at least as new as on its build machine, and what that machine is must not
+change by itself. Decided 2026-11-21: everything a release is built from is
+pinned in the repository, and one Make target moves the pins.
+
+State on 2026-11-21:
+
+| What | Pinned | Where |
+| --- | --- | --- |
+| Go | yes, `1.27.4` | `backend/go.mod` |
+| Go modules | yes | `go.sum`, moved by `make update-go-deps` |
+| npm packages | yes | the lock file, moved by `make update-deps` |
+| nvm | yes, `0.40.2` | `Makefile` |
+| Release build machine | no, `ubuntu-latest` | `.github/workflows/release.yml` |
+| System build libraries (PAM, D-Bus, systemd, the compiler) | no, whatever `apt-get install` gives that day | the same workflow |
+| Node | major only, `26` | `frontend/package.json` |
+| Go check tools (golangci-lint, modernize, deadcode, govulncheck) | no, `latest` | `mk/toolchain.mk` |
+| GitHub Actions | 2 by commit, 5 by major tag | `.github/workflows` |
+
+- [ ] Name the two images in one file of the repository, each as a
+      distribution release and its image digest: the one that compiles the
+      programs and assembles the DEB, and the Fedora one that assembles the
+      RPM. Releases are built only in them (`container:` in the workflow).
+      The release, not the day, then decides the library versions a package
+      asks for; inside one release the distribution keeps those libraries
+      compatible. Decided 2026-11-21: the images are the distributions' own,
+      named by digest; an image of LinuxIO's own with the build libraries
+      already in it, which would pin those too, is not built.
+- [ ] Stop building releases on `ubuntu-latest`.
+- [ ] Pin Node to a full version, the Go check tools to versions, and every
+      GitHub Action to a commit.
+- [ ] Add one Make target (working name `make update-build-pins`) that moves
+      the image digests, Node, the check tools and the action commits to
+      their newest, shows what changed and prints a commit message, as
+      `make update-deps` does for npm. Go modules and npm keep their own
+      targets.
+- [ ] `make localinstall` and the test VMs build on the developer's machine
+      and are not pinned; only a release is.
 
 ## 3. Publish signed static repositories
 
@@ -545,20 +643,20 @@ GitHub releases should contain only the DEB, RPM, checksums, and release notes.
 The release sequence must be:
 
 ```text
-DEB native build --\
-                   +-> package tests -> signed repository assembly
-RPM Fedora build --/                         |
-                                              v
-                                      Pages deployment
-                                              |
-                                              v
-                                      GitHub release publish
+one compile
+  -> DEB assembled, RPM assembled
+  -> package tests
+  -> signed repository assembly
+  -> Pages deployment
+  -> GitHub release publish
 ```
 
 - [ ] Make the workflow call repository Make targets instead of invoking Go,
       Node, or their linters/test runners directly.
 - [ ] Add `make test-packages-quiet`, `make repo-apt`, and `make repo-rpm`.
-- [ ] Build DEB and RPM in their native baseline environments.
+- [ ] Compile once in the pinned compile image, then assemble the DEB there
+      and the RPM in the pinned Fedora image (see "Pinned build
+      environment").
 - [ ] Test both artifacts before importing signing credentials.
 - [ ] Sign only immutable release-tag artifacts.
 - [ ] Assemble and validate both repositories before deployment.
@@ -572,6 +670,13 @@ RPM Fedora build --/                         |
       Debian stable and Ubuntu LTS.
 - [ ] The same tests on the current and previous Fedora releases.
 - [ ] Fedora runtime smoke test with SELinux enforcing.
+- [ ] On Fedora with SELinux enforcing, update A to B where B carries a
+      changed SELinux module: after the update sign-in works, `semodule -E
+      linuxio` gives B's module, `linuxio-auth` and the auth socket have
+      their types and no denial is logged, and all of it holds after a
+      reboot. That packages deliver a changed module is expected from how
+      `dnf` runs package scripts and has not been seen; this gate is where
+      it is seen.
 - [ ] Package contents and ownership match the intended common layout.
 - [ ] The package exposes only `/usr/bin/linuxio`; all private executables are
       under `/usr/libexec/linuxio` and are not required in `$PATH`.
