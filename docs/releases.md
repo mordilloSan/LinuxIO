@@ -211,7 +211,10 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
    The keys are made without a passphrase, and the last `gpg` asks for one:
    it encrypts the backup of the primary key. `GPG_TTY` names the terminal
    that question appears on; without it, over SSH or in an editor's
-   terminal, `gpg` ends with "Inappropriate ioctl for device". Three files
+   terminal, `gpg` ends with "Inappropriate ioctl for device". Where the
+   question's full-screen box cannot be drawn ("Screen or window too small"),
+   `--pinentry-mode loopback` on that `gpg` asks on the terminal's own line,
+   once and with no confirmation, so the check in step 4 matters. Three files
    leave the folder:
 
    - `linuxio.asc`, the public key, for the repository (step 2);
@@ -237,7 +240,9 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
 2. **The public key**: commit `linuxio.asc` as `packaging/keys/linuxio.asc`,
    and write its full fingerprint (`gpg --fingerprint "$FPR"`) here:
 
-   Fingerprint: *not generated yet*
+   Fingerprint: `E16F 7C6E AB03 26F6 47F3  E1A2 2981 530E F4C2 7A54`
+   (`LinuxIO packages <packages@engmariz.com>`, made 2026-11-21; the primary
+   key expires 2036-11-18 and the signing subkey 2029-11-20)
 
 3. **The `release` environment** (Settings, Environments; or):
 
@@ -265,7 +270,9 @@ Done once, before the first release. `OWNER/REPO` is `mordilloSan/LinuxIO`.
    ```
 
    Then, once the backup of step 1 is on its two media and reads back
-   (`gpg --decrypt linuxio-primary-secret.asc.gpg | head -n 1` prints
+   (`gpg --no-symkey-cache --pinentry-mode loopback --decrypt
+   linuxio-primary-secret.asc.gpg | head -n 1` asks for the passphrase,
+   which GnuPG would otherwise remember from a moment before, and prints
    `-----BEGIN PGP PRIVATE KEY BLOCK-----`), delete the folder of step 1 with
    everything in it:
 
