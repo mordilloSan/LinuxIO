@@ -343,28 +343,37 @@ advertises the matching capability.
     otherwise. A shell command line (`workmap/shell.ts`) goes to Network
     when any command it runs reaches out, to Files when every one is a file
     command (`cat`, `rg`, `ls`…), and to Shell otherwise; `echo`, `cd` and
-    the like say nothing either way. A command reaches out by its name
+    the words that only set something (`export`, `shopt`, `umask`,
+    `pushd`…) say nothing either way. A command reaches out by its name
     (`curl`, `ssh`, `gh`, `kubectl`, `aws`…) or with its subcommand:
     `git push`, `npm install`, `pip install`, `docker pull` and
     `podman pull`, and the package managers' installs, updates and
     refreshes (`apt`, `dnf`, `yum`, `zypper`, `pacman -S`, `apk`, `snap`,
     `flatpak`). The command that counts is the one run behind `sudo`,
     `env`, `timeout`, `nice`, `xargs`, `chroot`, `runuser` and the like,
-    after `do`, `then` or `!`, inside `$(…)` or a function's body, in the
-    line handed to `bash -c`, `su -c`, `eval` or `watch`, and by
-    `find -exec`. A `;` or `|` in quotes splits nothing, a comment is not
-    read, the list of an array (`a=(…)`, `a+=(…)`, also after `declare` or
-    `local`) is values and only what `$(…)` or `<(…)` runs inside it is a
-    command (a `(` after `=` in `[[ … ]]` is a regex, not a list),
-    the text of a here-document is not run unless a shell reads it
+    after `do`, `then` or `!` and the assignments and redirections before
+    it (`2>/dev/null ls` is `ls`, and the text of `<<<"…"` is never a
+    name), inside `$(…)` or a function's body, in the line handed to
+    `bash -c`, `su -c`, `eval` or `watch`, and by `find -exec`. A `;` or
+    `|` in quotes splits nothing, a comment is not read, a `case` pattern
+    on any branch (`a|b)`, `(a|b)`) runs nothing but the commands after
+    its `)` do, the list of an array (`a=(…)`, `a+=(…)`, also after
+    `declare` or `local`) is values and only what `$(…)` or `<(…)` runs
+    inside it is a command (a `(` after `=` in `[[ … ]]` is a regex, not a
+    list), the text of a here-document is not run unless a shell reads it
     (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`
-    are text, `sudo bash <<EOF` is read as commands), and only the first
-    8,000 characters of a line are read. A row with no description is
+    are text, `sudo bash <<EOF` and `bash -s 2>&1 <<EOF` are read as
+    commands), and only the first 8,000 characters of a line are read. A
+    line follows no more than 256 commands run inside others (in `$(…)`,
+    behind `find -exec`, in the line handed to `bash -c`): one that holds
+    more is read no further and goes to Shell. A row with no description is
     named by the first command that says something (`make` for
     `cd /srv && make`). Known limits: a command kept in an array and run
     later (`cmd=(curl …); "${cmd[@]}"`) lands on Shell, where lot-map shows
-    Network, and an array element whose index holds a space (`m[a b]=1`)
-    is read as a command.
+    Network, an array element whose index holds a space (`m[a b]=1`)
+    is read as a command, and so are the patterns of a `case` whose `in`
+    stands on a line of its own, while a `case` inside `$(…)` ends the
+    `$(…)` at the `)` of its first pattern unless that opens with `(`.
     A line of file commands that names `.claude/projects/*/memory/` goes to
     Memory, as does a file under it; an MCP tool goes by its server
     (`Claude_Browser` and `claude-in-chrome` to Browser, `terminal`

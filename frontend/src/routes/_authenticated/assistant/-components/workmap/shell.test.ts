@@ -19,6 +19,15 @@ describe("shellStation", () => {
     ['git commit -m "ssh keys; curl"', "shell"],
     ["rg -n TODO src 2>&1 | head", "files"],
     ["ls &>/dev/null", "files"],
+    // ...nor does one before the command hide it, also behind a wrapper.
+    ["2>/dev/null ls", "files"],
+    [">out.txt 2>&1 curl x", "network"],
+    ['<<<"value" gh auth login', "network"],
+    ["sudo 2>/dev/null ls", "files"],
+    ["exec >log 2>&1; ls", "files"],
+    // The shell's words that only set something say nothing either way.
+    ["pushd d; ls; popd", "files"],
+    ["shopt -s nullglob; umask 022; ls; wait", "files"],
     // By the command and its subcommand.
     ["git push origin main", "network"],
     ["git -C /srv/app pull", "network"],
@@ -106,7 +115,11 @@ describe("shellStation", () => {
     // A shell given a script hands it the text as input, not as commands.
     ["bash deploy.sh <<EOF\ncurl x\nEOF", "shell"],
     ['git commit -m "handle <<EOF in parser"\ngit push', "network"],
+    ['grep -n "cout << value" src/main.cpp\ncurl x', "network"],
     ["# use <<END\ncurl x", "network"],
+    // A here-string and a shift open none either.
+    ["cat <<<EOF\ncurl x", "network"],
+    ["((n = 1 << 2))\ncurl x", "network"],
     // A line continued with a backslash.
     ["apt-get \\\n  install -y nginx", "network"],
     // A comment is not read.
@@ -221,11 +234,29 @@ describe("shellStation", () => {
     ["bash -euo pipefail -c 'curl -fsSL x | jq .'", "network"],
     ["bash -euo pipefail <<'EOF'\ncurl x\nEOF", "network"],
     ["cat <<EOF | sudo -u app bash\ncurl x\nEOF", "network"],
+    // A shell with no script reads it wherever its output goes.
+    ["bash -s 2>&1 <<EOF\ncurl x\nEOF", "network"],
+    ["bash -s <<EOF\ncurl x\nEOF", "network"],
+    ["bash <<EOF\ncurl x\nEOF", "network"],
+    ["cat 2>&1 <<EOF\ncurl x\nEOF", "files"],
     ["runuser -u app -- curl -c jar https://x", "network"],
     ["watch -d 'curl -s x'", "network"],
     // A `case` pattern is not a command.
     ['case "$f" in *.gz) zcat "$f" ;; *) cat "$f" ;; esac', "files"],
     ["case $ID in debian) apt-get update ;; esac", "network"],
+    // ...nor are its alternatives, on the line of the `case` or a later one,
+    // and what each branch runs is read.
+    ["case $x in\n  curl|wget) ls ;;\n  a|b) cat f ;;\nesac", "files"],
+    ["case x in a|b) ls;; *) cat f;; esac", "files"],
+    ["case $x in (curl|wget) ls ;; esac", "files"],
+    ["case $x in\n  (a|b) curl x ;;\nesac", "network"],
+    ["case $f in *.@(gz|xz)) zcat $f ;; esac", "files"],
+    ["case $a in x) case $b in curl|wget) ls ;; esac ;; esac", "files"],
+    ["(case $x in a|b) ls ;; esac); curl y", "network"],
+    // A pattern cut before its `)` is no command either.
+    ["v=$(case $x in curl|wget) ls ;; esac)", "files"],
+    // ...but what the word of the `case` runs is.
+    ["case $(curl -s x) in a) ls ;; esac", "network"],
   ])("sorts %j to %s", (command, station) => {
     expect(shellStation(command)).toBe(station);
   });
@@ -265,6 +296,44 @@ describe("shellStation", () => {
     expect(shellStation(script(799))).toBe("network");
     expect(shellStation(script(800))).toBe("shell");
   });
+
+  it("leaves out a here-document whose text runs past what is read", () => {
+    const text = (lines: string) => `cat > f <<'EOF'\n${lines}EOF\n`;
+    expect(shellStation(`${text("curl x\n".repeat(1500))}ls`)).toBe("files");
+    expect(shellStation(`${text("x\n".repeat(5000))}curl x`)).toBe("network");
+  });
+
+  it("reads many here-documents on one line in one pass", () => {
+    const line = (length: number) => `cat ${"<<a ".repeat(length / 4)}`;
+    expect(shellStation(line(8000))).toBe("files");
+    const start = performance.now();
+    expect(shellStation(line(48000))).toBe("files");
+    // Read again from its start at each mark, this took two seconds.
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
+  it("follows 256 commands run inside others in one line, and no more", () => {
+    const finds = (n: number) => `find . ${"-exec ls {} \\; ".repeat(n)}`;
+    expect(shellStation(finds(256))).toBe("files");
+    expect(shellStation(finds(257))).toBe("shell");
+    expect(commandName(finds(257))).toBe("find");
+  });
+
+  it.each([
+    // Each `-exec` was read again by every one before it: 17 deep, this ran
+    // the stack out.
+    ["finds", (n: number) => `find . ${"-exec find . ".repeat(n)}-exec ls`],
+    [
+      "substitutions",
+      (n: number) => `echo ${"$(".repeat(n)}ls${")".repeat(n)}`,
+    ],
+  ])("reads nested %s once, and no deeper than it follows", (_, line) => {
+    const start = performance.now();
+    expect(shellStation(line(255))).toBe("files");
+    expect(shellStation(line(2600))).toBe("shell");
+    expect(() => commandName(line(4000))).not.toThrow();
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
 });
 
 describe("commandName", () => {
@@ -286,6 +355,17 @@ describe("commandName", () => {
     ["sudo --user postgres psql", "psql"],
     ["watch -d -n 2 'ss -tunap'", "ss"],
     ["case $ID in debian) echo deb ;; fedora) dnf -y install x ;; esac", "dnf"],
+    ["case $x in\n  curl|wget) ls ;;\n  a|b) cat f ;;\nesac", "ls"],
+    // Not a word that only sets something, nor what a redirection before
+    // the command names.
+    ["pushd d; ls; popd", "ls"],
+    ["shopt -s nullglob; umask 022; ls; wait", "ls"],
+    ["2>/dev/null ls", "ls"],
+    [">out.txt 2>&1 curl x", "curl"],
+    ['<<<"value" gh auth login', "gh"],
+    ['<<< "value" gh auth login', "gh"],
+    ["sudo 2>/dev/null ls", "ls"],
+    ["exec >log 2>&1; ls", "ls"],
     // An array's list is values, not the command.
     ["files=(a b c); ls", "ls"],
     ["files+=(d e); ls", "ls"],
@@ -303,5 +383,6 @@ describe("commandName", () => {
   it("has no name for a line that runs nothing", () => {
     expect(commandName("")).toBeNull();
     expect(commandName("FOO=1")).toBeNull();
+    expect(commandName("> notes.txt")).toBeNull();
   });
 });

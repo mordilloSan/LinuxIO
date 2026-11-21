@@ -278,9 +278,8 @@ Assistant activity map:
   Browser: the view shows what was called, the map where it went.
 - The shell reader (`workmap/shell.ts`) reads a call to a function defined
   as `f() { … }` as a command of its own, so file work done through one
-  lands on Shell; it does not follow `su` fed a here-document or
-  `su --command=…`, and reads the first alternatives of a `case` pattern
-  with `|` as commands. Each is rare in what agents write, getting them
+  lands on Shell, and it does not follow `su` fed a here-document or
+  `su --command=…`. Each is rare in what agents write, getting them
   right needs a shell grammar rather than a reader, and the cost is one
   row at the wrong station.
 

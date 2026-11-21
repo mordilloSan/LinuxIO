@@ -18,9 +18,10 @@ const set = (list: string) => new Set(list.split(", "));
 const FILE_WORDS = set(
   "awk, basename, bat, bzip2, cat, chgrp, chmod, chown, cmp, column, comm, cp, cut, diff, dirname, du, fd, file, find, grep, gunzip, gzip, head, hexdump, jq, less, ln, ls, md5sum, mkdir, mktemp, more, mv, nl, od, paste, readlink, realpath, rg, rm, rmdir, sed, sha1sum, sha256sum, sort, stat, tail, tar, tee, touch, tr, tree, truncate, uniq, unzip, wc, xxd, xz, zcat, zip, zstd",
 );
-// Commands that say nothing either way.
+// Commands that say nothing either way, the shell's words that only set
+// something among them.
 const NEUTRAL_WORDS = set(
-  ":, ., [, [[, cd, declare, echo, export, false, local, printf, pwd, read, readonly, set, sleep, source, test, true, typeset, unset, which",
+  ":, ., [, [[, cd, declare, echo, export, false, local, popd, printf, pushd, pwd, read, readonly, set, shopt, sleep, source, test, true, typeset, umask, unset, wait, which",
 );
 // Commands that reach the network whatever they are asked.
 const NETWORK_WORDS = set(
@@ -150,18 +151,21 @@ const SHELLS = set("bash, sh, zsh, dash, ksh");
 // A shell option that takes the next word: `-o pipefail`, `-euo pipefail`.
 const TAKES_OPTION = /^[-+][a-zA-Z]*[oO]$/;
 // A here-document a shell reads is a script, not text: `bash <<EOF`,
-// `bash -euo pipefail <<EOF`, `cat <<EOF | sudo -u app bash`.
-// The word an option takes never starts with `-`, so a run of options reads
-// one way only; read both ways, a long run takes exponential time.
+// `bash -euo pipefail <<EOF`, `bash -s 2>&1 <<EOF`, and from the `|` after
+// it, `cat <<EOF | sudo -u app bash`. Where the shell's output goes says
+// nothing of what it runs.
+// The word an option takes never starts with `-` and holds no `>`, so a run
+// of options and redirections reads one way only; read both ways, a long run
+// takes exponential time.
 const SHELL_BEFORE =
-  /(?:^|[\s;&|(/])(?:bash|sh|zsh|dash|ksh)(?:\s+(?:[-+][abd-zA-Z]*[oO]\s+\w[\w-]*|[-+][abd-zA-Z]+))*\s*$/;
-const SHELL_AFTER =
-  /^[^|]*\|\s*(?:sudo(?:\s+-\S+(?:\s+[\w.][\w.-]*)?)*\s+)?(?:\S*\/)?(?:bash|sh|zsh|dash|ksh)\b/;
+  /(?:^|[\s;&|(/])(?:bash|sh|zsh|dash|ksh)(?:\s+(?:[-+][abd-zA-Z]*[oO]\s+\w[\w-]*|[-+][abd-zA-Z]+|(?:\d*(?:>>?|>[|&]|<&)|&>>?)\s*[^\s<>;&|()]+))*\s*$/;
+const PIPED_TO_SHELL =
+  /\|\s*(?:sudo(?:\s+-\S+(?:\s+[\w.][\w.-]*)?)*\s+)?(?:[^\s|]*\/)?(?:bash|sh|zsh|dash|ksh)\b/y;
 // What follows `<<`: `-` to strip tabs, then the word, quoted, after a
 // backslash, or bare. Only a bare word lets the shell run the `$(…)` and
 // backticks in the text.
 const DELIMITER =
-  /^(-?)[ \t]*(?:(["'])([A-Za-z_][\w.-]*)\2|(\\?)([A-Za-z_][\w.-]*))/;
+  /(-?)[ \t]*(?:(["'])([A-Za-z_][\w.-]*)\2|(\\?)([A-Za-z_][\w.-]*))/y;
 // Words of a construct that stand before a command: `do curl x` is curl.
 const BEFORE_A_COMMAND = set("do, then, else, elif, if, while, until, !, {");
 // Words that open or close a construct and run nothing: `for u in a b`, `done`.
@@ -170,9 +174,27 @@ const NO_COMMAND = set("for, select, case, done, fi, esac, }");
 const ASSIGNMENT = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/;
 // The word a list stands behind: the name and its `=` or `+=`, no more.
 const BEFORE_A_LIST = /^[A-Za-z_]\w*(?:\[.*\])?\+?=$/;
+// A redirection, as it may stand before a command: `2>/dev/null`, `>out`,
+// `&>log`, `<<<"text"`. Its target is in the same word or the next one.
+const REDIRECTION = /^(?:\d+|&)?(?:>>|>\||<<<|<<-|<<|<>|>&|<&|>|<)/;
+// What ends the command `find -exec` runs.
+const FIND_ENDS = new Set([";", "\\;", "';'", '";"', "+"]);
 // How much of a line is read: a longer one is a script written inline, and
 // what counts stands at its start.
 const READ = 8000;
+// How many commands run inside others one line follows: in `$(…)`, behind
+// `find -exec`, in the line handed to `bash -c`. A line that holds more is
+// read no further and stays at Shell, so that no nesting costs more than a
+// few hundred readings of the line, nor runs the stack out.
+const FOLLOWED = 256;
+
+/** What a line may still follow of `FOLLOWED`; below zero, it held more. */
+interface Budget {
+  left: number;
+}
+
+/** Whether one more command run inside another is followed. */
+const follows = (budget: Budget) => --budget.left >= 0;
 
 /** A command's own name: no quotes and no folder before it. */
 const name = (word = "") => word.replace(/["']/g, "").split("/").pop() ?? word;
@@ -226,15 +248,28 @@ function substitutionsIn(line: string) {
  * The here-documents a line opens, read past quotes, `$(…)` and comments.
  * `frames` holds the quotes and `$(…)` open at the end of the line before and
  * is left as they are at the end of this one, so a string over several lines
- * opens nothing. `<<<` is a here-string and `((a << b))` arithmetic.
+ * opens nothing. `<<<` is a here-string and `((a << b))` arithmetic. The line
+ * is read once, however many marks it holds: a mark is none of a shell's
+ * options, so the text that may name the shell before a mark starts where the
+ * mark before it ends, and each `|` after a mark is looked at once.
  */
 function opened(
   line: string,
   frames: { quote: string; brackets: number }[],
 ): HereDocument[] {
   const found: HereDocument[] = [];
+  // Where the last `((` and `))` stand: after an open `((`, `<<` shifts.
+  let shifts = -1;
+  let closes = -1;
+  // Where the last mark ends.
+  let from = 0;
+  // The first `|` after the last mark, and whether a shell reads from it.
+  let pipe = -1;
+  let piped = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
+    if (c === "(" && line[i - 1] === "(") shifts = i - 1;
+    else if (c === ")" && line[i - 1] === ")") closes = i - 1;
     const top = frames[frames.length - 1];
     if (top.quote === "'") {
       if (c === "'") top.quote = "";
@@ -261,16 +296,23 @@ function opened(
       line[i + 2] !== "<" &&
       line[i - 1] !== "<"
     ) {
-      const before = line.slice(0, i);
-      const match = DELIMITER.exec(line.slice(i + 2));
-      if (match && before.lastIndexOf("((") <= before.lastIndexOf("))")) {
-        const end = i + 2 + match[0].length;
+      DELIMITER.lastIndex = i + 2;
+      const match = DELIMITER.exec(line);
+      if (match && shifts <= closes) {
+        const end = DELIMITER.lastIndex;
+        if (pipe < end) {
+          pipe = line.indexOf("|", end);
+          if (pipe < 0) pipe = line.length;
+          PIPED_TO_SHELL.lastIndex = pipe;
+          piped = PIPED_TO_SHELL.test(line);
+        }
         found.push({
           word: match[3] ?? match[5],
           tabs: match[1] === "-",
-          runs: SHELL_BEFORE.test(before) || SHELL_AFTER.test(line.slice(end)),
+          runs: piped || SHELL_BEFORE.test(line.slice(from, i)),
           expands: match[2] === undefined && match[4] === "",
         });
+        from = end;
         i = end - 1;
       } else {
         i++;
@@ -285,13 +327,17 @@ function opened(
  * and the line that is `WORD` is written somewhere, not run, unless a shell
  * reads it; then its lines are read as commands, and a here-document one of
  * them opens is read before the rest. One that never ends is text to the end.
+ * What is kept is read only to `READ`, and the line no further than that.
  */
 function withoutHereDocuments(command: string) {
   if (!command.includes("<<")) return command;
   const kept: string[] = [];
   const waiting: HereDocument[] = [];
   const frames = [{ quote: "", brackets: 0 }];
+  // How long what is kept is.
+  let size = 0;
   for (const line of command.split("\n")) {
+    if (size >= READ) break;
     const open = waiting[0];
     if (open) {
       const text = (open.tabs ? line.replace(/^\t+/, "") : line).replace(
@@ -304,12 +350,17 @@ function withoutHereDocuments(command: string) {
       }
       if (!open.runs) {
         const runs = open.expands ? substitutionsIn(line) : "";
-        if (runs) kept.push(runs);
+        if (runs) {
+          kept.push(runs);
+          size += runs.length + 1;
+        }
         continue;
       }
     }
     kept.push(line);
-    waiting.unshift(...opened(line, frames));
+    // A mark past what is read opens nothing that is read.
+    waiting.unshift(...opened(line.slice(0, READ - size), frames));
+    size += line.length + 1;
   }
   return kept.join("\n");
 }
@@ -396,22 +447,49 @@ function listAt(line: string, start: number) {
  * `$(…)` or backticks run comes after the command they stand in; `$((…))`
  * and `((…))` run nothing, and the list of an array, `a=(…)` or `a+=(…)`, is
  * values read to its closing bracket: only what `$(…)` or backticks run
- * inside it is a command (`listAt`).
+ * inside it is a command (`listAt`). A `case` pattern is read to its own `)`
+ * and is no command either, `a|b)` and `(a|b)` too; what each branch runs is.
  */
-function split(line: string): string[][] {
+function split(line: string, budget: Budget): string[][] {
   const commands: string[][] = [];
   let inner: string[][] = [];
   let words: string[] = [];
   let word = "";
   // `'`, `"`, or `$` for `$'…'`, in which a backslash escapes.
   let quote = "";
+  // How many `case` stand open, and whether a pattern comes next: after `in`
+  // and after each `;;`, `;&` or `;;&`. `nested` counts the brackets open in
+  // a pattern, `@(a|b)`.
+  let cases = 0;
+  let pattern = false;
+  let nested = 0;
   const endWord = () => {
-    if (word) words.push(word);
+    if (!word) return;
+    if (
+      word === "in" &&
+      words[words.length - 2] === "case" &&
+      words.slice(0, -2).every((each) => BEFORE_A_COMMAND.has(each))
+    ) {
+      // `case WORD in` runs only what its word runs.
+      commands.push(...inner);
+      inner = [];
+      words = [];
+      cases++;
+      pattern = true;
+      nested = 0;
+    } else {
+      if (word === "esac" && cases > 0 && words.length === 0) {
+        cases--;
+        pattern = false;
+      }
+      words.push(word);
+    }
     word = "";
   };
   const endCommand = () => {
     endWord();
-    if (words.length > 0) commands.push(words);
+    // A pattern cut before its `)` is a pattern still.
+    if (words.length > 0 && !pattern) commands.push(words);
     commands.push(...inner);
     words = [];
     inner = [];
@@ -437,8 +515,8 @@ function split(line: string): string[][] {
     } else if (c === "`" || (c === "$" && line[i + 1] === "(")) {
       const open = c === "`" ? i : i + 1;
       const end = closing(line, open);
-      if (c === "`" || line[open + 1] !== "(") {
-        inner.push(...split(line.slice(open + 1, end)));
+      if ((c === "`" || line[open + 1] !== "(") && follows(budget)) {
+        inner.push(...split(line.slice(open + 1, end), budget));
       }
       word += line.slice(i, end + 1);
       i = end;
@@ -452,20 +530,39 @@ function split(line: string): string[][] {
       word += "$'";
       quote = "$";
       i++;
+    } else if (
+      pattern &&
+      "|()".includes(c) &&
+      (word !== "esac" || words.length > 0)
+    ) {
+      // A pattern runs to its own `)`, past its `|` and its `@(…)`; the `(`
+      // that may open it is no subshell. In `(case …; esac)` the `)` is
+      // the subshell's.
+      if (c === ")" && nested === 0) {
+        words = [];
+        word = "";
+        pattern = false;
+      } else if (c !== "(" || word || words.length > 0) {
+        if (c === "(") nested++;
+        else if (c === ")") nested--;
+        word += c;
+      }
     } else if (c === "(" && (word.endsWith("=") || line[i + 1] === "(")) {
       const list =
         BEFORE_A_LIST.test(word) && !words.includes("[[")
           ? listAt(line, i)
           : undefined;
-      for (const run of list?.runs ?? []) inner.push(...split(run));
+      for (const run of list?.runs ?? []) {
+        if (follows(budget)) inner.push(...split(run, budget));
+      }
       const end = list?.end ?? closing(line, i);
       word += line.slice(i, end + 1);
       i = end;
     } else if (c === "#" && !word) {
       while (i + 1 < line.length && line[i + 1] !== "\n") i++;
     } else if (c === ")" && brackets === 0) {
+      endWord();
       words = [];
-      word = "";
     } else if (
       c === "&"
         ? !/[<>]/.test(line[i - 1] ?? "") && line[i + 1] !== ">"
@@ -476,6 +573,12 @@ function split(line: string): string[][] {
       if (c === "(") brackets++;
       else if (c === ")") brackets--;
       endCommand();
+      if (c === ";" && cases > 0 && /[;&]/.test(line[i + 1] ?? "")) {
+        // `;;`, `;&` and `;;&` end a branch, and a pattern comes next.
+        i += line.startsWith(";;&", i) ? 2 : 1;
+        pattern = true;
+        nested = 0;
+      }
     } else if (/\s/.test(c)) {
       endWord();
     } else {
@@ -486,22 +589,37 @@ function split(line: string): string[][] {
   return commands;
 }
 
+/** Where a command begins: past the assignments and redirections from `i`. */
+function begins(words: string[], i: number) {
+  for (;;) {
+    const word = words[i] ?? "";
+    const sent = REDIRECTION.exec(word);
+    if (ASSIGNMENT.test(word)) i++;
+    // `2> file` has its target in the next word, `2>file` in its own.
+    else if (sent) i += sent[0].length === word.length ? 2 : 1;
+    else return i;
+  }
+}
+
 /**
- * A command without the assignments, construct words and `function NAME`
- * before it. Arithmetic, `((…))`, runs nothing, nor does a file read with
- * `$(< file)` or the `<` before `<(…)`, and a command named by what `$(…)`
- * prints is known only by what that runs, which is read already.
+ * A command without the assignments, redirections, construct words and
+ * `function NAME` before it. What a redirection names, a file or the text of
+ * `<<<`, is no command, so a file read with `$(< file)` or the `<` before
+ * `<(…)` runs nothing. Arithmetic, `((…))`, runs nothing either, and a
+ * command named by what `$(…)` prints is known only by what that runs, which
+ * is read already.
  */
 function own(words: string[]) {
   let i = 0;
   for (;;) {
+    i = begins(words, i);
     const word = words[i] ?? "";
-    if (ASSIGNMENT.test(word) || BEFORE_A_COMMAND.has(word)) i++;
+    if (BEFORE_A_COMMAND.has(word)) i++;
     else if (word === "function") i += 2;
     else break;
   }
   const head = words[i] ?? "";
-  return NO_COMMAND.has(head) || /^(?:\(\(|\$\(|`|<)/.test(head)
+  return NO_COMMAND.has(head) || /^(?:\(\(|\$\(|`)/.test(head)
     ? []
     : words.slice(i);
 }
@@ -513,9 +631,7 @@ function unwrapped(words: string[]) {
     const wrapper = WRAPPERS.get(name(rest[0]));
     if (!wrapper || wrapper.asks?.has(rest[1] ?? "")) break;
     rest = pastFlags(rest.slice(1), wrapper.takes);
-    let i = 0;
-    while (i < rest.length && ASSIGNMENT.test(rest[i])) i++;
-    rest = rest.slice(i + (wrapper.skip ?? 0));
+    rest = rest.slice(begins(rest, 0) + (wrapper.skip ?? 0));
   }
   return rest;
 }
@@ -525,9 +641,9 @@ function unwrapped(words: string[]) {
  * and in place of `bash -c "…"`, `su -c "…"`, `eval "…"` or `watch "…"` the
  * commands of the line handed over. A script's name is not a line:
  * `bash deploy.sh` is read no further. Shells inside shells are followed
- * three deep.
+ * three deep, and each command followed spends one of `budget`.
  */
-function ran(words: string[], depth: number): string[][] {
+function ran(words: string[], depth: number, budget: Budget): string[][] {
   const outer = unwrapped(words);
   const head = name(outer[0]);
   if (depth < 3) {
@@ -553,38 +669,47 @@ function ran(words: string[], depth: number): string[][] {
       const flag = options.findIndex((w) => w === "-c" || w === "--command");
       if (flag > 0 && flag + 1 < outer.length) {
         line = unquoted(outer[flag + 1]);
-      } else if (head === "runuser") {
-        return ran(pastFlags(outer.slice(1), RUNUSER_TAKES), depth + 1);
+      } else if (head === "runuser" && follows(budget)) {
+        return ran(pastFlags(outer.slice(1), RUNUSER_TAKES), depth + 1, budget);
       }
     }
-    if (line !== undefined) {
-      return commandsIn(withoutHereDocuments(line), depth + 1);
+    if (line !== undefined && follows(budget)) {
+      return commandsIn(withoutHereDocuments(line), depth + 1, budget);
     }
   }
   const all = [outer];
   if (head === "find") {
-    outer.forEach((word, i) => {
-      if (!/^-(?:exec|execdir|ok|okdir)$/.test(word)) return;
-      const tail = outer.slice(i + 1);
-      const end = tail.findIndex((w) =>
-        [";", "\\;", "';'", '";"', "+"].includes(w),
-      );
-      all.push(...ran(end < 0 ? tail : tail.slice(0, end), depth + 1));
-    });
+    // Each `-exec` once, to its `;` or `+`. One that never ends runs the
+    // rest, a later `-exec` with it, which is read there.
+    for (let i = 1; i < outer.length; i++) {
+      if (!/^-(?:exec|execdir|ok|okdir)$/.test(outer[i])) continue;
+      let end = i + 1;
+      while (end < outer.length && !FIND_ENDS.has(outer[end])) end++;
+      if (!follows(budget)) break;
+      all.push(...ran(outer.slice(i + 1, end), depth + 1, budget));
+      i = end;
+    }
   }
   return all.filter((command) => command.length > 0);
 }
 
-function commandsIn(line: string, depth: number): string[][] {
-  return split(line)
+function commandsIn(line: string, depth: number, budget: Budget): string[][] {
+  return split(line, budget)
     .map(own)
     .filter((words) => words.length > 0)
-    .flatMap((words) => ran(words, depth));
+    .flatMap((words) => ran(words, depth, budget));
 }
 
-/** Every command a line runs, here-documents left out, read to `READ`. */
-const commandsOf = (command: string) =>
-  commandsIn(withoutHereDocuments(command).slice(0, READ), 0);
+/**
+ * Every command a line runs, here-documents left out, read to `READ`, and
+ * whether it held more commands inside others than `FOLLOWED`.
+ */
+function commandsOf(command: string) {
+  const budget = { left: FOLLOWED };
+  const line = withoutHereDocuments(command).slice(0, READ);
+  const commands = commandsIn(line, 0, budget);
+  return { commands, spent: budget.left < 0 };
+}
 
 /** Whether a command reaches the network: by its name, or with its subcommand. */
 function reachesOut(words: string[]) {
@@ -627,11 +752,13 @@ function reachesOut(words: string[]) {
 
 /**
  * A line belongs to the network when any command it runs reaches out, to
- * files when every one only handles files, and to the shell otherwise.
+ * files when every one only handles files, and to the shell otherwise, or
+ * when it holds more commands inside others than are followed.
  */
 export function shellStation(command: string | null): ShellStation {
   if (command === null) return "shell";
-  const commands = commandsOf(command);
+  const { commands, spent } = commandsOf(command);
+  if (spent) return "shell";
   if (commands.some(reachesOut)) return "network";
   const real = commands.filter((words) => !NEUTRAL_WORDS.has(name(words[0])));
   return real.length > 0 &&
@@ -645,6 +772,6 @@ export function shellStation(command: string | null): ShellStation {
  * `sudo lsblk -d`, `make` for `cd /srv && make`.
  */
 export function commandName(command: string): string | null {
-  const names = commandsOf(command).map((words) => name(words[0]));
+  const names = commandsOf(command).commands.map((words) => name(words[0]));
   return names.find((each) => !NEUTRAL_WORDS.has(each)) ?? names[0] ?? null;
 }
