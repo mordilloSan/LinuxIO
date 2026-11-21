@@ -62,7 +62,7 @@ linuxio (${version}) unstable; urgency=medium
 
   * LinuxIO ${version}.
 
- -- LinuxIO <packages@linuxio.invalid>  $(date -R)
+ -- LinuxIO packages <packages@engmariz.com>  $(date -R)
 EOF
 
 (

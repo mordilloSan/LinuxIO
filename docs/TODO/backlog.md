@@ -63,13 +63,10 @@ after a change that issues ioctls).
 
 - The release workflow has never run, so nothing is published at
   `packages.engmariz.com` and the README's install commands do not work yet:
-  it needs the owner's one-time setup (the keys, the `release` environment
-  and its secret, Pages, the DNS record) and then a first release
-  ([Releases](../releases.md#owner-setup)). **checked**
-- The DEB names its maintainer `LinuxIO <packages@linuxio.invalid>`
-  (`packaging/debian/control`, and the changelog `package-deb.sh` writes), a
-  placeholder every `apt show linuxio` shows, until the owner names an
-  address. **checked**
+  the keys, the public key in the repository and the `release` environment
+  with its secret are done (2026-11-21); Pages, the DNS record, the release
+  rules and then a first release remain
+  ([Releases](../releases.md#owner-setup), steps 5 to 8). **checked**
 - Whether the Fedora console shows the login banner: one rule in an
   `optional` block of `packaging/selinux/linuxio.cil` letting `getty_t` read
   `motd_var_run_t` would, at the cost of a permission for a domain that is

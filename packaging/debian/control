@@ -1,7 +1,7 @@
 Source: linuxio
 Section: admin
 Priority: optional
-Maintainer: LinuxIO <packages@linuxio.invalid>
+Maintainer: LinuxIO packages <packages@engmariz.com>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.6.2
 Homepage: https://github.com/mordilloSan/LinuxIO
