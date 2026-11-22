@@ -89,6 +89,14 @@ the error/unavailable shaping stays consistent:
   on `$PATH`. Returns a `"<command> not found (missing <dependencyName> dependency)"`
   error when absent.
 
+The scan runs every detector at once and gives each 6 seconds
+(`probeTimeout`, `response.go`). One that has not answered by then is reported
+unavailable with the error `did not answer within 6s`, and the others'
+answers are returned: a daemon that takes a connection and never answers, as
+libvirtd does while it stops, would otherwise hold back the whole scan, and
+the page hides every gated section until the scan answers. A detector passes
+its context to whatever it waits on, since the scan waits for each to return.
+
 Detection lives next to the feature where possible (e.g.
 `CheckDockerAvailability` in `handlers/docker`, `CheckNFSClientAvailability` in `handlers/storage`; the registry calls them), or is
 inlined for a plain binary check:
@@ -112,7 +120,9 @@ detector; `TestCapabilityNamesArePublished` asserts that the `CapabilityName`
 enum is the registry's names. `TestBuildCapabilitiesResponseReportsEveryCapability`
 (`response_test.go`) runs every registry name through a stub detector and
 checks that each one keys its own status, with its error, in the JSON
-response. On the frontend, `capabilities.test.ts` asserts at typecheck that the
+response.
+`TestBuildCapabilitiesResponseReportsTheRestWhenOneProbeDoesNotAnswer` holds
+the scan to its 6 seconds for one detector. On the frontend, `capabilities.test.ts` asserts at typecheck that the
 `CAPABILITIES` names equal the generated `CapabilityName` union, so a
 capability added to the registry without a frontend entry, or the reverse,
 fails `make tsc-only` after `make generate`.
@@ -632,6 +642,9 @@ test VM does this in a browser:
 
 ## Known limits
 
+- A capability whose detector did not answer within its 6 seconds stays
+  unavailable in the page until the next sign-in, although its daemon may be
+  back a moment later.
 - A package that no enabled repository has costs one cache refresh before the
   install reports it, including an optional package such as `nss-mdns` on a
   RHEL-family host without EPEL, whose warning comes after that refresh.

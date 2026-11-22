@@ -76,13 +76,16 @@ if [ "$1" = configure ] || [ "$1" = abort-remove ]; then
 		if [ "$first" = 1 ]; then
 			# shellcheck disable=SC2086 # one unit a word
 			deb-systemd-invoke start $started_units >/dev/null || true
+			# libvirt finds a hook only when its daemon starts. An upgrade
+			# leaves the daemon alone: the hook was there when it started,
+			# and a daemon with work to finish takes up to 30 seconds to
+			# stop, answering nobody meanwhile.
+			deb-systemd-invoke try-restart libvirtd.service virtqemud.service >/dev/null 2>&1 || true
 		else
 			# shellcheck disable=SC2086
 			deb-systemd-invoke try-restart $started_units >/dev/null || true
 			systemctl try-restart linuxio-issue.service >/dev/null 2>&1 || true
 		fi
-		# libvirt finds its hooks only when its daemon starts.
-		deb-systemd-invoke try-restart libvirtd.service virtqemud.service >/dev/null 2>&1 || true
 	fi
 fi
 

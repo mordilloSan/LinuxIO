@@ -2,7 +2,8 @@
 # shellcheck disable=SC2016 # sed and grep patterns hold a literal $
 # Fixture-only checks of the files both packages ship from packaging/: how the
 # units relate to linuxio.target and to each other, the run-record drop-in,
-# the needrestart override, the two PAM files and the SELinux policy. Nothing
+# the libvirt restart of the post-install steps, the needrestart override,
+# the two PAM files and the SELinux policy. Nothing
 # is installed and nothing on the host is read but the checkout.
 set -euo pipefail
 
@@ -170,6 +171,23 @@ for unit in linuxio-run-record.conf linuxio-btrfs-resync@.service linuxio-btrfs-
 done
 grep -Fqx '[Service]' "${UNITS}/linuxio-run-record.conf" || fail "the run-record drop-in has no [Service] section"
 pass "scheduled units record their runs"
+
+# libvirt's daemon is restarted for the hook on a first install only. At an
+# upgrade a daemon with work to finish takes up to 30 seconds to stop and
+# answers nobody meanwhile, the sign-in that follows the upgrade among them.
+libvirt_restart_on_first_install_only() {
+	awk -v first_start="$2" -v first_end="$3" '
+		index($0, first_start) { first = 1 }
+		$0 ~ first_end { first = 0 }
+		/try-restart libvirtd\.service virtqemud\.service/ { restarts++; if (!first) outside = 1 }
+		END { exit !(restarts == 1 && !outside) }
+	' "$1"
+}
+libvirt_restart_on_first_install_only "${PACKAGING}/debian/postinst" 'deb-systemd-invoke start $started_units' '^[[:space:]]*else$' ||
+	fail "the DEB's postinst must restart libvirt once, beside the start of a first install"
+libvirt_restart_on_first_install_only "${PACKAGING}/rpm/linuxio.spec" 'systemctl start %{started_units}' '^fi$' ||
+	fail "the RPM's %post must restart libvirt once, beside the start of a first install"
+pass "libvirt is restarted on a first install only"
 
 # Loaded the way needrestart.conf loads a conf.d file, the override adds to the
 # distribution's override_rc and leaves its entries; deciding as needrestart

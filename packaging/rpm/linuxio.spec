@@ -135,12 +135,13 @@ if [ "$1" -eq 1 ]; then
 fi
 if [ "$1" -eq 1 ] && [ -d /run/systemd/system ]; then
 	systemctl start %{started_units} || :
-fi
-# An upgrade restarts LinuxIO from the old package's %%postun, only if it runs.
-# libvirt finds its hooks only when its daemon starts.
-if [ -d /run/systemd/system ]; then
+	# libvirt finds a hook only when its daemon starts. An upgrade leaves
+	# the daemon alone: the hook was there when it started, and a daemon
+	# with work to finish takes up to 30 seconds to stop, answering nobody
+	# meanwhile. The DEB's postinst does the same.
 	systemctl try-restart libvirtd.service virtqemud.service >/dev/null 2>&1 || :
 fi
+# An upgrade restarts LinuxIO from the old package's %%postun, only if it runs.
 
 %preun
 # On removal (not on an upgrade): stop LinuxIO and every job host, and

@@ -160,6 +160,9 @@ finishes its jobs before the new build takes over
 unattended upgrade and the Updates page end the same way, and no
 `linuxio restart` is needed.
 
+An upgrade does not restart libvirt's daemon
+([The libvirt hook](#the-libvirt-hook)).
+
 A command line a unit runs is in a package unit, so it moves with the
 package. Two kinds of file LinuxIO writes on save still name a LinuxIO
 program, because a setting decides what they hold: the verbose drop-ins
@@ -282,8 +285,14 @@ Docker's `FORWARD DROP` policy drops a bridged VM's traffic; the hook
 ([VM Bridge Networking](./vm-bridge-networking.md)). libvirt reads hooks
 only from `/etc`, so it is installed there in every install, mode 0755, as a
 configuration file of both packages, whether or not libvirt is installed.
-libvirt finds its hooks only when its daemon starts, so the post-install step
-runs `try-restart` on `libvirtd.service` and `virtqemud.service`.
+libvirt uses a hook only when the file was there as its daemon started, so the
+post-install step of a first install runs `try-restart` on `libvirtd.service`
+and `virtqemud.service`. An upgrade does not: the hook was there when the
+daemon started, libvirt runs the file anew for each event, so a changed hook
+needs no restart, and a daemon with work to finish takes up to 30 seconds to
+stop. It answers nobody in that time, the sign-in that follows the upgrade
+among them, and every program using libvirt loses its connection
+(`package-files-fixtures.sh` holds both scripts to it).
 
 Its first line exits when `/usr/bin/linuxio` is missing: `apt remove` leaves
 the file until a purge, and with the line removal stops the hook on both
@@ -480,6 +489,8 @@ to the build's.
   with Docker can lose its network at its next start.
 - On the Debian family a reinstall does not bring back a configuration file
   an administrator deleted; the libvirt hook has its Restore button for that.
+- An RPM upgrade brings back a libvirt hook an administrator deleted and does
+  not restart libvirt, so the hook is used from the daemon's next start.
 - An edited configuration file keeps its edits and misses that upgrade's
   changes to it.
 - dnf given a `repomd.xml` with a bad signature reports it and goes on
