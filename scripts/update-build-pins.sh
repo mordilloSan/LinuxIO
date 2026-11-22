@@ -131,8 +131,8 @@ workflows=("$workflows_dir"/*.yml "$workflows_dir"/*.yaml)
 # comment after a commit pin, or the tag itself on a line not pinned yet.
 declare -A action_version=()
 while IFS=$'\t' read -r action ref comment; do
-	# A reference that follows a branch (the owner's shared workflows at
-	# @main) is its author's choice and has no release to pin to: left alone.
+	# A reference that follows a branch is its author's choice and has no
+	# release to pin to: left alone.
 	if [[ ! $ref =~ ^[0-9a-f]{40}$ && ! $ref =~ ^v[0-9]+(\.[0-9]+){0,2}$ ]]; then
 		notes+=("${action}@${ref} follows a branch, not a release; left as it is")
 		continue

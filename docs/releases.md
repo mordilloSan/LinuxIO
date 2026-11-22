@@ -72,10 +72,10 @@ no docker):
 - the newest release of each Go tool on the Go module proxy, kept back when
   it needs a newer Go than `backend/go.mod`;
 - the newest `vX.Y.Z` tag of every action the workflows use, and its commit
-  (a new major is moved too, and marked in the commit message). A `uses:`
-  line that names a branch is left as it is and named in a note: the Codacy
-  scan calls the owner's shared workflow at `mordilloSan/.github@main`, which
-  is kept current in that repository and is not part of a release's build.
+  (a new major is moved too, and marked in the commit message). The shared
+  Codacy workflow in `mordilloSan/.github` is pinned to a release like any
+  action. A `uses:` line that names a branch is left as it is and named in a
+  note.
 
 It makes every lookup before it writes anything, so a registry or GitHub it
 cannot reach fails the target with the host named and changes nothing. Then it
