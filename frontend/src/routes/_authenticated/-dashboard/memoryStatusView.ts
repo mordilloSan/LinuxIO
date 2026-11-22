@@ -84,6 +84,13 @@ const canChooseZram = (status: SwapStatus) =>
 const snapshotBlockers = (status: SwapStatus) =>
   status.swap_files.filter((row) => row.active && row.blocks_snapshots);
 
+/**
+ * Whether a switch to compressed memory takes every blocking file away: it
+ * removes only the files LinuxIO acts on.
+ */
+const zramUnblocksSnapshots = (blocking: SwapFileRow[]) =>
+  blocking.length > 0 && blocking.every((row) => row.locked_reason === "");
+
 /** The swap files LinuxIO resizes and removes, and a switch to zram removes. */
 export const removableFiles = (status: SwapStatus) =>
   status.swap_files.filter((row) => row.locked_reason === "");
@@ -174,11 +181,9 @@ export function bannerView(status: SwapStatus): BannerView {
   const blocking = snapshotBlockers(status);
   if (blocking.length > 0) {
     return {
-      // The switch removes only the files LinuxIO acts on, so it is offered
-      // only when it would take every blocking file away.
+      // Offered only when the switch would take every blocking file away.
       action:
-        canChooseZram(status) &&
-        blocking.every((row) => row.locked_reason === "")
+        canChooseZram(status) && zramUnblocksSnapshots(blocking)
           ? { kind: "switch_zram" }
           : { kind: "none" },
       severity: "warning",
@@ -209,6 +214,7 @@ const createBlockedCause = (status: SwapStatus): string | undefined => {
     not_enough_space: `the disk has ${formatFileSize(create.free_space)} free, and a swap file of at least ${formatFileSize(minSize(status))} must still leave ${formatFileSize(create.reserve)} free`,
     folder_not_root_only: `a folder on ${create.path} is a link or can be changed by users other than root`,
     path_taken: `something other than its swap file is in ${folder}`,
+    hibernation: `the host hibernates to a swap file on the disk ${folder} is on, where LinuxIO changes no swap file`,
   };
   return create.blocked_reason === ""
     ? undefined
@@ -281,8 +287,10 @@ export function rowViews(status: SwapStatus): RowView[] {
       : undefined;
   const diskDisabled = needsDiskSwap ?? zramStays;
   // Only an active swap file on btrfs outside LinuxIO's folder blocks
-  // snapshots; that is then also what compressed memory changes.
-  const blocksSnapshots = snapshotBlockers(status).length > 0;
+  // snapshots. Compressed memory changes that only when it removes every
+  // such file, so a locked one keeps the promise off its row.
+  const blocking = snapshotBlockers(status);
+  const blocksSnapshots = blocking.length > 0;
   const base = (mode: RowMode) => ({
     current: status.mode === mode,
     mode,
@@ -304,7 +312,7 @@ export function rowViews(status: SwapStatus): RowView[] {
       capabilitiesLink: status.zram_unavailable_reason === "package_missing",
       caution:
         "No backup. If it fills up, Linux closes the hungriest program, and a VM would stop like a power cut.",
-      description: `The same, with no swap file. ${blocksSnapshots ? "Writes nothing to disk and snapshots of the system drive work." : "Writes nothing to disk."} Holds about ${planned} using about ${memoryUsed} of memory.`,
+      description: `The same, with no swap file. ${zramUnblocksSnapshots(blocking) ? "Writes nothing to disk and snapshots of the system drive work." : "Writes nothing to disk."} Holds about ${planned} using about ${memoryUsed} of memory.`,
       note: staysBesideZram(status),
       // The tool that would set zram up, since each writes its own file.
       technical:

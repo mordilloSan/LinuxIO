@@ -47,6 +47,7 @@ func TestRecommendMode(t *testing.T) {
 	onBtrfs := apischema.SwapFileRow{Path: "/swap.img", Active: true, FSType: "btrfs", BlocksSnapshots: true}
 	inOwnFolder := apischema.SwapFileRow{Path: ownSwapFilePath, Active: true, FSType: "btrfs"}
 	offOnBtrfs := apischema.SwapFileRow{Path: "/old.img", FSType: "btrfs", BlocksSnapshots: true}
+	lockedOnBtrfs := apischema.SwapFileRow{Path: "/swapfile", Active: true, FSType: "btrfs", BlocksSnapshots: true, LockedReason: apischema.SwapFileNotInFstab}
 	mmcFile := apischema.SwapDevice{Path: "/swapfile", Kind: apischema.SwapDeviceFile, DiskHint: apischema.SwapDiskHintMMC}
 	usbFile := apischema.SwapDevice{Path: "/mnt/usb/swapfile", Kind: apischema.SwapDeviceFile, DiskHint: apischema.SwapDiskHintRemovable}
 	tests := []struct {
@@ -62,6 +63,9 @@ func TestRecommendMode(t *testing.T) {
 		{name: "swap file on an SD card or eMMC", devices: []apischema.SwapDevice{mmcFile}, want: apischema.SwapModeZram},
 		{name: "swap file on a removable drive", devices: []apischema.SwapDevice{usbFile}, want: apischema.SwapModeZram},
 		{name: "swap file that blocks snapshots", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{onBtrfs}, want: apischema.SwapModeZram},
+		{name: "swap file that blocks snapshots and stays", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{lockedOnBtrfs}, want: apischema.SwapModeZswap},
+		{name: "one that goes beside one that stays", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{onBtrfs, lockedOnBtrfs}, want: apischema.SwapModeZswap},
+		{name: "one that goes beside one that is off and stays", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{onBtrfs, {Path: "/old.img", BlocksSnapshots: true, LockedReason: apischema.SwapFileNotRootOnly}}, want: apischema.SwapModeZram},
 		{name: "swap file in LinuxIO's subvolume", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{inOwnFolder}, want: apischema.SwapModeZswap},
 		{name: "swap file anywhere else", devices: []apischema.SwapDevice{fileDevice}, want: apischema.SwapModeZswap},
 		{name: "swap partition", devices: []apischema.SwapDevice{partitionDevice}, want: apischema.SwapModeZswap},

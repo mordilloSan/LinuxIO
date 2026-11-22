@@ -132,6 +132,8 @@ func createRefusal(reason apischema.SwapFileCreateReason) string {
 		return "a folder on the path of " + ownSwapFilePath + " is a link or can be changed by users other than root"
 	case apischema.SwapFileCreatePathTaken:
 		return "something that is not LinuxIO's swap file is at " + ownSwapFilePath + " or in its folder"
+	case apischema.SwapFileCreateHibernation:
+		return "the host resumes from the filesystem of " + ownSwapDir + " at a file offset, where LinuxIO changes no swap file, so it could not resize or remove the one it made"
 	default:
 		return "LinuxIO cannot make its swap file: " + string(reason)
 	}

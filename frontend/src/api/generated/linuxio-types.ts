@@ -3177,7 +3177,8 @@ export type SwapFileCreateReason =
   | "btrfs_layout"
   | "not_enough_space"
   | "folder_not_root_only"
-  | "path_taken";
+  | "path_taken"
+  | "hibernation";
 
 export interface SwapFileCreateRequest {
   size: number;

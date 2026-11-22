@@ -510,6 +510,25 @@ func TestSetSwapModeExplainsAMixedHostFoundAfterTheSettle(t *testing.T) {
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftZram, Reason: apischema.SwapLeftNotManaged})
 }
 
+// zram that swaps beside a swap partition reads zram, not mixed, and a host
+// without a zram provider gets no step that stops it: a switch to disk still
+// says why zram is on.
+func TestSetSwapModeExplainsZramLeftBesideASwapPartition(t *testing.T) {
+	f, sys := diskHost(t)
+	sys.provider = ""
+	f.write(procSwaps, swapsHeader+"/dev/sda3                               partition\t8388604\t\t0\t\t-3\n"+zramSwapsLine)
+	f.write(etcFstab, "/dev/sda3 none swap sw 0 0\n")
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeZram {
+		t.Fatalf("mode = %q, want zram", got.Mode)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftZram, Reason: apischema.SwapLeftNotManaged})
+}
+
 // A swap file is removed only when a fresh status shows it as one that
 // passes the strict check: one fstab stops naming after the plan is left.
 func TestSetSwapModeRemovesOnlyWhatAFreshStatusAllows(t *testing.T) {
@@ -1347,4 +1366,39 @@ func TestSetSwapModeRemovingATemporaryFileKeepsZramAtBootInTheRollback(t *testin
 		t.Fatalf("calls = %v, want the temporary file removed and /swap.img kept with its line", sys.calls)
 	}
 	assertRolledBackToDisk(t, f)
+}
+
+// A temporary swap file a resize left whose data does not fit in memory
+// stays, and so does the file it stood in for, whose own data would fit:
+// the run ends with both named, and nothing is rolled back.
+func TestSetSwapModeToZramLeavesAFileWhoseTemporaryFileStays(t *testing.T) {
+	for name, baseActive := range map[string]bool{"both swap": true, "only the temporary file swaps": false} {
+		t.Run(name, func(t *testing.T) {
+			f, sys := diskHost(t)
+			f.writeSwapFile(tempPath, 4*gib)
+			swaps := swapsHeader + swapsLine(tempPath, 4*gib, 3*gib)
+			if baseActive {
+				swaps += swapsLine("/swap.img", 2*gib, 0)
+			}
+			f.write(procSwaps, swaps)
+			f.setMemAvailable(900 * mib)
+
+			got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertLeft(t, got.Left,
+				apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotEnoughMemory, Path: tempPath},
+				apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotEnoughMemory, Path: "/swap.img"})
+			if slices.ContainsFunc(sys.calls, func(c string) bool { return strings.Contains(c, "/swap.img") }) {
+				t.Fatalf("calls = %v, want both files left alone", sys.calls)
+			}
+			if !f.exists(tempPath) || !f.exists("/swap.img") || !strings.Contains(f.read(etcFstab), "/swap.img ") {
+				t.Fatalf("fstab = %q, want both files and the line kept", f.read(etcFstab))
+			}
+			if got := f.read(sysctlDropInPath); got != zramDropIn {
+				t.Errorf("drop-in = %q, want zram's %q: the run is not rolled back", got, zramDropIn)
+			}
+		})
+	}
 }

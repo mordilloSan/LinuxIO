@@ -335,7 +335,9 @@ func (h hostRoot) createFolder() string {
 }
 
 // swapFileCreate is what the dialog needs to offer Create, given the rows.
-func (h hostRoot) swapFileCreate(rows []swapFileFacts, mounts []mountEntry, memTotal uint64) (apischema.SwapFileCreate, mountEntry) {
+// resume is hibernationDevice: a swap file made on that device would be
+// locked like every other one there, so none is made.
+func (h hostRoot) swapFileCreate(rows []swapFileFacts, mounts []mountEntry, resume string, memTotal uint64) (apischema.SwapFileCreate, mountEntry) {
 	create := apischema.SwapFileCreate{
 		Path:        ownSwapFilePath,
 		MinSize:     swapFileMinSize,
@@ -372,6 +374,8 @@ func (h hostRoot) swapFileCreate(rows []swapFileFacts, mounts []mountEntry, memT
 		create.BlockedReason = apischema.SwapFileCreateUnsupportedFilesystem
 	case fsRefusal(mount, info) != "":
 		create.BlockedReason = apischema.SwapFileCreateReason(fsRefusal(mount, info))
+	case h.hibernates(resume, mount):
+		create.BlockedReason = apischema.SwapFileCreateHibernation
 	case create.MaxSize < create.MinSize:
 		create.BlockedReason = apischema.SwapFileCreateNotEnoughSpace
 	}

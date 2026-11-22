@@ -474,6 +474,21 @@ describe("rowViews", () => {
       "The same, with no swap file. Writes nothing to disk and snapshots of the system drive work. Holds about 8 GB using about 2.67 GB of memory.",
     );
 
+    // A blocking file LinuxIO does not remove stays on beside compressed
+    // memory, so the row promises nothing about snapshots.
+    const locked = diskHost({
+      swap_files: [
+        blocking,
+        { ...blocking, locked_reason: "not_in_fstab", path: "/swapfile" },
+      ],
+    });
+    expect(rowViews(locked)[2].caution).toBe(
+      "Blocks snapshots of the system drive while in use.",
+    );
+    expect(zramText(locked)).toMatch(
+      /^The same, with no swap file\. Writes nothing to disk\. Holds/,
+    );
+
     // A file that is off blocks nothing.
     const off = diskHost({ swap_files: [{ ...blocking, active: false }] });
     expect(rowViews(off)[2].caution).toBeUndefined();
@@ -673,6 +688,10 @@ describe("createView", () => {
     [
       "path_taken",
       "LinuxIO cannot create a swap file: something other than its swap file is in /var/lib/linuxio/swap.",
+    ],
+    [
+      "hibernation",
+      "LinuxIO cannot create a swap file: the host hibernates to a swap file on the disk /var/lib/linuxio/swap is on, where LinuxIO changes no swap file.",
     ],
     [
       "something_new",

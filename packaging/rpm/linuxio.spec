@@ -174,8 +174,7 @@ fi
 # list (packaging/debian/postrm); a test of each writer holds both lists to
 # the paths it writes. What LinuxIO writes for something an administrator set
 # up stays, since it works without LinuxIO: scheduled scripts
-# (linuxio-schedule-*), the rsync service, Docker's and the swap units'
-# drop-ins.
+# (linuxio-schedule-*), the rsync service and Docker's drop-ins.
 if [ "$1" -eq 0 ]; then
 	written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer

@@ -207,11 +207,12 @@ without a word: the scheduled scripts' units (`linuxio-schedule-<id>.service`
 and `.timer`, which run `bash` on a script under `/etc/linuxio/schedules` as
 their user; the run-record drop-in that hooks them goes with the package), the
 rsync service (`linuxio-rsync.service`, `rsync --daemon` on
-`/etc/linuxio/rsyncd.conf`), Docker's drop-ins (`docker.service.d/linuxio-*.conf`:
-the mounts its data needs and the addresses it waits for) and the memory
-page's hold-off drop-ins on swap units (`90-linuxio-memory.conf`), which keep
-a swap device it stopped from coming back at boot. A new install finds them
-with their definitions under `/etc/linuxio`. The settings whose files the
+`/etc/linuxio/rsyncd.conf`) and Docker's drop-ins (`docker.service.d/linuxio-*.conf`:
+the mounts its data needs and the addresses it waits for). A new install finds
+them with their definitions under `/etc/linuxio`. The memory page writes no
+unit or drop-in under `/etc/systemd/system`; a hold-off drop-in on a swap unit
+(`90-linuxio-memory.conf`) that an older LinuxIO left stays as well
+([Upgrading](./memory.md#upgrading-from-an-older-linuxio)). The settings whose files the
 removal deleted (snapshot rules, replication, Docker updates, verbose
 logging, the indexer's interval, the automatic-update schedule and its
 alerts) are switched on again by hand after a new install.

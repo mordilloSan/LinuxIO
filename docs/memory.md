@@ -89,12 +89,16 @@ The backend picks the recommended mode, first match wins (`recommendMode`):
 | No active disk swap | `zram` |
 | A swap file on an SD card or eMMC (`mmcblk*` under `/proc/self/mountinfo`) | `zram`, to spare the card |
 | A swap file on a removable drive (`removable` is `1` for the disk under `/sys/class/block`) | `zram`, to spare the drive |
-| An active swap file on btrfs outside LinuxIO's folder (`blocks_snapshots`) | `zram`, because the file blocks snapshots |
+| Active swap files on btrfs outside LinuxIO's folder (`blocks_snapshots`), every one of which passes the strict check | `zram`, because the files block snapshots and the switch removes them |
 | A kernel without zswap | `disk` |
 | Anything else | `zswap` |
 
 zram takes the place of nothing but the swap files it removes, so a swap
 partition or a swap file LinuxIO does not act on is no reason against it.
+Such a file that blocks snapshots is no reason for it either: it stays on and
+goes on blocking them after the switch, so the fourth row does not apply
+while one swaps, and the dialog's row for compressed memory does not say that
+snapshots work.
 
 `disk_hint` is `mmc` or `removable` for the second and third rows. The
 removable flag is what a USB stick or a card in a USB reader reports; for a
@@ -240,6 +244,10 @@ header on it, `0` for a partition (read on Ubuntu 26.04 and Fedora 45 in the
 test VM). While the offset is not zero, every swap file on that device is
 locked: the offset points at the file's first block, which a resize or a new
 file would move. LinuxIO does not work out which file the offset belongs to.
+A swap file LinuxIO made there would be locked like the others, with no
+Resize or Remove, so Create is not offered while `/var/lib/linuxio/swap` is
+on that device (`create.blocked_reason` is `hibernation`), and a switch to
+disk or zswap that would need the file is refused.
 
 The device of a file's filesystem is read from the mount's source, through
 `/sys/class/block/<name>/dev` (`mountDevice`). The file's own `st_dev` is no
@@ -372,6 +380,8 @@ then resizes and removes it like any other that passes the strict check.
 - **`create.blocked_reason`**, checked in this order: `exists`;
   `folder_not_root_only`, a folder on the path is a link or others can change
   it; `path_taken`; `unsupported_filesystem`; `read_only`; `btrfs_layout`;
+  `hibernation`, the folder is on the device the host resumes from at a file
+  offset (see [The hibernation file](#the-hibernation-file));
   `not_enough_space`, the filesystem has no room for 256 MiB beside the
   reserve. The status judges the nearest folder at or above
   `/var/lib/linuxio/swap` that exists; the change judges again on handles,
@@ -696,10 +706,12 @@ To `zram`:
    that no longer passes the check fails the run with `ErrConflict`, and the
    run rolls back; an active one is removed only while a zram device swaps and
    its data passes the room check, and otherwise stays, with its fstab line,
-   and the result says why (`zram_not_swapping`, `not_enough_memory`). It is
-   removed as [Remove](#remove) does: turned off, its lines taken out of
-   `/etc/fstab`, deleted. A file that is off, or missing, only loses its line
-   and the file.
+   and the result says why (`zram_not_swapping`, `not_enough_memory`). A
+   file is removed as [Remove](#remove) does: turned off, its lines taken out
+   of `/etc/fstab`, deleted. One that is off, or missing, only loses its line
+   and the file. A file whose temporary resize file was left swapping stays
+   too, off or on, with the same reason: without the file's fstab line the
+   temporary file would read as not in fstab.
 
 To `zswap` or `disk`:
 
@@ -802,6 +814,7 @@ Apply can be pressed again.
 |---|---|---|
 | `swap_file` | `not_enough_memory` | The file's data does not fit in memory and free swap. Applying again later can finish. |
 | `swap_file` | `zram_not_swapping` | No zram device swaps when the file would be removed. |
+| `swap_file` | either of the two | The temporary file of the file's resize was left for that reason, and the file stays with it. |
 | `zram` | `not_enough_memory` | zram's data does not fit in memory and free disk swap. |
 | `zram` | `not_managed` | The provider's unit does not run that zram (another tool set it up, the unit is `inactive` or `failed`, with `zram-generator` a device other than `zram0` swaps), or no provider is installed. |
 | `zram_size` | `not_enough_memory`, `not_managed` | zram runs at another size than planned and cannot be restarted for that reason. |
@@ -809,13 +822,16 @@ Apply can be pressed again.
 | `zram_size` | `other_size` | zram came up at another size than planned: a drop-in overrides the size, or the device could not be reset. Every later change would restart it again. |
 
 A swap file left active beside zram makes the mode `mixed`, with its entry. A
-switch away from zram that ends `mixed` always has a reason: `not_managed` for
-zram is added after the run when no step left zram. `zram_size` does not make
-the mode `mixed`. The success log line says what stayed, read from the status
-after the change and not from what the steps left, so a device no step
-reaches counts too: `swap_file_left_active`, a swap file LinuxIO can remove
-that swaps after a switch to zram; `zram_left_active`, zram that swaps after a
-switch to disk or zswap; and `zram_size_kept`, a `zram_size` entry in `left`.
+switch to disk or zswap that ends with zram still swapping always has a
+reason: `not_managed` for zram is added after the run when no step left zram
+(`explainZram`). That goes by the devices and not by the mode, which reads
+`zram` and not `mixed` when zram swaps beside a swap partition or a swap file
+LinuxIO does not act on. `zram_size` does not make the mode `mixed`. The
+success log line says what stayed, read from the status after the change and
+not from what the steps left, so a device no step reaches counts too:
+`swap_file_left_active`, a swap file LinuxIO can remove that swaps after a
+switch to zram; `zram_left_active`, zram that swaps after a switch to disk or
+zswap; and `zram_size_kept`, a `zram_size` entry in `left`.
 Applying again helps only for `not_enough_memory`.
 
 ### Sysctls follow the mode the host ends in
@@ -1686,6 +1702,12 @@ Each is by design or unlikely to be met, or is an open item in
 - LinuxIO makes its swap file only in `/var/lib/linuxio/swap`. A file on
   another disk is made by hand once and then resized and removed from the
   dialog.
+- A host that hibernates to a swap file on the filesystem of
+  `/var/lib/linuxio/swap` gets no swap file from LinuxIO: it would be locked
+  like the hibernation file.
+- A swap file that is off, kept on a switch to compressed memory because its
+  temporary resize file stays, is reported with that file's reason, which
+  the dialog words as "it stays on".
 - A switch to compressed memory removes every swap file that passes the
   strict check; there is no way to keep one beside zram from the dialog.
 - A resize needs room for the data parked on the file, in free memory, free

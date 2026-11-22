@@ -69,10 +69,12 @@ const (
 type SwapLeftWhat string
 
 const (
-	// SwapLeftSwapFile: the swap file SwapLeft.Path was not removed and
-	// still swaps, beside zram.
+	// SwapLeftSwapFile: the swap file SwapLeft.Path was not removed. It
+	// still swaps, beside zram, or stays because the temporary swap file of
+	// its resize does.
 	SwapLeftSwapFile SwapLeftWhat = "swap_file"
-	// SwapLeftZram: zram still swaps, beside disk swap.
+	// SwapLeftZram: zram still swaps, beside disk swap, after a switch away
+	// from it.
 	SwapLeftZram SwapLeftWhat = "zram"
 	// SwapLeftZramSize: zram runs at the size it had, not the planned one.
 	SwapLeftZramSize SwapLeftWhat = "zram_size"
@@ -317,6 +319,10 @@ const (
 	// SwapFileCreatePathTaken: something that is not LinuxIO's swap file is
 	// at Path, or LinuxIO's folder holds something else.
 	SwapFileCreatePathTaken SwapFileCreateReason = "path_taken"
+	// SwapFileCreateHibernation: the host resumes at a file offset from the
+	// device Path's filesystem is on, where every swap file is locked, so
+	// the new file would be one LinuxIO cannot resize or remove.
+	SwapFileCreateHibernation SwapFileCreateReason = "hibernation"
 )
 
 // SwapFileCreate is what the Memory dialog needs to offer "Create a swap

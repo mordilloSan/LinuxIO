@@ -79,7 +79,7 @@ func (e *executor) setSwapMode(ctx context.Context, req apischema.SwapModeReques
 	if err != nil {
 		slog.Warn("settle memory sysctls failed", "mode", status.Mode, "error", err)
 	}
-	run.explainMixed(status)
+	run.explainZram(status)
 	// What stays active is read from the host, not from what the steps left:
 	// a swap file that appeared after the plan stays too.
 	slog.Info("swap mode changed", append([]any{"mode", target, "previous_mode", view.status.Mode,
@@ -92,9 +92,9 @@ func (e *executor) setSwapMode(ctx context.Context, req apischema.SwapModeReques
 		if status, err = e.statusAfterChange(ctx); err != nil {
 			return apischema.SwapModeResult{}, err
 		}
-		// A device can appear in between; explainMixed adds a reason once
+		// A device can appear in between; explainZram adds a reason once
 		// per kind of device.
-		run.explainMixed(status)
+		run.explainZram(status)
 	}
 	// An empty list and not null on the wire.
 	return apischema.SwapModeResult{SwapStatus: status, Left: append([]apischema.SwapLeft{}, run.left...)}, nil
@@ -134,8 +134,8 @@ type modeRun struct {
 	// drop-in held before the run or that the run wrote into it, and every
 	// one zram's preset sets when zram swapped as the run started.
 	dropInHeld map[string]bool
-	// left is what the run left as it was, with the reason: a device left
-	// active, which makes the result mixed, or zram left at its size.
+	// left is what the run left as it was, with the reason: a swap file not
+	// removed, zram left swapping, or zram left at its size.
 	left []apischema.SwapLeft
 	// replacedConfig is the zram configuration file that was not LinuxIO's
 	// the run replaced, and configCopy the copy it kept of it.
@@ -171,18 +171,28 @@ func (r *modeRun) leaveFile(path string, reason apischema.SwapLeftReason) {
 	r.left = append(r.left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: reason, Path: path})
 }
 
+// leftFile is the reason the run left the swap file at path, when it did.
+func (r *modeRun) leftFile(path string) (apischema.SwapLeftReason, bool) {
+	i := slices.IndexFunc(r.left, func(l apischema.SwapLeft) bool { return l.What == apischema.SwapLeftSwapFile && l.Path == path })
+	if i < 0 {
+		return "", false
+	}
+	return r.left[i].Reason, true
+}
+
 func (r *modeRun) leftHas(what apischema.SwapLeftWhat) bool {
 	return slices.ContainsFunc(r.left, func(l apischema.SwapLeft) bool { return l.What == what })
 }
 
-// explainMixed gives a reason for zram that swaps on beside a swap file
-// after a switch away from zram though no step left it: none stops zram
-// without a zram provider.
-func (r *modeRun) explainMixed(status apischema.SwapStatus) {
-	if status.Mode != apischema.SwapModeMixed {
+// explainZram gives a reason for zram that swaps on after a switch away
+// from zram though no step left it: none stops zram without a zram provider.
+// The mode does not tell: it reads mixed only beside a swap file LinuxIO can
+// remove, and zram beside a swap partition or any other swap file.
+func (r *modeRun) explainZram(status apischema.SwapStatus) {
+	if r.target == apischema.SwapModeZram || !hasDevice(status.Devices, apischema.SwapDeviceZram) {
 		return
 	}
-	if r.target != apischema.SwapModeZram && !r.leftHas(apischema.SwapLeftZram) {
+	if !r.leftHas(apischema.SwapLeftZram) {
 		r.leave(apischema.SwapLeftZram, apischema.SwapLeftNotManaged)
 	}
 }
@@ -645,6 +655,16 @@ func (r *modeRun) removeSwapFileStep(ctx context.Context, path string) error {
 	}
 	if row.LockedReason != "" {
 		return fmt.Errorf("%w: %s", bridgeipc.ErrConflict, lockedRefusal(row))
+	}
+	// The temporary swap file of a resize has its step before the file it
+	// stood in for. Where that step left it swapping, the file stays too,
+	// for the same reason: without the file's fstab line the temporary file
+	// would read as not in fstab, so removeRow refuses.
+	if temp, ok := findRow(status, path+resizeSuffix); ok && temp.Active {
+		if reason, left := r.leftFile(temp.Path); left {
+			r.leaveFile(path, reason)
+			return nil
+		}
 	}
 	if row.Active {
 		switch {

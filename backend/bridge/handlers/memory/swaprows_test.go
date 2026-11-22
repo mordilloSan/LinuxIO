@@ -19,6 +19,17 @@ func rowsHost(t *testing.T, fstab string) fixture {
 	return f
 }
 
+// resumeFrom puts / on /dev/vda1, 253:1, and makes the host resume from
+// device, "major:minor", at offset, in pages.
+func resumeFrom(f fixture, device, offset string) {
+	f.t.Helper()
+	f.write(procMountinfo, "22 1 253:1 / / rw,relatime shared:1 - ext4 /dev/vda1 rw\n")
+	f.write("/dev/vda1", "")
+	f.write("/sys/class/block/vda1/dev", "253:1\n")
+	f.write(sysPowerResume, device+"\n")
+	f.write(sysPowerResumeOffset, offset+"\n")
+}
+
 // readRows reads the status of the fixture and returns its rows by path.
 func readRows(t *testing.T, f fixture) (apischema.SwapStatus, map[string]apischema.SwapFileRow) {
 	t.Helper()
@@ -89,11 +100,7 @@ func TestSwapFileRowsStrictCheck(t *testing.T) {
 		{name: "the hibernation file", path: "/swap.img", want: apischema.SwapFileHibernation, setup: func(f fixture) {
 			f.write(etcFstab, "/swap.img none swap sw 0 0\n")
 			f.writeSwapFile("/swap.img", gib)
-			f.write(procMountinfo, "22 1 253:1 / / rw,relatime shared:1 - ext4 /dev/vda1 rw\n")
-			f.write("/dev/vda1", "")
-			f.write("/sys/class/block/vda1/dev", "253:1\n")
-			f.write(sysPowerResume, "253:1\n")
-			f.write(sysPowerResumeOffset, "34816\n")
+			resumeFrom(f, "253:1", "34816")
 		}},
 	}
 	for _, test := range tests {
@@ -162,11 +169,7 @@ func TestSwapFileRowsHibernationOnlyOnItsDevice(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := rowsHost(t, "/swap.img none swap sw 0 0\n")
 			f.writeSwapFile("/swap.img", gib)
-			f.write(procMountinfo, "22 1 253:1 / / rw,relatime shared:1 - ext4 /dev/vda1 rw\n")
-			f.write("/dev/vda1", "")
-			f.write("/sys/class/block/vda1/dev", "253:1\n")
-			f.write(sysPowerResume, resume[0]+"\n")
-			f.write(sysPowerResumeOffset, resume[1]+"\n")
+			resumeFrom(f, resume[0], resume[1])
 			if _, rows := readRows(t, f); rows["/swap.img"].LockedReason != "" {
 				t.Fatalf("row = %+v, want it unlocked", rows["/swap.img"])
 			}
@@ -360,6 +363,16 @@ func TestSwapFileCreateReasons(t *testing.T) {
 		{name: "btrfs layout", want: apischema.SwapFileCreateBtrfsLayout, setup: func(f fixture) {
 			f.useFolderFS(folderFS{kind: "btrfs", total: 100 * gib, free: 50 * gib})
 		}},
+		{name: "on the hibernation device", want: apischema.SwapFileCreateHibernation, setup: func(f fixture) {
+			f.useFolderFS(folderFS{kind: "ext4", total: 10 * gib, free: gib + 255*mib})
+			resumeFrom(f, "253:1", "34816")
+		}},
+		{name: "read-only on the hibernation device", want: apischema.SwapFileCreateReadOnly, setup: func(f fixture) {
+			f.useFolderFS(folderFS{kind: "ext4", readOnly: true, total: 100 * gib, free: 50 * gib})
+			resumeFrom(f, "253:1", "34816")
+		}},
+		{name: "beside a hibernation file on another device", setup: func(f fixture) { resumeFrom(f, "253:2", "34816") }},
+		{name: "on a host that resumes from a partition", setup: func(f fixture) { resumeFrom(f, "253:1", "0") }},
 		{name: "not enough space", want: apischema.SwapFileCreateNotEnoughSpace, setup: func(f fixture) {
 			f.useFolderFS(folderFS{kind: "ext4", total: 10 * gib, free: gib + 255*mib})
 		}},

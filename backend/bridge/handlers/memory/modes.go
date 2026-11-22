@@ -133,18 +133,21 @@ func deriveMode(devices []apischema.SwapDevice, removable []string, zswapEnabled
 
 // recommendMode picks the mode for the host, first match wins: zram with no
 // active disk swap, with disk swap on an SD card, eMMC or removable drive,
-// which swapping wears out, or with a swap file that blocks snapshots on
-// btrfs; a kernel without zswap gets disk beside its disk swap; anything else
-// gets zswap. A swap partition or a swap file LinuxIO cannot remove stays
-// beside zram, which takes the place of nothing but the files it removes.
+// which swapping wears out, or with swap files that block snapshots on btrfs,
+// when the switch removes every one of them; a kernel without zswap gets
+// disk beside its disk swap; anything else gets zswap. A swap partition or a
+// swap file LinuxIO cannot remove stays beside zram, which takes the place of
+// nothing but the files it removes: no reason against zram, and, for a file
+// that blocks snapshots, none for it either.
 func recommendMode(devices []apischema.SwapDevice, rows []apischema.SwapFileRow, zswapAvailable bool) apischema.SwapMode {
 	disk := slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.Kind != apischema.SwapDeviceZram })
+	blocking := func(r apischema.SwapFileRow) bool { return r.Active && r.BlocksSnapshots }
 	switch {
 	case !disk:
 		return apischema.SwapModeZram
 	case slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.DiskHint != "" }):
 		return apischema.SwapModeZram
-	case slices.ContainsFunc(rows, func(r apischema.SwapFileRow) bool { return r.Active && r.BlocksSnapshots }):
+	case slices.ContainsFunc(rows, blocking) && !slices.ContainsFunc(rows, func(r apischema.SwapFileRow) bool { return blocking(r) && r.LockedReason != "" }):
 		return apischema.SwapModeZram
 	case !zswapAvailable:
 		return apischema.SwapModeDisk

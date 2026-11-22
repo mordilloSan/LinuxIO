@@ -133,7 +133,7 @@ var StringEnums = map[string][]string{
 	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainOtherSwap),
 	"SwapFileLockedReason":      enumNames("", SwapFileNotInFstab, SwapFileNotRootOnly, SwapFileHibernation),
 	"SwapFileResizeReason":      enumNames("", SwapFileResizeMissing, SwapFileResizeNoHeader, SwapFileResizeOff, SwapFileResizeUnsupportedFilesystem, SwapFileResizeReadOnly, SwapFileResizeBtrfsLayout),
-	"SwapFileCreateReason":      enumNames("", SwapFileCreateExists, SwapFileCreateUnsupportedFilesystem, SwapFileCreateReadOnly, SwapFileCreateBtrfsLayout, SwapFileCreateNotEnoughSpace, SwapFileCreateFolderNotRootOnly, SwapFileCreatePathTaken),
+	"SwapFileCreateReason":      enumNames("", SwapFileCreateExists, SwapFileCreateUnsupportedFilesystem, SwapFileCreateReadOnly, SwapFileCreateBtrfsLayout, SwapFileCreateNotEnoughSpace, SwapFileCreateFolderNotRootOnly, SwapFileCreatePathTaken, SwapFileCreateHibernation),
 	"SwapStep":                  enumNames(SwapSteps...),
 	"SwapLeftWhat":              enumNames(SwapLeftSwapFile, SwapLeftZram, SwapLeftZramSize),
 	"BtrfsSpareState":           enumNames(btrfs.SpareReady, btrfs.SpareAbsent, btrfs.SpareTooSmall, btrfs.SpareInUse, btrfs.SpareUnknown),

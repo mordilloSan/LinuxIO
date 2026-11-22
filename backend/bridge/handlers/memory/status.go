@@ -167,7 +167,7 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 	}
 	rows := h.swapFileRows(devices, fstab, mounts, resume)
 	var createMount mountEntry
-	status.Create, createMount = h.swapFileCreate(rows, mounts, mem.memTotal)
+	status.Create, createMount = h.swapFileCreate(rows, mounts, resume, mem.memTotal)
 	// The sizes and the move offer depend on the whole status: a resize that
 	// needs a temporary file needs room for it too.
 	status.SwapFiles = make([]apischema.SwapFileRow, 0, len(rows))
