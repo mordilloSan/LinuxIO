@@ -205,14 +205,20 @@ It falls back to today's delete and walk when:
 - the move merged into an existing folder or finished only partly;
 - the source or the destination is a place the index leaves out.
 
-A delete already needs no walk: it removes the rows and subtracts the
+A move into or out of the trash is such a move: it reaches the index through
+the same notification (`reconcileMoves` in
+`backend/bridge/handlers/filebrowser/trash_operation.go`), so trashing or
+restoring a folder renames its rows too.
+
+A delete for good already needs no walk: it removes the rows and subtracts the
 folder's stored size from its parents. A copy keeps its walk of the new
 folder, since the copies are new files whose times and size on disk can
 differ from the source's.
 
 ### Step 4: storage version 3
 
-About 15 files, storage only. On upgrade the old database is quarantined as
+About 16 files: storage and one build file, so it needs the full test run.
+On upgrade the old database is quarantined as
 incompatible and the index is rebuilt once; search and folder sizes are
 unavailable until that first scan finishes.
 
@@ -228,6 +234,26 @@ unavailable until that first scan finishes.
 - Commit 50,000 rows at a time instead of 500.
 - Use the trigram index as a prefilter for case-sensitive search: 345 ms
   becomes 10 ms.
+
+Three settings of the SQLite driver (`mattn/go-sqlite3`) belong to this step,
+in `backend/indexer/internal/storage/open.go` and `mk/go.mk`:
+
+- **Write transactions start with `_txlock=immediate`.** The driver begins
+  every transaction as a plain `BEGIN`. In WAL mode a transaction that reads
+  first and writes later then fails at once with "database is locked" when
+  another process wrote in between, and the busy timeout does not apply.
+  That cannot happen while only one writer is ever active, as today. Step 5
+  has the scanner and the daemon writing at the same time, so this must be
+  in place before it.
+- **`PRAGMA temp_store = MEMORY` runs on each connection.** The driver has no
+  connection-string setting for it. With 500-row commits SQLite pushes
+  3.6 GB per scan through temp files in `SQLITE_TMPDIR`, which is on disk
+  (benchmark); the larger commits above remove most of that and this
+  removes the rest.
+- **The indexer is built with `sqlite_omit_load_extension`** beside
+  `sqlite_fts5`. A root daemon has no use for loading SQLite extensions.
+  Every query is parameterised, so this is hardening and closes no known
+  hole.
 
 Effect in the benchmark: the database goes from 1.34 GB to 0.99 GB and one
 rescan cycle from 13.5 GB written to 3.9 GB.

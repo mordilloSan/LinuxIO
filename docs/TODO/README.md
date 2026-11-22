@@ -6,6 +6,7 @@ the API, jobs, scheduled scripts, the packages and consistency.
 Plans for things that are not built yet each have their own document:
 
 - [Frontend test coverage](./e2e-testing.md)
+- [Indexer rework: cheaper rescans and updates that are not dropped](./indexer-rework.md)
 - [Watched conditions: checks that raise alerts on a schedule](./watched-conditions.md)
 
 ## Dependency maintenance
