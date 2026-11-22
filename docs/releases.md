@@ -116,7 +116,7 @@ failure anywhere, in either package format, stops everything after it:
 | `rpm` | `RPM_IMAGE` | Unpacks the compile job's programs; `make package-rpm`; `make test-packages-quiet`; keeps the RPM | `contents: read` | none |
 | `repositories` | `RPM_IMAGE` | Fetches the kept earlier packages; imports the signing subkey into a GnuPG home of its own; `make repo-apt repo-rpm`; checks every signature against `packaging/keys/linuxio.asc`; deletes the GnuPG home; keeps the tree as the Pages artifact and this version's packages as the release assets | `contents: read` | environment `release`, `LINUXIO_SIGNING_KEY` |
 | `deploy` | `ubuntu-latest` (calls the Pages API) | `actions/deploy-pages` with the tree | `pages: write`, `id-token: write` | environment `github-pages` |
-| `publish` | `ubuntu-latest` (calls the Releases API) | Writes the release notes with `.github/scripts/changelog-entry.sh`, which names an author as `@login` only when GitHub knows the account behind the commit and by Git author name otherwise, and lists each author once under Contributors; creates a draft release with the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write` | none |
+| `publish` | `ubuntu-latest` (calls the Releases API) | Reads the release notes from the merged release PR: the PR from `dev/<tag>` whose merge commit is the tagged commit, with the body `gh release-flow open-pr` wrote (see "Release notes"); fails when there is none or its body is empty; creates a draft release with the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write`, `pull-requests: read` | none |
 
 The workflow's default permissions are none. The package tests run before any
 job that can see the signing key, and the GitHub release is published only
@@ -131,6 +131,25 @@ Dispatched by hand without `publish` (on any branch or tag), the workflow runs
 package tests that touches no key, no Pages and no release. With `publish` on
 an existing tag, it releases that tag again; a release already published is
 never replaced (its draft is).
+
+### Release notes
+
+The notes are the release PR's body, which `gh release-flow open-pr` writes
+from the commits since the previous tag and rewrites on every run: What's
+Changed, one section per Conventional Commit type, with Breaking Changes and
+Security first; New Contributors when there are any; and the Full Changelog
+link. Commit footers feed it: `Fixes #N` and `Refs #N` link issues,
+`BREAKING CHANGE:` lists a change under Breaking Changes, and `Security:` with
+an advisory id or a severity lists it under Security. The format is described
+in [gh-release-flow's README](https://github.com/mordilloSan/gh-release-flow#generated-changelog)
+and the footers in the shared
+[contributing guide](https://github.com/mordilloSan/.github/blob/main/CONTRIBUTING.md#commit-messages).
+
+`publish` reads the body as it stood when the PR merged, so an edit made on
+the PR before `gh release-flow merge` reaches the release, and one made before
+a later `open-pr` run does not. An introduction is written on the published
+release on GitHub: a release is immutable, but its title and notes stay
+editable.
 
 ## Repositories
 

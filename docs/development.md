@@ -948,9 +948,5 @@ The full index groups the supported targets as follows:
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)
 
-The release notes script (`.github/scripts/changelog-entry.sh`) has a fixture
-test, `.github/scripts/tests/changelog-entry-fixtures.sh`, which
-`make test-packaging-scripts` runs with the packaging fixtures.
-
 `_build-binaries` is an internal implementation target. It remains callable
 for diagnostics but is not part of the normal user workflow.

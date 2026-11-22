@@ -78,7 +78,7 @@ test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./p
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
 
-test-packaging-scripts: ## Run host-independent fixture tests of the packaging files and scripts, and of the release notes script
+test-packaging-scripts: ## Run host-independent fixture tests of the packaging files and scripts
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package file fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/package-files-fixtures.sh"
@@ -94,9 +94,6 @@ test-packaging-scripts: ## Run host-independent fixture tests of the packaging f
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running signed repository fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/repo-fixtures.sh"
-	@echo ""
-	@$(PRINTC) "$(COLOR_CYAN)🧪 Running release notes fixture tests...$(COLOR_RESET)"
-	@bash "$(repo_root)/.github/scripts/tests/changelog-entry-fixtures.sh"
 
 test-indexer-systemd-integration: ## Run the opt-in disposable-host indexer smoke test
 	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"
