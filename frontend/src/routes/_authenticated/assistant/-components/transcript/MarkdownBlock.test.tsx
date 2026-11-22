@@ -242,7 +242,27 @@ describe("MarkdownBlock open in terminal", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Open in terminal" }),
     );
-    expect(open).toHaveBeenCalledWith("sudo virsh list --all");
+    expect(open).toHaveBeenCalledWith("sudo virsh list --all", false);
+  });
+
+  it("asks for a new tab on a middle click or with Ctrl held", async () => {
+    const open = vi.fn();
+    render(
+      <OpenInTerminalContext value={open}>
+        <MarkdownBlock text={fence("bash")} />
+      </OpenInTerminalContext>,
+    );
+    const button = screen.getByRole("button", { name: "Open in terminal" });
+    const user = userEvent.setup();
+    await user.pointer({ keys: "[MouseMiddle]", target: button });
+    expect(open).toHaveBeenLastCalledWith("sudo virsh list --all", true);
+    expect(open).toHaveBeenCalledTimes(1);
+
+    await user.keyboard("{Control>}");
+    await user.click(button);
+    await user.keyboard("{/Control}");
+    expect(open).toHaveBeenLastCalledWith("sudo virsh list --all", true);
+    expect(open).toHaveBeenCalledTimes(2);
   });
 
   it("offers no terminal for code that is not a shell command", () => {

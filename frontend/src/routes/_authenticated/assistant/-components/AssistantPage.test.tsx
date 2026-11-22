@@ -19,11 +19,21 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useNavigate: () => mocks.navigate,
 }));
 
-const mocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  typeInTerminalTab: vi.fn(),
+  openTerminalTab: vi.fn(),
+}));
+vi.mock("@/utils/terminalTab", () => ({
+  typeInTerminalTab: mocks.typeInTerminalTab,
+  openTerminalTab: mocks.openTerminalTab,
+}));
 const connectSpy = vi.fn(async () => {});
 
 beforeEach(() => {
   mocks.navigate.mockReset();
+  mocks.typeInTerminalTab.mockReset().mockResolvedValue(null);
+  mocks.openTerminalTab.mockReset();
   assistantStore.disconnect();
   connectSpy.mockClear();
   vi.spyOn(assistantStore, "connect").mockImplementation(connectSpy);
@@ -342,9 +352,86 @@ describe("AssistantPage", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: "Open in terminal" }),
     );
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      to: "/terminal",
-      state: { terminalCommand: "sudo virsh list --all" },
+    await waitFor(() =>
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        to: "/terminal",
+        state: { terminalCommand: "sudo virsh list --all" },
+      }),
+    );
+    expect(mocks.openTerminalTab).not.toHaveBeenCalled();
+  });
+
+  describe("with the terminal in another tab", () => {
+    const showCommand = () => {
+      render(<AssistantPage agent="claude" />);
+      setState({
+        status: "ready",
+        sessionId: "s",
+        blocks: [{ kind: "agent", id: "1", text: "```bash\nuptime\n```" }],
+      });
+      return screen.findByRole("button", { name: "Open in terminal" });
+    };
+
+    it("types the command there and keeps the chat in view", async () => {
+      mocks.typeInTerminalTab.mockResolvedValue("typed");
+      await userEvent.click(await showCommand());
+      await waitFor(() =>
+        expect(mocks.typeInTerminalTab).toHaveBeenCalledWith("uptime"),
+      );
+      expect(mocks.navigate).not.toHaveBeenCalled();
+      expect(mocks.openTerminalTab).not.toHaveBeenCalled();
+    });
+
+    it("leaves a second click to the tab that is still opening", async () => {
+      mocks.typeInTerminalTab.mockResolvedValue("opening");
+      await userEvent.click(await showCommand());
+      await waitFor(() =>
+        expect(mocks.typeInTerminalTab).toHaveBeenCalledWith("uptime"),
+      );
+      expect(mocks.navigate).not.toHaveBeenCalled();
+      expect(mocks.openTerminalTab).not.toHaveBeenCalled();
+    });
+
+    it("opens one tab for two quick middle clicks", async () => {
+      let found: (went: null) => void = () => {};
+      mocks.typeInTerminalTab.mockReturnValue(
+        new Promise((resolve) => (found = resolve)),
+      );
+      mocks.openTerminalTab.mockReturnValue(true);
+      const button = await showCommand();
+      await userEvent.pointer({ keys: "[MouseMiddle]", target: button });
+      await userEvent.pointer({ keys: "[MouseMiddle]", target: button });
+      found(null);
+      await waitFor(() =>
+        expect(mocks.openTerminalTab).toHaveBeenCalledTimes(1),
+      );
+      expect(mocks.typeInTerminalTab).toHaveBeenCalledTimes(1);
+    });
+
+    it("opens a new tab on a middle click when none has a terminal", async () => {
+      mocks.openTerminalTab.mockReturnValue(true);
+      await userEvent.pointer({
+        keys: "[MouseMiddle]",
+        target: await showCommand(),
+      });
+      await waitFor(() =>
+        expect(mocks.openTerminalTab).toHaveBeenCalledWith("uptime"),
+      );
+      expect(mocks.navigate).not.toHaveBeenCalled();
+    });
+
+    it("opens the terminal in place when the browser refuses the tab", async () => {
+      mocks.openTerminalTab.mockReturnValue(false);
+      await userEvent.pointer({
+        keys: "[MouseMiddle]",
+        target: await showCommand(),
+      });
+      await waitFor(() =>
+        expect(mocks.navigate).toHaveBeenCalledWith({
+          to: "/terminal",
+          state: { terminalCommand: "uptime" },
+        }),
+      );
     });
   });
 

@@ -1092,3 +1092,100 @@ test("keeps a long answer with a code block inside the chat's own scroller", asy
   ).toBe(0);
   await expect(input).toBeInViewport();
 });
+
+test("types a command in a terminal tab beside the chat, and reuses that tab", async ({
+  page,
+}) => {
+  await serveAgent(page, (request, { send, notify }) => {
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: { sessionCapabilities: { list: {} } },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessions: [] } });
+        break;
+      case "session/new":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessionId: "s1" } });
+        break;
+      case "session/prompt":
+        notify("s1", {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: "First:\n\n```bash\nuptime\n```\n\nThen:\n\n```bash\ndf -h\n```",
+          },
+        });
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { stopReason: "end_turn" },
+        });
+        break;
+    }
+  });
+  // The shell of the tab the chat opens: what reaches it was typed there.
+  // Like bash, it has bracketed paste on exactly while it is at its prompt.
+  let typed = "";
+  let shellPrints: (text: string) => void = () => {};
+  await page.context().routeWebSocket("**/ws", (socket) => {
+    let shellId: number | undefined;
+    socket.onMessage((message) => {
+      if (typeof message === "string") return;
+      if (message[4] === 0x01) {
+        const { route } = JSON.parse(message.subarray(14).toString()) as {
+          route?: string;
+        };
+        if (route !== "terminal.open") return;
+        const id = message.readUInt32BE(0);
+        shellId = id;
+        shellPrints = (text) => socket.send(dataFrame(id, text));
+        shellPrints("\u001b[?2004h$ ");
+      } else if (
+        message.readUInt32BE(0) === shellId &&
+        message[5] === BRIDGE_DATA
+      ) {
+        typed += message.subarray(14).toString();
+      }
+    });
+  });
+
+  await page.goto("/assistant");
+  const input = page.getByLabel("Message");
+  await expect(input).toBeEnabled();
+  await input.fill("hello");
+  await input.press("Enter");
+  const buttons = page.getByRole("button", { name: "Open in terminal" });
+  await expect(buttons).toHaveCount(2);
+
+  // The middle button opens the terminal in a tab of its own.
+  const opening = page.waitForEvent("popup");
+  await buttons.first().click({ button: "middle" });
+  const terminalTab = await opening;
+  await expect(terminalTab).toHaveURL(/\/terminal$/);
+  await expect.poll(() => typed).toBe("uptime");
+
+  // A plain click now types into that tab; the chat stays where it is.
+  await buttons.last().click();
+  await expect.poll(() => typed).toBe("uptimedf -h");
+  await expect(page).toHaveURL(/\/assistant$/);
+  expect(page.context().pages()).toHaveLength(2);
+  await expect(buttons).toHaveCount(2);
+
+  // While a program has the terminal, a command waits for the prompt.
+  shellPrints("\u001b[?2004l\r\n");
+  await buttons.first().click();
+  await expect(
+    terminalTab.getByText("A command from the Assistant is waiting"),
+  ).toBeVisible();
+  expect(typed).toBe("uptimedf -h");
+  shellPrints("\u001b[?2004h$ ");
+  await expect.poll(() => typed).toBe("uptimedf -huptime");
+});

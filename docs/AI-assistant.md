@@ -556,6 +556,48 @@ advertises the matching capability.
   history state once taken, so a reload does not type it again, and nothing
   is typed into an agent login PTY. Code in a plugin pane or a side question
   has Copy only.
+
+  The terminal can also sit in a browser tab beside the chat
+  (`utils/terminalTab.ts`). A click first asks, on a `BroadcastChannel`,
+  whether another tab of this server has its shell terminal up, and waits
+  200 ms for an answer. A tab that answers gets the command and the chat
+  stays where it is; with several, the first to answer gets it. With none, a
+  middle click or Ctrl+click (Cmd on a Mac) opens `/terminal` in a new tab
+  and hands the command over once that terminal says it is up, within 30 s
+  (a second click in that time replaces the command the tab will get),
+  and a plain click navigates as above; so does a middle click when the
+  browser refuses the tab. The button's tooltip names the middle click. Each
+  browser tab has a shell of its own, so every step of an answer lands in the
+  one shell of that tab, where an earlier `cd` still holds. The channel
+  carries the command for the same reason history state does: only a page of
+  this origin can post to it, never a link. The chat opens its tab under a
+  window name of its own, which is the name that tab answers by, so the
+  command for a new tab goes to that tab and to no other terminal. The
+  terminal passes what it receives through `typedCommand.ts`, and a terminal
+  showing an agent login, or one whose shell has ended, does not answer.
+
+  Nobody is looking at the terminal tab when such a command arrives, so it
+  is typed only at a prompt: a shell that turns bracketed paste on and off
+  (bash 5.1 and later, zsh, fish) has it on exactly while it waits at its
+  prompt, and a command that arrives while a program has the terminal (an
+  editor, a pager, a running command) waits, with a line in the terminal
+  saying so, and is typed when the prompt is back. A shell never seen to
+  touch the mode (an older bash) gives no such sign, and one line is typed
+  into it as it is on the page's own visit. What the page remembers of a
+  shell from its last visit holds only until the shell next sets the mode.
+
+  Known limits: a page can bring to the front only a tab it opened, and not
+  in every browser, so the chat shows "Sent to your terminal tab" when it is
+  still the tab in view 300 ms later. A terminal tab that has moved to
+  another page, or that the browser has put to sleep, does not answer, and
+  the click then acts as if there were none. Reloading the chat forgets which
+  tab it opened; the command still reaches it, without the tab coming
+  forward. The new tab is opened 200 ms after the click, once no terminal
+  has answered; a browser that allows a new tab only inside the click itself
+  refuses it, and the terminal opens in place of the chat (checked in
+  Chromium only). A tab that never brings a terminal up within the 30 s,
+  such as one that lands on the sign-in page, drops its command without a
+  message.
 - **Auto-scroll.** The transcript follows new content while it is scrolled to
   the bottom and pauses when the user scrolls up.
 - **Shortcuts.** Enter sends, Shift+Enter inserts a newline, Escape stops a

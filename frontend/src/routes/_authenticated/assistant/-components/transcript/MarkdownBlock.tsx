@@ -19,6 +19,7 @@ import {
   AppCopyResultIcon,
   AppCopyResultStatus,
 } from "@/components/ui/AppCopyResult";
+import AppTooltip from "@/components/ui/AppTooltip";
 import {
   COPY_RESULT_LABEL,
   useCopyResult,
@@ -39,10 +40,11 @@ const SHELL_FENCES = new Set(["bash", "sh", "shell", "zsh"]);
 /**
  * Set by a page that can hand a command to the terminal: shell blocks under
  * it get an "Open in terminal" button. Without it (a plugin pane, a side
- * question) code can only be copied.
+ * question) code can only be copied. `newTab` is the user asking for the
+ * terminal beside the chat, with the middle button or Ctrl.
  */
 export const OpenInTerminalContext = createContext<
-  ((command: string) => void) | null
+  ((command: string, newTab: boolean) => void) | null
 >(null);
 
 function CodeBlock({ children }: { children?: ReactNode }) {
@@ -105,13 +107,25 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           </AppButton>
           <AppCopyResultStatus result={copyResult} />
           {openInTerminal && body && SHELL_FENCES.has(fence) ? (
-            <AppButton
-              onClick={() => openInTerminal(body)}
-              size="small"
-              startIcon={<Icon icon="mdi:console" width={14} />}
-            >
-              Open in terminal
-            </AppButton>
+            <AppTooltip title="Middle-click, or Ctrl+click (Cmd on a Mac), for a terminal in a tab of its own">
+              <AppButton
+                // A button has no "open in new tab" of its own.
+                onAuxClick={(event) => {
+                  if (event.button === 1) openInTerminal(body, true);
+                }}
+                onClick={(event) =>
+                  openInTerminal(body, event.ctrlKey || event.metaKey)
+                }
+                // The middle button would start the browser's autoscroll.
+                onMouseDown={(event) => {
+                  if (event.button === 1) event.preventDefault();
+                }}
+                size="small"
+                startIcon={<Icon icon="mdi:console" width={14} />}
+              >
+                Open in terminal
+              </AppButton>
+            </AppTooltip>
           ) : null}
         </div>
       </div>
