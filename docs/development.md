@@ -385,8 +385,10 @@ volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
 kernel before 6.19, where a signal does not abort a scrub or a replace. The
 test program is built without cgo, so it runs on the older glibc. The browser
 specs run there too (`make vm-install VM_RELEASE=noble`, then
-`make test-vm-browser-rerun VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in
-and the scheduled-script specs were run on it.
+`make test-vm-browser-rerun VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in,
+the scheduled-script specs and `package-repository.spec.ts` were run on it,
+and the DEB's removal, purge and install again were checked there by hand
+([Packages](./packaging.md#removal)).
 
 `DISTRO=fedora` on a `vm-*` or `test-vm-*` target selects the Fedora VMs
 instead of Ubuntu's: the domain `linuxio-e2e-fedora` (`linuxio-e2e-fedora-2`

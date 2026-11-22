@@ -85,11 +85,11 @@ after a change that issues ioctls).
   must not show `docker.service` waiting 30 s).
 
 - The package's install, upgrade from the signed repository, removal and
-  kept configuration ran in the test VMs on Ubuntu 26.04 and Fedora 45 only.
-  Not run: Debian stable and the previous Fedora release, which have no test
-  VM (the DEB takes its dependencies' names from Ubuntu, and that Debian has
-  them under the same names is expected, not seen), and the DEB on Ubuntu
-  24.04, which the rig has (`VM_RELEASE=noble`). **needs a host**
+  kept configuration ran in the test VMs on Ubuntu 26.04, Ubuntu 24.04 and
+  Fedora 45 only. Not run: Debian stable and the previous Fedora release,
+  which have no test VM (the DEB takes its dependencies' names from Ubuntu,
+  and that Debian has them under the same names is expected, not seen).
+  **needs a host**
 - An update of LinuxIO by the distribution's unattended upgrade
   (`unattended-upgrades`, `dnf-automatic`) with a job running is not run:
   that LinuxIO then runs the new build with no `linuxio restart`, the job
