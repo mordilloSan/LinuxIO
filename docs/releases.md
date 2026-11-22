@@ -145,11 +145,12 @@ in [gh-release-flow's README](https://github.com/mordilloSan/gh-release-flow#gen
 and the footers in the shared
 [contributing guide](https://github.com/mordilloSan/.github/blob/main/CONTRIBUTING.md#commit-messages).
 
-`publish` reads the body as it stood when the PR merged, so an edit made on
-the PR before `gh release-flow merge` reaches the release, and one made before
-a later `open-pr` run does not. An introduction is written on the published
-release on GitHub: a release is immutable, but its title and notes stay
-editable.
+`publish` reads the body as it stands when the job runs, after the build, the
+approval of the `release` environment and the Pages deploy: an edit made on
+the PR before `gh release-flow merge` reaches the release, one made before a
+later `open-pr` run does not, and one made on the merged PR before `publish`
+runs reaches it too. An introduction is written on the published release on
+GitHub: a release is immutable, but its title and notes stay editable.
 
 ## Repositories
 

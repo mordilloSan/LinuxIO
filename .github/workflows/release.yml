@@ -504,8 +504,8 @@ jobs:
           path: release-assets
 
       # The notes are the body gh release-flow open-pr wrote on the release PR,
-      # as it stood when the PR merged: the PR from dev/<tag> whose merge commit
-      # is the commit this run's tag points at.
+      # as it stands when this job runs: the PR from dev/<tag> whose merge
+      # commit is the commit this run's tag points at.
       - name: Read the release notes
         env:
           GH_TOKEN: ${{ github.token }}
