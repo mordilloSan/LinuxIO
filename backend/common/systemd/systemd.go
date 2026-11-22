@@ -48,6 +48,18 @@ func ReloadOrTryRestartUnit(ctx context.Context, name string) error {
 	return callUnitJob(ctx, name, "ReloadOrTryRestartUnit", "try-reload-or-restart")
 }
 
+// TryRestartUnit restarts a running unit, as systemctl try-restart does, and
+// does nothing for a stopped one or for one the manager will not queue a job
+// for because no unit file defines it or it is masked. It returns once the
+// job is queued, not when the unit is back.
+func TryRestartUnit(ctx context.Context, name string) error {
+	err := callUnitJob(ctx, name, "TryRestartUnit", "try-restart")
+	if noSuchUnit(err) || unitMasked(err) {
+		return nil
+	}
+	return err
+}
+
 func EnableUnit(ctx context.Context, name string) error {
 	return unitFilesOp(ctx, name, "EnableUnitFiles", "enable", []any{true}, new(bool))
 }
@@ -360,6 +372,13 @@ func GetSocketState(ctx context.Context, name string) (SocketState, error) {
 func noSuchUnit(err error) bool {
 	var busErr godbus.Error
 	return errors.As(err, &busErr) && busErr.Name == "org.freedesktop.systemd1.NoSuchUnit"
+}
+
+// unitMasked reports whether err is the manager's refusal to queue a job for
+// a masked unit.
+func unitMasked(err error) bool {
+	var busErr godbus.Error
+	return errors.As(err, &busErr) && busErr.Name == "org.freedesktop.systemd1.UnitMasked"
 }
 
 // SystemStopping reports whether the manager's SystemState is "stopping",

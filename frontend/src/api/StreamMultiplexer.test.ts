@@ -329,24 +329,17 @@ describe("StreamMultiplexer", () => {
     expect(resizeView.getUint16(2, false)).toBe(0);
   });
 
-  it("notifies status and updating listeners and unsubscribes cleanly", () => {
+  it("notifies status listeners and unsubscribes cleanly", () => {
     const mux = new StreamMultiplexer("ws://linuxio.test/ws");
     const statusListener = vi.fn();
-    const updatingListener = vi.fn();
     const unsubscribeStatus = mux.addStatusListener(statusListener);
-    const unsubscribeUpdating = mux.addUpdatingListener(updatingListener);
 
     FakeWebSocket.latest().open();
-    mux.setUpdating(true);
     unsubscribeStatus();
-    unsubscribeUpdating();
-    mux.setUpdating(false);
     FakeWebSocket.latest().closeWith({ code: 1006 });
 
     expect(statusListener).toHaveBeenCalledWith("open");
     expect(statusListener).not.toHaveBeenCalledWith("closed");
-    expect(updatingListener).toHaveBeenCalledTimes(1);
-    expect(updatingListener).toHaveBeenCalledWith(true);
   });
 
   it("notifies status listeners exactly once on explicit close()", () => {

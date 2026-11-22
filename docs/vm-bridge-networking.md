@@ -81,12 +81,64 @@ or namespace path, and the fix: remove them, set up the bridge, recreate them
 with the bridge as parent.
 
 Docker loads `br_netfilter` and sets the iptables `FORWARD` policy to `DROP`,
-which drops VM↔LAN frames on any Linux bridge. The installers ship
+which drops VM↔LAN frames on any Linux bridge. The package installs
 `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` into
-`/etc/libvirt/hooks/qemu.d/`; on every domain start it inserts
+`/etc/libvirt/hooks/qemu.d/` ([The libvirt hook](./packaging.md#the-libvirt-hook)); on every domain start it inserts
 `FORWARD -i <bridge> -o <bridge> -j ACCEPT` (IPv4 and IPv6) for each host bridge
-the domain attaches to, skipping libvirt's own `virbr*`. Bridge options only
-warn about the `DROP` policy when that hook is not installed.
+the domain attaches to, skipping libvirt's own `virbr*`. libvirt runs a hook
+only when it is an executable regular file, and finds its hooks only when its
+daemon starts, which is why the package's post-install step restarts
+`libvirtd.service` and `virtqemud.service` after it installs the hook. The hook's first line exits
+when `/usr/bin/linuxio` is missing: a Debian-family package removal leaves a
+configuration file in place until a purge, and libvirt would go on running it.
+
+When `bridge-nf-call-iptables` is `1` and the `FORWARD` policy is `DROP`,
+LinuxIO warns if the hook is missing, or if it exists but is not an executable
+regular file. The warning appears in the bridge options of the create-bridge
+and hand-off dialogs, and in the VM preflight shown on the Virtual Machines
+page and in the Create VM dialog, so a hook removed after the bridge exists is
+still reported. It is a warning only and never blocks creating a bridge or a
+VM. Bridge options also say when the `FORWARD` policy could not be read
+(`iptables -S FORWARD` failed); the VM preflight, which the page asks for every
+few seconds, says nothing then.
+
+Both answers (`network.get_bridge_options`, `virt.preflight`) carry the hook as
+a field of its own, `bridgeHook`, present only while that firewall drops
+bridged traffic: its `state` is `installed`, `missing` or `not_executable`, and
+`restorable` says the package's untouched copy of the hook,
+`/usr/share/linuxio/libvirt/linuxio-bridge-netfilter`, is there. Beside the
+warning, a privileged session gets a Restore button when that copy is there;
+without it, the warning says so. Reinstalling the package is not the fix on
+the Debian family, where a reinstall does not bring back a configuration file
+an administrator deleted.
+
+Restore (`network.restore_bridge_hook`, privileged, no request) takes no path
+from the request. It copies the fixed copy under `/usr/share/linuxio` to the
+fixed hook path, mode `0755`, through a new temporary file in
+`/etc/libvirt/hooks/qemu.d` (made `0755` when missing) and a rename, so libvirt
+never runs a half-written hook. A regular file at the hook's path is replaced
+whatever its mode; a symlink, a folder or anything else there is refused with a
+409 and left for the administrator to remove, never followed. A missing copy is
+a 409 too. Then it runs the package's restart over D-Bus, `TryRestartUnit`
+for `libvirtd.service` and `virtqemud.service`: a daemon that is stopped, not
+installed or masked is left alone. libvirt's man pages say restarting
+`libvirtd` or `virtqemud` does not interrupt running guests, and on that
+restart libvirt calls the hook with `reconnect` for each running guest, which
+the hook ignores (libvirt kills a guest whose `reconnect` hook fails). A restart
+that cannot be queued is reported as an error that says the hook is restored
+but libvirt runs it only after its daemon next starts; the Restore button shows
+it in place, and the restored file stays.
+
+Known limits:
+
+- The check reads the hook's file, not what libvirt loaded. A hook made
+  executable or put back while the libvirt daemon runs passes the check, and
+  libvirt runs it only after that daemon restarts.
+- Restore does not open the bridge for guests already running: the hook adds
+  its rule when a guest starts, so a running guest's bridge gets it when a
+  guest on that bridge next starts.
+- Restore returns once the daemons' restart jobs are queued; a daemon that
+  then fails to start is not reported there.
 
 The current request performs one inventory and ownership scan. The selected
 backend then rechecks its mutation boundary and owns persistence:

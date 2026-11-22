@@ -30,9 +30,13 @@ func withFakeLibvirt(t *testing.T, fake libvirtConn) {
 	}
 	oldLockDir := vmLockDir
 	vmLockDir = t.TempDir()
+	// Keep Preflight off the developer machine's bridge netfilter and iptables.
+	oldBridgeHook := bridgeHook
+	bridgeHook = func(context.Context) (*apischema.NetworkBridgeHook, []string) { return nil, nil }
 	t.Cleanup(func() {
 		withLibvirtConn = old
 		vmLockDir = oldLockDir
+		bridgeHook = oldBridgeHook
 	})
 }
 

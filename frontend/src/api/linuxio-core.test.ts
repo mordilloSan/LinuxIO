@@ -61,11 +61,8 @@ function createMux(stream: Stream | null = createStream()) {
     addStatusListener: vi.fn(() => () => undefined),
     close: vi.fn(),
     getStream: vi.fn(),
-    offUpdating: vi.fn(),
-    onUpdating: vi.fn(() => () => undefined),
     openStream,
     removeStatusListener: vi.fn(),
-    setUpdating: vi.fn(),
     status: "open",
     url: "ws://localhost/ws",
   };

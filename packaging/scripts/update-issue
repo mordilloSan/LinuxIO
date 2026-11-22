@@ -1,69 +1,59 @@
 #!/usr/bin/env bash
-# LinuxIO issue banner generator - shows access URLs at SSH login
-# Run by linuxio-issue.service (pulled in by linuxio-webserver.socket)
+# LinuxIO login banner: writes the addresses LinuxIO answers on into
+# /run/linuxio/issue, which /etc/motd.d/linuxio (SSH login, through pam_motd)
+# and /etc/issue.d/linuxio.issue (the console, through agetty or kmscon) link
+# to. The package makes the links on its first install. Run once by
+# linuxio-issue.service, which linuxio-webserver.socket pulls in; with the
+# word "stop", which the service's stop runs, it writes how to start LinuxIO
+# instead, so a stopped LinuxIO does not advertise an address that does not
+# answer. The design is Cockpit's (src/systemd/update-issue).
+#
+# Usage: update-issue [stop]
 
 set -euo pipefail
 
-# Extract port from linuxio-webserver.socket unit file
-# Check in order: env var, /etc, /usr/lib, /lib
-if [[ -n "${SOCKET_FILE:-}" && -f "$SOCKET_FILE" ]]; then
-	: # Use env var if set
-elif [[ -f "/etc/systemd/system/linuxio-webserver.socket" ]]; then
-	SOCKET_FILE="/etc/systemd/system/linuxio-webserver.socket"
-elif [[ -f "/usr/lib/systemd/system/linuxio-webserver.socket" ]]; then
-	SOCKET_FILE="/usr/lib/systemd/system/linuxio-webserver.socket"
-elif [[ -f "/lib/systemd/system/linuxio-webserver.socket" ]]; then
-	SOCKET_FILE="/lib/systemd/system/linuxio-webserver.socket"
+# The port systemd listens on, a drop-in's included: the last line of
+# "Listen=[::]:8090 (Stream)" lines, one per ListenStream=.
+PORT=8090
+listen=$(systemctl show --property Listen linuxio-webserver.socket 2>/dev/null | tail -n1 || true)
+if [[ "$listen" =~ :([0-9]+)\ \( ]] || [[ "$listen" =~ ^Listen=([0-9]+)\ \( ]]; then
+	PORT="${BASH_REMATCH[1]}"
+fi
+
+if [[ "${1:-}" == stop ]]; then
+	OUTPUT="Start LinuxIO with: linuxio start"
 else
-	SOCKET_FILE=""
-fi
+	# Build the banner
+	HOSTNAME=$(hostname 2>/dev/null || echo "localhost")
+	URLS=()
 
-PORT=8090 # Default fallback
+	# Add hostname URL first
+	URLS+=("https://${HOSTNAME}:${PORT}/")
 
-if [[ -n "$SOCKET_FILE" && -f "$SOCKET_FILE" ]]; then
-	# Parse ListenStream=0.0.0.0:PORT or ListenStream=PORT
-	LISTEN_STREAM=$(grep -E '^ListenStream=' "$SOCKET_FILE" | head -1 | sed 's/^ListenStream=//' | xargs || echo "")
-
-	# Extract port: either "IP:PORT" or just "PORT"
-	if [[ "$LISTEN_STREAM" =~ :([0-9]+)$ ]]; then
-		# Format: IP:PORT
-		PORT="${BASH_REMATCH[1]}"
-	elif [[ "$LISTEN_STREAM" =~ ^([0-9]+)$ ]]; then
-		# Format: PORT only
-		PORT="${BASH_REMATCH[1]}"
+	# Add the primary IPv4 address: the source IP of the default outbound route.
+	# Plain interface enumeration is unreliable — it can pick docker/libvirt
+	# bridges, or WSL2's 10.255.255.254 DNS-tunneling address on lo.
+	FIRST_IPV4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 || true)
+	if [[ -z "$FIRST_IPV4" ]]; then
+		# No default route: fall back to the first global IPv4 on a real interface
+		FIRST_IPV4=$(ip -4 -o addr show scope global 2>/dev/null | awk '$2 !~ /^(lo|docker|virbr|br-)/ {print $4}' | cut -d/ -f1 | head -1 || true)
 	fi
-fi
-
-# Build the banner
-HOSTNAME=$(hostname 2>/dev/null || echo "localhost")
-URLS=()
-
-# Add hostname URL first
-URLS+=("https://${HOSTNAME}:${PORT}/")
-
-# Add the primary IPv4 address: the source IP of the default outbound route.
-# Plain interface enumeration is unreliable — it can pick docker/libvirt
-# bridges, or WSL2's 10.255.255.254 DNS-tunneling address on lo.
-FIRST_IPV4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 || true)
-if [[ -z "$FIRST_IPV4" ]]; then
-	# No default route: fall back to the first global IPv4 on a real interface
-	FIRST_IPV4=$(ip -4 -o addr show scope global 2>/dev/null | awk '$2 !~ /^(lo|docker|virbr|br-)/ {print $4}' | cut -d/ -f1 | head -1 || true)
-fi
-if [[ -n "$FIRST_IPV4" ]]; then
-	URLS+=("https://${FIRST_IPV4}:${PORT}/")
-fi
-
-# Join URLs with " or "
-OUTPUT="LinuxIO: "
-FIRST=1
-for url in "${URLS[@]}"; do
-	if [[ $FIRST -eq 1 ]]; then
-		OUTPUT+="${url}"
-		FIRST=0
-	else
-		OUTPUT+=" or ${url}"
+	if [[ -n "$FIRST_IPV4" ]]; then
+		URLS+=("https://${FIRST_IPV4}:${PORT}/")
 	fi
-done
+
+	# Join URLs with " or "
+	OUTPUT="LinuxIO: "
+	FIRST=1
+	for url in "${URLS[@]}"; do
+		if [[ $FIRST -eq 1 ]]; then
+			OUTPUT+="${url}"
+			FIRST=0
+		else
+			OUTPUT+=" or ${url}"
+		fi
+	done
+fi
 
 # Write to file if running from systemd, otherwise print to stdout
 OUTPUT_FILE="${OUTPUT_FILE:-/run/linuxio/issue}"
@@ -71,8 +61,8 @@ OUTPUT_FILE="${OUTPUT_FILE:-/run/linuxio/issue}"
 if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" != "-" ]]; then
 	# Ensure directory exists
 	mkdir -p "$(dirname "${OUTPUT_FILE}")" 2>/dev/null || true
-	# Write to file, padded with blank lines so every MOTD consumer
-	# (update-motd.d wrapper, /etc/motd.d symlink) renders it with spacing
+	# Write to file, padded with blank lines so the SSH login and the console
+	# render it with spacing
 	printf '\n%s\n\n' "${OUTPUT}" >"${OUTPUT_FILE}"
 	# The file is made with its folder's SELinux type, var_run_t, which sshd
 	# may not read; LinuxIO's module gives it motd_var_run_t, the type of

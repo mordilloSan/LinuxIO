@@ -67,7 +67,7 @@ Disabling LinuxIO-managed automatic installation does not require disabling
 
 Every automatic update is recorded in the job history as *System updates*,
 with its outcome, how long it ran and its output, whichever notify policy is
-stored and whether or not LinuxIO configured the schedule: the installer
+stored and whether or not LinuxIO configured the schedule: the package
 hooks the provider's upgrade service (`apt-daily-upgrade.service`,
 `dnf-automatic.service`, `dnf5-automatic.service` or
 `mintupdate-automation-upgrade.service`) with the same run-record drop-in

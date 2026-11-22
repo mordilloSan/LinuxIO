@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -122,5 +125,21 @@ func TestSetTimerIntervalDisablesAndRemovesDropIn(t *testing.T) {
 	}
 	if strings.Join(units, ",") != "disable "+indexerTimerUnitName+",stop "+indexerTimerUnitName {
 		t.Fatalf("systemd calls = %v", units)
+	}
+}
+
+// Removing the package deletes the indexer timer's drop-in, which LinuxIO wrote while it ran:
+// each path is in the removal lists of both packages.
+func TestPackageRemovalDeletesTheTimerDropIn(t *testing.T) {
+	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packaging", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{indexerTimerDropInPath} {
+			if !slices.Contains(strings.Fields(string(data)), path) {
+				t.Errorf("packaging/%s does not delete %s", script, path)
+			}
+		}
 	}
 }

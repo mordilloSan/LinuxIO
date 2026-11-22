@@ -55,7 +55,7 @@ func validateBridgeHash(bridgePath string) error {
 	return nil
 }
 
-const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
+const bridgeBinaryPath = version.LibexecDir + "/linuxio-bridge"
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.

@@ -1,7 +1,6 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
-import { isAppUpdateInProgress } from "@/contexts/appUpdateInProgress";
 import useAuth from "@/hooks/useAuth";
 import { useAccessContext } from "@/hooks/useCapabilities";
 
@@ -18,7 +17,6 @@ function ActiveApplicationRouterProvider() {
         isInitialized: true as const,
         user: auth.user,
       },
-      isUpdateBlocked: isAppUpdateInProgress,
     }),
     [access, auth.isAuthenticated, auth.user],
   );

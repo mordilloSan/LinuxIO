@@ -30,6 +30,12 @@ func TestRunOnlyExposesProcessMetadata(t *testing.T) {
 		want int
 	}{
 		{name: "help", args: []string{"--help"}, want: 0},
+		{name: "short help", args: []string{"-h"}, want: 0},
+		{name: "version word removed", args: []string{"version"}, want: 2},
+		{name: "help word removed", args: []string{"help"}, want: 2},
+		{name: "short version removed", args: []string{"-v"}, want: 2},
+		{name: "old config flag removed", args: []string{"--config-file", "/nonexistent/config.yaml"}, want: 2},
+		{name: "index worker old config flag removed", args: []string{"--index-mode", "--config-file", "/nonexistent/config.yaml"}, want: 2},
 		{name: "version", args: []string{"--version"}, want: 0},
 		{name: "index worker help", args: []string{"--index-mode", "--help"}, want: 0},
 		{name: "index worker private flag removed", args: []string{"--index-mode", "--db-path", "/tmp/index.db"}, want: 2},

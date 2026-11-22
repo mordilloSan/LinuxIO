@@ -429,31 +429,6 @@ func TestBridgeOptionsExplainIfupdownInterfaces(t *testing.T) {
 	}
 }
 
-func TestFirewallWarningsDependOnLibvirtHook(t *testing.T) {
-	env, runner := bridgeTestEnvironment(t, nil)
-	runner.outputs = map[string][]byte{"iptables -S FORWARD": []byte("-P FORWARD DROP\n")}
-	hookInstalled := false
-	env.ReadFile = func(path string) ([]byte, error) {
-		switch path {
-		case "/proc/sys/net/bridge/bridge-nf-call-iptables":
-			return []byte("1\n"), nil
-		case libvirtBridgeNetfilterHook:
-			if hookInstalled {
-				return []byte("#!/bin/sh\n"), nil
-			}
-		}
-		return nil, os.ErrNotExist
-	}
-
-	if warnings := firewallWarnings(context.Background(), env); len(warnings) != 1 || !strings.Contains(warnings[0], "libvirt hook") {
-		t.Fatalf("warnings without hook = %v", warnings)
-	}
-	hookInstalled = true
-	if warnings := firewallWarnings(context.Background(), env); len(warnings) != 0 {
-		t.Fatalf("warnings with hook = %v", warnings)
-	}
-}
-
 func TestBridgeOptionsRefuseMacvlanParents(t *testing.T) {
 	env, _ := bridgeTestEnvironment(t, []InterfaceProbe{
 		{Name: "eth0", MAC: "00:11:22:33:44:55", Ethernet: true, Addresses: []string{"192.0.2.5/24"}, DefaultRoute: true, VirtualChildren: []string{"unifi-net"}},

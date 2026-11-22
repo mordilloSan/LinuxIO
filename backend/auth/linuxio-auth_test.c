@@ -930,9 +930,63 @@ static int test_request_parsing(void)
   return 0;
 }
 
+// answer_arguments_case runs answer_arguments on one argument and returns its
+// result, with what it wrote in out and err.
+static int answer_arguments_case(const char *arg, char *out, size_t outsz, char *err, size_t errsz)
+{
+  char name[] = "linuxio-auth";
+  char value[64];
+  char *argv[] = {name, value, NULL};
+  FILE *outf = fmemopen(out, outsz, "w");
+  FILE *errf = fmemopen(err, errsz, "w");
+
+  if (!outf || !errf)
+    return -100;
+  memset(out, 0, outsz);
+  memset(err, 0, errsz);
+  (void)safe_snprintf(value, sizeof(value), "%s", arg ? arg : "");
+  int result = answer_arguments(arg ? 2 : 1, argv, outf, errf);
+  fclose(outf);
+  fclose(errf);
+  return result;
+}
+
+// The helper answers what every LinuxIO program answers, --version and
+// --help or -h, and starts for no other argument: the words and -v are not
+// spellings of the two.
+static int test_arguments(void)
+{
+  char out[1024], err[256];
+
+  CHECK(answer_arguments_case(NULL, out, sizeof(out), err, sizeof(err)) == -1);
+  CHECK(out[0] == '\0' && err[0] == '\0');
+
+  CHECK(answer_arguments_case("--version", out, sizeof(out), err, sizeof(err)) == 0);
+  CHECK(strcmp(out, "LinuxIO Auth test\n") == 0);
+
+  const char *help[] = {"--help", "-h"};
+  for (size_t i = 0; i < sizeof(help) / sizeof(help[0]); i++)
+  {
+    CHECK(answer_arguments_case(help[i], out, sizeof(out), err, sizeof(err)) == 0);
+    CHECK(strstr(out, "linuxio-auth: ") == out);
+    CHECK(strstr(out, "Started by systemd (linuxio-auth@.service), not by hand.") != NULL);
+    CHECK(strstr(out, "It also answers --help, -h and --version.\n") != NULL);
+  }
+
+  const char *refused[] = {"version", "help", "-v", "anything"};
+  for (size_t i = 0; i < sizeof(refused) / sizeof(refused[0]); i++)
+  {
+    CHECK(answer_arguments_case(refused[i], out, sizeof(out), err, sizeof(err)) == 2);
+    CHECK(out[0] == '\0');
+    CHECK(strstr(err, "unknown argument") != NULL);
+  }
+  return 0;
+}
+
 int main(void)
 {
   const struct test_case tests[] = {
+      {"arguments", test_arguments},
       {"identity validation", test_identity_validation},
       {"length-prefixed input", test_lenstr_rejects_ambiguous_input},
       {"length-prefixed deadline", test_lenstr_honors_absolute_deadline},

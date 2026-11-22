@@ -59,7 +59,7 @@ func TestOfferedPoliciesHaveNoNever(t *testing.T) {
 func TestAnOlderOnChangeReadsAsWhatItRuns(t *testing.T) {
 	for _, tc := range installedBackends() {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.files[notifyDropInPath(tc.service)] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider x --policy on_change\n")
+			tc.files[notifyDropInPath(tc.service)] = []byte("[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider x --policy on_change\n")
 			want := AutoUpdateNotifyOnFailure
 			if tc.name == "apt" {
 				want = AutoUpdateNotifyOnChange

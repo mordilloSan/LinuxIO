@@ -1,7 +1,6 @@
 // "A reboot or power-off is under way". A host going down ends the session
 // before the webserver exits, so the stream reports the session as expired;
-// AuthProvider reads this to leave that exit to the power overlay, as it does
-// for a self-update (appUpdateInProgress).
+// AuthProvider reads this to leave that exit to the power overlay.
 
 let pending = false;
 

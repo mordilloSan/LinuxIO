@@ -1,6 +1,9 @@
 package autoupdate
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,7 +18,7 @@ func TestWriteNotifyDropInContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(fake.files[aptAlertDropIn])
-	want := "[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy on_change\n"
+	want := "[Service]\nExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider apt --policy on_change\n"
 	if got != want {
 		t.Fatalf("drop-in = %q, want %q", got, want)
 	}
@@ -48,11 +51,11 @@ func TestReadNotifyPolicy(t *testing.T) {
 	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
 		t.Fatalf("missing drop-in = %q, want on_failure", got)
 	}
-	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider dnf --policy always\n")
+	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider dnf --policy always\n")
 	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyAlways {
 		t.Fatalf("policy = %q", got)
 	}
-	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider dnf --policy sometimes\n")
+	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider dnf --policy sometimes\n")
 	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
 		t.Fatalf("invalid policy read as %q, want on_failure", got)
 	}
@@ -69,7 +72,7 @@ func TestReadNotifyPolicyFallsBackOnlyForOnChange(t *testing.T) {
 		AutoUpdateNotifyAlways:    AutoUpdateNotifyAlways,
 		AutoUpdateNotifyOnFailure: AutoUpdateNotifyOnFailure,
 	} {
-		fake.files[aptAlertDropIn] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy " + string(stored) + "\n")
+		fake.files[aptAlertDropIn] = []byte("[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider apt --policy " + string(stored) + "\n")
 		if got := readNotifyPolicy(host, aptUpgradeService, offered); got != want {
 			t.Errorf("stored %q read as %q, want %q", stored, got, want)
 		}
@@ -109,7 +112,7 @@ func TestWritePendingDropIn(t *testing.T) {
 	if err := writePendingDropIn(host, aptRefreshService, "apt", true); err != nil {
 		t.Fatal(err)
 	}
-	want := "[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert pending-updates --provider apt\n"
+	want := "[Service]\nExecStopPost=/usr/libexec/linuxio/linuxio-worker alert pending-updates --provider apt\n"
 	if got := string(fake.files[path]); got != want {
 		t.Fatalf("drop-in = %q, want %q", got, want)
 	}
@@ -150,7 +153,7 @@ func TestValidateOptionsRejectsPendingWithoutSupport(t *testing.T) {
 	}
 }
 
-// The installer hooks these services with the run-record drop-in, and the
+// The package hooks these services with the run-record drop-in, and the
 // run recorder names them itself so it does not import this package: a
 // service one of the backends runs its updates in must be known to it.
 func TestScheduledRunKnowsTheUpgradeServices(t *testing.T) {
@@ -173,4 +176,35 @@ func TestNotifyDropInIsTheOneTheRunRecordHookLooksFor(t *testing.T) {
 	if got, want := notifyDropInPath(aptUpgradeService), scheduledrun.UpdateNotifyDropIn(aptUpgradeService); got != want {
 		t.Errorf("notifyDropInPath = %q, the run-record hook looks for %q", got, want)
 	}
+}
+
+// Removing the package deletes the alert drop-ins on the distribution's
+// update services and the schedule drop-ins on its update timers, which
+// LinuxIO wrote while it ran: each path is in the removal lists of both
+// packages.
+func TestPackageRemovalDeletesTheDropIns(t *testing.T) {
+	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "..", "packaging", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range updateDropInPaths() {
+			if !slices.Contains(strings.Fields(string(data)), path) {
+				t.Errorf("packaging/%s does not delete %s", script, path)
+			}
+		}
+	}
+}
+
+// updateDropInPaths are the drop-ins the backends write: the alert drop-in
+// on each update service and the schedule drop-in on each update timer.
+func updateDropInPaths() []string {
+	var paths []string
+	for _, service := range []string{aptRefreshService, aptUpgradeService, mintUpgradeService, "dnf-automatic.service", "dnf5-automatic.service"} {
+		paths = append(paths, notifyDropInPath(service))
+	}
+	for _, timer := range []string{"apt-daily.timer", "apt-daily-upgrade.timer", mintTimer, "dnf-automatic.timer", "dnf5-automatic.timer"} {
+		paths = append(paths, timerDropInPath(timer))
+	}
+	return paths
 }

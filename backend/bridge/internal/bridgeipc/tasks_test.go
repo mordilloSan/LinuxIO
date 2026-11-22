@@ -46,22 +46,22 @@ func TestStableTaskIdentityClaimIsIdempotentAndScoped(t *testing.T) {
 	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	identity := TaskIdentity{ID: "00000000-0000-4000-8000-000000000042", Fingerprint: "same-request"}
 
-	first, created, err := registry.ClaimForOwner("control.app_update", nil, owner, TaskLifetimeDurable, identity)
+	first, created, err := registry.ClaimForOwner("test.identity", nil, owner, TaskLifetimeDurable, identity)
 	if err != nil || !created {
 		t.Fatalf("first claim = %v, %t, %v", first, created, err)
 	}
-	second, created, err := registry.ClaimForOwner("control.app_update", nil, owner, TaskLifetimeDurable, identity)
+	second, created, err := registry.ClaimForOwner("test.identity", nil, owner, TaskLifetimeDurable, identity)
 	if err != nil || created || second != first {
 		t.Fatalf("repeat claim = %v, %t, %v; want existing task", second, created, err)
 	}
 
 	conflicting := identity
 	conflicting.Fingerprint = "different-request"
-	if _, _, err := registry.ClaimForOwner("control.app_update", nil, owner, TaskLifetimeDurable, conflicting); !errors.Is(err, ErrTaskIdentityConflict) {
+	if _, _, err := registry.ClaimForOwner("test.identity", nil, owner, TaskLifetimeDurable, conflicting); !errors.Is(err, ErrTaskIdentityConflict) {
 		t.Fatalf("fingerprint conflict error = %v", err)
 	}
 	otherOwner := TaskOwner{SessionID: "session-b", Username: "bob", UID: 1001}
-	if _, _, err := registry.ClaimForOwner("control.app_update", nil, otherOwner, TaskLifetimeDurable, identity); !errors.Is(err, ErrTaskIdentityConflict) {
+	if _, _, err := registry.ClaimForOwner("test.identity", nil, otherOwner, TaskLifetimeDurable, identity); !errors.Is(err, ErrTaskIdentityConflict) {
 		t.Fatalf("owner conflict error = %v", err)
 	}
 }

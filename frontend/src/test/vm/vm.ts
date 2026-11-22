@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -62,6 +64,8 @@ export const vmSsh = (command: string, input?: string | Buffer) =>
  * an apt run in the middle of a check is noise: it restarts services.
  */
 export async function stopAptRuns() {
+  // Fedora has no unattended runs: its seed switches dnf-makecache.timer off.
+  if (vmDistro !== "ubuntu") return;
   await vmSsh("sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer");
   await expect
     .poll(
@@ -664,3 +668,90 @@ export async function waitForIdle(unit: string) {
     )
     .toMatch(/^(inactive|failed)$/);
 }
+
+// LinuxIO from the VM's signed package repository (linuxio-vm.sh repo-publish;
+// docs/development.md, "Test VM"): a build is published there as a version,
+// and apt, dnf or the Updates page install it from there, checking every
+// signature as they would against the published repository.
+
+/** The VM's repository, PACKAGE_REPO in the rig: apt/ on Ubuntu, rpm/ on Fedora. */
+export const PACKAGE_REPO = `/srv/linuxio-repo/${vmDistro === "fedora" ? "rpm" : "apt"}`;
+
+/** The build make made, which `make vm-install` installs (mk/vm.mk). */
+export const plainBuild = () => process.env.LINUXIO_VM_BUILD_DIR ?? "";
+/** This tree with jobs.Protocol one higher and a version of its own (make vm-update-build). */
+export const updateBuild = () => process.env.LINUXIO_VM_UPDATE_BUILD ?? "";
+
+/**
+ * The version install gives the package: PACKAGE_VERSION on the Make target,
+ * or this checkout's (packaging/scripts/package-version.sh).
+ */
+export async function checkoutVersion(): Promise<string> {
+  const given = process.env.LINUXIO_VM_PACKAGE_VERSION ?? "";
+  if (given !== "") return given;
+  const script = path.resolve(
+    here,
+    "../../../../packaging/scripts/package-version.sh",
+  );
+  return (await execFileAsync(script, [], { encoding: "utf8" })).stdout.trim();
+}
+
+/** The version of the LinuxIO package installed in the VM, "" when none is. */
+export const installedVersion = async () =>
+  (
+    await vmSsh(
+      vmDistro === "fedora"
+        ? "! rpm -q linuxio >/dev/null 2>&1 || rpm -q --qf '%{VERSION}' linuxio"
+        : "dpkg-query -W -f '${Version}' linuxio 2>/dev/null || true",
+    )
+  ).trim();
+
+/**
+ * A version above v in dpkg's and rpm's order: v with +e2e1, or the next
+ * number when v already ends in +e2eN.
+ */
+export function nextVersion(v: string) {
+  const ours = v.match(/^(.*\+e2e)(\d+)$/);
+  return ours ? `${ours[1]}${Number(ours[2]) + 1}` : `${v}+e2e1`;
+}
+
+/** Version v as PackageKit names it: the RPM's carries its release, -1. */
+export const packageKitVersion = (v: string) =>
+  vmDistro === "fedora" ? `${v}-1` : v;
+
+/**
+ * Publishes the build in buildDir as LinuxIO version into the VM's
+ * repository; note, when given, goes in the package's SELinux module as a
+ * comment.
+ */
+export const publish = (buildDir: string, version: string, note?: string) =>
+  rig(["repo-publish", buildDir, version, ...(note ? [note] : [])]);
+
+/**
+ * The shell command that installs LinuxIO from the repository, or updates it
+ * to the newest version there, as an administrator does: the package
+ * manager's refresh first, then the install.
+ */
+export const INSTALL_FROM_REPO =
+  vmDistro === "fedora"
+    ? "sudo dnf install -y --refresh linuxio && sudo dnf upgrade -y linuxio"
+    : "sudo apt-get update -q && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -q -o DPkg::Lock::Timeout=600 linuxio";
+
+/** sha256sum of a file on this host. */
+export async function hostSha256(file: string) {
+  return createHash("sha256")
+    .update(await readFile(file))
+    .digest("hex");
+}
+
+/** The MainPID of unit, "0" when it does not run. */
+export const mainPid = async (unit: string) =>
+  (await vmSsh(`systemctl show -P MainPID ${unit}`)).trim();
+
+/** When unit last became active, in microseconds since boot; 0 if never. */
+export const activeSince = async (unit: string) =>
+  Number(
+    (
+      await vmSsh(`systemctl show -P ActiveEnterTimestampMonotonic ${unit}`)
+    ).trim(),
+  );

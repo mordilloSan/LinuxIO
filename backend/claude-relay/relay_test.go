@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // The test binary doubles as a fake `claude` when this variable names a mode:
@@ -306,7 +308,7 @@ func TestStreamJSONNeedsBothSides(t *testing.T) {
 }
 
 func TestChildEnvDropsTheBridgeVariables(t *testing.T) {
-	env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude", envPaneSocket + "=/tmp/x/pane.sock", envExecutable + "=/usr/local/bin/linuxio-claude-relay", "HOME=/home/ana"}
+	env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude", envPaneSocket + "=/tmp/x/pane.sock", envExecutable + "=/usr/libexec/linuxio/linuxio-claude-relay", "HOME=/home/ana"}
 	require.Equal(t, []string{"PATH=/bin", "HOME=/home/ana", envExecutable + "=/opt/claude"}, childEnv(env, "/opt/claude"))
 }
 
@@ -321,6 +323,28 @@ func TestRunWithoutClaudeBinExitsWithUsage(t *testing.T) {
 	require.Contains(t, stderr.String(), envClaudeBin)
 }
 
+// Outside a chat the relay has nothing to start, so the two requests are its
+// own to answer.
+func TestRunWithoutClaudeBinAnswersHelpAndVersion(t *testing.T) {
+	mustNotExec := func(string, []string, []string) error {
+		t.Error("must not exec")
+		return nil
+	}
+	var stdout, stderr syncBuffer
+	code := run(process{args: []string{"--version"}, env: []string{"PATH=/bin"}, stdout: &stdout, stderr: &stderr, exec: mustNotExec})
+	require.Equal(t, 0, code)
+	require.Equal(t, "LinuxIO Claude Relay "+version.Version+"\n", stdout.String())
+	require.Empty(t, stderr.String())
+
+	for _, arg := range []string{"--help", "-h"} {
+		var help syncBuffer
+		code := run(process{args: []string{arg}, env: []string{"PATH=/bin"}, stdout: &help, stderr: &stderr, exec: mustNotExec})
+		require.Equal(t, 0, code, arg)
+		require.Contains(t, help.String(), "Started by claude-agent-acp", arg)
+		require.Contains(t, help.String(), envClaudeBin, arg)
+	}
+}
+
 func TestRunPassesThroughWhenItCannotRelay(t *testing.T) {
 	listening := filepath.Join(shortTempDir(t), "pane.sock")
 	listener, err := net.Listen("unix", listening)
@@ -332,13 +356,16 @@ func TestRunPassesThroughWhenItCannotRelay(t *testing.T) {
 		args   []string
 		socket string
 	}{
-		"text output":        {[]string{"-p", "--output-format", "text"}, listening},
+		"text output": {[]string{"-p", "--output-format", "text"}, listening},
+		// In a chat every argument is Claude Code's, these two included.
+		"version request":    {[]string{"--version"}, listening},
+		"help request":       {[]string{"--help"}, listening},
 		"no socket variable": {streamArgs, ""},
 		"socket unreachable": {streamArgs, missing},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude/bin/claude", envExecutable + "=/usr/local/bin/linuxio-claude-relay"}
+			env := []string{"PATH=/bin", envClaudeBin + "=/opt/claude/bin/claude", envExecutable + "=/usr/libexec/linuxio/linuxio-claude-relay"}
 			if tc.socket != "" {
 				env = append(env, envPaneSocket+"="+tc.socket)
 			}

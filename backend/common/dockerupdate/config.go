@@ -26,7 +26,6 @@ var dailyDockerUpdateTimePattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):([0-5
 type containerAutoUpdateStore struct {
 	configPath string
 	timerPath  string
-	unitPath   string
 }
 
 type dockerUpdateScheduleDocument struct {
@@ -37,7 +36,6 @@ type dockerUpdateScheduleDocument struct {
 var defaultContainerAutoUpdateStore = containerAutoUpdateStore{
 	configPath: ConfigPath,
 	timerPath:  dockerUpdateTimerPath,
-	unitPath:   dockerUpdateUnitPath,
 }
 
 func (s containerAutoUpdateStore) readOptions() (DockerContainerAutoUpdateOptions, error) {
@@ -75,9 +73,6 @@ func (s containerAutoUpdateStore) writeOptions(opts DockerContainerAutoUpdateOpt
 
 	if err := atomicfile.Write(s.configPath, configBytes, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", s.configPath, err)
-	}
-	if err := atomicfile.Write(s.unitPath, renderDockerUpdateUnit(), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", s.unitPath, err)
 	}
 	if err := atomicfile.Write(s.timerPath, timerBytes, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", s.timerPath, err)

@@ -1,0 +1,23 @@
+[Unit]
+Description=Run LinuxIO native Docker updates
+Documentation=https://github.com/mordilloSan/LinuxIO
+# Started by linuxio-docker-update.timer, which the bridge writes and
+# enables while scheduled container updates are switched on.
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/linuxio/linuxio-docker-update --config /etc/linuxio/docker-update.json
+TimeoutStartSec=infinity
+# A stop signals the updater alone, which cancels its work, while a rollback
+# in progress (and its docker compose up) finishes before systemd kills what
+# is left: the rollback's timeout and a minute.
+KillMode=mixed
+TimeoutStopSec=250
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/linuxio /run

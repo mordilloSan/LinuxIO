@@ -21,7 +21,8 @@
 # on Fedora). It shares only the image cache with the first.
 #
 # Usage: linuxio-vm.sh create | ensure | prepare [BUILD_DIR] |
-#        install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password |
+#        install BUILD_DIR | repo-publish BUILD_DIR VERSION [NOTE] | start |
+#        ssh [COMMAND] | ip | password |
 #        reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC |
 #        stop | reset | update | destroy | existing | locks N...|all |
 #        lock N:FD... | pick WANT N:FD... | running |
@@ -43,7 +44,11 @@ fedora/) readonly RELEASE=45 VERSION=45-1.4 FIRST_DOMAIN=linuxio-e2e-fedora SEED
 	;;
 esac
 # The profile: where the cloud image and its checksum file are published, the
-# first-boot seed, the package manager and the packages the suites add.
+# first-boot seed, the package manager, the packages the suites add, the
+# script that assembles LinuxIO's package and the one that publishes it into
+# a signed repository, with the tools both need (in the seed too; install and
+# repo-publish add them to a VM made before they were), and where the
+# distribution reads a repository's source file.
 # Neither checksum file's signature is checked: it comes over HTTPS from the
 # distribution's own server, and Fedora's image from one of its mirrors.
 case $DISTRO in
@@ -55,6 +60,9 @@ ubuntu)
 	# zram-tools is LinuxIO's first choice where it exists.
 	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator
 	readonly COMPOSE_PACKAGE=docker-compose-v2 BUILDX_PACKAGE=docker-buildx
+	readonly PACKAGE_SCRIPT=package-deb.sh PACKAGE_TOOLS="debhelper apt-utils gnupg"
+	readonly REPO_SCRIPT=repo-apt.sh REPO_FAMILY=apt REPO_SOURCE=linuxio.sources
+	readonly REPO_SOURCE_DEST=/etc/apt/sources.list.d/linuxio.sources
 	;;
 fedora)
 	readonly IMAGE_NAME="Fedora-Cloud-Base-Generic-${VERSION}.x86_64.qcow2"
@@ -64,8 +72,17 @@ fedora)
 	# Fedora has no zram-tools; the image comes with zram-generator.
 	readonly ZRAM_DEFAULT=zram-generator GENERATOR_PACKAGE=zram-generator
 	readonly COMPOSE_PACKAGE=docker-compose BUILDX_PACKAGE=docker-buildx
+	# The spec's systemd and SELinux macros, and what its %selinux_requires_min
+	# asks rpmbuild for; then what signs the package and the repository.
+	readonly PACKAGE_SCRIPT=package-rpm.sh PACKAGE_TOOLS="rpm-build systemd-rpm-macros selinux-policy-devel systemd-devel createrepo_c rpm-sign gnupg2"
+	readonly REPO_SCRIPT=repo-rpm.sh REPO_FAMILY=rpm REPO_SOURCE=linuxio.repo
+	readonly REPO_SOURCE_DEST=/etc/yum.repos.d/linuxio.repo
 	;;
 esac
+# The VM's signed package repository (repo-publish), PACKAGE_REPO/apt or
+# PACKAGE_REPO/rpm, and the GnuPG home of its throwaway key in the VM user's
+# home.
+readonly PACKAGE_REPO=/srv/linuxio-repo REPO_GNUPGHOME=.linuxio-repository-gnupg
 readonly INDEX="${LINUXIO_VM_INDEX:-1}"
 if [[ ! $INDEX =~ ^[1-9]$ ]]; then
 	echo "linuxio-vm: LINUXIO_VM_INDEX '${INDEX}' is not a number from 1 to 9" >&2
@@ -84,9 +101,13 @@ readonly VM_MEMORY_GIB=4 VM_VCPUS=4
 # What the host keeps when VMs are counted against its free memory: the
 # browsers of a run and whatever else grows while it lasts.
 readonly HOST_RESERVE_MIB=1536
-# The longest spec file takes a third of the time of all of them, so a fifth
-# VM would only cost its disk and its first boot.
-readonly MOST_VMS=4
+# What a run that plans its own VMs counts for each: two of the host's threads
+# (nproc: hyperthreads, not cores). The suites and the specs wait on reboots,
+# throttled disks and timers and hardly use the CPU, so a VM's 4 vCPUs, which
+# its boot and an install use for a moment, share threads with another's.
+readonly VM_HOST_THREADS=2
+# The VMs of a release are numbered 1 to 9.
+readonly MOST_VMS=9
 readonly SNAPSHOT=clean
 readonly POOL=default
 readonly BASE_VOL="${DOMAIN}-base.qcow2"
@@ -347,7 +368,6 @@ write_seed() {
 	printf 'instance-id: %s\nlocal-hostname: %s\n' "$DOMAIN" "$DOMAIN" >"${seed}/meta-data"
 	sed -e "s|@PASSWORD_HASH@|${hash}|" -e "s|@SSH_KEY@|${key}|" -e "s|@SEED_URL@|${SEED_URL}|" \
 		"${REPO_ROOT}/packaging/vm/${SEED_TEMPLATE}" >"${seed}/user-data"
-	cp "${REPO_ROOT}/packaging/scripts/install-dependencies.sh" "${seed}/"
 }
 
 # cloud-init reads the seed over HTTP: the host has no ISO tools. The server
@@ -491,31 +511,159 @@ prepare() {
 	[[ -z $build_dir ]] || step install install "$build_dir"
 }
 
-# install BUILD_DIR [REF] installs the build in BUILD_DIR with the installer
-# and packaging of this checkout, or of the git REF when given: a release's
-# binaries need that release's packaging (its units start the programs and
-# words it has), so jobs-update.spec.ts installs v0.53.0 with REF v0.53.0.
+# install BUILD_DIR installs the build in BUILD_DIR as a package: the VM
+# assembles the profile's package (DEB or RPM) from it with this checkout's
+# packaging, as a release's image does, checks it against the build
+# (package-contents.sh) and installs it with apt or dnf, over any LinuxIO
+# package already there. The package's version is LINUXIO_VM_PACKAGE_VERSION
+# (mk/vm.mk exports make's PACKAGE_VERSION), or this checkout's. LinuxIO runs
+# when it is done.
 install() {
-	local build_dir=${1:-} ref=${2:-}
+	local build_dir=${1:-}
 	[[ -n $build_dir && -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
 	connect
-	push_checkout "$build_dir" "$ref"
-	vm_ssh 'sudo ~/linuxio/packaging/scripts/install-linuxio-binaries.sh --local --build-dir ~/linuxio/build'
+	push_checkout "$build_dir"
+	install_package
 	: >"${STATE}/installed"
 }
 
-# push_checkout BUILD_DIR [REF] puts what the installer reads in ~/linuxio,
-# from the checkout or from the git REF, and the build in ~/linuxio/build:
-# --local reads packaging/, LICENSE and docs/THIRD_PARTY_NOTICES.md, and finds
-# the checkout by its Makefile.
-push_checkout() {
-	local -a files=(Makefile LICENSE docs/THIRD_PARTY_NOTICES.md packaging)
-	if [[ -n ${2:-} ]]; then
-		git -C "$REPO_ROOT" archive "$2" -- "${files[@]}"
+# The version of the package install assembles: LINUXIO_VM_PACKAGE_VERSION,
+# or this checkout's.
+package_version() {
+	local version=${LINUXIO_VM_PACKAGE_VERSION:-}
+	if [[ -z $version ]]; then
+		version="$("${REPO_ROOT}/packaging/scripts/package-version.sh")" ||
+			die "cannot tell this checkout's package version; give PACKAGE_VERSION"
+	fi
+	echo "$version"
+}
+
+# The tools that assemble and publish LinuxIO's package, for a VM made before
+# the seed had them.
+package_tools() {
+	# shellcheck disable=SC2086 # one package a word
+	if ! vm_has_packages $PACKAGE_TOOLS; then
+		say "installing the tools that assemble the package (${PACKAGE_TOOLS})"
+		vm_install "$PACKAGE_TOOLS"
+	fi
+}
+
+# assemble_package VERSION assembles the package from ~/linuxio/build into
+# ~/linuxio/packages, alone there, and checks it against the build; the
+# assembler's own output goes to ~/linuxio/packages.log, shown when it fails.
+assemble_package() {
+	package_tools
+	say "assembling LinuxIO ${1} with ${PACKAGE_SCRIPT}"
+	vm_ssh "bash -s -- $(printf '%q ' "$PACKAGE_SCRIPT" "$1")" <<'ASSEMBLE'
+set -euo pipefail
+script=$1 version=$2
+cd ~/linuxio
+rm -rf packages
+packaging/scripts/"$script" --build-dir build --version "$version" --out-dir packages >/dev/null 2>packages.log || {
+	tail -n 40 packages.log >&2
+	exit 1
+}
+bash packaging/scripts/tests/package-contents.sh packages/* build
+ASSEMBLE
+}
+
+install_package() {
+	local version
+	version="$(package_version)"
+	assemble_package "$version"
+	vm_ssh "bash -s -- $(printf '%q ' "$PKG" "$version")" <<'INSTALL'
+set -euo pipefail
+pkg=$1 version=$2
+file="$(echo ~/linuxio/packages/*)"
+case $pkg in
+apt)
+	# --reinstall replaces the programs when the version is the one
+	# installed; an administrator's change to a configuration file stays.
+	sudo env DEBIAN_FRONTEND=noninteractive apt-get install --reinstall --allow-downgrades -y \
+		-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+		"$file" </dev/null
+	;;
+dnf)
+	if [[ "$(rpm -q --qf '%{VERSION}' linuxio 2>/dev/null)" == "$version" ]]; then
+		sudo dnf reinstall -y "$file" </dev/null
 	else
-		tar -C "$REPO_ROOT" -cf - "${files[@]}"
-	fi | vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
-	tar -C "$1" -cf - . | vm_ssh 'tar -C linuxio/build -xf -'
+		sudo dnf install -y "$file" </dev/null
+		# dnf install leaves a newer package in place.
+		[[ "$(rpm -q --qf '%{VERSION}' linuxio)" == "$version" ]] || sudo dnf downgrade -y "$file" </dev/null
+	fi
+	;;
+esac
+# The package restarts LinuxIO only if it ran; a test VM is left running it.
+sudo systemctl start linuxio.target
+INSTALL
+}
+
+# repo-publish BUILD_DIR VERSION [NOTE] publishes the build in BUILD_DIR as
+# LinuxIO VERSION into the VM's signed package repository, PACKAGE_REPO, the
+# way a release does (docs/releases.md, "Repositories"): the VM assembles the package as install does, and the
+# release's own script (repo-apt.sh or repo-rpm.sh) adds it to the packages
+# already there and signs the metadata. NOTE, when given, is appended as a
+# comment to the copy of packaging/selinux/linuxio.cil the package is
+# assembled from, so the package carries a changed SELinux module.
+#
+# The signing key is a throwaway one, made in the VM by the first publish
+# (batch, no passphrase) in REPO_GNUPGHOME, which belongs to the VM's user and
+# never leaves the VM; make vm-reset takes it away with the repository. The
+# repository is served by file:// from PACKAGE_REPO, which apt, dnf and
+# PackageKit read in place, and its source file (linuxio.sources or
+# linuxio.repo, which carry the public key and turn every signature check on)
+# is copied to where the distribution reads it, so the next apt update, dnf
+# transaction or refresh of the Updates page sees the new version. Nothing is
+# installed: the specs install and update from the repository themselves.
+repo_publish() {
+	local build_dir=${1:-} version=${2:-} note=${3:-}
+	[[ -n $build_dir && -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
+	[[ -n $version ]] || die "usage: repo-publish BUILD_DIR VERSION [NOTE]"
+	[[ $note != *$'\n'* ]] || die "the SELinux note is one line"
+	connect
+	push_checkout "$build_dir"
+	if [[ -n $note ]]; then
+		printf '; %s\n' "$note" | vm_ssh 'cat >> linuxio/packaging/selinux/linuxio.cil'
+	fi
+	assemble_package "$version" >&2
+	say "publishing LinuxIO ${version} into ${PACKAGE_REPO}/${REPO_FAMILY}"
+	vm_ssh "bash -s -- $(printf '%q ' "$REPO_SCRIPT" "${PACKAGE_REPO}/${REPO_FAMILY}" "$REPO_GNUPGHOME" "$REPO_SOURCE" "$REPO_SOURCE_DEST")" <<'PUBLISH' >&2
+set -euo pipefail
+script=$1 out=$2 gnupghome=$3 source=$4 dest=$5
+export GNUPGHOME="${HOME}/${gnupghome}"
+uid='LinuxIO test repository <repository@linuxio.invalid>'
+if ! gpg --batch --list-secret-keys "=${uid}" >/dev/null 2>&1; then
+	install -d -m 0700 "$GNUPGHOME"
+	gpg --batch --quiet --passphrase '' --quick-gen-key "$uid" rsa3072 sign never
+fi
+key="$(gpg --batch --with-colons --list-secret-keys "=${uid}" | awk -F: '$1 == "fpr" { print $10; exit }')"
+[[ -n $key ]] || { echo "no test repository key in ${GNUPGHOME}" >&2; exit 1; }
+if [[ ! -d $out ]]; then
+	sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$out"
+fi
+~/linuxio/packaging/scripts/"$script" --packages-dir ~/linuxio/packages --key "$key" --base-url "file://${out}" --out-dir "$out"
+sudo install -m 0644 -o root -g root "${out}/${source}" "$dest"
+PUBLISH
+}
+
+# vm_has_packages PACKAGE...: whether the VM has every PACKAGE installed.
+vm_has_packages() {
+	case $PKG in
+	apt) vm_ssh "for p in $*; do dpkg-query -W -f='\${db:Status-Status}' \"\$p\" 2>/dev/null | grep -qx installed || exit 1; done" </dev/null ;;
+	dnf) vm_ssh "rpm -q $* >/dev/null" </dev/null ;;
+	esac
+}
+
+# push_checkout BUILD_DIR puts what the package scripts read in ~/linuxio,
+# from the checkout, and the build in ~/linuxio/build: packaging/, LICENSE
+# and docs/THIRD_PARTY_NOTICES.md.
+push_checkout() {
+	local -a files=(LICENSE docs/THIRD_PARTY_NOTICES.md packaging)
+	tar -C "$REPO_ROOT" -cf - "${files[@]}" |
+		vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
+	# Not the packages and repositories make put beside the programs
+	# (PACKAGES_DIR, REPO_DIR).
+	tar -C "$1" --exclude=./packages --exclude=./repo -cf - . | vm_ssh 'tar -C linuxio/build -xf -'
 }
 
 # The root test suites of the vm-test-* targets and test-vm-backend, one
@@ -953,16 +1101,6 @@ suite_relay() {
 	run_test bridge-cmd "${LINUXIO_VM_RELAY_RUN:?mk/vm.mk sets it}" 10m
 }
 
-# The updater's install script, run with --dry-run by systemd-run in the
-# sandbox the updater gives it (test-updater). The test reads the script from
-# the checkout, which the VM does not have, so it gets a copy.
-suite_updater() {
-	push_test "$1" appupdate
-	vm_ssh 'cat > install-linuxio-binaries.sh' <"${REPO_ROOT}/packaging/scripts/install-linuxio-binaries.sh"
-	run_test appupdate "${LINUXIO_VM_UPDATER_RUN:?mk/vm.mk sets it}" 10m \
-		LINUXIO_RUN_SYSTEMD_INTEGRATION=1 LINUXIO_INSTALL_SCRIPT="/home/${VM_USER}/install-linuxio-binaries.sh"
-}
-
 # The Docker update's real Compose runs (test-docker-update-integration),
 # which pull alpine images from Docker Hub. Ubuntu's docker.io and Fedora's
 # moby-engine come without the Compose and buildx plugins, which the seed
@@ -992,14 +1130,16 @@ suite_userconfig() {
 }
 
 # The indexer's socket activation, idle exit and index timer under systemd
-# (packaging/scripts/tests/systemd-indexer-smoke.sh). The script installs the
-# LinuxIO build make made and uninstalls it again, and refuses a VM that
-# already has LinuxIO.
+# (packaging/scripts/tests/systemd-indexer-smoke.sh). The VM assembles the
+# package from the LinuxIO build make made, as install does; the script
+# installs it, removes it again, and refuses a VM that already has LinuxIO.
 suite_indexer() {
 	local build=${LINUXIO_VM_BUILD_DIR:?mk/vm.mk sets it}
 	[[ -x "${build}/linuxio" ]] || die "no LinuxIO build in '${build}'"
 	push_checkout "$build"
-	vm_ssh "sudo env LINUXIO_SYSTEMD_SMOKE=1 LINUXIO_SYSTEMD_SMOKE_CONFIRM=disposable-linuxio-host LINUXIO_SMOKE_BUILD_DIR=/home/${VM_USER}/linuxio/build bash linuxio/packaging/scripts/tests/systemd-indexer-smoke.sh" </dev/null
+	assemble_package "$(package_version)"
+	# shellcheck disable=SC2016 # expanded in the VM
+	vm_ssh 'sudo env LINUXIO_SYSTEMD_SMOKE=1 LINUXIO_SYSTEMD_SMOKE_CONFIRM=disposable-linuxio-host LINUXIO_SMOKE_PACKAGE="$(echo ~/linuxio/packages/*)" bash linuxio/packaging/scripts/tests/systemd-indexer-smoke.sh' </dev/null
 }
 
 boot_id() { vm_ssh cat /proc/sys/kernel/random/boot_id </dev/null; }
@@ -1123,7 +1263,7 @@ update() {
 	say "upgrading the packages of ${DOMAIN} (several minutes)"
 	case $PKG in
 	apt)
-		vm_ssh sudo bash -s <<'UPGRADE'
+		vm_ssh sudo bash -s -- "$PACKAGE_TOOLS" <<'UPGRADE'
 set -euo pipefail
 systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
 # A run the boot started holds the dpkg lock; let it end by itself.
@@ -1133,10 +1273,14 @@ done
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o DPkg::Lock::Timeout=600 -qq update
 apt-get -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -y -qq dist-upgrade
+# The tools that assemble LinuxIO's package, for a VM made before the seed had
+# them.
+# shellcheck disable=SC2086 # one package a word
+apt-get -o DPkg::Lock::Timeout=600 -y -qq install $1
 sync
 UPGRADE
 		;;
-	dnf) vm_ssh 'sudo dnf upgrade -y -q --refresh && sync' </dev/null ;;
+	dnf) vm_ssh "sudo dnf upgrade -y -q --refresh && sudo dnf install -y -q ${PACKAGE_TOOLS} && sync" </dev/null ;;
 	esac
 	v shutdown "$DOMAIN" >/dev/null
 	wait_for_shut_off 180
@@ -1219,20 +1363,16 @@ lock_vms() {
 # host), it takes the free VMs that hold no build install put there, then
 # those that do, which their reset loses, then numbers that do not exist yet,
 # which prepare creates; each in order. WANT is a number, or plan for as many
-# as the CPUs allow (plan:MAX for MAX at most). It says on stderr what it took,
-# why no more and the memory it counted, and fails when it took none.
+# as the host's threads allow (plan:MAX for MAX at most): VM_HOST_THREADS for
+# each, less one VM for each test VM that runs or that another target holds,
+# and one at least. It says on stderr what it took, why no more and the
+# threads and memory it counted, and fails when it took none.
 pick() {
-	local want=${1:-} cpus vm_kib reserve_kib avail_kib others_kib=0 vms pair n fd name kib left_kib short="" line memory
+	local want=${1:-} threads others=0 room vm_kib reserve_kib avail_kib others_kib=0 vms pair n fd name kib left_kib short="" line memory cpus=""
 	local -a busy=() plain=() built=() missing=() got=() new=() reverted=()
 	local -A spent=() fds=()
 	shift
-	cpus=$(($(nproc) / VM_VCPUS))
-	case $want in
-	plan) want=$cpus ;;
-	plan:*) want=$((${want#plan:} < cpus ? ${want#plan:} : cpus)) ;;
-	esac
-	[[ $want =~ ^[0-9]+$ ]] || die "usage: pick WANT|plan[:MAX] N:FD..."
-	((want >= 1)) || want=1
+	[[ $want =~ ^([0-9]+|plan(:[0-9]+)?)$ ]] || die "usage: pick WANT|plan[:MAX] N:FD..."
 	vm_kib=$((VM_MEMORY_GIB * 1048576)) reserve_kib=$((HOST_RESERVE_MIB * 1024))
 	take_guard
 	avail_kib="$(available_kib)"
@@ -1241,13 +1381,14 @@ pick() {
 		[[ -n $name ]] || continue
 		spent[$name]=$kib
 		others_kib=$((others_kib + kib))
+		others=$((others + 1))
 	done <<<"$vms"
 	for pair in "$@"; do
 		n=${pair%%:*} fd=${pair#*:}
 		name="$(domain_name "$n")"
 		if ! flock -n "$fd"; then
 			busy+=("$name")
-			[[ -n ${spent[$name]+x} ]] || others_kib=$((others_kib + vm_kib))
+			[[ -n ${spent[$name]+x} ]] || others_kib=$((others_kib + vm_kib)) others=$((others + 1))
 		elif [[ -n ${spent[$name]+x} ]]; then
 			flock -u "$fd"
 			busy+=("${name} (running with no target: VM_KEEP=1?)")
@@ -1259,6 +1400,14 @@ pick() {
 			fds[$n]=$fd plain+=("$n")
 		fi
 	done
+	if [[ $want == plan* ]]; then
+		threads="$(nproc)"
+		room=$((threads / VM_HOST_THREADS - others))
+		cpus="; CPUs: ${threads} threads, ${VM_HOST_THREADS} for each VM, ${others} other test VMs"
+		[[ $want != plan:* ]] || room=$((${want#plan:} < room ? ${want#plan:} : room))
+		want=$room
+	fi
+	((want >= 1)) || want=1
 	for n in "${plain[@]}" "${built[@]}" "${missing[@]}"; do
 		((${#got[@]} < want)) || break
 		left_kib=$((avail_kib - others_kib - reserve_kib - ${#got[@]} * vm_kib))
@@ -1279,7 +1428,7 @@ pick() {
 	line="VM ${got[*]} for this run${new[*]:+ (created first: ${new[*]})}${reverted[*]:+ (VM ${reverted[*]} held an installed build, which the revert removes)}"
 	((${#got[@]} == want)) || line+=", ${#got[@]} of ${want} wanted${short:+ (${short})}"
 	((${#busy[@]} == 0)) || line+="; in use: ${busy[*]}"
-	line+="; memory: ${memory}"
+	line+="${cpus}; memory: ${memory}"
 	if ((${#got[@]} == 1)); then line+="; VM=${got[0]} names it again"; else line+="; VM='${got[*]}' names them again"; fi
 	say "$line"
 	echo "${got[*]}"
@@ -1491,7 +1640,8 @@ vm_new_lines() {
 case "${1:-}" in
 create) create ;;
 ensure) ensure ;;
-install) install "${2:-}" "${3:-}" ;;
+install) install "${2:-}" ;;
+repo-publish) repo_publish "${2:-}" "${3:-}" "${4:-}" ;;
 ssh)
 	connect
 	shift
@@ -1535,5 +1685,5 @@ each)
 	shift
 	each "$@"
 	;;
-*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | existing | locks N...|all | lock N:FD... | pick WANT N:FD... | running | test DIR [SUITE...] | each VMS COMMAND [ARGS]" ;;
+*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR | repo-publish BUILD_DIR VERSION [NOTE] | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | existing | locks N...|all | lock N:FD... | pick WANT N:FD... | running | test DIR [SUITE...] | each VMS COMMAND [ARGS]" ;;
 esac

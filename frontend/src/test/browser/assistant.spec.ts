@@ -1031,3 +1031,64 @@ test("draws the effort slider from the assistant's slider variables and moves it
   await expect(menu).toBeVisible();
   await expect(chip).toHaveAccessibleName("Model: Opus Max");
 });
+
+test("keeps a long answer with a code block inside the chat's own scroller", async ({
+  page,
+}) => {
+  const answer = `${Array.from(
+    { length: 60 },
+    (_, index) => `Paragraph ${index} of a long answer.`,
+  ).join("\n\n")}\n\n\`\`\`yaml\nname: value\n\`\`\`\n\nEnd.`;
+  await serveAgent(page, (request, { send, notify }) => {
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: { sessionCapabilities: { list: {} } },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessions: [] } });
+        break;
+      case "session/new":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessionId: "s1" } });
+        break;
+      case "session/prompt":
+        notify("s1", {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: answer },
+        });
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { stopReason: "end_turn" },
+        });
+        break;
+    }
+  });
+
+  await page.goto("/assistant");
+  const input = page.getByLabel("Message");
+  await expect(input).toBeEnabled();
+  await input.fill("hello");
+  await input.press("Enter");
+  await expect(page.getByText("End.")).toBeVisible();
+
+  // The transcript scrolls; nothing in it reaches past the page, which would
+  // let the page scroll under the chat and carry the prompt off the bottom.
+  const transcript = page.getByRole("log").first();
+  expect(
+    await transcript.evaluate((el) => el.scrollHeight > el.clientHeight),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight - window.innerHeight,
+    ),
+  ).toBe(0);
+  await expect(input).toBeInViewport();
+});

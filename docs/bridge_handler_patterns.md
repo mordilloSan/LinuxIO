@@ -262,7 +262,7 @@ Where a shared library goes depends on who needs it:
 |-----------|------|----------|
 | One route family | `backend/bridge/handlers/<family>` | everything a family alone uses |
 | Several bridge families only | `backend/bridge/internal/<name>` | `usercmd`, `acpagents`, `loginhistory`, `bridgeipc`, `goroutinelabel`, `streamrelay`, `dockerclient`, `userconfig`, `apigen` |
-| The bridge and another binary (CLI, workers, daemons) | `backend/common/<name>` | `systemd`, `dbusclient`, `btrfs`, `alerts`, `atomicfile`, `hostcmd`, `hwprobe`, `iolimit`, `osrelease`, `updatestatus`, `dockerupdate`, `jobs`, `version` |
+| The bridge and another binary (CLI, workers, daemons) | `backend/common/<name>` | `systemd`, `dbusclient`, `btrfs`, `alerts`, `atomicfile`, `hostcmd`, `hwprobe`, `iolimit`, `osrelease`, `dockerupdate`, `jobs`, `version` |
 
 There is no catch-all `utils` package; each shared helper lives in a package
 named for its responsibility. The Docker update engine lives in

@@ -9,6 +9,7 @@ import (
 )
 
 var api = apischema.Bindings(
+	apischema.Call[apischema.NoRequest, apischema.VersionResponse]("control.version", apischema.RetrySafe()).Handle(handleVersion),
 	// These calls are accepted by the native control service before it can tear
 	// down this bridge. A lost response is therefore an expected, ambiguous
 	// transport outcome; callers must not retry it automatically.
@@ -18,7 +19,7 @@ var api = apischema.Bindings(
 
 var Routes = api.Routes()
 
-// RegisterHandlers registers host control handlers.
+// RegisterHandlers registers host control and version handlers.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }

@@ -16,6 +16,7 @@ const modulePrefix = "github.com/mordilloSan/LinuxIO/backend/"
 // bridge/internal (bridge-only) or common (shared with another binary).
 var allowedHandlerEdges = map[string]map[string]string{
 	"accounts": {"control": "logs the user out through logind when the account is deleted"},
+	"control":  {"packages": "control.version names the pending update to the linuxio package"},
 	"config":   {"docker": "the Docker startup drop-ins (mount ordering, host IP wait) are rewritten when their settings change"},
 	"capabilities": {
 		"docker": "capability probe", "memory": "capability probe", "monitoring": "the health probe reuses the daemon client",
@@ -26,7 +27,7 @@ var allowedHandlerEdges = map[string]map[string]string{
 	"memory":      {"power": "the swap status says whether a TuneD profile manages swappiness"},
 	"packages":    {"capabilities": "capability registry (CapabilitySpec, InstallSpec)", "docker": "Docker capability probe"},
 	"system":      {"packages": "the health summary counts pending updates", "systemd": "the health summary lists services"},
-	"virt":        {"docker": "excludes Docker-owned bridges from VM bridge candidates"},
+	"virt":        {"docker": "excludes Docker-owned bridges from VM bridge candidates", "network": "the VM preflight warns when the host firewall drops bridged VM traffic"},
 }
 
 // TestImportBoundaries keeps the layering docs/bridge_handler_patterns.md

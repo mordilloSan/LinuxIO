@@ -86,8 +86,6 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   "test/browser/fixture/routes/SchedulesPage.tsx",
   // Router loader transport readiness (the only routing-level mux primitive).
   "routes/-loader.ts",
-  // App-update stream lifecycle (mux handle + frame decoding).
-  "contexts/AppUpdateProvider.tsx",
   // Background-task engine: batch-upload data stream and task-events stream.
   "tasks/engine/useUploadTasks.ts",
   "tasks/engine/useRecoveredTasks.ts",

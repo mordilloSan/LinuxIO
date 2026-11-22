@@ -164,11 +164,6 @@ export interface AppSettings {
   showHiddenFiles: boolean;
 }
 
-export interface AppUpdateRequest {
-  runId: string;
-  version?: string;
-}
-
 export interface AssistantAgentRequest {
   agent: string;
 }
@@ -2506,9 +2501,17 @@ export interface NetworkBridgeHandoffStatus {
   error?: string;
 }
 
+export interface NetworkBridgeHook {
+  state: NetworkBridgeHookState;
+  restorable: boolean;
+}
+
+export type NetworkBridgeHookState = "installed" | "missing" | "not_executable";
+
 export interface NetworkBridgeOptions {
   candidates: NetworkBridgeCandidate[];
   warnings?: string[];
+  bridgeHook?: NetworkBridgeHook;
 }
 
 export interface NetworkDNSOptions {
@@ -3726,6 +3729,7 @@ export interface VMPreflight {
   managedPaths: VMManagedPaths;
   warnings?: string[];
   errors?: string[];
+  bridgeHook?: NetworkBridgeHook;
 }
 
 export interface VMPreflightFirmware {
@@ -3822,11 +3826,8 @@ export interface ValidateComposeResponse {
 export type ValidationIssueType = "error" | "warning";
 
 export interface VersionResponse {
-  checked_at: string;
   current_version: string;
-  error?: string;
-  latest_version?: string;
-  update_available: boolean;
+  update_version?: string;
 }
 
 export interface VirtualMachine {
@@ -4660,6 +4661,7 @@ export interface LinuxIOSchema {
       result: NetworkBridgeOptions;
     };
     get_network_info: { input: []; request: void; result: NetworkInterface[] };
+    restore_bridge_hook: { input: []; request: void; result: void };
     revert_bridge_handoff: {
       input: [operationId: string];
       request: NetworkBridgeHandoffOperationRequest;
@@ -5760,7 +5762,6 @@ export type CommandProgress<
 export interface LinuxIOStreamSchema {
   "assistant.open": AssistantOpenRequest;
   "container.open": ContainerOpenRequest;
-  "control.app_update": AppUpdateRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.logs.follow_all": DockerLogsFollowAllRequest;
   "filebrowser.download_stream": PathRequest;

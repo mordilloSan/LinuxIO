@@ -17,6 +17,8 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(h.handleGetNetworkInfo),
 		apischema.Call[apischema.NoRequest, apischema.NetworkBridgeOptions]("network.get_bridge_options", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleGetBridgeOptions),
 		apischema.Mutation("network.create_bridge", h.handleCreateBridge, apischema.Privileged()),
+		// Writes /etc/libvirt/hooks and restarts the libvirt daemons.
+		apischema.MutationVoid("network.restore_bridge_hook", h.handleRestoreBridgeHook, apischema.Privileged()),
 		apischema.Call[apischema.NetworkBridgeHandoffRequest, apischema.NetworkBridgeHandoffStatus]("network.start_bridge_handoff", apischema.Privileged()).Handle(h.handleStartBridgeHandoff),
 		apischema.Call[apischema.NetworkBridgeHandoffOperationRequest, apischema.NetworkBridgeHandoffStatus]("network.get_bridge_handoff", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleGetBridgeHandoff),
 		apischema.Call[apischema.NetworkBridgeHandoffOperationRequest, apischema.NetworkBridgeHandoffStatus]("network.confirm_bridge_handoff", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleConfirmBridgeHandoff),
@@ -50,6 +52,10 @@ func (h networkHandlers) handleGetBridgeOptions(ctx context.Context, _ apischema
 
 func (h networkHandlers) handleCreateBridge(ctx context.Context, req apischema.NetworkBridgeCreateRequest) (apischema.NetworkBridgeCreateResult, error) {
 	return CreateBridge(ctx, req)
+}
+
+func (h networkHandlers) handleRestoreBridgeHook(ctx context.Context, _ apischema.NoRequest) error {
+	return RestoreBridgeHook(ctx)
 }
 
 func (h networkHandlers) handleStartBridgeHandoff(ctx context.Context, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {

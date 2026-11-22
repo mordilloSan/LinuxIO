@@ -339,8 +339,8 @@ The drop-in is `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`:
 
 ```ini
 [Service]
-ExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update
-ExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy on_change
+ExecStartPre=-/usr/libexec/linuxio/linuxio-worker snapshot pre-update
+ExecStopPost=/usr/libexec/linuxio/linuxio-worker alert auto-update --provider apt --policy on_change
 ```
 
 `ExecStopPost=` runs on success and failure and receives `$SERVICE_RESULT`
@@ -368,9 +368,10 @@ linuxio-worker alert pending-updates --provider apt
 
 Only root can start `linuxio-worker` (mode `0700`), so these run from a unit,
 a drop-in or a root shell. An administrator's own unit raises an alert with
-`ExecStopPost=/usr/local/bin/linuxio-worker alert raise ...`. Up to v0.53 they
-were `linuxio alert ...`; the installer rewrites the drop-ins LinuxIO wrote
-and leaves an administrator's own files, which need the new name.
+`ExecStopPost=/usr/libexec/linuxio/linuxio-worker alert raise ...`. An
+administrator's own file written for an older release (`linuxio alert ...` up
+to v0.53, a worker in `/usr/local/bin` after) needs the new name and path:
+the package never rewrites it.
 
 ## Bridge API
 

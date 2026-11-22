@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,9 +24,7 @@ const (
 	bridgeBackendNetworkManager = "nmconnection"
 	bridgeBackendNetworkd       = "systemd-networkd"
 	bridgeBackendNetplan        = "netplan"
-	// Installed from packaging/libvirt/hooks/qemu.d by the LinuxIO installers.
-	libvirtBridgeNetfilterHook = "/etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter"
-	maxLinuxInterfaceNameBytes = 15
+	maxLinuxInterfaceNameBytes  = 15
 )
 
 // BridgeCandidate describes one physical link that can safely be used as the
@@ -44,6 +43,8 @@ type BridgeCandidate struct {
 type BridgeOptions struct {
 	Candidates []BridgeCandidate
 	Warnings   []string
+	// Hook is set only while the host firewall drops bridged traffic.
+	Hook *HookStatus
 }
 
 type BridgePlan struct {
@@ -74,7 +75,7 @@ func GetBridgeOptions(ctx context.Context, env Environment) (BridgeOptions, erro
 	options := BridgeOptions{
 		Candidates: make([]BridgeCandidate, 0, len(probes)),
 	}
-	options.Warnings = firewallWarnings(ctx, env)
+	options.Hook, options.Warnings = firewallChecks(ctx, env)
 	for _, probe := range probes {
 		if err := ctx.Err(); err != nil {
 			return BridgeOptions{}, err
@@ -642,6 +643,13 @@ func readEnvironmentFile(env Environment, path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+func statEnvironmentFile(env Environment, path string) (fs.FileInfo, error) {
+	if env.StatFile != nil {
+		return env.StatFile(path)
+	}
+	return os.Stat(path)
+}
+
 func isLinkLocalAddress(value string) bool {
 	ip, _, err := net.ParseCIDR(strings.TrimSpace(value))
 	return err == nil && ip.IsLinkLocalUnicast()
@@ -659,25 +667,19 @@ func validateBridgeName(name string) error {
 	return nil
 }
 
-func firewallWarnings(ctx context.Context, env Environment) []string {
+// forwardDropsBridgedTraffic reports whether bridge netfilter hands bridged
+// frames to an iptables FORWARD chain whose policy is DROP, as on a host with
+// Docker. An error means the policy could not be read.
+func forwardDropsBridgedTraffic(ctx context.Context, env Environment) (bool, error) {
 	data, err := readEnvironmentFile(env, "/proc/sys/net/bridge/bridge-nf-call-iptables")
 	if err != nil || strings.TrimSpace(string(data)) != "1" || env.Runner == nil {
-		return nil
+		return false, nil
 	}
 	output, err := env.Runner.Run(ctx, "iptables", "-S", "FORWARD")
 	if err != nil {
-		return []string{"bridge netfilter is enabled, but the iptables FORWARD policy could not be inspected"}
+		return false, err
 	}
-	if !strings.Contains(string(output), "-P FORWARD DROP") {
-		return nil
-	}
-	// The packaged libvirt hook accepts intra-bridge forwarding for every
-	// bridge a VM attaches to, so the DROP policy (Docker's default) is only a
-	// problem when the hook is missing.
-	if _, err := readEnvironmentFile(env, libvirtBridgeNetfilterHook); err == nil {
-		return nil
-	}
-	return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP (Docker does this) and the LinuxIO libvirt hook that allows bridged VM traffic is not installed; reinstall LinuxIO or VM traffic on the bridge will be dropped"}
+	return strings.Contains(string(output), "-P FORWARD DROP"), nil
 }
 
 func verifyBridge(ctx context.Context, env Environment, bridge, member string) (bool, error) {

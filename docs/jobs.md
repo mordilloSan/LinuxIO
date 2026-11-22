@@ -122,11 +122,11 @@ The rules a route author follows:
   duplicate; quick mutations mostly have none, since a refused double click
   needs UI handling of its own.
 - **`apischema.Exclusive()`** runs one job of the route at a time, whatever
-  its target, for work that owns a whole system resource. Five routes declare
-  it (`control.app_update`, `docker.apply_daemon_storage`, `packages.update`,
+  its target, for work that owns a whole system resource. Four routes declare
+  it (`docker.apply_daemon_storage`, `packages.update`,
   `system.install_capability`, `filebrowser.index`): two overlapping runs
-  would race on the binaries, Docker's data directory, the package manager or
-  the index, and their targets could not express that.
+  would race on Docker's data directory, the package manager or the index,
+  and their targets could not express that.
 - **Tag secrets.** A request field tagged `secret:"true"` is left out of the
   stored request. `TestMutationRequestsKeepTheirSecretsOutOfTheRecord` fails
   for a field named like a password or key without the tag.
@@ -242,8 +242,8 @@ one.
   is a no-op, so repeated logins cannot multiply hosts.
 - As the host, the bridge binary takes no arguments: it recognises the socket
   systemd passes it by its name, `linuxio-jobs`, and refuses to run without it.
-  The binary has no verb besides `version`: nothing outside the browser starts
-  a job, and there is no manual resume.
+  The binary takes no verb, only `--help` and `--version`: nothing outside the
+  browser starts a job, and there is no manual resume.
 
 ### Lifecycle
 
@@ -561,13 +561,37 @@ stopped Docker nothing would run on to follow.
 | OOM kill of a job's subprocess | That job fails; the host and its other jobs run on |
 | Reboot or power loss | The root host, started at boot, marks the records a power loss left running `interrupted/reboot`, resumes the resumable jobs the shutdown or the power loss interrupted, and raises a warning for each job it marks and does not resume. A user's host marks theirs at the next login |
 | Cancel (`tasks.cancel`, stream abort) | `cancel_requested`, then the handler cleans up, then `canceled` |
-| LinuxIO update | Nothing: hosts are outside `linuxio.target` and the installer never stops them |
+| LinuxIO update | Nothing: hosts are outside `linuxio.target` and the package never stops them |
 
 ## Updates
 
-The installer replaces the binaries and may reload systemd, but never stops
-or restarts a job host: an old host finishes its jobs and exits under its
-normal rule, and the next connection starts the new binary.
+LinuxIO's own update is one of the host's package updates. `control.version`
+(a Call any session may make) answers with the running build and the version
+PackageKit gives for the pending update to the package `linuxio`
+(`FindUpdateByName` in `backend/bridge/handlers/packages`): it reads the same
+`GetUpdates` list as the Updates page, from PackageKit's cache, and refreshes
+nothing. A host without PackageKit, without that package, or whose PackageKit
+fails or takes more than 20 s gets the running build alone; the failure is
+logged at Debug when PackageKit is missing or does not answer in time, and at
+Warn otherwise. The footer
+shows the running build, and to a sudo session the main layout shows
+`LinuxIO <version> is available.` (`AppUpdateBanner`), the version as
+PackageKit gives it (`0.56.0` from a DEB, `0.56.0-1` from an RPM), with
+`Open Updates`, a link to the Updates page. Both read the one cached answer,
+fresh for 5 minutes; `packages.update` and `updates.refresh_cache` invalidate
+it. Closing the banner hides that version until the page is loaded again.
+The administrator installs the update there like any package
+(`packages.update`, a job in the root job host). The bridge restarts nothing
+after it: what installs the new build restarts `linuxio.target`, and a failed
+or cancelled transaction leaves the package as it was. The session ends with
+the restart; after the next sign-in the job is in the task tray.
+
+The package replaces the binaries and restarts `linuxio.target`, but never
+stops or restarts a job host, which is outside the target: an old host
+finishes its jobs and exits under its normal rule, and the next connection
+starts the new binary. An update from a shell (`apt`, `dnf`) or an
+unattended upgrade ends the same way, and a LinuxIO that was stopped stays
+stopped.
 
 The hello carries `jobs.Protocol`. A host of another protocol refuses it, and
 to the bridge that is an older host an update waits for. A refused hello does
@@ -595,13 +619,10 @@ so that new jobs never wait, would remove the wait and is not built.
 
 On Ubuntu, needrestart, which apt runs after every dpkg run, restarts each
 service still running a replaced binary, and so would restart the job hosts
-and interrupt the jobs an update waits for. The installer therefore installs
-`packaging/etc/needrestart/conf.d/linuxio.conf`, which keeps needrestart from
-restarting the job hosts, the timer-run units and the updater's unit, and
-checks the file token by token before it installs it, because needrestart
-runs it as Perl, as root
-([Process & Systemd Architecture](./process-systemd-architecture.md#login-and-jobs),
-needrestart).
+and interrupt the jobs an update waits for. The DEB therefore carries
+`packaging/etc/needrestart/conf.d/linuxio.conf` as a conffile, which keeps
+needrestart from restarting the job hosts and the timer-run units
+([The needrestart override](./packaging.md#the-needrestart-override)).
 
 ## Scheduled runs
 
@@ -630,6 +651,12 @@ jobs, which also keep their own unit, limits and journal that way. The units:
 | `scheduled.btrfs_rebuild` | `linuxio-btrfs-rebuild@<uuid>.service` | Pool rebuild | `/storage?pool=<uuid>` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | Container updates | `/docker/containers` |
 | `scheduled.system_update` | `apt-daily-upgrade`, `dnf-automatic`, `dnf5-automatic` or `mintupdate-automation-upgrade.service` | System updates | `/updates` |
+
+Every unit of the table but the schedules' and the distribution's is a
+package unit under `/usr/lib/systemd/system`; for the snapshot and Docker
+update passes LinuxIO writes and enables only the timer, which holds a
+schedule and no command line, so a package update replaces the program a
+timer run starts.
 
 `linuxio-btrfs-health.service`, the degraded mount at boot and the indexer's
 timer are not recorded.
@@ -944,7 +971,7 @@ The record itself is the quickest evidence: as root,
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
 | Go unit | same | `backend/common/scheduledrun/*_test.go`, `backend/worker/scheduled_run_test.go` | The hooks' outcomes and order, liveness, output copy, exit statuses, unit kinds |
 | C | `make test-auth-pam`, in `make test-backend` | `backend/auth/linuxio-auth-pam_test.c` | The exact `systemctl` arguments of an unprivileged login, before the session opens; a failed, missing or hanging `systemctl` keeps the login; a login the sudo probe admits (a stub `sudo`) is privileged and starts no host |
-| Installer | `make test-installation-scripts` | `packaging/scripts/tests/installer-fixtures.sh` | Unit fixtures, the run-record drop-ins, the needrestart override's content check and its expressions |
+| Package files | `make test-packaging-scripts`, in `make test` | `packaging/scripts/tests/package-files-fixtures.sh` | The job units outside `linuxio.target`, the run-record drop-in's hooks, and the needrestart override's expressions loaded as needrestart loads them |
 | Frontend unit | `make test-frontend`, in `make check-frontend-quiet` | `HistoryPage.test.tsx`, `SavedOutput.test.tsx`, `JobsUpdateBanner.test.tsx`, `useJobHostStatus.test.ts`, `useRefreshHistoryAfterUpdate.test.tsx`, `useAwayNotice.test.tsx`, `NotificationsBell.test.tsx`, `taskTitles.test.ts`, `scheduledRuns.test.ts`, `mutation-react-query.test.ts`, `call-react-query.test.ts` | Pages, banner and bell in jsdom, which has no layout; the client's resend and reattach; the `update_pending` toast |
 | Browser | `make test-frontend-browser-quiet` | `frontend/src/test/browser/history.spec.ts`, `frontend/src/test/browser/schedules.spec.ts`, `frontend/src/test/browser/background-tasks.spec.ts` | Real layout against the fixture: the history table has height, the Schedules table keeps its rows beside tall details, tray rendering |
 | Root, in the VM | `make vm-test-relay-root` | `backend/bridge/cmd/jobs_relay_test.go` | The relay tests as root: the in-process host is the root host, so its owner and privileged rules differ from a user host's |
@@ -956,50 +983,52 @@ The record itself is the quickest evidence: as root,
 | Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; a `scheduled.btrfs_resync` run cut by a power cut mid-scrub, after a disk dropped out on the guest's PCI bus and the boot check mounted the pool degraded, read interrupted, and the next run, which the health check starts, continuing its scrub to *Resynced* with no health alert left and the returned disk's error counters reset, still zero as the next mount reads them with no write in between, the returned disk then alone holding every file; pool create rollback; the Docker storage switch killed |
 | Test VM | same | `frontend/src/test/vm/btrfs-rebuild.spec.ts` | A disk of the mounted test pool pulled off the bus and put back under a new name: the pool page shows it dropped out, back, rebuilding and resyncing, then healthy, with the `scheduled.btrfs_rebuild` run *Rebuilt* and the resync *Resynced* from the units the installer put there; after a reboot the pool is whole and the other disk is rebuilt the same way |
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
-| Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner; needrestart deferring a job host |
+| Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner after an update from the VM's signed repository; needrestart deferring a job host |
+| Test VM | same | `frontend/src/test/vm/package-repository.spec.ts` | An update from the VM's signed repository in a shell: with a scrub running, `linuxio.target` restarted and the job host and its scrub left running; a stopped LinuxIO left stopped; a changed index (`Packages`, `repomd.xml`) and a changed package refused, LinuxIO left as it was |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5b.spec.ts` | Notification settings, the grid at delivery and in the bell, a schedule's choice, an interruption as a warning, the notice at sign-in |
-| Test VM | `make test-vm-browser` runs it last, on a VM reverted to clean | `frontend/src/test/vm/jobs-update.spec.ts` | A real update from the published release v0.53.0 while two root jobs and a plain user's job run: the banner and `tasks.host`, `tasks.watch`, `tasks.cancel` and `tasks.output` during the wait, uploads, the update proceeding after the last job, the older host's records read by the new one |
+| Test VM | `make test-vm-browser` runs it last, on a VM reverted to clean | `frontend/src/test/vm/jobs-update.spec.ts` | Package A installed from the VM's signed repository, B published and installed from the Updates page while two root jobs and a plain user's job run: the banner naming B, the update job across the package's restart of `linuxio.target`, the wait banner and `tasks.host`, `tasks.watch`, `tasks.cancel` and `tasks.output` during the wait, uploads, the update proceeding after the last job, the older host's records and the update job read by the new one; on Fedora B's SELinux module, `linuxio-auth`'s type and no denial, after the update and after a reboot |
 
 Run each VM spec file on a fresh install, with `login.spec.ts`
 ([Development](./development.md#test-vm)). The VM signs in as a sudo user, so
 its jobs run in the root host, except where a check creates a user without
 sudo. The evidence is the record, read over SSH, and the host's journal.
 
-The update checks install an update build: this tree with `jobs.Protocol` one
-higher, so a host of the installed build is an older one to the new bridge.
+The update checks update LinuxIO to an update build: this tree with
+`jobs.Protocol` one higher, so a host of the installed build is an older one
+to the new bridge, and with a version of its own (`GIT_VERSION` with
+`+update`), so `linuxio --version` tells the two apart.
 `make vm-update-build` makes it in `.cache/vm-update-build/build` without
 touching the tree: a copy of the plain build whose Go binaries are built
 again with a Go overlay of `backend/common/jobs/record.go`.
 `make test-vm-browser` builds it and passes it in `LINUXIO_VM_UPDATE_BUILD`;
-without it both checks are skipped. The update banner check in
-`jobs-phase5a.spec.ts` installs it over the running build and leaves it
-installed for the files after it on that VM, a build that differs only in the
-protocol. By hand:
+without it both checks are skipped. They publish it in the VM's signed
+repository as the next package version (`linuxio-vm.sh repo-publish`,
+[Development](./development.md#test-vm)) and install it from there, as an
+administrator does. The update banner check in `jobs-phase5a.spec.ts` does
+so with apt or dnf and leaves it installed for the files after it on that
+VM, a build that differs only in the protocol and the version. By hand:
 
 ```sh
 make vm-reset vm-install vm-update-build
 LINUXIO_VM_UPDATE_BUILD=.cache/vm-update-build/build make test-vm-browser-rerun PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
 ```
 
-`jobs-update.spec.ts` downloads v0.53.0 (the first release with job hosts)
-into `.cache/vm-release/v0.53.0`, checks it against the release's
-`SHA256SUMS` and installs it with the rig's install and that release's own
-installer and packaging, which the rig takes from the `v0.53.0` git tag
-(`linuxio-vm.sh install BUILD_DIR REF`): this checkout's units start
-programs and words the release does not have. It then installs the update
-build with this checkout's installer, as an update does, which also runs the
-rewrite of the saved unit commands. v0.53.0 has the same `jobs.Protocol` as
-the tree, so only the update build makes its hosts older. The file is one
-serial group sharing one update, needs `vdd` empty, and leaves the VM changed
-(the update build installed, an ext4 on `vdd`, a user without sudo, a
+`jobs-update.spec.ts` starts from a VM with no LinuxIO. It publishes the
+plain build as package A, at this checkout's package version, installs it
+from the repository with apt or dnf, starts the jobs in A's hosts, then
+publishes the update build as package B (A's version with `+e2e1`; on Fedora
+with a comment added to its SELinux module) and updates to it on the Updates
+page: Refresh Sources, the banner, Open Updates, the package's Update. The
+file is one serial group sharing one update, needs `vdd` empty, and leaves
+the VM changed (B installed, an ext4 on `vdd`, a user without sudo, a
 schedule), so it is the Playwright project `release-update` of its own:
 `make test-vm-browser` runs it after the other files, on its first VM
 reverted to clean, with its log in
-`.cache/test-logs/test-vm-browser-release-update.log`. By hand:
+`.cache/test-logs/test-vm-browser-release-update.log`. By hand (with
+`DISTRO=fedora` for Fedora):
 
 ```sh
-make vm-reset vm-update-build
-LINUXIO_VM_UPDATE_BUILD=.cache/vm-update-build/build make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=--project=release-update
+make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=--project=release-update
 ```
 
 ### Baseline timings
@@ -1041,17 +1070,14 @@ Covered at one level only:
   update producers with containers to update, the 50-run and 30-day prune,
   the `409`s of `tasks.cancel` and `tasks.watch` for a scheduled run, a stale
   or failed stop, `Load older`, and the long-job notice.
-- The update wait was run in the VM as a real update from the published
-  release v0.53.0 to a protocol-bumped build of the same tree
-  (`jobs-update.spec.ts`), since no published release has a higher
-  `jobs.Protocol`. The updater's own path (`control.app_update`, which installs
-  a published release only, with `--defer-restart` and a restart of
-  `linuxio.target`) was not run, nor was `tasks.watch` streaming a running job
-  or a cancel taking effect during the wait: nothing can cancel those jobs.
+- The update wait was run in the VM as an update from package A of this
+  tree to package B, a protocol-bumped build of the same tree, both from the
+  VM's signed repository and B installed on the Updates page
+  (`jobs-update.spec.ts`, Ubuntu 26.04 and Fedora 45), since no published
+  package has a higher `jobs.Protocol`. `tasks.watch` streaming a running job and a cancel taking
+  effect during the wait were not run: nothing can cancel those jobs.
 - The fsync of `begin` is read from the source; the power-cut checks run
   `sync` first, because a job's first record write is not fsynced.
-- An in-app update that installs the needrestart override is covered by the
-  installer fixtures, not by a run.
 - A scrub across a frozen cgroup runs only in the test VM, on its kernel; the
   root tests, which also run on the owner's machine, freeze the filesystem
   with `FIFREEZE` instead. No test suspends to RAM: the test VM wakes at once

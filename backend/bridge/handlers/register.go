@@ -6,7 +6,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/alerts"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
@@ -41,7 +40,6 @@ type family struct {
 }
 
 var families = []family{
-	{Routes: appupdate.Routes, Register: appupdate.RegisterHandlers},
 	{Routes: system.Routes, Register: system.RegisterHandlers},
 	{Routes: capabilities.Routes, Register: capabilities.RegisterHandlers},
 	{Routes: accounts.Routes, Register: accounts.RegisterHandlers},

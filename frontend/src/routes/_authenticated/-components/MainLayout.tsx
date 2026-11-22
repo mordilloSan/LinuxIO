@@ -9,7 +9,6 @@ import { up } from "@/theme/breakpoints";
 
 import AppUpdateBanner from "./app-update/AppUpdateBanner";
 import JobsUpdateBanner from "./app-update/JobsUpdateBanner";
-import { useAppUpdateInfo } from "./app-update/useAppUpdateInfo";
 import Footer from "./footer/Footer";
 import Navbar from "./navbar/Navbar";
 import Sidebar from "./sidebar/Sidebar";
@@ -27,7 +26,6 @@ const MainLayout = () => {
   const storageMode = useConfigStorageMode();
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
   const dockMode = isDesktop && navigationMode === "dock";
-  const { updateInfo, dismissUpdate } = useAppUpdateInfo();
   const sidebarItems = useSidebarItems();
 
   useCloseMobileSidebarOnNavigate();
@@ -134,28 +132,13 @@ const MainLayout = () => {
             </div>
           )}
 
-          {updateInfo?.available && (
-            <div
-              style={{
-                paddingLeft: pageInsetInline,
-                paddingRight: pageInsetInline,
-                paddingTop: 0,
-                paddingBottom: "var(--app-space-4)",
-              }}
-            >
-              <AppUpdateBanner
-                onDismiss={dismissUpdate}
-                updateInfo={updateInfo}
-              />
-            </div>
-          )}
-
           <div
             style={{
               paddingLeft: pageInsetInline,
               paddingRight: pageInsetInline,
             }}
           >
+            <AppUpdateBanner />
             <JobsUpdateBanner />
           </div>
 

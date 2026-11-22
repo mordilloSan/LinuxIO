@@ -14,7 +14,16 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
+
+// program is what the updater answers to --help and --version.
+var program = version.Program{
+	Binary:    "linuxio-docker-update",
+	About:     "one pass of the configured Docker updates",
+	StartedBy: "systemd (linuxio-docker-update.service, on its timer)",
+	Usage:     []string{"linuxio-docker-update [--config PATH]  PATH names another settings file"},
+}
 
 // runUpdates keeps argument and dispatch behavior testable without contacting Docker.
 var runUpdates = dockerupdate.RunScheduled
@@ -46,6 +55,10 @@ func run(args []string) int {
 }
 
 func runUpdater(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	// Before any setup, so --help and --version answer where journald is absent.
+	if program.Answer(args[1:], stdout) {
+		return 0
+	}
 	if err := configureLogging("linuxio-docker-update", false); err != nil {
 		fmt.Fprintf(stderr, "linuxio-docker-update: initialize logging: %v\n", err)
 		return 1
@@ -56,16 +69,13 @@ func runUpdater(ctx context.Context, args []string, stdout, stderr io.Writer) in
 }
 
 func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) > 1 {
-		switch args[1] {
-		case "help", "-h", "--help":
-			writeHelp(stdout)
-			return 0
-		}
+	if program.Answer(args[1:], stdout) {
+		return 0
 	}
 	configPath, ok := parseRunArgs(args[1:], stderr)
 	if !ok {
-		writeUsage(stderr)
+		fmt.Fprintln(stderr)
+		program.WriteHelp(stderr)
 		return 2
 	}
 	report := func(message string) { reportProgress(-1, message) }
@@ -100,18 +110,4 @@ func parseRunArgs(args []string, stderr io.Writer) (string, bool) {
 		i++
 	}
 	return configPath, true
-}
-
-func writeUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: linuxio-docker-update [--config PATH]")
-}
-
-func writeHelp(w io.Writer) {
-	fmt.Fprintln(w, "LinuxIO Docker updater: runs one configured Docker update pass.")
-	fmt.Fprintln(w, "It is started by systemd, not by hand.")
-	fmt.Fprintln(w)
-	writeUsage(w)
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Options:")
-	fmt.Fprintln(w, "  --config PATH  Use an alternate update configuration file")
 }

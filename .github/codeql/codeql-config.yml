@@ -1,0 +1,7 @@
+name: "LinuxIO CodeQL config"
+
+# The C unit tests #include the production source and feed it hard-coded
+# credentials over socketpairs; findings in them are test fixtures, not
+# shipped code.
+paths-ignore:
+  - "**/*_test.c"

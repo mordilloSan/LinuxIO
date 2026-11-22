@@ -123,6 +123,7 @@ var StringEnums = map[string][]string{
 	"VMFirmware":                {"bios", "uefi"},
 	"VMCPUMode":                 {"host-passthrough", "host-model", "default", "custom"},
 	"NetworkBridgeHandoffState": enumNames(NetworkBridgeHandoffApplying, NetworkBridgeHandoffAwaitingConfirmation, NetworkBridgeHandoffConfirmed, NetworkBridgeHandoffReverted, NetworkBridgeHandoffUnknown),
+	"NetworkBridgeHookState":    enumNames(NetworkBridgeHookInstalled, NetworkBridgeHookMissing, NetworkBridgeHookNotExecutable),
 	"WireGuardHookKind":         enumNames(WireGuardHookKinds...),
 	"SwapMode":                  enumNames(SwapModeDisk, SwapModeZswap, SwapModeZram, SwapModeNone, SwapModeMixed),
 	"SwapDeviceKind":            enumNames(SwapDeviceFile, SwapDevicePartition, SwapDeviceZram),

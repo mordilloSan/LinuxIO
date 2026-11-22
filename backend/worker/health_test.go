@@ -194,8 +194,8 @@ func TestRunCLIDispatch(t *testing.T) {
 			t.Errorf("runCLI(%v) = %d, want 2", args, code)
 		}
 	}
-	if code := runCLI(context.Background(), []string{"help"}, io.Discard, io.Discard); code != 0 {
-		t.Errorf("help = %d, want 0", code)
+	if code := runCLI(context.Background(), []string{"--help"}, io.Discard, io.Discard); code != 0 {
+		t.Errorf("--help = %d, want 0", code)
 	}
 }
 

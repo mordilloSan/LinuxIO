@@ -6,13 +6,16 @@ import {
   bridgeCall,
   createSchedule,
   fillSchedule,
+  INSTALL_FROM_REPO,
+  installedVersion,
   jobIds,
   jobRecord,
   jobRecords,
   MiB,
+  nextVersion,
   noSessions,
   openTray,
-  rig,
+  publish,
   runNow,
   runsOf,
   SCRUB,
@@ -26,6 +29,7 @@ import {
   stopAptRuns,
   uniqueName,
   unitOf,
+  updateBuild,
   vmSsh,
   waitForIdle,
   waitForJob,
@@ -38,9 +42,9 @@ import {
 // Schedules page, disabled, with a calendar of 2099, and started with "Run
 // now", as in jobs-phase4.spec.ts.
 //
-// The last check installs a second build over the first and leaves it there,
-// with the apt timers stopped: run `make vm-reset` and `make vm-install`
-// before the next run.
+// The last check updates LinuxIO to a second build, published in the VM's
+// signed repository, and leaves it there with the apt timers stopped: run
+// `make vm-reset` and `make vm-install` before the next run.
 
 const COPY = "filebrowser.copy_batch";
 const SCRUB_LABEL = "Scrubbing btrfs filesystem";
@@ -331,33 +335,36 @@ test("a user who is not an admin sees only their own jobs", async ({
   }
 });
 
-// The build in LINUXIO_VM_UPDATE_BUILD differs from the installed one only in
-// jobs.Protocol, one higher: installed over it, it makes the running root job
-// host an older one to every new bridge, without stopping it (installing over
-// a running host is what an update does; docs/jobs.md, Updates). The test
-// installs it with the rig's install, which `make vm-install` runs after its
-// build. `make vm-update-build` builds it from this tree with a Go overlay of
+// The build in LINUXIO_VM_UPDATE_BUILD differs from the installed one in
+// jobs.Protocol, one higher, and its version: the update to it makes the
+// running root job host an older one to every new bridge, without stopping it
+// (docs/jobs.md, Updates). The test publishes it in the VM's signed repository
+// as the next version (linuxio-vm.sh repo-publish) and updates the package
+// from there with apt or dnf, as an administrator does from a shell; the
+// package restarts linuxio.target and leaves the job hosts alone.
+// `make vm-update-build` builds it from this tree with a Go overlay of
 // backend/common/jobs/record.go, and `make test-vm-browser` passes it. It
 // stays installed for the files after this one on the VM: a build that differs
-// only in the protocol, with a host of its own once the older one has exited.
+// only in the protocol and the version, with a host of its own once the older
+// one has exited.
 test("the update banner counts the jobs an update waits for", async ({
   page,
 }) => {
-  const build = process.env.LINUXIO_VM_UPDATE_BUILD ?? "";
+  const build = updateBuild();
   test.skip(
     build === "",
     "needs LINUXIO_VM_UPDATE_BUILD: make vm-update-build builds this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
   );
   // The bounds of the waits below: an apt run 600 s, the scrub's start (with
-  // the pool on a fresh VM) about 120 s, the sessions 30 s, the install about
-  // 60 s, the banner and the first refused job about 60 s, the reads 10 s,
-  // the scrub's end 300 s, the second refused job 15 s, the two banner texts
-  // 30 s and 150 s: some 1375 s.
-  test.setTimeout(1_500_000);
+  // the pool on a fresh VM) about 120 s, the sessions 30 s, the publish and
+  // the update about 300 s, the banner and the first refused job about 60 s,
+  // the reads 10 s, the scrub's end 300 s, the second refused job 15 s, the
+  // two banner texts 30 s and 150 s: some 1615 s.
+  test.setTimeout(1_800_000);
   // After a dpkg run, apt runs needrestart, which restarted the job hosts
   // running a replaced binary and so interrupted their jobs (seen once in
   // this VM, during an unattended-upgrades run, on 2026-11-10;
-  // docs/jobs.md, Updates). The installer's needrestart override
+  // docs/jobs.md, Updates). The DEB's needrestart override
   // fixes that, and jobs-needrestart.spec.ts checks it. An apt run in the
   // middle of this check is still noise, so the apt timers stop until the
   // next boot and a run in progress is waited for.
@@ -384,8 +391,13 @@ test("the update banner counts the jobs an update waits for", async ({
       await scrubRunning(),
       "the scrub ended before the update: lower its speed",
     ).toBe(true);
-    console.log(await rig(["install", build]));
-    expect(await hostPid(), "the install left the job host running").toBe(
+    const version = nextVersion(await installedVersion());
+    await publish(build, version);
+    console.log(
+      await vmSsh(`set -o pipefail; ${INSTALL_FROM_REPO} 2>&1 | tail -n 5`),
+    );
+    expect(await installedVersion()).toBe(version);
+    expect(await hostPid(), "the update left the job host running").toBe(
       olderHost,
     );
     expect((await jobRecord(job.id))?.state).toBe("running");

@@ -78,7 +78,7 @@ persistence only), `httpapi` (listeners and the root-peer gate), `config`
 
 | Path or unit | Purpose |
 |--------------|---------|
-| `/usr/local/bin/linuxio-monitoring` | Daemon binary, source `backend/monitoring/` |
+| `/usr/libexec/linuxio/linuxio-monitoring` | Daemon binary, source `backend/monitoring/` |
 | `/etc/linuxio/monitoring/config.yaml` | Strict YAML configuration, written by the daemon when absent |
 | `/var/lib/linuxio/monitoring/metrics.db` | SQLite history store; `-wal` and `-shm` sidecars may appear beside it |
 | `/run/linuxio/monitoring/api.sock` | Read-only metrics socket, mode `0666` |
@@ -107,7 +107,7 @@ linuxio-monitoring --version
 linuxio-monitoring --help
 ```
 
-`run` is what the unit executes. There are no other subcommands: status,
+The first line is what the unit executes. There are no subcommands: status,
 configuration, history and database maintenance are reached through LinuxIO,
 which sends them as commands on the control socket. Logging goes to journald
 through `backend/common/logging` under the syslog identifier

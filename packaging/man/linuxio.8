@@ -1,0 +1,291 @@
+.\" The linuxio(8) man page, written by hand. Every statement in it is held
+.\" to the code of the CLI (backend/cli) and the units in packaging/systemd.
+.TH LINUXIO 8 "" "LinuxIO" "System Administration"
+.SH NAME
+linuxio \- manage the LinuxIO services
+.SH SYNOPSIS
+.B linuxio
+.B status
+.br
+.B linuxio
+.B logs
+.RI [ component ]
+.RI [ lines ]
+.br
+.B linuxio
+.B start
+.br
+.B linuxio
+.B stop
+.br
+.B linuxio
+.B restart
+.RB [ \-\-full ]
+.br
+.B linuxio
+.B verbose
+.BR enable | disable | status
+.br
+.B linuxio
+.B version
+.br
+.B linuxio
+.B help
+.SH DESCRIPTION
+LinuxIO is a web interface for administering a Linux server.
+It listens on TCP port 8090
+.RB ( linuxio\-webserver.socket )
+and signs users in through PAM.
+.PP
+.B linuxio
+is the only LinuxIO program meant to be typed.
+It shows the state and the logs of the LinuxIO systemd units, starts,
+stops and restarts them, and turns debug logging on and off.
+The other LinuxIO programs live in
+.I /usr/libexec/linuxio
+and are started by systemd and by LinuxIO itself, not by hand.
+.PP
+Run without a command,
+.B linuxio
+prints the list of commands.
+.SH COMMANDS
+.TP
+.B status
+List every loaded systemd unit whose name begins with
+.BR linuxio ,
+with its load, active and sub state and its description.
+Needs no root.
+.TP
+.BR logs " [" \fIcomponent\fR "] [" \fIlines\fR ]
+Print the last
+.I lines
+entries of the LinuxIO journal (100 when not given) and follow the journal
+until interrupted.
+.I component
+is one of
+.B webserver
+(also
+.B web
+or
+.BR server ),
+.BR bridge ,
+.BR auth ,
+.B indexer
+(also
+.BR index )
+and
+.B monitoring
+(also
+.BR monitor );
+without one, the entries of those five and of
+.B linuxio\-worker
+are shown, with those of every unit listed under
+.BR "SYSTEMD UNITS" .
+Needs root or membership of the
+.B systemd\-journal
+or
+.B adm
+group.
+A user added to one of those groups after signing in is served through
+.BR sg (1).
+.TP
+.B start
+Start
+.BR linuxio.target .
+Needs root.
+.TP
+.B stop
+Stop
+.B linuxio.target
+and the units that are part of it.
+The job hosts
+.RB ( linuxio\-jobs@ \fIuid\fR .service )
+and the btrfs units outside the target keep running.
+Needs root.
+.TP
+.BR restart " [" \-\-full ]
+Without
+.BR \-\-full ,
+restart
+.BR linuxio\-bridge\-socket\-user.service ,
+.B linuxio\-auth.socket
+and
+.BR linuxio\-webserver.service ,
+leaving
+.B linuxio\-webserver.socket
+listening on its port.
+With
+.BR \-\-full ,
+restart
+.B linuxio.target
+and wait for
+.B linuxio\-webserver.socket
+to listen again, starting it again up to three times while it cannot listen, as when
+another process still holds the port for a moment.
+Needs root.
+.TP
+.BR verbose " " enable | disable | status
+.B enable
+writes a drop-in that adds
+.B \-\-verbose
+to the command line of
+.BR linuxio\-webserver.service ,
+.B linuxio\-indexer.service
+and
+.BR linuxio\-monitoring.service ,
+reloads systemd and has each running daemon reload, so that it logs at debug
+level.
+Sessions already signed in switch at their next sign-in.
+.B disable
+removes the drop-ins and reloads the same way.
+.B status
+says whether verbose mode is enabled and lists the drop-ins.
+.B enable
+and
+.B disable
+need root;
+.B status
+does not.
+The same switch is in the Settings page of the web interface.
+.TP
+.B version
+Print the version of LinuxIO, which is that of the installed package.
+.B linuxio \-\-version
+prints the same.
+Needs no root.
+.TP
+.B help
+Print the list of commands; so do
+.BR \-h ,
+.B \-\-help
+and no command at all.
+.SH EXIT STATUS
+.B linuxio
+exits 0 on success, 1 when a command fails, and 2 for a command it does not
+know.
+.SH FILES
+.TP
+.I /usr/bin/linuxio
+This command.
+.TP
+.I /usr/libexec/linuxio/
+The other LinuxIO programs.
+.TP
+.I /etc/linuxio/
+Configuration:
+.I disallowed\-users
+(the users PAM refuses to sign in, root by default),
+.I indexer/config.yaml
+and
+.IR monitoring/config.yaml ,
+and the settings saved from the web interface.
+.TP
+.I /var/lib/linuxio/
+State: the web server's TLS certificate under
+.IR webserver/ ,
+the job records under
+.IR jobs/ ,
+the file index under
+.I indexer/
+and the metrics history under
+.IR monitoring/ .
+.TP
+.I /etc/pam.d/linuxio
+The PAM stack of the sign-in.
+.TP
+.I /usr/lib/systemd/system/linuxio*
+The units listed below.
+.TP
+.I /etc/systemd/system/linuxio\-webserver.service.d/verbose.conf
+.TQ
+.I /etc/systemd/system/linuxio\-indexer.service.d/verbose.conf
+.TQ
+.I /etc/systemd/system/linuxio\-monitoring.service.d/verbose.conf
+The drop-ins of
+.BR "linuxio verbose enable" .
+.SH SYSTEMD UNITS
+.B linuxio.target
+groups the units LinuxIO runs; it is enabled at install and wanted by
+.BR multi\-user.target .
+Part of it:
+.TP
+.BR linuxio\-webserver.socket ", " linuxio\-webserver.service
+The web server, started by the first connection to port 8090.
+.TP
+.BR linuxio\-auth.socket ", " linuxio\-auth@.service
+The sign-in helper, one instance per connection from the web server on
+.IR /run/linuxio/auth.sock .
+.TP
+.B linuxio\-bridge\-socket\-user.service
+Creates the group that lets the web server connect to the sign-in socket.
+.TP
+.BR linuxio\-indexer.socket ", " linuxio\-indexer.service
+The file indexer, started on demand and stopped when idle.
+.TP
+.BR linuxio\-indexer\-index.timer ", " linuxio\-indexer\-index.service
+The periodic full index.
+.TP
+.B linuxio\-monitoring.service
+The metrics collector.
+.TP
+.B linuxio\-issue.service
+Writes the addresses LinuxIO answers on into the login banner.
+.TP
+.BR linuxio\-btrfs\-health.timer ", " linuxio\-btrfs\-health.service
+The periodic btrfs pool check, enabled on hosts with btrfs.
+.PP
+Outside the target, so that stopping or restarting LinuxIO leaves them
+running:
+.TP
+.BR linuxio\-jobs@ \fIuid\fR .socket ", " linuxio\-jobs@ \fIuid\fR .service
+The job host of one user, which runs the jobs that user starts from the
+web interface.
+.TP
+.B linuxio\-btrfs\-degraded.service
+At boot, mounts degraded the btrfs pools in
+.I /etc/fstab
+that miss a disk; enabled on hosts with btrfs.
+.TP
+.BR linuxio\-btrfs\-resync@ \fIuuid\fR .service ", " linuxio\-btrfs\-rebuild@ \fIuuid\fR .service
+Repair a btrfs pool, started by the pool check.
+.SH EXAMPLES
+Show the state of the LinuxIO units:
+.PP
+.RS
+.nf
+linuxio status
+.fi
+.RE
+.PP
+Follow the bridge's log, starting from its last 200 entries:
+.PP
+.RS
+.nf
+linuxio logs bridge 200
+.fi
+.RE
+.PP
+Restart the web server and the sign-in without closing port 8090, then
+everything:
+.PP
+.RS
+.nf
+sudo linuxio restart
+sudo linuxio restart \-\-full
+.fi
+.RE
+.PP
+Log at debug level, then stop:
+.PP
+.RS
+.nf
+sudo linuxio verbose enable
+sudo linuxio verbose disable
+.fi
+.RE
+.SH SEE ALSO
+.BR systemctl (1),
+.BR journalctl (1),
+.BR sg (1),
+.BR systemd.unit (5),
+.BR pam (8)

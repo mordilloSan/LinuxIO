@@ -1,7 +1,7 @@
 // Status bar indicator for the Vite dev server that `make dev` starts.
 // State comes from frontend/.vite-dev.pid (written by scripts/dev.sh), so it is
 // correct however Vite was started. Start and stop run the existing tasks.
-// Reinstall asks for the sudo password and runs `make reinstall` with it.
+// Reinstall asks for the sudo password and runs `make localinstall` with it.
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -40,7 +40,7 @@ function showLogs() {
 
 let reinstalling = false;
 
-// `make reinstall` calls sudo from the Makefile, so the password reaches it
+// `make localinstall` calls sudo from the Makefile, so the password reaches it
 // through SUDO_ASKPASS (askpass.sh prints $LINUXIO_SUDO_PASSWORD) and
 // `SUDO="sudo -A"`. The password lives only in this task's environment: it is
 // not written to disk, the command line or the terminal.
@@ -51,7 +51,7 @@ async function reinstall(root) {
   }
   const password = await vscode.window.showInputBox({
     title: "LinuxIO reinstall",
-    prompt: "sudo password for make reinstall",
+    prompt: "sudo password for make localinstall",
     password: true,
     ignoreFocusOut: true,
   });
@@ -60,9 +60,9 @@ async function reinstall(root) {
   const task = new vscode.Task(
     { type: "shell", task: "linuxio reinstall" },
     vscode.TaskScope.Workspace,
-    "make reinstall",
+    "make localinstall",
     "linuxio",
-    new vscode.ShellExecution("make reinstall SUDO='sudo -A'", {
+    new vscode.ShellExecution("make localinstall SUDO='sudo -A'", {
       cwd: root,
       env: {
         SUDO_ASKPASS: path.join(__dirname, "askpass.sh"),

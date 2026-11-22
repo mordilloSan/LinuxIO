@@ -427,7 +427,7 @@ left swapping. With the hold it passed the same day, the install taking
 the job host logged `zram service kept off during install` 3 s later, and
 no zram swapped. It passed again with the spec asserting that skipped
 start itself, the install again taking 6 s. On Fedora 45, with SELinux enforcing and LinuxIO as
-its installer puts it ([SELinux](./process-systemd-architecture.md#selinux)),
+its package installs it ([SELinux](./process-systemd-architecture.md#selinux)),
 it passed after a fresh install and again after a reboot, installing
 `zram-generator` in 3 s each time; after the reboot the install showed
 "Refreshing the package lists" first.

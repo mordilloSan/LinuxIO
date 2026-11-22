@@ -1,0 +1,9 @@
+[Unit]
+Description=LinuxIO btrfs timeline snapshots
+Documentation=https://github.com/mordilloSan/LinuxIO
+# Started by linuxio-btrfs-snapshot.timer, which the bridge writes and
+# enables while a snapshot rule or a replication job is enabled.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/linuxio/linuxio-worker snapshot

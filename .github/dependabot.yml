@@ -1,9 +1,38 @@
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"          # scans .github/workflows/
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
-        patterns: ["*"]     # one combined PR instead of one per action
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+      include: scope
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      go:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: build
+      include: scope
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: build
+      include: scope

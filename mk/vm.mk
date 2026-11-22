@@ -98,7 +98,7 @@ vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud
 	@$(call vm_lock,$(vm_one),lock)
 	@"$(vm_script)" create
 
-vm-install: build-nocheck ## Build LinuxIO and install it in the test VMs
+vm-install: build-nocheck ## Build LinuxIO, package it in the test VMs and install the package (PACKAGE_VERSION=... for another version)
 	@$(call vm_lock,$(vm_numbers),lock)
 	@trap '$(vm_stop_all)' EXIT
 	@$(vm_all) install "$(bin_dir)"
@@ -134,8 +134,14 @@ vm-destroy: ## Delete the test VM (VM=2 for another) and its volumes
 # share, each taking the next suite when it is free, so the long ones start
 # first and the short ones fill in around them.
 vm_test_dir := $(cache_dir)/vm
-vm_suites := memory btrfs indexer docker packagekit relay updater userconfig filebrowser network
-SUITES ?= $(vm_suites)
+vm_suites := memory btrfs indexer docker packagekit relay userconfig filebrowser network
+# What is written for Fedora as well: the other suites and specs do things
+# with apt or were never run there. With DISTRO=fedora these are what
+# test-vm-backend and test-vm-browser run when SUITES and PLAYWRIGHT_ARGS name
+# nothing; add a suite or a spec here once it passes on Fedora.
+vm_fedora_suites := memory indexer packagekit relay userconfig filebrowser
+vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts
+SUITES ?= $(if $(filter fedora,$(DISTRO)),$(vm_fedora_suites),$(vm_suites))
 # The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
 RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
 # The memory suite's zram tool, the profile's when empty: zram-tools on Ubuntu,
@@ -146,10 +152,11 @@ ZRAM_PROVIDER ?=
 export LINUXIO_VM_BTRFS_RUN := $(BTRFS_INTEGRATION_RUN)
 export LINUXIO_VM_FILEBROWSER_RUN := $(FILEBROWSER_ROOT_RUN)
 export LINUXIO_VM_RELAY_RUN := $(RELAY_ROOT_RUN)
-export LINUXIO_VM_UPDATER_RUN := $(UPDATER_RUN)
 export LINUXIO_VM_DOCKER_RUN := $(DOCKER_UPDATE_RUN)
 export LINUXIO_VM_ZRAM_PROVIDER := $(ZRAM_PROVIDER)
 export LINUXIO_VM_BUILD_DIR := $(bin_dir)
+# The version of the package install assembles in the VM (mk/package.mk).
+export LINUXIO_VM_PACKAGE_VERSION := $(PACKAGE_VERSION)
 # $(call vm_test_build,NAME,PACKAGE) builds PACKAGE's tests as NAME.test.
 # Each build is a command of its own, ended by ;, so set -e stops at a failed
 # one: it would let a failure early in an && list pass. It builds to a name of
@@ -160,7 +167,6 @@ vm_build_btrfs = $(call vm_test_build,btrfs,./common/btrfs) $(call vm_test_build
 vm_build_memory = $(call vm_test_build,memory,./bridge/handlers/memory)
 vm_build_filebrowser = $(call vm_test_build,filebrowser,./bridge/handlers/filebrowser) $(call vm_test_build,filebrowser-services,./bridge/handlers/filebrowser/services)
 vm_build_relay = $(call vm_test_build,bridge-cmd,./bridge/cmd)
-vm_build_updater = $(call vm_test_build,appupdate,./bridge/handlers/appupdate)
 vm_build_docker = $(call vm_test_build,dockerupdate,./common/dockerupdate)
 vm_build_network = $(call vm_test_build,hostbridge,./bridge/handlers/network/internal/hostbridge)
 vm_build_userconfig = $(call vm_test_build,userconfig,./bridge/internal/userconfig)
@@ -223,12 +229,12 @@ vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root 
 	@$(call vm_suite,relay)
 
 ##@ Tests|green
-# As many free VMs as the CPUs and the memory allow, one for each suite at
+# As many free VMs as the host's threads and the memory allow, one for each suite at
 # most, since a VM without a suite would only be reverted (pick); VMS=1 runs
 # them one after another on one. Each is created when it is missing and
 # reverted to clean, so a run starts from clean whatever ran before it, and
 # the indexer suite finds no LinuxIO to refuse. The suites bring their own test binaries, so no build is
-# installed. SUITES='docker updater' runs only those.
+# installed. SUITES='docker relay' runs only those.
 test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Pick free test VMs (one per suite at most, created when missing), revert them and run the root suites (SUITES=...) on them, each VM taking the next when free
 	@set -e
 	@$(if $(VM),$(call vm_lock,$(VM),lock),$(call vm_lock,,pick $(call vm_want,:$(words $(SUITES)))))
@@ -240,11 +246,14 @@ test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Pi
 	@$(vm_all) prepare
 	@$(vm_all) test "$(vm_test_dir)"
 
-# The update build the update specs install (jobs-phase5a.spec.ts,
+# The update build the update specs publish as package B (jobs-phase5a.spec.ts,
 # jobs-update.spec.ts): this tree with jobs.Protocol one higher, so a job host
-# of the installed build is an older one to its bridge. A Go overlay of
-# record.go raises it without touching the tree; the build is a copy of the
-# plain one with its Go binaries built again. docs/jobs.md, Testing.
+# of the installed build is an older one to its bridge, and a version of its
+# own (GIT_VERSION with +update), which `linuxio --version` reports, so the
+# specs see which build runs. A Go overlay of record.go raises the protocol
+# without touching the tree; the build is a copy of the plain one with its Go
+# binaries built again (linuxio-auth, in C, is the plain one's). docs/jobs.md,
+# Testing.
 vm_update_dir := $(cache_dir)/vm-update-build
 vm_update_build := $(vm_update_dir)/build
 vm_record_go := $(backend_dir)/common/jobs/record.go
@@ -257,8 +266,9 @@ vm-update-build: build-nocheck ## Build this tree with jobs.Protocol one higher 
 	@if cmp -s "$(vm_record_go)" "$(vm_update_dir)/record.go"; then echo "vm-update-build: no jobs.Protocol line to raise in $(vm_record_go)" >&2; exit 1; fi
 	@printf '{"Replace":{"%s":"%s"}}\n' "$(vm_record_go)" "$(vm_update_dir)/record.go" >"$(vm_update_dir)/overlay.json"
 	@rm -rf "$(vm_update_build)"
-	@cp -a "$(bin_dir)" "$(vm_update_build)"
+	@cp -a "$(bin_dir)" "$(vm_update_build)" && rm -rf "$(vm_update_build)/packages" "$(vm_update_build)/repo"
 	@$(MAKE) --no-print-directory build-go-binaries BIN_DIR="$(vm_update_build)" SKIP_ENSURE_GO=1 \
+	  GIT_VERSION="$(GIT_VERSION)+update" \
 	  GO_BUILD_EXTRA_ENV="GOFLAGS='-buildvcs=false -overlay=$(vm_update_dir)/overlay.json'"
 
 # $(call vm_browser_specs,NUMBERS,ARGS[,ENV]) runs Playwright with ARGS on the
@@ -277,8 +287,10 @@ done
   ./node_modules/.bin/playwright test --config config/playwright.vm.config.ts $(2))
 endef
 # The specs project unless PLAYWRIGHT_ARGS names a project: release-update
-# (jobs-update.spec.ts) needs a VM reverted to clean (playwright.vm.config.ts).
-vm_specs_args = $(if $(findstring --project,$(PLAYWRIGHT_ARGS)),,--project=specs) $(PLAYWRIGHT_ARGS)
+# (jobs-update.spec.ts, package A to package B from the VM's signed
+# repository) needs a VM reverted to clean, with no LinuxIO
+# (playwright.vm.config.ts).
+vm_specs_args = $(if $(findstring --project,$(PLAYWRIGHT_ARGS)),,--project=specs) $(if $(PLAYWRIGHT_ARGS),$(PLAYWRIGHT_ARGS),$(if $(filter fedora,$(DISTRO)),$(vm_fedora_specs)))
 
 test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs against the test VMs as they are, without reverting or installing (test-vm-browser does both)
 	@set -e
@@ -288,7 +300,9 @@ test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs aga
 	@$(call vm_browser_specs,$$vm_set,$(vm_specs_args))
 
 # The release-update project after the others, alone on the first VM of the
-# run reverted to clean, with a log of its own. The other VMs of the run have
+# run reverted to clean, with a log of its own: it installs package A of this
+# build from the VM's signed repository and updates it to package B of the
+# update build (LINUXIO_VM_UPDATE_BUILD) on the Updates page. The other VMs of the run have
 # nothing left to do, so they are shut down first (unless VM_KEEP) and leave
 # their memory to the first VM's boot; one that does not shut down is left to
 # the trap that ends the run.
@@ -300,16 +314,29 @@ $(call vm_browser_specs,$$vm_first,--project=release-update,LINUXIO_VM_LOG=test-
 endef
 
 ##@ Tests|green
-# The whole run in one target: as many free VMs as the CPUs and the memory
+# The whole run in one target: as many free VMs as the host's threads and the memory
 # allow (pick; VMS=2 for two), each created when it is missing, reverted to clean and given
 # this build, then the specs, then the release-update spec. A run narrowed
-# with PLAYWRIGHT_ARGS runs those specs only.
+# with PLAYWRIGHT_ARGS runs those specs only; one narrowed to
+# --project=release-update reverts its VMs and installs nothing, since that
+# spec starts from a VM with no LinuxIO.
 test-vm-browser: export LINUXIO_VM_UPDATE_BUILD = $(vm_update_build)
 test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Pick free test VMs (created when missing), revert them, install this build and run the browser specs, then the release-update spec on a VM reverted again
 	@set -e
 	@$(if $(VM),$(call vm_lock,$(VM),lock),$(call vm_lock,,pick $(call vm_want)))
 	@trap '$(vm_stop_all)' EXIT
 	@$(if $(VM),echo "linuxio-vm: VM $(VM) for this run")
-	@$(vm_all) prepare "$(bin_dir)"
+	@$(vm_all) prepare $(if $(findstring --project=release-update,$(PLAYWRIGHT_ARGS)),,"$(bin_dir)")
 	@$(call vm_browser_specs,$$vm_set,$(vm_specs_args))
 	@$(if $(PLAYWRIGHT_ARGS),,$(vm_release_update))
+
+# Everything the test VMs run, one target after another: Ubuntu's root suites
+# and browser specs, then Fedora's (vm_fedora_suites, vm_fedora_specs and the
+# release-update spec). The first failure ends it. It takes no SUITES,
+# PLAYWRIGHT_ARGS or DISTRO: a narrowed run is a run of one of the four.
+test-vm-all: ## Run the root suites and the browser specs in the test VMs on Ubuntu, then on Fedora what is written for it
+	@$(if $(filter command line environment,$(origin SUITES) $(origin PLAYWRIGHT_ARGS))$(strip $(DISTRO)),echo "❌ test-vm-all takes no SUITES or PLAYWRIGHT_ARGS or DISTRO: run test-vm-backend or test-vm-browser for a narrowed run" >&2; exit 1)
+	@$(MAKE) --no-print-directory test-vm-backend DISTRO=
+	@$(MAKE) --no-print-directory test-vm-browser DISTRO=
+	@$(MAKE) --no-print-directory test-vm-backend DISTRO=fedora
+	@$(MAKE) --no-print-directory test-vm-browser DISTRO=fedora

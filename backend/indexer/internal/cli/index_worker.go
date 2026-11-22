@@ -17,7 +17,7 @@ import (
 
 func runIndexMode(args []string) int {
 	fs := flag.NewFlagSet("linuxio-indexer worker", flag.ContinueOnError)
-	configPath := fs.String("config-file", configfile.DefaultPath(), "YAML config file path")
+	configPath := fs.String("config", configfile.DefaultPath(), "YAML config file path")
 	if err := fs.Parse(args); err != nil {
 		return flagParseExitCode(err)
 	}

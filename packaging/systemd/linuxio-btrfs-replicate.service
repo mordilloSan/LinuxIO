@@ -1,0 +1,9 @@
+[Unit]
+Description=LinuxIO btrfs replication
+Documentation=https://github.com/mordilloSan/LinuxIO
+# No [Install] section: only the snapshot pass starts it, when a replication
+# job is enabled, and does not wait for it.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/linuxio/linuxio-worker replicate

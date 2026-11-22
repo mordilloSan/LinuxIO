@@ -62,44 +62,74 @@ Linux I/O combines workflows usually split across multiple tools:
 
 ## Installation
 
-LinuxIO supports Linux kernels 5.9+ on the two distribution families its
-installer knows: Debian (Ubuntu, Debian, Linux Mint, Pop!_OS) and RHEL (Fedora,
-RHEL, CentOS Stream, Rocky Linux, AlmaLinux). RHEL 8 and its rebuilds are not
-supported: their kernel is 4.18.
+LinuxIO is installed as a native package, `linuxio`, from the project's package
+repository, `packages.engmariz.com`, whose metadata and packages are signed.
+It is a DEB for the Debian family and an RPM for the RHEL family, for amd64
+(`x86_64`) only, for Debian stable, Ubuntu LTS from 24.04 and the current and
+previous Fedora releases. It needs Linux 5.9 or newer and a C
+library of 2.39 or newer (Ubuntu 24.04's), so RHEL 9 and its rebuilds, and
+anything older, cannot run it.
 
-### Quick install (recommended)
+### Debian and Ubuntu
 
-**Step 1** — Install the bootstrap dependencies (PAM, PolicyKit, and PackageKit):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash
+sudo curl -fsSLo /etc/apt/sources.list.d/linuxio.sources https://packages.engmariz.com/apt/linuxio.sources
+sudo apt update
+sudo apt install linuxio
 ```
 
-PackageKit is required because LinuxIO uses it for capability installation from the dashboard. Docker is separate from this bootstrap; when container support
-is needed, install it from the Capability Manager (which runs Docker's convenience script and shows its output) or run the script directly:
+`linuxio.sources` carries the repository's public key, so apt checks every
+download against it.
+
+### Fedora
+
 ```bash
-curl -fsSL https://get.docker.com | sudo sh
+sudo curl -fsSLo /etc/yum.repos.d/linuxio.repo https://packages.engmariz.com/rpm/linuxio.repo
+sudo dnf install linuxio
 ```
 
-**Step 2** — Install LinuxIO binaries:
+dnf asks once to import the repository's key; compare its fingerprint with
+the one in [Releases](docs/releases.md#owner-setup) before you accept.
+
+The package brings PAM, polkit and PackageKit with it, enables LinuxIO and
+starts it. The dashboard is at `https://<your-hostname>:8090`, and the address
+is shown at an SSH login. After signing in, install optional capabilities
+such as Docker, sensors, SMART monitoring, NFS, or Avahi from LinuxIO
+Capability Manager. Docker's entry runs Docker's convenience script and shows
+its output. Avahi installation includes the required Debian mDNS NSS
+integration. On RHEL-family hosts the responder remains usable if the
+optional `nss-mdns` package is unavailable, and LinuxIO warns that EPEL may be
+needed for client-side `.local` resolution; the dashboard is then also
+reachable at `https://<your-hostname>.local:8090`. Installing lm-sensors from
+the Capability Manager also runs the required `sensors-detect --auto`
+hardware probe. To listen on another port, see
+[Packages](docs/packaging.md#the-avahi-announcement-and-the-port).
+
+### Updating
+
+LinuxIO updates like any other package: it appears among the host's updates
+on the Updates page, where a banner points to it, and `apt upgrade`, `dnf
+upgrade` and the distribution's automatic updates install it too. The update
+restarts LinuxIO if it was running, which signs everyone out; jobs keep
+running.
+
+### Removing
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
+sudo apt remove linuxio    # apt purge linuxio also removes its files under /etc
+sudo dnf remove linuxio
 ```
 
-Use the dashboard URL printed by the installer. It preserves an existing valid
-LinuxIO port when possible, otherwise selects an available port from
-`8090`–`8099`. After signing in, install optional capabilities such as sensors,
-SMART monitoring, NFS, or Avahi from LinuxIO Capability Manager. Avahi
-installation includes the required Debian mDNS NSS integration. On RHEL-family
-hosts the responder remains usable if the optional `nss-mdns` package is
-unavailable, and LinuxIO warns that EPEL may be needed for client-side `.local`
-resolution. The dashboard is then reachable at
-`https://<your-hostname>.local:<port>` using the same selected port. Installing
-lm-sensors from the Capability Manager also runs the required
-`sensors-detect --auto` hardware probe.
+Removal stops LinuxIO and removes what LinuxIO set up for its own work. Its
+data in `/var/lib/linuxio` stays, and so do the scheduled scripts and other
+things that run without LinuxIO. With LinuxIO gone, its libvirt hook no
+longer runs, so on a host with Docker a VM on a bridge can lose its network
+at its next start. [Packages](docs/packaging.md#removal) lists what goes and
+what stays.
 
-A versioned installation downloads immutable binaries from that release, but intentionally fetches current `main` systemd, PAM, configuration, MOTD, and
-helper assets. This recovery policy lets packaging fixes repair already published releases; current packaging assets must therefore remain compatible
-with supported historical binaries.
+A LinuxIO installed by the install script of v0.54 or earlier is removed
+first with that release's `uninstall.sh`; the package refuses to install over
+it.
 
 On first startup, LinuxIO creates a managed self-signed certificate in
 `/var/lib/linuxio/webserver/certificates`. It covers localhost, the system
@@ -107,13 +137,14 @@ hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
 
-The installer places nine binaries in `/usr/local/bin`: `linuxio`,
-`linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
-`linuxio-indexer`, `linuxio-monitoring`, `linuxio-worker`, and
-`linuxio-claude-relay`. Only `linuxio` is a command to type; the programs
-systemd runs as root are installed so only root can start them. From a
-checkout, `make localinstall` runs the same installer with `--local` against the
-binaries in `build/`.
+The package puts the `linuxio` command in `/usr/bin` and eight programs in
+`/usr/libexec/linuxio`: `linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`,
+`linuxio-docker-update`, `linuxio-indexer`, `linuxio-monitoring`,
+`linuxio-worker`, and `linuxio-claude-relay`. Only `linuxio` is a command to
+type (`man linuxio`); the programs systemd runs as root are installed so only
+root can start them. From a checkout, `make localinstall` builds the binaries
+in `build/`, packages them as a DEB or an RPM and installs that package with
+`apt` or `dnf`.
 
 The first-party `linuxio-monitoring` binary is installed and enabled with
 LinuxIO rather than through Capability Manager. It samples the host, keeps the
@@ -138,7 +169,7 @@ for permissions, lifecycle, and recovery.
 
 | Category | Packages | Required |
 |----------|----------|----------|
-| PAM, PolicyKit, PackageKit | Authentication, authorization, system updates, and in-app capability installation | Mandatory bootstrap dependencies |
+| PAM, polkit, PackageKit, systemd | Authentication, authorization, system updates, and in-app capability installation | Dependencies of the `linuxio` package |
 | Docker | Container management, installed from the Capability Manager with Docker's convenience script | Optional |
 | Other capabilities | Sensors, SMART monitoring, NFS, Avahi, and other host facilities | Install from LinuxIO Capability Manager |
 
@@ -225,7 +256,7 @@ docs(readme): update installation instructions
 This project is licensed under the [Apache License 2.0](LICENSE).
 Third-party licenses and notices included in the filesystem indexer are
 listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and installed at
-`/usr/share/linuxio/doc/THIRD_PARTY_NOTICES.md`.
+`/usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md`.
 
 ---
 
