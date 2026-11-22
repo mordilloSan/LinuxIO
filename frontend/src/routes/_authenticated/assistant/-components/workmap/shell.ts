@@ -245,8 +245,8 @@ function substitutionsIn(line: string) {
 }
 
 /**
- * The here-documents a line opens, read past quotes, `$(…)` and comments.
- * `frames` holds the quotes and `$(…)` open at the end of the line before and
+ * The here-documents a line opens, read past quotes, `$(…)`, backticks and
+ * comments. `frames` holds those open at the end of the line before and
  * is left as they are at the end of this one, so a string over several lines
  * opens nothing. `<<<` is a here-string and `((a << b))` arithmetic. The line
  * is read once, however many marks it holds: a mark is none of a shell's
@@ -255,7 +255,7 @@ function substitutionsIn(line: string) {
  */
 function opened(
   line: string,
-  frames: { quote: string; brackets: number }[],
+  frames: { quote: string; brackets: number; tick?: boolean }[],
 ): HereDocument[] {
   const found: HereDocument[] = [];
   // Where the last `((` and `))` stand: after an open `((`, `<<` shifts.
@@ -279,6 +279,10 @@ function opened(
       // Inside `$(…)` quotes start over, also within double quotes.
       frames.push({ quote: "", brackets: 0 });
       i++;
+    } else if (c === "`") {
+      // Backticks do the same, and the next one closes them.
+      if (top.tick) frames.pop();
+      else frames.push({ quote: "", brackets: 0, tick: true });
     } else if (top.quote === '"') {
       if (c === '"') top.quote = "";
     } else if (c === "'" || c === '"') {
@@ -287,9 +291,13 @@ function opened(
       top.brackets++;
     } else if (c === ")") {
       if (top.brackets > 0) top.brackets--;
-      else if (frames.length > 1) frames.pop();
+      else if (frames.length > 1 && !top.tick) frames.pop();
     } else if (c === "#" && (i === 0 || /[\s;&|(]/.test(line[i - 1]))) {
-      break;
+      // A comment runs to the end of the line, or to the backtick that
+      // closes the backticks it stands in.
+      const end = top.tick ? line.indexOf("`", i) : -1;
+      if (end < 0) break;
+      i = end - 1;
     } else if (
       c === "<" &&
       line[i + 1] === "<" &&

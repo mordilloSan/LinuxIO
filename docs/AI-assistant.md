@@ -361,9 +361,10 @@ advertises the matching capability.
     `declare` or `local`) is values and only what `$(…)` or `<(…)` runs
     inside it is a command (a `(` after `=` in `[[ … ]]` is a regex, not a
     list), the text of a here-document is not run unless a shell reads it
-    (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`
-    are text, `sudo bash <<EOF` and `bash -s 2>&1 <<EOF` are read as
-    commands), and only the first 8,000 characters of a line are read. A
+    (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`,
+    or with backticks in place of `$(…)`, are text, `sudo bash <<EOF` and
+    `bash -s 2>&1 <<EOF` are read as commands), and only the first 8,000
+    characters of a line are read. A
     line follows no more than 256 commands run inside others (in `$(…)`,
     behind `find -exec`, in the line handed to `bash -c`): one that holds
     more is read no further and goes to Shell. A row with no description is

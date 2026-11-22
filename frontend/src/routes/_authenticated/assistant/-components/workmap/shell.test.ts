@@ -200,6 +200,26 @@ describe("shellStation", () => {
       "shell",
     ],
     ['git commit -m "fix parser\nhandles <<EOF now"\ngit push', "network"],
+    // Backticks open a here-document as `$(…)` does, also within a string.
+    [
+      "git commit -m \"`cat <<'EOF'\nfix: retry (curl timeout)\n\ncurl was called twice\nEOF\n`\"",
+      "shell",
+    ],
+    ["git commit -m `cat <<'EOF'\ncurl was called twice\nEOF\n`", "shell"],
+    // Its text still runs what a bare word lets it run.
+    ['git commit -m "`cat <<EOF\nfix: $(curl x)\nEOF\n`"', "network"],
+    // The string goes on after the closing backtick, and what follows is read.
+    [
+      "git commit -m \"`cat <<'EOF'\nfix: x\nEOF\n` and <<EOF in parser\"\ngit push",
+      "network",
+    ],
+    // A `)` inside backticks does not close them.
+    ["echo \"`case a in a) cat <<'EOF'\ncurl x\nEOF\n;; esac`\"", "files"],
+    // A comment inside backticks ends where they close, not with the line.
+    [
+      "x=`hostname # note`\necho \"`date`\"\ncat <<'EOF' > f\ncurl x\nEOF",
+      "shell",
+    ],
     ["cat <<\\EOF > f\ncurl x\nEOF", "files"],
     // A file a shell's script writes is text there too.
     ["sudo bash <<'EOF'\ncat > /etc/x <<'CONF'\ncurl y\nCONF\nEOF", "shell"],
