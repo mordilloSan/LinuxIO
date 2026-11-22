@@ -6,14 +6,16 @@ import (
 	"time"
 )
 
-// Run is one collection that concurrent callers can join. The owner writes
-// Value and Err, then Finish stamps At and closes Done; every field except the
-// owner-set seed in Value is safe to read only after Done is closed.
+// Run is one collection that concurrent callers can join. Started is set when
+// the run is registered and never changes. The owner writes Value and Err, then
+// Finish stamps At and closes Done; those three, except the owner-set seed in
+// Value, are safe to read only after Done is closed.
 type Run[T any] struct {
-	done  chan struct{}
-	At    time.Time // when the run finished
-	Value T
-	Err   error
+	done    chan struct{}
+	Started time.Time // when the run was registered
+	At      time.Time // when the run finished
+	Value   T
+	Err     error
 }
 
 // Done is closed once Finish has run.
@@ -38,13 +40,19 @@ func (r *Run[T]) Finish() {
 	close(r.done)
 }
 
-// Fresh reports whether the run is still collecting or finished without error
-// less than window ago.
+// Fresh reports whether the run is still collecting, or finished without error
+// and started less than window ago. The window runs from the start, not the
+// finish, so a caller that returns one window later gets a sample of its own:
+// counted from the finish, a caller polling at the window's own interval found
+// the last sample one collection time short of the window and was handed it
+// again, every other time. A run that took more than half the window stays
+// fresh until it has rested as long as it took, so a slow collection is never
+// followed at once by the next one.
 func (r *Run[T]) Fresh(window time.Duration) bool {
 	if r.Active() {
 		return true
 	}
-	return r.Err == nil && time.Since(r.At) < window
+	return r.Err == nil && time.Since(r.Started) < max(window, 2*r.At.Sub(r.Started))
 }
 
 // Flight keeps the newest Run per key so concurrent callers share one
@@ -67,7 +75,7 @@ func (f *Flight[K, T]) beginLocked(key K, seed T) *Run[T] {
 	if f.runs == nil {
 		f.runs = make(map[K]*Run[T])
 	}
-	run := &Run[T]{done: make(chan struct{}), Value: seed}
+	run := &Run[T]{done: make(chan struct{}), Started: time.Now(), Value: seed}
 	f.runs[key] = run
 	return run
 }

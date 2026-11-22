@@ -15,9 +15,12 @@ import (
 	systemmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 )
 
-// ReuseWindow bounds how often a live key collects. Requests inside the window
-// share the newest sample; captured_at reports that sample's time.
-const ReuseWindow = time.Second
+// ReuseWindow bounds how often a live key collects. Requests that arrive within
+// the window of a collection's start share its sample; captured_at reports that
+// sample's time. It is a little under the one second at which the dashboard
+// asks (DASHBOARD_REFETCH_FAST_MS in the frontend), so a request that arrives a
+// few milliseconds early still gets a sample of its own.
+const ReuseWindow = 900 * time.Millisecond
 
 const bytesPerMiB = 1024 * 1024
 

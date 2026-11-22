@@ -128,13 +128,22 @@ averages over the collector interval and are stored at a single `1m` resolution.
 **Live request.** Every current endpoint, including `/api/v1/live`, keeps its
 own sample key and its own delta baseline. Two rules apply to every live key:
 
-1. **Reuse within one second.** A request reuses its key's sample when the
-   sample is under one second old, and joins the collection when one is already
-   in flight; otherwise it collects. `captured_at` (or `captured_at_ms`) reports
-   the sample's own time, not the request time. One dashboard polling several
-   cards therefore causes at most one collection per second, and several
-   dashboards share it. See `ReuseWindow` in
-   `backend/monitoring/internal/live` and its use in
+1. **Reuse within 900 ms of a collection's start.** A request reuses its
+   key's sample when that sample's collection began under 900 ms ago, and joins
+   the collection when one is already in flight; otherwise it collects.
+   `captured_at` (or `captured_at_ms`) reports the sample's own time, not the
+   request time. One dashboard polling several cards therefore causes one
+   collection per second, and several dashboards share it: a key never collects
+   more than once per 900 ms. The window runs from the start of the collection
+   and is shorter than the dashboard's one-second poll on purpose: counted from
+   the finish with a full second, a request that returns one second later finds
+   a sample one collection time (about 60 ms) short of a second old and is
+   handed it again, so a one-second poll gets a new sample only every two
+   seconds. A collection that took more than half the window is reused until it
+   has rested as long as it took, so a host with slow sensors is not sampled
+   back to back; there a one-second poll gets a new sample less often. See
+   `ReuseWindow` in `backend/monitoring/internal/live`, `Fresh` in
+   `backend/monitoring/internal/collector/flight.go` and their use in
    `backend/monitoring/internal/app/live.go`.
 2. **A stale baseline reseeds from the collector.** When a live key's delta
    baseline is older than the last collector tick *and* that tick is itself at
@@ -150,7 +159,7 @@ own sample key and its own delta baseline. Two rules apply to every live key:
    `disk.Manager.reseedFromCollector` for network and disk, and
    `docker.Manager.ReseedFromCollector` for containers.
 
-No live result is retained beyond the one-second window. A live request that
+No live result is retained beyond the reuse window. A live request that
 arrives while a collector pass is running waits on the app mutex; the
 `/api/v1/{plugin}`, `/api/v1/all` and `/api/v1/system/summary` routes
 additionally accept the finished collector sample through the handoff.
