@@ -55,6 +55,9 @@ describe("React ref APIs", () => {
 
     for (const file of sourceFiles().map(relativeToSrc)) {
       const source = readSource(file);
+      // Every form found below spells "forwardRef" out; parsing all ~800
+      // files instead runs near the 5s test timeout on CI runners.
+      if (!source.includes("forwardRef")) continue;
       const sourceFile = ts.createSourceFile(
         file,
         source,
