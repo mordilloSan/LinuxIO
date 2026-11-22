@@ -108,7 +108,7 @@ failure anywhere, in either package format, stops everything after it:
 | `rpm` | `RPM_IMAGE` | Unpacks the compile job's programs; `make package-rpm`; `make test-packages-quiet`; keeps the RPM | `contents: read` | none |
 | `repositories` | `RPM_IMAGE` | Fetches the kept earlier packages; imports the signing subkey into a GnuPG home of its own; `make repo-apt repo-rpm`; checks every signature against `packaging/keys/linuxio.asc`; deletes the GnuPG home; keeps the tree as the Pages artifact and this version's packages as the release assets | `contents: read` | environment `release`, `LINUXIO_SIGNING_KEY` |
 | `deploy` | `ubuntu-latest` (calls the Pages API) | `actions/deploy-pages` with the tree | `pages: write`, `id-token: write` | environment `github-pages` |
-| `publish` | `ubuntu-latest` (calls the Releases API) | Writes the release notes with `.github/scripts/changelog-entry.sh`; creates a draft release with the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write` | none |
+| `publish` | `ubuntu-latest` (calls the Releases API) | Writes the release notes with `.github/scripts/changelog-entry.sh`, which names an author as `@login` only when GitHub knows the account behind the commit and by Git author name otherwise; creates a draft release with the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write` | none |
 
 The workflow's default permissions are none. The package tests run before any
 job that can see the signing key, and the GitHub release is published only

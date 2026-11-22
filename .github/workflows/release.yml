@@ -508,6 +508,8 @@ jobs:
 
       - name: Write the release notes
         env:
+          # The generator asks GitHub for each author's login.
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail

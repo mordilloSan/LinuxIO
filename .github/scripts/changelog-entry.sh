@@ -2,6 +2,11 @@
 # Generate a changelog entry for a version
 # Usage: changelog-entry.sh <version> <prev_tag> <commit_range> <repo>
 # Output: Markdown changelog body (categories + contributors)
+#
+# An author is written as @login only when GitHub names the account behind one
+# of their commits (needs gh and GH_TOKEN, and the commits pushed); otherwise as
+# the plain Git author name. A Git author name is not a login: "@Miguel Mariz"
+# mentions whoever owns the account "Miguel".
 
 set -euo pipefail
 
@@ -16,14 +21,32 @@ TEST="" BUILD="" CI="" CHORE="" OTHER=""
 
 # NUL-delimited fields preserve pipes and backslashes without interpreting
 # commit text as shell or printf syntax. `%s` is Git's single-line subject.
-LOG_ARGS=(--reverse --no-merges --pretty=format:'%s%x00%h%x00%an%x00')
+LOG_ARGS=(--reverse --no-merges --pretty=format:'%s%x00%H%x00%an%x00%ae%x00')
 if [ -n "$COMMIT_RANGE" ]; then
 	LOG_ARGS+=("$COMMIT_RANGE")
 fi
 
+# One lookup per author email, on the first commit seen with it.
+declare -A MENTIONS=()
+CONTRIBUTORS=""
+
+mention_for() {
+	local hash=$1 name=$2 email=$3 login=""
+	if [[ -z ${MENTIONS[$email]+set} ]]; then
+		login="$(gh api "repos/$REPO/commits/$hash" --jq '.author.login // ""' 2>/dev/null)" || login=""
+		if [[ $login =~ ^[A-Za-z0-9-]+$ ]]; then
+			MENTIONS[$email]="@$login"
+		else
+			MENTIONS[$email]=""
+		fi
+	fi
+	MENTION="${MENTIONS[$email]:-$name}"
+}
+
 while IFS= read -r -d '' message &&
 	IFS= read -r -d '' hash &&
-	IFS= read -r -d '' author; do
+	IFS= read -r -d '' author &&
+	IFS= read -r -d '' email; do
 	# `format:` separates commits with one newline; the fields themselves are
 	# NUL-delimited, so discard only that known record separator.
 	message="${message#$'\n'}"
@@ -31,7 +54,9 @@ while IFS= read -r -d '' message &&
 	[[ "$author" == "github-actions[bot]" ]] && continue
 	[[ "$message" =~ ^[Cc]hangelog$ ]] && continue
 
-	ENTRY="* $message ([${hash:0:7}](https://github.com/$REPO/commit/$hash)) by @$author"
+	mention_for "$hash" "$author" "$email"
+	CONTRIBUTORS="$CONTRIBUTORS* $MENTION"$'\n'
+	ENTRY="* $message ([${hash:0:7}](https://github.com/$REPO/commit/$hash)) by $MENTION"
 
 	if [[ "$message" =~ ^feat(\(.*\))?: ]]; then
 		FEATURES="$FEATURES$ENTRY"$'\n'
@@ -73,11 +98,7 @@ done < <(git log "${LOG_ARGS[@]}")
 
 # Contributors
 printf "###  Contributors\n\n"
-if [ -n "$COMMIT_RANGE" ]; then
-	git log --no-merges "$COMMIT_RANGE" --pretty=format:'* @%an' | sort -u
-else
-	git log --no-merges --pretty=format:'* @%an' | sort -u
-fi
+printf '%s' "$CONTRIBUTORS" | sort -u
 
 # Full changelog link
 if [ -n "$PREV_TAG" ]; then
