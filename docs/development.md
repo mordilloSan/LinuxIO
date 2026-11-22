@@ -841,25 +841,12 @@ These are consumed by particular targets rather than global defaults:
 - `CFLAGS`, `LDFLAGS`, `GOOS`, and `GOARCH` remain standard toolchain
   overrides and are passed through where applicable.
 
-## Release overrides
+## Releases
 
-Private release targets are loaded from `release.mk` when that file is
-available. Their supported inputs are:
-
-| Variable | Purpose |
-| --- | --- |
-| `REPO` | Repository passed to GitHub CLI commands, for example `owner/name`. |
-| `VERSION` | Release version consumed by `start-dev`/`open-pr`, such as `v1.2.3`. |
-| `PR` | Optional pull-request number for `merge-release`. |
-| `CONFIRM` | Set to `0` to skip the `merge-release` confirmation prompt. |
-
-`merge-release` shows a merge summary and asks for confirmation before merging.
-If the release PR is already merged — for example after an interrupted run —
-re-running `make merge-release` resumes the release-workflow watch and branch
-cleanup instead of failing.
-
-GitHub CLI authentication is provided by its normal credential mechanism; no
-credentials are stored in Make variables.
+A release is always made from a `dev/vX.Y.Z` branch: merging its pull request
+into `main` starts the release workflow (`.github/workflows/release.yml`),
+which tags the merge commit, builds the packages and publishes them. See
+[releases.md](releases.md).
 
 ## Dependency updates
 

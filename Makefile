@@ -6,9 +6,6 @@
 .DEFAULT_GOAL := help
 default: help
 
-# Include private release automation
--include release.mk
-
 repo_root := $(if $(REPO_ROOT),$(REPO_ROOT),$(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST))))))
 REPO_ROOT ?= $(repo_root)
 mk_dir := $(repo_root)/mk
