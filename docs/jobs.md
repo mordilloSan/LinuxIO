@@ -585,9 +585,14 @@ fresh for 5 minutes; `packages.update` and `updates.refresh_cache` invalidate
 it. Closing the banner hides that version until the page is loaded again.
 The administrator installs the update there like any package
 (`packages.update`, a job in the root job host). The bridge restarts nothing
-after it: what installs the new build restarts `linuxio.target`, and a failed
-or cancelled transaction leaves the package as it was. The session ends with
-the restart; after the next sign-in the job is in the task tray.
+after it: what installs the new build restarts `linuxio.target`, and a
+transaction that fails or is cancelled before the package manager changes the
+package leaves the old build installed and running, the session signed in and
+the update on offer. A cancelled job is not always a cancelled transaction:
+PackageKit's dnf5 backend ignores a cancel, and none is sent while dpkg runs
+([Known limits](#known-limits)), so that update goes through and restarts
+LinuxIO like any other. The session ends with the restart; after the next
+sign-in the job is in the task tray.
 
 The package replaces the binaries and restarts `linuxio.target`, but never
 stops or restarts a job host, which is outside the target: an old host
@@ -1025,10 +1030,19 @@ plain build as package A, at this checkout's package version, installs it
 from the repository with apt or dnf, starts the jobs in A's hosts, then
 publishes the update build as package B (A's version with `+e2e1`; on Fedora
 with a comment added to its SELinux module) and updates to it on the Updates
-page: Refresh Sources, the banner, Open Updates, the package's Update. The
-file is one serial group sharing one update, needs `vdd` empty, and leaves
-the VM changed (B installed, an ext4 on `vdd`, a user without sudo, a
-schedule), so it is the Playwright project `release-update` of its own:
+page: Refresh Sources, the banner, Open Updates, the package's Update. Before
+that update it starts two that do not go through, and checks after each that
+A is still installed and running, that `linuxio.target`, the web server and
+the root host were not restarted, and that the session is signed in with B
+still on offer. The first fails: the package in the repository no longer is
+what the signed index says. The second, on Ubuntu only, is cancelled while
+PackageKit reports the download with `AllowCancel` true: apt reads the
+package through a link to `vde`, capped at 1 MiB/s, which takes half a
+minute. On Fedora a cancel does not stop the update, so there is nothing to
+check. The file is one serial group sharing one update, needs `vdd` and, on
+Ubuntu, `vde` empty, and leaves the VM changed (B installed, an ext4 on `vdd`
+and, on Ubuntu, on `vde`, a user without sudo, a schedule), so it is the
+Playwright project `release-update` of its own:
 `make test-vm-browser` runs it after the other files, on its first VM
 reverted to clean, with its log in
 `.cache/test-logs/test-vm-browser-release-update.log`. By hand (with
@@ -1150,6 +1164,9 @@ Covered at one level only:
   package it was at and how many before it were updated.
 - A transaction PackageKit cancelled to make way for a higher-priority one
   reads as a failed package.
+- What an update of LinuxIO leaves when the package's own install step fails
+  is not tested; the test VM covers a transaction that ends before the
+  package manager changes the package.
 - **Try again** on a permission change's failure toast opens the dialog of
   the file browser page that started the change, so once the user has left
   that page, as by leaving the file browser and coming back while the change

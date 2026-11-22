@@ -83,11 +83,12 @@ import {
 // the other files, on its first VM reverted to clean. By hand:
 //   make vm-reset vm-update-build
 //   LINUXIO_VM_UPDATE_BUILD=.cache/vm-update-build/build make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=--project=release-update
-// (DISTRO=fedora on each for Fedora). The file needs vdd to hold nothing and
-// changes the VM: it leaves B installed from the VM's repository, the apt
-// timers stopped, the e2e pool on vdb and vdc, a user without sudo, an ext4
-// on vdd mounted at /mnt/e2e-slow and a schedule. Run `make vm-reset` (and
-// `make vm-install` for the other files) before anything else.
+// (DISTRO=fedora on each for Fedora). The file needs vdd and, on Ubuntu, vde
+// to hold nothing and changes the VM: it leaves B installed from the VM's
+// repository, the apt timers stopped, the e2e pool on vdb and vdc, a user
+// without sudo, an ext4 on vdd mounted at /mnt/e2e-slow, on Ubuntu an ext4 on
+// vde, and a schedule. Run `make vm-reset` (and `make vm-install` for the
+// other files) before anything else.
 
 const COPY = "filebrowser.copy_batch";
 const PACKAGE_UPDATE = "packages.update";
@@ -102,8 +103,9 @@ const SLOW_MOUNT = "/mnt/e2e-slow";
 const SLOW_RATE = 2 * MiB;
 /**
  * The scrub's per-disk cap: half a MiB a second takes over half an hour on
- * the 1 GiB the pool holds, longer than the two publishes, the update and the
- * checks before the fifth test lifts it.
+ * the 1 GiB the pool holds, longer than the two publishes, the two updates
+ * that do not go through, the update and the checks before the fifth test
+ * lifts it.
  */
 const SCRUB_RATE = MiB / 2;
 /** What B's SELinux module carries, and A's does not (Fedora). */
@@ -245,6 +247,57 @@ async function upload(page: Page, rightClick: Locator, files: string[]) {
   await ui(dialog).toBeHidden();
 }
 
+/** Where the VM's repository holds LinuxIO version v (repo-apt.sh, repo-rpm.sh). */
+const packageFile = (v: string) =>
+  vmDistro === "fedora"
+    ? `/srv/linuxio-repo/rpm/stable/x86_64/linuxio-${v}-1.x86_64.rpm`
+    : `/srv/linuxio-repo/apt/pool/main/l/linuxio/linuxio_${v}_amd64.deb`;
+
+/**
+ * The disk the cancelled update reads the package from, at a megabyte a
+ * second: half a minute for the package's 30 MB.
+ */
+const PACKAGE_DISK = "vde";
+const PACKAGE_MOUNT = "/mnt/e2e-package";
+const PACKAGE_RATE = MiB;
+
+/**
+ * The status and AllowCancel of PackageKit's update transaction (role 22,
+ * update-packages), nulls while it lists none. With apt the status goes
+ * from loading the cache (27) to Download (8) while apt reads the package,
+ * and to Install (9) when dpkg starts, where AllowCancel turns false.
+ */
+const UPDATE_TRANSACTION = String.raw`set -uo pipefail
+prop() {
+	busctl --json=short get-property org.freedesktop.PackageKit "$1" org.freedesktop.PackageKit.Transaction "$2" 2>/dev/null | jq -c .data
+}
+status=null allow=null
+for path in $(busctl --json=short call org.freedesktop.PackageKit /org/freedesktop/PackageKit org.freedesktop.PackageKit GetTransactionList | jq -r '.data[0][]'); do
+	if [[ $(prop "$path" Role) == 22 ]]; then
+		status=$(prop "$path" Status) allow=$(prop "$path" AllowCancel)
+		[[ -n $status ]] || status=null
+		[[ -n $allow ]] || allow=null
+	fi
+done
+printf '{"status":%s,"allowCancel":%s}\n' "$status" "$allow"
+`;
+const PK_STATUS_DOWNLOAD = 8;
+
+const updateTransaction = async () =>
+  JSON.parse(await vmSsh("sudo bash -s", UPDATE_TRANSACTION)) as {
+    status: number | null;
+    allowCancel: boolean | null;
+  };
+
+/** What an installed update changes, and a restart of LinuxIO with it. */
+const installedAndRunning = async () => ({
+  installed: await installedVersion(),
+  version: (await vmSsh("linuxio --version")).trim(),
+  targetSince: await activeSince("linuxio.target"),
+  webserver: await mainPid("linuxio-webserver.service"),
+  rootHost: await mainPid("linuxio-jobs@0.service"),
+});
+
 /** The SHA-256 of what the web server's process runs. */
 const webserverSha = async () => {
   const pid = await mainPid("linuxio-webserver.service");
@@ -262,7 +315,7 @@ test.describe
   test.afterAll(async () => {
     // Nothing may keep the disk or the scrub slow for the next file.
     try {
-      await throttle(0, [SLOW_DISK]);
+      await throttle(0, [SLOW_DISK, PACKAGE_DISK]);
       if (waiting) await scrubSpeed(waiting.uuid, 0);
     } catch (error) {
       console.warn(`could not lift the caps: ${String(error)}`);
@@ -275,9 +328,10 @@ test.describe
     // The bounds: an apt run 600 s; A assembled and published 180 s and
     // installed 180 s; the pool on a fresh VM 120 s; the files on vdd 60 s;
     // the scrub, the schedule and the two copies 180 s; B assembled and
-    // published 180 s; the refresh and the banner 240 s; the update 600 s;
-    // the reads 120 s: some 2460 s.
-    test.setTimeout(2_700_000);
+    // published 180 s; the refresh and the banner 240 s; the failed update
+    // 360 s and, on Ubuntu, the cancelled one 420 s; the update 600 s; the
+    // reads 120 s: some 3240 s.
+    test.setTimeout(3_480_000);
     await stopAptRuns();
     expect(await installedVersion(), "a VM reverted to clean").toBe("");
 
@@ -375,13 +429,6 @@ test.describe
     );
     await offer.getByText("Open Updates", { exact: true }).click();
     await ui(page).toHaveURL(/\/updates$/);
-
-    // The update, on the Updates page, while the three jobs run.
-    expect(await scrubRunning(), "the scrub ended: lower its speed").toBe(true);
-    const rootPid = await hostPid(0);
-    const userPid = await hostPid(uid);
-    const targetSince = await activeSince("linuxio.target");
-    const beforeUpdate = await jobIds();
     const card = page
       .locator("div")
       .filter({
@@ -393,7 +440,144 @@ test.describe
         has: page.getByRole("button", { name: "Update", exact: true }),
       })
       .last();
-    await card.getByRole("button", { name: "Update", exact: true }).click();
+    const updateButton = card.getByRole("button", {
+      name: "Update",
+      exact: true,
+    });
+
+    // An update that does not go through leaves A installed and running, and
+    // this session signed in: nothing but the package's own step restarts
+    // LinuxIO, and the transaction ended before that step.
+    const file = packageFile(version);
+    const before = await installedAndRunning();
+    expect(before.installed).toBe(versionA);
+    /** Clicks Update and answers with the job once it has ended. */
+    const endedUpdate = async (act?: () => Promise<void>) => {
+      const known = await jobIds();
+      await updateButton.click();
+      await act?.();
+      let job: JobRecord | undefined;
+      await expect
+        .poll(
+          async () => {
+            job = await newJob(PACKAGE_UPDATE, known);
+            return job?.state;
+          },
+          {
+            intervals: [2_000],
+            message: "the package update job ends",
+            timeout: 300_000,
+          },
+        )
+        .toMatch(/^(completed|failed|canceled|interrupted)$/);
+      return job!;
+    };
+    const stillA = async (what: string) => {
+      expect(await installedAndRunning(), what).toEqual(before);
+      // The session lives, and the page offers B again.
+      await page.goto("/updates");
+      await ui(updateButton).toBeVisible({ timeout: 60_000 });
+    };
+
+    const seconds = (since: number) => Math.round((Date.now() - since) / 1000);
+    await test.step("a failed update leaves A installed and running", async () => {
+      const began = Date.now();
+      // The package no longer is what the repository's signed index says.
+      await vmSsh(
+        `set -e; test -f ${file}; mv ${file} ${file}.good; head -c 4096 ${file}.good > ${file}`,
+      );
+      try {
+        const failed = await endedUpdate();
+        expect(failed, JSON.stringify(failed)).toMatchObject({
+          state: "failed",
+        });
+        await ui(
+          page.getByRole("button", { name: "Clear update error" }),
+        ).toBeVisible();
+        await stillA("after a failed update");
+      } finally {
+        // Only what the step changed, so that its own error is the one seen.
+        await vmSsh(`[ ! -e ${file}.good ] || mv -f ${file}.good ${file}`);
+      }
+      console.log(`the failed update took ${seconds(began)} s`);
+    });
+
+    // Fedora's dnf5 backend does nothing on a cancel and installs the update
+    // (docs/jobs.md, Known limits), so only apt has a cancelled transaction.
+    if (vmDistro === "ubuntu") {
+      await test.step("an update cancelled while it downloads leaves A installed and running", async () => {
+        const began = Date.now();
+        // apt reads the whole package to check it before it hands it to
+        // dpkg, and the transaction can be cancelled until dpkg runs. The
+        // package is read from a disk of its own, capped only now, so that
+        // the read takes about half a minute and the cancel is in no race
+        // with dpkg's start; the filesystem is mounted again after the copy,
+        // so that the read goes to the disk and not to the page cache.
+        const used = await vmSsh(
+          `lsblk -nro FSTYPE,MOUNTPOINT /dev/${PACKAGE_DISK} | tr -d ' \\n'`,
+        );
+        expect(used, `/dev/${PACKAGE_DISK} must hold nothing`).toBe("");
+        // What PackageKit's transaction went through and when, in seconds
+        // from the click, for a failure's message.
+        const seen: string[] = [];
+        try {
+          await vmSsh(
+            `set -e; sudo mkfs.ext4 -q -F /dev/${PACKAGE_DISK}; sudo mkdir -p ${PACKAGE_MOUNT}; sudo mount /dev/${PACKAGE_DISK} ${PACKAGE_MOUNT}; ` +
+              `sudo cp ${file} ${PACKAGE_MOUNT}/linuxio-package; sudo umount ${PACKAGE_MOUNT}; sudo mount /dev/${PACKAGE_DISK} ${PACKAGE_MOUNT}; ` +
+              `mv ${file} ${file}.good; ln -s ${PACKAGE_MOUNT}/linuxio-package ${file}`,
+          );
+          await throttle(PACKAGE_RATE, [PACKAGE_DISK]);
+          const cancelled = await endedUpdate(async () => {
+            const clicked = Date.now();
+            try {
+              await expect
+                .poll(
+                  async () => {
+                    const tx = await updateTransaction();
+                    const now = `${tx.status}/${tx.allowCancel}`;
+                    if (seen.at(-1)?.split("@")[0] !== now) {
+                      seen.push(`${now}@${seconds(clicked)}`);
+                    }
+                    return tx;
+                  },
+                  {
+                    intervals: [300],
+                    message: "PackageKit downloading the update, cancellable",
+                    timeout: 120_000,
+                  },
+                )
+                .toEqual({ status: PK_STATUS_DOWNLOAD, allowCancel: true });
+            } finally {
+              console.log(
+                `the update transaction's status/AllowCancel@seconds: ${seen.join(" ")}`,
+              );
+            }
+            await page.getByRole("button", { name: "Cancel update" }).click();
+          });
+          expect(cancelled, JSON.stringify(cancelled)).toMatchObject({
+            state: "canceled",
+          });
+          await stillA("after a cancelled update");
+        } finally {
+          // Only what the step changed, and an unmount that a read still
+          // going cannot refuse, so that the step's own error is the one seen.
+          await throttle(0, [PACKAGE_DISK]);
+          await vmSsh(
+            `[ ! -e ${file}.good ] || { rm -f ${file}; mv -f ${file}.good ${file}; }; ` +
+              `! mountpoint -q ${PACKAGE_MOUNT} || sudo umount -l ${PACKAGE_MOUNT}`,
+          );
+        }
+        console.log(`the cancelled update took ${seconds(began)} s`);
+      });
+    }
+
+    // The update, on the Updates page, while the three jobs run.
+    expect(await scrubRunning(), "the scrub ended: lower its speed").toBe(true);
+    const rootPid = await hostPid(0);
+    const userPid = await hostPid(uid);
+    const targetSince = await activeSince("linuxio.target");
+    const beforeUpdate = await jobIds();
+    await updateButton.click();
     // The package restarts linuxio.target, and this session with it; the job
     // runs on in the root host, which is outside the target.
     let update: JobRecord | undefined;
@@ -725,14 +909,19 @@ test.describe
     for (const id of [w.scrub.id, w.copy.id]) {
       expect((await jobRecord(id))?.state).toBe("completed");
     }
-    // The history page shows the update finished.
+    // The history page shows the update finished, and the tries before it
+    // that did not go through: the failed one and, on Ubuntu, the cancelled.
     await page.goto("/history");
     const updateRow = page
       .getByRole("table", { name: "Job history" })
       .getByRole("row")
       .filter({ hasText: "Updating packages" });
-    await ui(updateRow).toHaveCount(1);
-    await ui(updateRow).toContainText("Completed");
+    await ui(updateRow).toHaveCount(vmDistro === "ubuntu" ? 3 : 2);
+    await ui(updateRow.filter({ hasText: "Completed" })).toHaveCount(1);
+    await ui(updateRow.filter({ hasText: "Failed" })).toHaveCount(1);
+    await ui(updateRow.filter({ hasText: "Cancelled" })).toHaveCount(
+      vmDistro === "ubuntu" ? 1 : 0,
+    );
     await signOut(page);
 
     // The user's host exited a minute after its copy; the next sign-in of the

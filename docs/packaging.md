@@ -372,9 +372,10 @@ banner that names it and opens the Updates page. The administrator installs
 it there like any other package (`packages.update`, a job in the root job
 host); PackageKit runs apt or dnf, which check the repository's and the
 package's signatures, and the package restarts LinuxIO as above. The bridge
-restarts nothing itself, and a failed or cancelled transaction leaves the
-package as it was. The details, and what the browser shows across the
-restart, are in [Jobs](./jobs.md#updates).
+restarts nothing itself, and a transaction that fails or is cancelled before
+the package manager changes the package leaves the old build installed and
+running. The details, among them when a cancel does not stop the update, and
+what the browser shows across the restart, are in [Jobs](./jobs.md#updates).
 
 ## How the packages are built
 

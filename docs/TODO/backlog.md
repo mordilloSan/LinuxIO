@@ -56,12 +56,6 @@ after a change that issues ioctls).
 
 ## Tests that are missing
 
-- Nothing checks that a failed or a cancelled update of the package leaves
-  LinuxIO running the old build with no restart; [Jobs](../jobs.md#updates)
-  says so from how apt, dnf and the package's scripts work. A test VM can
-  show it (`jobs-update.spec.ts` updates through PackageKit). **not
-  verified**
-
 ## Needs the owner
 
 - Whether `linuxio.repo` sets `skip_if_unavailable=False`: today dnf given a
