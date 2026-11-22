@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -48,6 +49,7 @@ func fakePluginCLI(t *testing.T) (user session.User, calls func() []string) {
 	script := `#!/bin/sh
 dir='` + dir + `'
 printf '%s\n' "$*" >> "$dir/calls.log"
+[ -z "$CLAUDE_CONFIG_DIR" ] || pwd -P > "$CLAUDE_CONFIG_DIR/ran"
 case "$*" in
   "plugin list --json") cat "$dir/installed.json" ;;
   "plugin list --json --available") cat "$dir/available.json" ;;
@@ -70,6 +72,8 @@ esac
 	orig := pluginUserPath
 	pluginUserPath = func(context.Context, session.User) (string, error) { return dir + ":/usr/bin:/bin", nil }
 	t.Cleanup(func() { pluginUserPath = orig })
+	// The CLI's profile goes under a home of the test's, not the developer's.
+	useAgentHome(t, t.TempDir())
 
 	return rt.Session.User, func() []string {
 		data, err := os.ReadFile(log)
@@ -97,6 +101,24 @@ func TestListPluginsReportsInstalledPluginsAndMarketplaces(t *testing.T) {
 			{Name: "market", Source: "example/market"},
 		},
 	}, got)
+}
+
+func TestPluginCommandsRunInTheAssistantsProfile(t *testing.T) {
+	user, _ := fakePluginCLI(t)
+	home, err := agentHome("")
+	require.NoError(t, err)
+
+	_, err = ListPlugins(t.Context(), user, pluginAgent)
+	require.NoError(t, err)
+	// The fake CLI leaves this file in the folder CLAUDE_CONFIG_DIR names: a
+	// plugin installed anywhere else is one no chat would load. It holds the
+	// folder the CLI ran in, which is the profile too: run in the home, the
+	// CLI would read ~/.claude there as project settings.
+	profile, err := filepath.EvalSymlinks(acpagents.ProfileDir(home, pluginAgent))
+	require.NoError(t, err)
+	ran, err := os.ReadFile(filepath.Join(profile, "ran"))
+	require.NoError(t, err)
+	require.Equal(t, profile, strings.TrimSpace(string(ran)))
 }
 
 func TestSearchPluginsRanksMatchesAndSkipsInstalled(t *testing.T) {

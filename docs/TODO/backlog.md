@@ -65,6 +65,12 @@ after a change that issues ioctls).
   host also fails while the repository is unreachable
   (`packaging/scripts/repo-rpm.sh`). **checked**
 
+- Whether Gemini CLI and Codex get a LinuxIO profile as Claude Code has
+  (`ProfileEnv` in `backend/bridge/internal/acpagents`): today their sign-in,
+  settings and history are the ones the user's terminal uses. Codex reads
+  `CODEX_HOME`; neither variable has been tried through its ACP adapter, and
+  each needs a sign-in at its vendor to check.
+
 ## Needs a real machine or a measurement
 
 - The automatic btrfs rebuild onto a disk that comes back

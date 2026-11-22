@@ -6,7 +6,9 @@ CLI or Codex) running on the host as the logged-in user. The agent speaks the
 over stdin/stdout). The browser is the ACP client and renders the session; the
 model runs at the vendor. LinuxIO runs no model, holds no API key and stores
 nothing about conversations. The only thing it persists is the chosen agent id
-(`assistant.agent` in the per-user config).
+(`assistant.agent` in the per-user config). What the agent itself keeps
+(sign-in, settings, chat history, memory) is in the agent's own folder, which
+for Claude Code is one LinuxIO gives it: see [Profile](#profile).
 
 ## Relay
 
@@ -66,6 +68,73 @@ new chat starts with; `config.set {assistant:{defaults}}` replaces the whole
 map (unknown ids and values with control characters or over 128 bytes error).
 An agent with no entry gets LinuxIO's starting point, which exists only for
 `claude`: `opus`, `high`, `auto`.
+
+## Profile
+
+Claude Code started by LinuxIO keeps its state in a folder of its own,
+`~/.local/share/linuxio/profiles/claude`, which the bridge names in
+`CLAUDE_CONFIG_DIR` (`ProfileEnv`, `ProfileDir` and `Profile` in `acpagents`).
+The same user's `claude` in a terminal or an editor extension uses
+`~/.claude`, and the two would otherwise be one: signing out in the editor
+signed the Assistant out, and the model saved there was the Assistant's. In
+the profile, and so the Assistant's alone, are:
+
+- the sign-in (`.credentials.json`), which may be another account than the
+  terminal's;
+- `settings.json` (model, permissions, hooks) and the user-level `CLAUDE.md`,
+  skills and MCP servers;
+- plugins and marketplaces, which are the ones the Plugins dialog lists;
+- chat history, so `session/list` offers only chats of the Assistant;
+- memory (`projects/*/memory/`) and caches.
+
+Every process LinuxIO starts for the agent gets the variable: the chat and the
+Settings probe (`assistant.open`), the Terminal sign-in and the
+`claude plugin` commands. A start without it would read and write `~/.claude`.
+The pane relay hands its environment on to the CLI. The Terminal sign-in runs
+through the user's login shell, so there the variables are set by
+`/usr/bin/env` after the shell's start-up files: a `~/.bashrc` that exports
+`CLAUDE_CONFIG_DIR` for the user's own Claude Code does not move the sign-in
+away from the profile the chat reads.
+
+`Profile` makes the folder with `install -d -m 0700` run as the session user,
+which also sets that mode again on a folder that exists: it holds a sign-in
+and chats, and the bridge, which may be root, creates nothing in a home the
+user controls. It is beside the install folder (`agents/claude`), which an
+install replaces, so reinstalling the agent keeps the profile. LinuxIO copies
+nothing into it from `~/.claude`: the Assistant starts signed out, with no
+history, plugins or memory, and what the user's own Claude Code holds stays
+where it is.
+
+A chat works in the user's home, and Claude Code reads `.claude/` in the
+folder it works in as that folder's project settings: there, `~/.claude`, the
+other profile, whose model, hooks and plugins would be the chat's again. So
+every session request to Claude Code (`session/new`, `load`, `fork`, `resume`)
+carries `_meta.claudeCode.options.settingSources: ["user"]` (`SESSION_META` in
+`frontend/src/api/acp/connection.ts`), and the CLI loads the profile's
+user-level settings alone. A chat therefore reads no project file of the home
+folder: not `~/CLAUDE.md`, `~/.claude/CLAUDE.md` or `~/.mcp.json`. The
+`claude plugin` commands take no such option, so they run in the profile's
+folder, where there is no `.claude/` to read: run in the home they list a
+plugin as `~/.claude/settings.json` switches it, and change it there.
+
+Shared with every other `claude` on the host: the managed settings under
+`/etc/claude-code`, and the `claude` program itself.
+
+Known limits:
+
+- The adapter resolves a few settings by itself, for the folder the chat works
+  in and whatever the setting sources: the default permission mode, the
+  switches that turn auto and bypass modes off, the `availableModels` and
+  `modelOverrides` lists and the effort level still come from
+  `~/.claude/settings.json` when it sets them. A new chat's mode and effort
+  are then replaced by the [chat defaults](#features), except that a mode
+  switched off there is not offered.
+- The Terminal sign-in is an interactive `claude` in the home folder, which
+  loads project settings as any terminal session does; it signs in and is
+  closed.
+
+Gemini CLI and Codex have no profile (`ProfileEnv` is empty): they keep their
+usual folders in the user's home, shared with their use outside LinuxIO.
 
 ## Installing agents
 
@@ -390,7 +459,8 @@ advertises the matching capability.
     is read as a command, and so are the patterns of a `case` whose `in`
     stands on a line of its own, while a `case` inside `$(…)` ends the
     `$(…)` at the `)` of its first pattern unless that opens with `(`.
-    A line of file commands that names `.claude/projects/*/memory/` goes to
+    A line of file commands that names `projects/*/memory/` of the
+    [profile](#profile) or of `~/.claude` goes to
     Memory, as does a file under it; an MCP tool goes by its server
     (`Claude_Browser` and `claude-in-chrome` to Browser, `terminal`
     to Shell, a server named for memory to Memory, any other to Network),
@@ -725,7 +795,8 @@ composer is disabled then, and a plugin can be the reason. It exists for Claude 
 the other agents' ids are refused with 400. Claude Code's own `/plugin` is a
 terminal screen the ACP adapter does not advertise, so LinuxIO manages plugins
 the way Claude Code's editor extensions do: the bridge runs
-`claude plugin ... --json` and never edits `~/.claude` itself.
+`claude plugin ... --json`, in the Assistant's [profile](#profile), and never
+edits the agent's settings files itself.
 
 | Route | Kind | Runs |
 |-------|------|------|
@@ -738,11 +809,12 @@ the way Claude Code's editor extensions do: the bridge runs
 | `assistant.remove_marketplace` | Mutation | `plugin marketplace remove <name> --json` |
 | `assistant.update_marketplace` | Mutation | `plugin marketplace update <name> --json` |
 
-- **Who runs it.** Every command runs as the session user, in their home, with
+- **Who runs it.** Every command runs as the session user, in the
+  [profile](#profile)'s folder, with
   the `claude` on their login-shell PATH (409 when there is none), standard
   input closed and arguments passed as an argv array. It writes only under
-  that user's `~/.claude`, so no route is privileged: it is what the user can
-  already type in the Terminal page. Reads have 30 s, writes 10 min, and a
+  that user's profile folder, so no route is privileged: it is what the user
+  can already type in the Terminal page with `CLAUDE_CONFIG_DIR` set. Reads have 30 s, writes 10 min, and a
   cancelled job kills the CLI's whole process group.
 - **Search.** The catalogue is a few megabytes (about 4,000 entries), so the
   browser never receives it. The bridge drops installed plugins, keeps the
@@ -870,7 +942,10 @@ untouched.
 
 ## Login
 
-Login state belongs to the agent CLI, not LinuxIO. The Settings tab probes it:
+Login state belongs to the agent CLI, not LinuxIO. Claude Code keeps it in its
+[profile](#profile), so the Assistant is signed in by itself: a sign-in in a
+terminal does not sign the Assistant in, and a logout here leaves the
+terminal's. The Settings tab probes it:
 it sends `initialize`, waits up to 2 s for an `_auth/status_update`, and
 otherwise tries `session/new`, mapping JSON-RPC error `-32000` to "not logged
 in". When logged in it keeps (or, after a pushed status, opens) that session to

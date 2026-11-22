@@ -193,9 +193,13 @@ const MCP_RESOURCE_TOOLS = new Set([
 const FILE_KINDS = new Set(["read", "edit", "delete", "move", "search"]);
 
 // The agent's own notes: a file in the folder, or the folder named in a
-// command line.
-const MEMORY_PATH = /\/\.claude\/projects\/[^/]+\/memory\//;
-const MEMORY_FOLDER = /\/\.claude\/projects\/[^/\s]+\/memory(?![\w.-])/;
+// command line. A chat keeps them in its LinuxIO profile, which a command
+// line may name by its variable; `~/.claude` holds the notes of the user's
+// Claude Code outside LinuxIO.
+const MEMORY_PATH =
+  /\/(?:linuxio\/profiles\/claude|\.claude)\/projects\/[^/]+\/memory\//;
+const MEMORY_FOLDER =
+  /(?:\/linuxio\/profiles\/claude|\/\.claude|\$\{?CLAUDE_CONFIG_DIR\}?)\/projects\/[^/\s]+\/memory(?![\w.-])/;
 const BROWSER_SERVERS = new Set(["Claude_Browser", "claude-in-chrome"]);
 
 /** A command line that only handles files works on notes when it names them. */

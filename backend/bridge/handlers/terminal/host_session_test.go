@@ -104,11 +104,16 @@ func TestHandleTerminalSessionRunsAgentLoginCommand(t *testing.T) {
 		t.Skipf("non-numeric gid %q: %v", u.Gid, err)
 	}
 	// sh is on every login-shell PATH, so it stands in for the agent's CLI.
-	agent := acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent", CLI: "sh", CLIEnv: "FAKE_CLI_EXECUTABLE"}
+	agent := acpagents.Agent{
+		Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent",
+		CLI: "sh", CLIEnv: "FAKE_CLI_EXECUTABLE", ProfileEnv: "FAKE_CONFIG_DIR",
+	}
 	t.Cleanup(acpagents.Override("fake", agent))
 	home := t.TempDir()
+	// The sign-in runs in the profile the chat reads: profiles/fake under the
+	// LinuxIO folder of the home.
 	acpagentstest.Install(t, home, "fake", agent, agent.Version,
-		"#!/bin/sh\nprintf 'LOGIN %s %s %s\\n' \"$1\" \"$NO_BROWSER\" \"${FAKE_CLI_EXECUTABLE##*/}\"\n")
+		"#!/bin/sh\nprintf 'LOGIN %s %s %s %s\\n' \"$1\" \"$NO_BROWSER\" \"${FAKE_CLI_EXECUTABLE##*/}\" \"${FAKE_CONFIG_DIR##*/linuxio/}\"\n")
 	origHome := agentHome
 	agentHome = func(string) (string, error) { return home, nil }
 	t.Cleanup(func() { agentHome = origHome })
@@ -128,7 +133,7 @@ func TestHandleTerminalSessionRunsAgentLoginCommand(t *testing.T) {
 
 	var output []byte
 	deadline := time.Now().Add(15 * time.Second)
-	for !strings.Contains(string(output), "LOGIN --cli 1 sh") {
+	for !strings.Contains(string(output), "LOGIN --cli 1 sh profiles/fake") {
 		_ = client.SetReadDeadline(deadline)
 		frame, err := ipc.ReadRelayFrame(client)
 		if err != nil {

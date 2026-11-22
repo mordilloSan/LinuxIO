@@ -115,6 +115,19 @@ describe("stationOf", () => {
       "memory",
     );
     expect(stationOf(bash("ls ~/.claude/projects/p/memory-old"))).toBe("files");
+    // A chat's notes are in its LinuxIO profile, which has a variable.
+    expect(
+      stationOf(
+        bash("ls ~/.local/share/linuxio/profiles/claude/projects/p/memory"),
+      ),
+    ).toBe("memory");
+    expect(stationOf(bash('ls "$CLAUDE_CONFIG_DIR/projects/p/memory"'))).toBe(
+      "memory",
+    );
+    expect(
+      stationOf(bash("cat ${CLAUDE_CONFIG_DIR}/projects/p/memory/a.md")),
+    ).toBe("memory");
+    expect(stationOf(bash('ls "$CLAUDE_CONFIG_DIR/projects/p"'))).toBe("files");
     expect(
       stationOf(bash("curl -o /home/u/.claude/projects/p/memory/a.md x")),
     ).toBe("network");
@@ -126,6 +139,16 @@ describe("stationOf", () => {
     expect(stationOf(read("/home/u/.claude/projects/p/memory/note.md"))).toBe(
       "memory",
     );
+    expect(
+      stationOf(
+        read(
+          "/home/u/.local/share/linuxio/profiles/claude/projects/p/memory/note.md",
+        ),
+      ),
+    ).toBe("memory");
+    expect(
+      stationOf(read("/home/u/.local/share/linuxio/profiles/claude/CLAUDE.md")),
+    ).toBe("files");
     expect(stationOf(read("/srv/app/main.go"))).toBe("files");
   });
 
