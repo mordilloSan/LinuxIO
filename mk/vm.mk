@@ -135,7 +135,13 @@ vm-destroy: ## Delete the test VM (VM=2 for another) and its volumes
 # first and the short ones fill in around them.
 vm_test_dir := $(cache_dir)/vm
 vm_suites := memory btrfs indexer docker packagekit relay userconfig filebrowser network
-SUITES ?= $(vm_suites)
+# What is written for Fedora as well: the other suites and specs do things
+# with apt or were never run there. With DISTRO=fedora these are what
+# test-vm-backend and test-vm-browser run when SUITES and PLAYWRIGHT_ARGS name
+# nothing; add a suite or a spec here once it passes on Fedora.
+vm_fedora_suites := memory indexer packagekit relay userconfig filebrowser
+vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts
+SUITES ?= $(if $(filter fedora,$(DISTRO)),$(vm_fedora_suites),$(vm_suites))
 # The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
 RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
 # The memory suite's zram tool, the profile's when empty: zram-tools on Ubuntu,
@@ -284,7 +290,7 @@ endef
 # (jobs-update.spec.ts, package A to package B from the VM's signed
 # repository) needs a VM reverted to clean, with no LinuxIO
 # (playwright.vm.config.ts).
-vm_specs_args = $(if $(findstring --project,$(PLAYWRIGHT_ARGS)),,--project=specs) $(PLAYWRIGHT_ARGS)
+vm_specs_args = $(if $(findstring --project,$(PLAYWRIGHT_ARGS)),,--project=specs) $(if $(PLAYWRIGHT_ARGS),$(PLAYWRIGHT_ARGS),$(if $(filter fedora,$(DISTRO)),$(vm_fedora_specs)))
 
 test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs against the test VMs as they are, without reverting or installing (test-vm-browser does both)
 	@set -e
@@ -323,3 +329,14 @@ test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Pic
 	@$(vm_all) prepare $(if $(findstring --project=release-update,$(PLAYWRIGHT_ARGS)),,"$(bin_dir)")
 	@$(call vm_browser_specs,$$vm_set,$(vm_specs_args))
 	@$(if $(PLAYWRIGHT_ARGS),,$(vm_release_update))
+
+# Everything the test VMs run, one target after another: Ubuntu's root suites
+# and browser specs, then Fedora's (vm_fedora_suites, vm_fedora_specs and the
+# release-update spec). The first failure ends it. It takes no SUITES,
+# PLAYWRIGHT_ARGS or DISTRO: a narrowed run is a run of one of the four.
+test-vm-all: ## Run the root suites and the browser specs in the test VMs on Ubuntu, then on Fedora what is written for it
+	@$(if $(filter command line environment,$(origin SUITES) $(origin PLAYWRIGHT_ARGS))$(strip $(DISTRO)),echo "❌ test-vm-all takes no SUITES or PLAYWRIGHT_ARGS or DISTRO: run test-vm-backend or test-vm-browser for a narrowed run" >&2; exit 1)
+	@$(MAKE) --no-print-directory test-vm-backend DISTRO=
+	@$(MAKE) --no-print-directory test-vm-browser DISTRO=
+	@$(MAKE) --no-print-directory test-vm-backend DISTRO=fedora
+	@$(MAKE) --no-print-directory test-vm-browser DISTRO=fedora

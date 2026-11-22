@@ -410,17 +410,24 @@ and the packages they install. Fedora's is:
   filesystem is btrfs.
 - `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
 
-On Fedora the root suites `relay`, `filebrowser`, `userconfig`, `memory` and
-`packagekit` have been run (`docs/TODO/e2e-testing.md`, "Distributions", has the
-results), and of the browser specs `login.spec.ts` and
-`capability-install.spec.ts`, which pass there as installed with SELinux
-enforcing and again after a reboot. The other specs do things with `apt`
-packages; `capability-install.spec.ts` is written for both distributions,
-except its cancel test, which skips on Fedora.
+Only part of the tests is written for Fedora, and `mk/vm.mk` holds the two
+lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `packagekit`,
+`relay`, `userconfig` and `filebrowser`; `docs/TODO/e2e-testing.md`,
+"Distributions", has their results) and `vm_fedora_specs` (`login.spec.ts`,
+`capability-install.spec.ts` and `package-repository.spec.ts`). With
+`DISTRO=fedora`, `test-vm-backend` given no `SUITES` runs the first list, and
+`test-vm-browser` given no `PLAYWRIGHT_ARGS` runs the second and then the
+release-update spec, which is written for both distributions. The other
+suites and specs do things with `apt` packages or were never run there; one
+that passes on Fedora is added to its list. `capability-install.spec.ts`
+skips its cancel test on Fedora. `make test-vm-all` runs the four in turn:
+Ubuntu's root suites and browser specs, then Fedora's. It ends at the first
+failure and takes no `SUITES`, `PLAYWRIGHT_ARGS` or `DISTRO`.
 
 ```sh
 make test-vm-browser        # everything below that a browser run needs, in one go
 make test-vm-backend        # the same for the root suites, shared out between the VMs
+make test-vm-all            # both of the above on Ubuntu, then on Fedora what is written for it
 make vm-create              # download and check the image, first boot, snapshot "clean"
 make vm-create VM=2         # one more VM
 make vm-install             # make build-nocheck, then package this build in the VMs and install it
@@ -945,7 +952,7 @@ The full index groups the supported targets as follows:
 - test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-update-build`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,
-  `test-vm-browser-rerun`
+  `test-vm-browser-rerun`, `test-vm-all`
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)
 
