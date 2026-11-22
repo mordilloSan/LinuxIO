@@ -655,10 +655,10 @@ vm_has_packages() {
 }
 
 # push_checkout BUILD_DIR puts what the package scripts read in ~/linuxio,
-# from the checkout, and the build in ~/linuxio/build: packaging/, LICENSE
-# and docs/THIRD_PARTY_NOTICES.md.
+# from the checkout, packaging/ and LICENSE, and the build in ~/linuxio/build,
+# the programs and their THIRD_PARTY_NOTICES.md.
 push_checkout() {
-	local -a files=(LICENSE docs/THIRD_PARTY_NOTICES.md packaging)
+	local -a files=(LICENSE packaging)
 	tar -C "$REPO_ROOT" -cf - "${files[@]}" |
 		vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
 	# Not the packages and repositories make put beside the programs

@@ -9,7 +9,8 @@
 #   %config(noreplace) in the RPM);
 # - nothing is under /usr/local;
 # - the nine programs are byte for byte the build's (SHA-256): the webserver
-#   checks the bridge's hash recorded at build time.
+#   checks the bridge's hash recorded at build time;
+# - the third-party notices are the ones the build wrote from those programs.
 #
 # The shared tree is not written down again here: package-root.sh stages it,
 # and package-root-fixtures.sh holds it to its manifest.
@@ -161,5 +162,17 @@ while read -r name path; do
 done <<<"$programs"
 [[ $count -eq 9 ]] || fail "expected nine programs, found ${count}"
 pass "the nine programs have the build's SHA-256"
+
+# 6. The notices the build wrote from those programs.
+notices=usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md
+[[ -f "${build_dir}/THIRD_PARTY_NOTICES.md" ]] || fail "no THIRD_PARTY_NOTICES.md in ${build_dir}"
+built=$(sha256sum <"${build_dir}/THIRD_PARTY_NOTICES.md" | cut -d' ' -f1)
+if [[ $package == *.deb ]]; then
+	packaged=$(sha256sum <"${work}/unpacked/${notices}" | cut -d' ' -f1)
+else
+	packaged=$(awk -v p="/${notices}" '$2 == p { print $1 }' "${work}/digests")
+fi
+[[ $packaged == "$built" ]] || fail "${notices} is not the build's THIRD_PARTY_NOTICES.md"
+pass "the third-party notices are the build's"
 
 printf '\033[1;32m%s\033[0m\n' "✅ ${package##*/} matches ${build_dir}"

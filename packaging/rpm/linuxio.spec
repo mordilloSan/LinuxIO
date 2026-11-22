@@ -1,8 +1,8 @@
 # The RPM of LinuxIO, assembled by packaging/scripts/package-rpm.sh from
 # programs already built: nothing is compiled here. The script defines
-# linuxio_version, linuxio_build_dir (the programs), linuxio_packaging_dir
-# (packaging/) and linuxio_source_dir (the folder holding LICENSE and
-# docs/THIRD_PARTY_NOTICES.md).
+# linuxio_version, linuxio_build_dir (the programs and their
+# THIRD_PARTY_NOTICES.md), linuxio_packaging_dir (packaging/) and
+# linuxio_source_dir (the folder holding LICENSE).
 #
 # The programs go in byte for byte as built: the webserver checks the SHA-256
 # of linuxio-bridge recorded at build time. So no debuginfo package (whose
@@ -47,7 +47,7 @@ files, behind one PAM sign-in. It listens on port 8090
 (linuxio-webserver.socket).
 
 %prep
-cp -p '%{linuxio_source_dir}/LICENSE' '%{linuxio_source_dir}/docs/THIRD_PARTY_NOTICES.md' .
+cp -p '%{linuxio_source_dir}/LICENSE' '%{linuxio_build_dir}/THIRD_PARTY_NOTICES.md' .
 
 %build
 

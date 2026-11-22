@@ -96,7 +96,16 @@ fi
 if grep -Evq '^(exclude_paths:|  - |include_network_mounts:|[[:space:]]*$|#)' "${PACKAGING}/etc/linuxio/indexer/config.yaml"; then
 	fail "indexer YAML contains non-scan policy"
 fi
-[[ -f "${REPO_ROOT}/docs/THIRD_PARTY_NOTICES.md" ]] || fail "third-party notices must live under docs"
+# The hand-written part of the notices names every icon set the page copies
+# icons from: their data ends up in LinuxIO's own source, where neither Vite
+# nor the Go build sees a package to list.
+[[ -f "${REPO_ROOT}/docs/THIRD_PARTY_NOTICES.md" ]] || fail "the hand-written third-party notices must live under docs"
+icon_sets=$(sed -n 's|^ *"@iconify-json/\([^"]*\)":.*|\1|p' "${REPO_ROOT}/frontend/package.json")
+[[ -n $icon_sets ]] || fail "found no @iconify-json icon set in frontend/package.json"
+for set in $icon_sets; do
+	grep -Fq "(\`${set}\`)" "${REPO_ROOT}/docs/THIRD_PARTY_NOTICES.md" ||
+		fail "icon set ${set} is not named in docs/THIRD_PARTY_NOTICES.md"
+done
 pass "indexer units: socket-activated, root-only socket, timer enabled on its own"
 
 # An upgrade restarts linuxio.target and never a job: the job hosts and their

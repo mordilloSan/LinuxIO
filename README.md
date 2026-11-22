@@ -254,9 +254,11 @@ docs(readme): update installation instructions
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE).
-Third-party licenses and notices included in the filesystem indexer are
-listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and installed at
-`/usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md`.
+The licenses and notices of the third-party work LinuxIO holds are installed
+at `/usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md`: the adapted code and icon
+sets listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md),
+followed by the license of every Go module and frontend package in the build,
+which the build writes.
 
 ---
 

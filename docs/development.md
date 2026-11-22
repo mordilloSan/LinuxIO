@@ -111,7 +111,10 @@ Vite serves on port `3000` by default and proxies backend requests to port
 
 Built binaries land in `build/` (`BIN_DIR`). `make build-go-binaries` builds
 every Go binary (embedding the bridge SHA-256 in the webserver),
-`make build-binaries` adds the C authentication helper, and
+`make build-binaries` adds the C authentication helper and writes
+`build/THIRD_PARTY_NOTICES.md`, the notices the packages install, from the
+programs and the frontend bundle (`make third-party-notices`;
+[Packages](./packaging.md#third-party-notices)), and
 `make print-binaries` lists the shipped-binary names that the release workflow
 and the package tests consume. Only `common/version.Version` is stamped into
 binaries at link time.
@@ -441,8 +444,9 @@ make vm-update-build        # this tree with jobs.Protocol one higher and a vers
 make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 
-- `vm-install` (and the install of `test-vm-browser`) copies the build,
-  `packaging/`, `LICENSE` and `docs/THIRD_PARTY_NOTICES.md` into the VM, which
+- `vm-install` (and the install of `test-vm-browser`) copies the build (the
+  programs and their `THIRD_PARTY_NOTICES.md`), `packaging/` and `LICENSE`
+  into the VM, which
   assembles the profile's package from them, as a release's image does: the
   DEB with `package-deb.sh` on Ubuntu, the RPM with `package-rpm.sh` on
   Fedora, at `PACKAGE_VERSION`. It runs `package-contents.sh` on it, fails
@@ -931,8 +935,9 @@ The full index groups the supported targets as follows:
 - analysis: `bundle-metrics`, `compiler-coverage`, `analyze`, `analyze-auth`
 - builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
-  `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
-  `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
+  `build-docker-update`, `build-leak-profile`, `third-party-notices`,
+  `generate`, `dev-prep`, `dev`, `dev-stop`, `dev-status-install`,
+  `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `package-root`, `package-deb`,
   `package-rpm`, `test-packages`, `test-packaging-scripts`, `repo-apt`,
   `repo-rpm`
@@ -943,7 +948,9 @@ The full index groups the supported targets as follows:
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)
 
-For release-helper smoke coverage, run `make test-release-automation`.
+The release notes script (`.github/scripts/changelog-entry.sh`) has a fixture
+test, `.github/scripts/tests/changelog-entry-fixtures.sh`, which
+`make test-packaging-scripts` runs with the packaging fixtures.
 
 `_build-binaries` is an internal implementation target. It remains callable
 for diagnostics but is not part of the normal user workflow.

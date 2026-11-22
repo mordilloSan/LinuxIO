@@ -56,7 +56,7 @@ installed later from the Capability Manager
 | `/etc/needrestart/conf.d/linuxio.conf` | The needrestart override, DEB only | 0644 |
 | `/usr/share/selinux/packages/targeted/linuxio.cil` | The SELinux module, RPM only | 0644 |
 | `/usr/share/man/man8/linuxio.8.gz` | The man page | 0644 |
-| `/usr/share/doc/linuxio/` | `copyright` and `THIRD_PARTY_NOTICES.md` (DEB); the RPM has `%license LICENSE` and `%doc THIRD_PARTY_NOTICES.md` | 0644 |
+| `/usr/share/doc/linuxio/` | `copyright` and `THIRD_PARTY_NOTICES.md` (DEB); the RPM has `%license LICENSE` and `%doc THIRD_PARTY_NOTICES.md`. The notices are the build's ([Third-party notices](#third-party-notices)) | 0644 |
 
 Everything is owned by root. Only `linuxio` is on `PATH`; the other programs
 are started by their full path by systemd, `linuxio-auth` and each other
@@ -367,9 +367,10 @@ programs to `make print-binaries`.
 programs in `build/` into `build/packages/` (`PACKAGES_DIR`) and build
 nothing themselves. `packaging/scripts/package-deb.sh` runs debhelper (compat
 13) over `packaging/debian`; `packaging/scripts/package-rpm.sh` runs rpmbuild
-over `packaging/rpm/linuxio.spec`. Each needs only `packaging/`, `LICENSE` and
-`docs/THIRD_PARTY_NOTICES.md` beside it, so a test VM or a release image runs
-it from a copy of those, and each fails with the name of the package to
+over `packaging/rpm/linuxio.spec`. Each needs only `packaging/` and `LICENSE`
+beside it and, in the build folder, the programs and their
+`THIRD_PARTY_NOTICES.md`, so a test VM or a release image runs it from a copy
+of those, and each fails with the name of the package to
 install when its tool is missing. A release compiles once and puts the same
 programs in both packages ([Releases](./releases.md)). The RPM has
 `Release: 1` and no distribution tag, one RPM for every Fedora release.
@@ -384,14 +385,15 @@ which sorts after that release and before the next in dpkg and rpm.
 or an RPM before it is installed: its files and links are exactly the tree
 `package-root.sh` stages from the build, at the same modes, with what that
 family adds, all owned by root; everything under `/etc` is a configuration
-file; nothing is under `/usr/local`; and the nine programs have the build's
-SHA-256. `make test-packages` runs it on every package in `PACKAGES_DIR`.
+file; nothing is under `/usr/local`; the nine programs have the build's
+SHA-256; and the third-party notices are the build's. `make test-packages` runs it on every package in `PACKAGES_DIR`.
 `make test-packaging-scripts`, part of `make test`, runs the host-independent
 fixtures: `package-root-fixtures.sh`, `package-version-fixtures.sh`,
-`repo-fixtures.sh` and `package-files-fixtures.sh`, which checks the files
-both packages ship (how the units relate to `linuxio.target`, the run-record
-drop-in, the needrestart override, the two PAM files, the SELinux policy's
-file contexts).
+`third-party-notices-fixtures.sh`, `repo-fixtures.sh` and
+`package-files-fixtures.sh`, which checks the files both packages ship (how
+the units relate to `linuxio.target`, the run-record drop-in, the needrestart
+override, the two PAM files, the SELinux policy's file contexts, the icon
+sets the notices name).
 
 `make localinstall` builds this checkout and installs it as a package, and
 the test VMs assemble the package inside the VM, install it, and update it
@@ -400,8 +402,53 @@ from a signed repository of their own
 [Test VM](./development.md#test-vm)). The indexer's smoke test installs and
 removes a package under a real systemd ([Indexer](./indexer.md)).
 
+## Third-party notices
+
+The licences of what LinuxIO holds ask for their text to go with every copy.
+A release holds about 50 Go modules, well over a hundred frontend packages,
+two fonts and six icon sets, and the set changes with every dependency
+update, so the file a package installs is written by the build, from the
+build, and not kept by hand.
+
+`make build-binaries` ends with `make third-party-notices`
+(`packaging/scripts/third-party-notices.sh`), which writes
+`build/THIRD_PARTY_NOTICES.md` beside the programs:
+
+1. `docs/THIRD_PARTY_NOTICES.md`, the part written by hand: the projects
+   LinuxIO adapted code from, the icon sets, and where the source of the two
+   MPL-2.0 parts is. The icon sets are there because
+   `frontend/scripts/generate-icons.mjs` copies their data into LinuxIO's own
+   source, where no tool sees a package; `package-files-fixtures.sh` fails
+   when an `@iconify-json` set of `frontend/package.json` is not named.
+2. Go's licence, for the standard library and runtime in every Go program.
+3. Every module the eight Go programs report as linked (`go version -m`),
+   with each `LICENSE`, `COPYING` and `NOTICE` file it has in the module
+   cache, those of code it carries in a subfolder included, and a link to
+   its source at that version. What `go.mod` lists and
+   no program links is left out. A file with the same bytes as one already
+   written is named, not repeated.
+4. The packages in the frontend bundle, from `.vite/license.md`, which Vite
+   writes into the frontend folder the webserver embeds (`build.license` in
+   `frontend/config/vite.config.ts`): the packages it bundled, and only
+   those.
+
+The script fails, and the build with it, when a linked module has no licence
+file or a built frontend has no `.vite/license.md`, so a new dependency
+cannot ship unnamed. A build over the placeholder frontend of `make dev-prep`
+says that it holds no bundle. `linuxio-auth` is C and links only the host's
+libpam, libsystemd and libc.
+
+Both package scripts take the file from the build folder, the test VM gets it
+with the programs, and a release carries it from the compile job to the RPM
+job in the tar of the programs, so the DEB, the RPM, `make localinstall` and
+the VMs install the same text. `package-contents.sh` holds a package's copy
+to the build's.
+
 ## Known limits
 
+- The notices are written only where Go's own `LICENSE` is in the Go root,
+  as in Go's downloads and the toolchains Go fetches; a distribution's Go
+  package may keep it elsewhere, and the build then fails and says so.
 - amd64 (`x86_64`) only, and a C library of 2.39 or newer, Ubuntu 24.04's:
   RHEL 9 and its rebuilds cannot run it
   ([Releases](./releases.md#why-the-compile-image-is-the-oldest-supported-system)).

@@ -98,17 +98,25 @@ twice for one release:
 2. The `workflow_dispatch` run on the tag is the release. Its ref is
    `refs/tags/vX.Y.Z`, which is what the two environments check.
 
+The `tag` job does not look at the pull request's checks: the merge is where
+they are held. The `main` ruleset requires `format-backend`, `lint-backend`,
+`lint-frontend`, `typescript-checks`, `backend-tests`, `frontend-tests` and
+`auth-analysis` on an up-to-date branch, and blocks on CodeQL alerts, so
+GitHub refuses the merge from any client; `gh release-flow merge` also
+refuses while any other check is red or running. The Codacy scan is not
+required: its job passes whenever the scan ran, whatever it found.
+
 The release run's jobs, in order; each needs the ones before it, so a
 failure anywhere, in either package format, stops everything after it:
 
 | Job | Runs in | Does | Permissions | Secrets and environment |
 | --- | --- | --- | --- | --- |
 | `prepare` | `ubuntu-latest` (reads files only) | Reads `packaging/build/pins.env`; checks that a publishing run's ref is a `vX.Y.Z` tag | `contents: read` | none |
-| `compile` | `COMPILE_IMAGE` | Installs the build packages; `make ci-frontend-deps build-vite build-binaries`; `make package-deb`; `make test-packages-quiet`; keeps the programs as one tar (modes and bytes intact) and the DEB | `contents: read` | none |
+| `compile` | `COMPILE_IMAGE` | Installs the build packages; `make ci-frontend-deps build-vite build-binaries`; `make package-deb`; `make test-packages-quiet`; keeps the programs and the third-party notices written from them as one tar (modes and bytes intact) and the DEB | `contents: read` | none |
 | `rpm` | `RPM_IMAGE` | Unpacks the compile job's programs; `make package-rpm`; `make test-packages-quiet`; keeps the RPM | `contents: read` | none |
 | `repositories` | `RPM_IMAGE` | Fetches the kept earlier packages; imports the signing subkey into a GnuPG home of its own; `make repo-apt repo-rpm`; checks every signature against `packaging/keys/linuxio.asc`; deletes the GnuPG home; keeps the tree as the Pages artifact and this version's packages as the release assets | `contents: read` | environment `release`, `LINUXIO_SIGNING_KEY` |
 | `deploy` | `ubuntu-latest` (calls the Pages API) | `actions/deploy-pages` with the tree | `pages: write`, `id-token: write` | environment `github-pages` |
-| `publish` | `ubuntu-latest` (calls the Releases API) | Writes the release notes with `.github/scripts/changelog-entry.sh`, which names an author as `@login` only when GitHub knows the account behind the commit and by Git author name otherwise; creates a draft release with the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write` | none |
+| `publish` | `ubuntu-latest` (calls the Releases API) | Writes the release notes with `.github/scripts/changelog-entry.sh`, which names an author as `@login` only when GitHub knows the account behind the commit and by Git author name otherwise, and lists each author once under Contributors; creates a draft release with the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write` | none |
 
 The workflow's default permissions are none. The package tests run before any
 job that can see the signing key, and the GitHub release is published only

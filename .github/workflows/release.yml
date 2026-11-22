@@ -252,12 +252,12 @@ jobs:
         run: make test-packages-quiet PACKAGE_VERSION="${{ steps.version.outputs.version }}" PACKAGES_DIR=build/packages
 
       # A tar keeps the modes the package layout checks; the RPM gets these
-      # bytes, not a second compile.
+      # bytes, not a second compile, and the notices written from them.
       - name: Pack the programs
         run: |
           set -euo pipefail
           mapfile -t programs < <(make -s print-binaries)
-          tar -C "$(make -s print-bin-dir)" -cf programs.tar "${programs[@]}"
+          tar -C "$(make -s print-bin-dir)" -cf programs.tar "${programs[@]}" THIRD_PARTY_NOTICES.md
           tar -tvf programs.tar
 
       - name: Keep the programs

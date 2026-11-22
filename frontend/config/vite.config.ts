@@ -77,6 +77,10 @@ export default defineConfig(async ({ command }): Promise<UserConfig> => {
       reportCompressedSize: false,
       chunkSizeWarningLimit: 2000,
       manifest: true,
+      // .vite/license.md: the licence text of every package in the bundle,
+      // which packaging/scripts/third-party-notices.sh puts in the notices
+      // the packages install (docs/packaging.md, "Third-party notices").
+      license: true,
       outDir: "../backend/webserver/web/frontend",
       emptyOutDir: true,
     },

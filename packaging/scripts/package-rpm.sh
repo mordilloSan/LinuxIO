@@ -2,8 +2,8 @@
 # Assemble the RPM of LinuxIO from programs already built: rpmbuild in a
 # temporary top folder, the file tree from package-root.sh, the metadata and
 # scriptlets from packaging/rpm/linuxio.spec. It reads only packaging/,
-# LICENSE and docs/THIRD_PARTY_NOTICES.md beside it (the test VM has nothing
-# else) and runs as the build user. The path of the package is the one line it
+# LICENSE beside it and the build's THIRD_PARTY_NOTICES.md (the test VM has
+# nothing else) and runs as the build user. The path of the package is the one line it
 # prints on standard output.
 #
 # Usage: package-rpm.sh --build-dir DIR --version VERSION --out-dir DIR
@@ -47,9 +47,10 @@ for macro in tmpfiles_create:systemd-rpm-macros selinux_modules_install:selinux-
 	[[ "$(rpm --eval "%{?${macro%%:*}:yes}")" == yes ]] ||
 		die "the rpm macro %${macro%%:*} is undefined: install ${macro#*:}"
 done
-for file in LICENSE docs/THIRD_PARTY_NOTICES.md; do
-	[[ -f "${source_dir}/${file}" ]] || die "missing ${source_dir}/${file}"
-done
+[[ -f "${source_dir}/LICENSE" ]] || die "missing ${source_dir}/LICENSE"
+# Written beside the programs by the build, from what they hold.
+[[ -f "${build_dir}/THIRD_PARTY_NOTICES.md" ]] ||
+	die "missing ${build_dir}/THIRD_PARTY_NOTICES.md: make build-binaries writes it (or make third-party-notices)"
 build_dir="$(realpath -- "$build_dir")"
 mkdir -p "$out_dir"
 out_dir="$(realpath -- "$out_dir")"

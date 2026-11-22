@@ -26,21 +26,34 @@ if [ -n "$COMMIT_RANGE" ]; then
 	LOG_ARGS+=("$COMMIT_RANGE")
 fi
 
-# One lookup per author email, on the first commit seen with it.
-declare -A MENTIONS=()
-CONTRIBUTORS=""
+# One answer per author email (per name where a commit has no email), kept from
+# the first lookup GitHub answers. A lookup that fails (network, rate limit) is
+# tried again on the author's next commits, three times at most, so one failure
+# does not write the author's name for the whole run. The keys are never empty,
+# which bash refuses as a subscript, and are never used in arithmetic, which
+# would expand an author's text.
+declare -A MENTIONS=() FAILED=() AUTHORS=() AUTHOR_MENTIONS=()
 
 mention_for() {
 	local hash=$1 name=$2 email=$3 login=""
-	if [[ -z ${MENTIONS[$email]+set} ]]; then
-		login="$(gh api "repos/$REPO/commits/$hash" --jq '.author.login // ""' 2>/dev/null)" || login=""
-		if [[ $login =~ ^[A-Za-z0-9-]+$ ]]; then
-			MENTIONS[$email]="@$login"
+	local key="${email:-name:$name}"
+	if [[ -z ${MENTIONS[$key]+set} ]]; then
+		if login="$(gh api "repos/$REPO/commits/$hash" --jq '.author.login // ""' 2>/dev/null)"; then
+			if [[ $login =~ ^[A-Za-z0-9-]+$ ]]; then
+				MENTIONS[$key]="@$login"
+			else
+				MENTIONS[$key]=""
+			fi
 		else
-			MENTIONS[$email]=""
+			FAILED[$key]="${FAILED[$key]:-}x"
+			[[ ${FAILED[$key]} != xxx ]] || MENTIONS[$key]=""
 		fi
 	fi
-	MENTION="${MENTIONS[$email]:-$name}"
+	MENTION="${MENTIONS[$key]:-$name}"
+	# For the Contributors list: an author seen once with a login is listed by
+	# it, not a second time by name for a commit made with another email.
+	AUTHORS["name:$name"]=1
+	[[ $MENTION != @* ]] || AUTHOR_MENTIONS["name:$name"]="$MENTION"
 }
 
 while IFS= read -r -d '' message &&
@@ -55,7 +68,6 @@ while IFS= read -r -d '' message &&
 	[[ "$message" =~ ^[Cc]hangelog$ ]] && continue
 
 	mention_for "$hash" "$author" "$email"
-	CONTRIBUTORS="$CONTRIBUTORS* $MENTION"$'\n'
 	ENTRY="* $message ([${hash:0:7}](https://github.com/$REPO/commit/$hash)) by $MENTION"
 
 	if [[ "$message" =~ ^feat(\(.*\))?: ]]; then
@@ -98,7 +110,9 @@ done < <(git log "${LOG_ARGS[@]}")
 
 # Contributors
 printf "###  Contributors\n\n"
-printf '%s' "$CONTRIBUTORS" | sort -u
+for author in "${!AUTHORS[@]}"; do
+	printf '* %s\n' "${AUTHOR_MENTIONS[$author]:-${author#name:}}"
+done | sort -u
 
 # Full changelog link
 if [ -n "$PREV_TAG" ]; then

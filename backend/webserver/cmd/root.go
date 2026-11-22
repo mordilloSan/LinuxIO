@@ -213,7 +213,7 @@ func configureServerTLS(srv *http.Server) error {
 	if err != nil {
 		return fmt.Errorf("load managed TLS certificate: %w", err)
 	}
-	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	return nil
 }
 
