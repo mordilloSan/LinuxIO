@@ -58,13 +58,6 @@ after a change that issues ioctls).
 
 ## Needs the owner
 
-- Whether `linuxio.repo` sets `skip_if_unavailable=False`: today dnf given a
-  repository whose `repomd.xml` signature fails reports it, goes on without
-  the repository and exits 0, so a tampered repository looks like "nothing to
-  upgrade"; with the setting it exits 1, but every dnf transaction on the
-  host also fails while the repository is unreachable
-  (`packaging/scripts/repo-rpm.sh`). **checked**
-
 - Whether Gemini CLI and Codex get a LinuxIO profile as Claude Code has
   (`ProfileEnv` in `backend/bridge/internal/acpagents`): today their sign-in,
   settings and history are the ones the user's terminal uses. Codex reads
@@ -327,6 +320,12 @@ Sign-in where SELinux is enforcing
 
 Packages ([Packages, installation and updates](../packaging.md)):
 
+- `skip_if_unavailable=False` in `linuxio.repo`, so that dnf fails on a
+  LinuxIO repository it cannot read. Decided 2026-11-22: no. With it every
+  dnf transaction on the host, an unattended upgrade among them, fails while
+  the repository is unreachable, and Fedora sets the opposite for every
+  repository that is not its own. Refresh Sources reports the repository
+  instead ([LinuxIO's own update](../packaging.md#linuxios-own-update)).
 - The libvirt hook under `/usr` with a link in `/etc` made at first install,
   like the banner's links: it would deliver every fix and honour a deleted
   link on both families, but a program started through a link runs under the

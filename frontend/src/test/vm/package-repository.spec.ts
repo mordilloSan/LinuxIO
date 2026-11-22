@@ -38,7 +38,8 @@ import {
 //   host, which is outside the target, runs the job on;
 // - a stopped LinuxIO stays stopped;
 // - an index (Packages, repomd.xml) or a package changed after signing is
-//   refused, and LinuxIO stays as it was.
+//   refused, and LinuxIO stays as it was; for the index the Updates page says
+//   so too, on Fedora with LinuxIO's own check of its repository.
 //
 // The jobs-update.spec.ts update goes through the Updates page instead. This
 // file leaves the newest published version installed and running, the VM's
@@ -206,8 +207,18 @@ test.describe
     await ui(page.getByRole("button", { name: "Account" })).toBeVisible();
   });
 
-  test("an index changed after signing is refused, and LinuxIO stays as it was", async () => {
+  test("an index changed after signing is refused, LinuxIO stays as it was, and the Updates page says so", async ({
+    page,
+  }) => {
     test.setTimeout(900_000);
+    // What a refresh ends with is waited for, not the end of its spinner,
+    // which may not have appeared yet when it is looked for.
+    const refreshSources = () =>
+      page.getByRole("button", { name: "Refresh Sources" }).click();
+    const refreshed = { timeout: 240_000 };
+    const unreadable = page
+      .getByRole("alert")
+      .filter({ hasText: "LinuxIO's package repository could not be read" });
     const installed = await installedVersion();
     const version = nextVersion(installed);
     await publish(plainBuild(), version);
@@ -248,9 +259,39 @@ test.describe
         );
       }
       expect(await installedVersion()).toBe(installed);
+
+      // The Updates page (docs/packaging.md, LinuxIO's own update).
+      await signIn(page);
+      await page.goto("/updates");
+      await refreshSources();
+      if (vmDistro === "fedora") {
+        // PackageKit's refresh goes on without the repository as dnf does,
+        // so LinuxIO asks dnf about its own repository and shows the reason.
+        await ui(unreadable).toContainText(
+          /The package manager reported: .*GPG signature verification error/,
+          refreshed,
+        );
+      } else {
+        // PackageKit's apt backend fails the refresh itself, and the toast
+        // carries apt's reason.
+        await ui(
+          page
+            .getByText(
+              /RefreshCache error: .*(Hash Sum mismatch|unexpected size)/i,
+            )
+            .first(),
+        ).toBeVisible(refreshed);
+        await ui(unreadable).toHaveCount(0);
+      }
     } finally {
       await restore(indexFiles);
     }
+    // With the index as it was signed, a refresh has nothing to say.
+    await refreshSources();
+    await ui(
+      page.getByText("Update sources refreshed", { exact: true }).first(),
+    ).toBeVisible(refreshed);
+    await ui(unreadable).toHaveCount(0);
     expect(await isActive("linuxio.target")).toBe("active");
   });
 

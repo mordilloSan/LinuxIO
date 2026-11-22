@@ -29,6 +29,15 @@ type AutoUpdateOptionSupport struct {
 	Scopes          []AutoUpdateScope        `json:"scopes"`
 }
 
+// RefreshCacheResult is what a refresh of the package sources found.
+type RefreshCacheResult struct {
+	// OwnRepositoryError is the package manager's reason when the refresh
+	// went through and LinuxIO's own repository still could not be read, so
+	// that no LinuxIO update is listed; empty when it was read and on a host
+	// without that repository.
+	OwnRepositoryError string `json:"own_repository_error,omitempty"`
+}
+
 // AutoUpdateOrigin is a package repository that can be opted into automatic
 // updates on top of the distribution scope.
 type AutoUpdateOrigin struct {

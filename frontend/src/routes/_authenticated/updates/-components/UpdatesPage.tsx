@@ -64,15 +64,27 @@ const AvailableUpdatesPage = () => {
     canCancel,
     recoveryPending,
   } = usePackageUpdateController();
-  const { mutate: refreshCache, isPending: isRefreshingCache } =
-    linuxio.updates.refresh_cache.useMutation({
-      success: async () => {
-        await refetch();
+  // The last refresh's answer is what the page shows of LinuxIO's own
+  // repository; it goes when the next refresh starts.
+  const {
+    mutate: refreshCache,
+    isPending: isRefreshingCache,
+    data: lastRefresh,
+  } = linuxio.updates.refresh_cache.useMutation({
+    success: async (result) => {
+      await refetch();
+      if (result.own_repository_error) {
+        toast.warning(
+          "Update sources refreshed, but LinuxIO's repository could not be read",
+        );
+      } else {
         toast.success("Update sources refreshed");
-      },
-      error: "Failed to refresh update sources",
-      toast: UPDATES_TOAST_META,
-    });
+      }
+    },
+    error: "Failed to refresh update sources",
+    toast: UPDATES_TOAST_META,
+  });
+  const ownRepositoryError = lastRefresh?.own_repository_error;
   const packageOperationPending =
     recoveryPending || isUpdating || isRefreshingCache;
   const actions = (
@@ -108,6 +120,15 @@ const AvailableUpdatesPage = () => {
   return (
     <>
       <RoutedTabActions>{actions}</RoutedTabActions>
+      {ownRepositoryError && (
+        <AppAlert severity="warning">
+          <AppAlertTitle>
+            {"LinuxIO's package repository could not be read"}
+          </AppAlertTitle>
+          No LinuxIO update is listed until it can be read. Refresh Sources
+          checks it again. The package manager reported: {ownRepositoryError}
+        </AppAlert>
+      )}
       <UpdateStatus
         error={error}
         eventLog={eventLog}

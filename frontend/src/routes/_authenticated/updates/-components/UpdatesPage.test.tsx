@@ -1,9 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Update } from "@/api";
+import type { RefreshCacheResult, Update } from "@/api";
 
 const mocks = vi.hoisted(() => ({
   refreshCache: vi.fn(),
+  // What the page's refresh mutation was given, and what it last answered.
+  refreshConfig: undefined as
+    | { success: (result: RefreshCacheResult) => Promise<void> }
+    | undefined,
+  refreshResult: undefined as RefreshCacheResult | undefined,
+  toastSuccess: vi.fn(),
+  toastWarning: vi.fn(),
   updateAll: vi.fn(),
   updates: [] as Update[],
 }));
@@ -33,10 +40,14 @@ vi.mock("@/api", async () => {
           queryOptions: () => ({}),
         },
         refresh_cache: {
-          useMutation: () => ({
-            isPending: false,
-            mutate: mocks.refreshCache,
-          }),
+          useMutation: (config: typeof mocks.refreshConfig) => {
+            mocks.refreshConfig = config;
+            return {
+              data: mocks.refreshResult,
+              isPending: false,
+              mutate: mocks.refreshCache,
+            };
+          },
         },
       },
     },
@@ -48,7 +59,10 @@ vi.mock("@/hooks/useCapabilities", () => ({
 }));
 
 vi.mock("@/hooks/useScopedToast", () => ({
-  useScopedToast: () => ({ success: vi.fn() }),
+  useScopedToast: () => ({
+    success: mocks.toastSuccess,
+    warning: mocks.toastWarning,
+  }),
 }));
 
 vi.mock("./PackageUpdateController", () => ({
@@ -102,6 +116,52 @@ describe("UpdatesPage", () => {
     expect(
       screen.queryByRole("button", { name: /Update All/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("says when the last refresh could not read LinuxIO's repository", () => {
+    mocks.updates = [];
+    mocks.refreshResult = {
+      own_repository_error:
+        'Failed to download metadata for repository "linuxio"',
+    };
+    try {
+      render(<UpdatesPage />);
+
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(
+        "LinuxIO's package repository could not be read",
+      );
+      expect(alert).toHaveTextContent(
+        'The package manager reported: Failed to download metadata for repository "linuxio"',
+      );
+    } finally {
+      mocks.refreshResult = undefined;
+    }
+  });
+
+  it("says nothing of LinuxIO's repository when the refresh read it", () => {
+    mocks.updates = [];
+    mocks.refreshResult = {};
+    try {
+      render(<UpdatesPage />);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      mocks.refreshResult = undefined;
+    }
+  });
+
+  it("warns in the refresh's toast instead of reporting success", async () => {
+    mocks.updates = [];
+    render(<UpdatesPage />);
+
+    await mocks.refreshConfig?.success({ own_repository_error: "unreadable" });
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "Update sources refreshed, but LinuxIO's repository could not be read",
+    );
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+
+    await mocks.refreshConfig?.success({});
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("Update sources refreshed");
   });
 
   it("keeps automatic update settings in global Settings", () => {

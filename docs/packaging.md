@@ -377,6 +377,36 @@ the package manager changes the package leaves the old build installed and
 running. The details, among them when a cancel does not stop the update, and
 what the browser shows across the restart, are in [Jobs](./jobs.md#updates).
 
+On Fedora a repository whose metadata cannot be fetched, or whose signature
+fails, is skipped: the distribution sets `skip_if_unavailable` for every
+repository that is not its own, so dnf says why and goes on, exiting 0, and
+PackageKit's refresh succeeds and says nothing. Nothing from such a
+repository is installed, and no LinuxIO update is listed. `linuxio.repo`
+leaves the setting alone: turned off there, it fails every dnf transaction
+on the host, an unattended upgrade among them, for as long as the repository
+is unreachable.
+
+So that the Updates page is not silent, Refresh Sources
+(`updates.refresh_cache`) on a host that has `/etc/yum.repos.d/linuxio.repo`
+ends by asking dnf about that one repository, with the setting off for that
+one command (`checkOwnRepository` in `backend/bridge/handlers/packages`):
+
+```sh
+dnf --repo=linuxio --setopt=linuxio.skip_if_unavailable=False --refresh --assumeyes makecache
+```
+
+When dnf fails, its last line is the route's `own_repository_error`, and
+where dnf has not ended within a minute, that it did not answer is (it waits
+two minutes on a server that accepts no connection). The page shows the
+reason in a warning while it stays open and until the next refresh starts,
+and the refresh's toast warns where it would report success. A dnf that
+cannot be started or is killed is logged and says nothing of the repository.
+`--assumeyes` accepts the repository's key, the one `linuxio.repo` names,
+where dnf has not held it yet: PackageKit keeps its own, so on a host whose
+LinuxIO dnf never installed the check would otherwise report a repository
+that PackageKit reads. PackageKit's apt backend fails the refresh itself on
+an index it cannot fetch or verify, so an apt host has no such check.
+
 ## How the packages are built
 
 `packaging/scripts/package-root.sh` (`make package-root DESTDIR=<empty
@@ -494,10 +524,13 @@ to the build's.
   not restart libvirt, so the hook is used from the daemon's next start.
 - An edited configuration file keeps its edits and misses that upgrade's
   changes to it.
-- dnf given a `repomd.xml` with a bad signature reports it and goes on
-  without the repository, exiting 0 with nothing to upgrade: `linuxio.repo`
-  does not set `skip_if_unavailable=False`, which would stop every dnf
-  transaction on the host while the repository is unreachable.
+- On Fedora, dnf and PackageKit go on without a LinuxIO repository they
+  cannot read ([above](#linuxios-own-update)). The Updates page says so only
+  after Refresh Sources and only until it is left; the update banner, an
+  unattended upgrade and a `dnf` whose output nobody reads do not.
+- The check after Refresh Sources reads LinuxIO's repository even where an
+  administrator disabled it, and shows any failure of that dnf command as
+  the reason, a renamed section in `linuxio.repo` among them.
 - An RPM upgraded from a version without the console link shows the login
   banner at an SSH login only, until the link is made by hand
   ([above](#the-login-banner)).

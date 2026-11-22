@@ -2749,6 +2749,10 @@ export interface QRCodeResponse {
   qrcode: string;
 }
 
+export interface RefreshCacheResult {
+  own_repository_error?: string;
+}
+
 export interface ResizeLogicalVolumeRequest {
   vgName: string;
   lvName: string;
@@ -5375,7 +5379,7 @@ export interface LinuxIOSchema {
       result: UpdateHistoryRow[];
     };
     get_updates_basic: { input: []; request: void; result: Update[] };
-    refresh_cache: { input: []; request: void; result: SuccessResponse };
+    refresh_cache: { input: []; request: void; result: RefreshCacheResult };
     set_auto_updates: {
       input: [request: AutoUpdateOptions];
       request: AutoUpdateOptions;

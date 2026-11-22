@@ -58,11 +58,11 @@ func handleApplyOfflineUpdates(ctx context.Context, _ apischema.NoRequest) (apis
 	return applyOfflineUpdates(ctx)
 }
 
-func handleRefreshUpdateCache(ctx context.Context, _ apischema.NoRequest) (apischema.SuccessResponse, error) {
+func handleRefreshUpdateCache(ctx context.Context, _ apischema.NoRequest) (apischema.RefreshCacheResult, error) {
 	if err := RefreshUpdateCache(ctx); err != nil {
-		return apischema.SuccessResponse{}, err
+		return apischema.RefreshCacheResult{}, err
 	}
-	return apischema.SuccessResponse{Success: true}, nil
+	return apischema.RefreshCacheResult{OwnRepositoryError: checkOwnRepository(ctx)}, nil
 }
 
 func handleGetUpdateHistory(ctx context.Context, _ apischema.NoRequest) ([]apischema.UpdateHistoryRow, error) {
