@@ -323,7 +323,9 @@ advertises the matching capability.
     2`, numbered per prompt), each tool call, `answer ready`, and a change
     of model between prompts (`fable 5.2 → opus 5.5`). A call is named in a
     few words: the agent's description of a command (or the command's name),
-    the last two parts of a file's path, a web address's host, a subagent's
+    the last two parts of a file's path, a web address's host (also when
+    it is written without `https://`; the tool's name when it has none,
+    never the address), a subagent's
     title, a skill's name. Finished calls in a row at one station, by the
     chat or by one subagent, fold into one row (`+2`) with their times
     added. A call still running is not pushed out by newer rows: it stays
@@ -350,10 +352,13 @@ advertises the matching capability.
     `podman pull`, and the package managers' installs, updates and
     refreshes (`apt`, `dnf`, `yum`, `zypper`, `pacman -S`, `apk`, `snap`,
     `flatpak`). The command that counts is the one run behind `sudo`,
-    `env`, `timeout`, `nice`, `xargs`, `chroot`, `runuser` and the like,
+    `env`, `timeout`, `nice`, `xargs`, `chroot`, `runuser` and the like
+    (past their flags, a long one that takes a word as its short one:
+    `timeout --signal KILL 5 curl x` is `curl`),
     after `do`, `then` or `!` and the assignments and redirections before
     it (`2>/dev/null ls` is `ls`, and the text of `<<<"…"` is never a
-    name), inside `$(…)` or a function's body, in the line handed to
+    name), inside `$(…)`, backticks (also backticks written inside
+    backticks) or a function's body, in the line handed to
     `bash -c`, `su -c`, `eval` or `watch`, and by `find -exec`. A `;` or
     `|` in quotes splits nothing, a comment is not read, a `case` pattern
     on any branch (`a|b)`, `(a|b)`) runs nothing but the commands after
@@ -363,15 +368,25 @@ advertises the matching capability.
     list), the text of a here-document is not run unless a shell reads it
     (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`,
     or with backticks in place of `$(…)`, are text, `sudo bash <<EOF` and
-    `bash -s 2>&1 <<EOF` are read as commands), and only the first 8,000
-    characters of a line are read. A
+    `bash -s 2>&1 <<EOF` are read as commands). Its mark is a word with
+    its quotes taken off (`<<E"O"F`, `<<"END MSG"`, `<<'1'`) that starts
+    with a letter, `_`, a quote or a backslash; it ends at the line that
+    is its mark, and inside `$(…)` or backticks also where they close, as
+    it does in bash: at a `)` after the mark (`EOF)`) and at the first
+    backtick, in its text or on the line of its `<<`, so what follows is
+    read. Only the first 8,000 characters of
+    a line are read, and a longer one that shows nothing reaching out
+    goes to Shell, never to Files, since the rest may run anything. A
     line follows no more than 256 commands run inside others (in `$(…)`,
     behind `find -exec`, in the line handed to `bash -c`): one that holds
     more is read no further and goes to Shell. A row with no description is
     named by the first command that says something (`make` for
     `cd /srv && make`). Known limits: a command kept in an array and run
     later (`cmd=(curl …); "${cmd[@]}"`) lands on Shell, where lot-map shows
-    Network, an array element whose index holds a space (`m[a b]=1`)
+    Network, a here-document whose bare mark starts with anything but a
+    letter or `_` (`<<1`, `<<$X`, `<<!`) is taken for a shift, which it
+    far more often is, so its text is read as commands, the line handed
+    to `env -S` is not read, an array element whose index holds a space (`m[a b]=1`)
     is read as a command, and so are the patterns of a `case` whose `in`
     stands on a line of its own, while a `case` inside `$(…)` ends the
     `$(…)` at the `)` of its first pattern unless that opens with `(`.
@@ -420,7 +435,12 @@ advertises the matching capability.
     row whose time was not seen shows nothing there. A step carries the model
     that was set when its prompt was sent.
   - *What it lacks beside the plugin.* Hooks stays quiet: the adapter drops
-    Claude Code's hook events, so they never reach the browser. A subagent's
+    Claude Code's hook events, so they never reach the browser. A command
+    sent to the background reads as finished the moment it is handed off,
+    and its station rests: the adapter ends the call then, and tells of the
+    command's own life only to a client that declares its `asyncTasks`
+    extension, an ACP v2 background list or a terminal, none of which
+    LinuxIO does (read from the source of `claude-agent-acp` 0.102.0). A subagent's
     own calls fly from the core, not from the Agents station; a call a hook
     refused is an ordinary failure; and compaction is not a step.
   - *Card.* It shares the plugin pane's box, blending, width and resizing,

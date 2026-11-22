@@ -185,6 +185,29 @@ describe("labelOf", () => {
         }),
       ),
     ).toBe("example.com");
+    // An address is never shown whole: its host also when it names no
+    // scheme, and the tool's name when it has none.
+    expect(
+      labelOf(
+        tool({
+          toolName: "WebFetch",
+          rawInput: { url: "example.com/users/@hunter2?token=abc" },
+        }),
+      ),
+    ).toBe("example.com");
+    expect(
+      labelOf(
+        tool({ toolName: "WebFetch", rawInput: { url: "localhost:3000/x" } }),
+      ),
+    ).toBe("localhost:3000");
+    expect(
+      labelOf(
+        tool({
+          toolName: "WebFetch",
+          rawInput: { url: "file:///home/u/hunter2.txt" },
+        }),
+      ),
+    ).toBe("WebFetch");
     expect(labelOf(tool({ toolName: "WebSearch" }))).toBe("web search");
     expect(labelOf(tool({ toolName: "Agent" }))).toBe("subagent");
     expect(

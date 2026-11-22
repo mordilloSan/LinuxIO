@@ -273,12 +273,18 @@ export function stationOf(block: ToolBlock): StationId {
 const lastTwo = (path: string) =>
   path.replaceAll("\\", "/").split("/").filter(Boolean).slice(-2).join("/");
 
+// The host of an address, also of one written without its scheme, and
+// nothing when it has none: the rest of it is never a label.
 const hostOf = (url: string) => {
-  try {
-    return new URL(url).host || url;
-  } catch {
-    return url;
+  for (const address of url.includes("://") ? [url] : [url, `https://${url}`]) {
+    try {
+      const { host } = new URL(address);
+      if (host) return host;
+    } catch {
+      // Not an address as written; the next form may be.
+    }
   }
+  return "";
 };
 
 export const spaced = (name: string) => name.replace(/_+/g, " ");
