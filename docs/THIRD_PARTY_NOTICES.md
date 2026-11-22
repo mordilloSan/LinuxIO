@@ -1,5 +1,15 @@
 # Third-Party Notices
 
+LinuxIO is licensed under the Apache License 2.0, distributed with it as
+`LICENSE`. This file names the work of others that LinuxIO holds.
+
+The sections down to "Source of the MPL-2.0 parts" are written by hand, in
+`docs/THIRD_PARTY_NOTICES.md`. The copy a package installs in
+`/usr/share/doc/linuxio/` goes on with what the build wrote from the programs
+it built: Go's licence, the licence of every Go module linked into them, and
+the licence of every package in the frontend bundle
+(`packaging/scripts/third-party-notices.sh`).
+
 ## FileBrowser Quantum
 
 Portions of the LinuxIO filesystem indexer are adapted from
@@ -68,35 +78,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## go-sqlite3
+## Icon sets
 
-The MIT License (MIT)
+The icons of the LinuxIO page are copied at build time from these sets,
+through their [Iconify](https://iconify.design) packages, into the page
+itself (`frontend/src/icons/icons.ts`):
 
-Copyright (c) 2014 Yasuhiro Matsumoto
+- [Bootstrap Icons](https://github.com/twbs/icons) (`bi`), MIT License.
+  Copyright (c) 2019-2024 The Bootstrap Authors
+- [EOS Icons](https://gitlab.com/SUSE-UIUX/eos-icons) (`eos-icons`), MIT
+  License. Copyright (c) 2020 SUSE Software Solutions Germany GmbH
+- [Phosphor](https://github.com/phosphor-icons/core) (`ph`), MIT License.
+  Copyright (c) 2023 Phosphor Icons
+- [Line Awesome](https://github.com/icons8/line-awesome) (`la`), MIT License
+  in its own repository, Apache License 2.0 in its Iconify package.
+  Copyright (c) Icons8
+- [Material Design Icons](https://github.com/Templarian/MaterialDesign)
+  (`mdi`), by Pictogrammers, Apache License 2.0.
+- [Simple Icons](https://github.com/simple-icons/simple-icons)
+  (`simple-icons`), CC0 1.0 Universal, which asks for no notice. The brand
+  icons remain trademarks of their owners.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## go-yaml
-
-MIT License
-
-Copyright (c) 2019 Masaaki Goshima
+For the four sets under the MIT License, with the copyright notices above:
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -116,32 +119,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## golang.org/x/sys
+The text of the Apache License 2.0 is LinuxIO's own `LICENSE`.
 
-Copyright 2009 The Go Authors.
+## Source of the MPL-2.0 parts
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
+Two parts of LinuxIO are under the Mozilla Public License 2.0, whose text is
+under their names further down. LinuxIO ships them unmodified, and their
+source is available from their authors:
 
-   * Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-   * Redistributions in binary form must reproduce the above
-copyright notice, this list of conditions and the following disclaimer
-in the documentation and/or other materials provided with the
-distribution.
-   * Neither the name of Google LLC nor the names of its
-contributors may be used to endorse or promote products derived from
-this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+- `github.com/libp2p/go-yamux/v5`, linked into the Go programs:
+  <https://github.com/libp2p/go-yamux>, at the version named under "Go
+  modules".
+- `@novnc/novnc`, in the frontend bundle: <https://github.com/novnc/noVNC>,
+  at the version named under "Frontend packages".

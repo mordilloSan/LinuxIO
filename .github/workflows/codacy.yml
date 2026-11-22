@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request or to main replaces the older scan.
+concurrency:
+  group: codacy-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   codacy:
     name: Codacy
@@ -21,4 +26,4 @@ jobs:
       contents: read
       security-events: write
       actions: read
-    uses: mordilloSan/.github/.github/workflows/codacy-scan.yml@main
+    uses: mordilloSan/.github/.github/workflows/codacy-scan.yml@4b79e6da8d97d6a8767c2eb79f1c39ee594e1533 # v1.0.0

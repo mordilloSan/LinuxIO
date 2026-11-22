@@ -185,7 +185,17 @@ build-go-binaries: $(GO_BUILD_PREREQ) ## Build every Go binary (no C auth helper
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-cli build-docker-update build-indexer build-monitoring build-worker build-claude-relay SKIP_ENSURE_GO=1
 
-build-binaries: check-c-build-deps build-go-binaries build-auth ## Build every shipped binary into @BIN@
+build-binaries: check-c-build-deps build-go-binaries build-auth ## Build every shipped binary into @BIN@, and the notices of what they hold
+	@$(MAKE) --no-print-directory third-party-notices SKIP_ENSURE_GO=1
+
+# The notices the packages install, written from the programs in @BIN@ and the
+# frontend the webserver embeds (docs/packaging.md, "Third-party notices").
+# linuxio-auth is C and links only the host's libraries.
+third-party-notices: $(GO_BUILD_PREREQ) ## Write @BIN@/THIRD_PARTY_NOTICES.md from the built programs and the frontend bundle
+	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(packaging_scripts_dir)/third-party-notices.sh" \
+		--build-dir "$(bin_dir)" --frontend-dir "$(backend_frontend_dir)" --go "$(GO_BIN)" \
+		$(filter-out linuxio-auth,$(shipped_binaries))
+	@echo "✅ Third-party notices written: $(bin_dir)/THIRD_PARTY_NOTICES.md"
 
 print-binaries: ## Print the shipped-binary names, one per line
 	@printf '%s\n' $(shipped_binaries)

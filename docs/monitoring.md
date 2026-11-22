@@ -11,8 +11,10 @@ not state.
 The implementation derives from
 [Beszel](https://github.com/henrygd/beszel) by way of the
 [go-monitoring](https://github.com/mordilloSan/go-monitoring) fork, whose
-pre-import history is kept in that repository. Attribution and dependency
-licenses are recorded in [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+pre-import history is kept in that repository. The attribution is recorded
+in [Third-Party Notices](THIRD_PARTY_NOTICES.md), and the licenses of the
+dependencies in the notices a package installs
+([Packages](./packaging.md#third-party-notices)).
 
 There is no migration from a standalone go-monitoring installation: the daemon
 uses its own sockets, config path and database, and LinuxIO neither reads nor

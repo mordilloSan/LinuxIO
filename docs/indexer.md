@@ -8,8 +8,9 @@ missing index never authorizes or blocks a filesystem mutation.
 
 The implementation follows up on FileBrowser Quantum's
 [Apache-2.0-licensed indexer](https://github.com/gtsteffaniak/filebrowser/blob/main/LICENSE).
-Attribution and dependency licenses are recorded in
-[Third-Party Notices](THIRD_PARTY_NOTICES.md).
+The attribution is recorded in [Third-Party Notices](THIRD_PARTY_NOTICES.md),
+and the licenses of the dependencies in the notices a package installs
+([Packages](./packaging.md#third-party-notices)).
 
 ## Architecture and trust boundary
 
