@@ -9,7 +9,7 @@ separate. LinuxIO does not install a host-wide frontend configuration file.
 | Path | Owner and lifecycle | Purpose |
 |---|---|---|
 | `/etc/linuxio/indexer/config.yaml` | `root:root`; atomically updated by the indexer | Two persisted scan choices: operator exclusions and network-mount policy. |
-| `/var/lib/linuxio/indexer/indexer.db` | `root:root`; persistent rebuildable cache | SQLite index data; `-wal` and `-shm` sidecars may appear beside it. |
+| `/var/lib/linuxio/indexer/indexer.db` | `root:root`; persistent rebuildable cache | SQLite index data; `-wal` and `-shm` sidecars may appear beside it, and at most one quarantined copy (`indexer.db.corrupt-*` or `indexer.db.incompatible-*`). The folder is no-CoW on btrfs. |
 | `/run/linuxio/indexer.sock` | `root:root`, mode `0600`; recreated by systemd | Root-only Unix HTTP/SSE API socket. |
 | `/var/lib/linuxio/alerts.json` | `root:root` `0600`; persistent | Alert records; `alerts.json.lock` sits beside it. |
 | `/var/lib/linuxio/notifications.json` | `root:root` `0600`; persistent, replaced atomically under `notifications.json.lock` | Notification settings, including the SMTP password ([Alerts](./alerts.md#notification-settings)). |

@@ -6,8 +6,11 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"runtime"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Worker supervision: full scans run in a private subprocess of this binary
@@ -51,7 +54,7 @@ func runIndexProcess(cmd *exec.Cmd, onEvent func(indexWireEvent)) (*IndexRunStat
 	if err != nil {
 		return nil, fmt.Errorf("index subprocess stdout: %w", err)
 	}
-	if err := cmd.Start(); err != nil {
+	if err := startAtLowPriority(cmd); err != nil {
 		return nil, fmt.Errorf("index subprocess start: %w", err)
 	}
 
@@ -80,4 +83,39 @@ func runIndexProcess(cmd *exec.Cmd, onEvent func(indexWireEvent)) (*IndexRunStat
 		return nil, fmt.Errorf("index subprocess failed: %w", waitErr)
 	}
 	return summary, nil
+}
+
+// ioprio_set(2) takes these; x/sys/unix names only the syscall number.
+const (
+	ioprioWhoProcess = 1  // IOPRIO_WHO_PROCESS: one thread, 0 for the caller
+	ioprioClassIdle  = 3  // IOPRIO_CLASS_IDLE: I/O only when no one else wants the disk
+	ioprioClassShift = 13 // IOPRIO_CLASS_SHIFT
+	lowestNice       = 19
+)
+
+// startAtLowPriority starts cmd at the lowest CPU priority and in the idle
+// I/O class, so that the scanner yields the CPU to everything else on the
+// host, the daemon's own searches included. The I/O class covers what the
+// scanner reads while it walks, on a disk whose scheduler honours it (BFQ,
+// mq-deadline); the database pages it writes are flushed later by the kernel
+// and do not carry it.
+// Linux keeps both priorities per thread, and a child process and every
+// thread it creates take them from the thread that started it, so one thread
+// of the daemon gives up its priority and starts the child. The daemon cannot
+// raise a priority again (its unit leaves it no CAP_SYS_NICE), so that thread
+// is not handed back to the runtime: a goroutine that ends while locked to
+// its thread takes the thread with it.
+func startAtLowPriority(cmd *exec.Cmd) error {
+	started := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread()
+		if err := unix.Setpriority(unix.PRIO_PROCESS, 0, lowestNice); err != nil {
+			slog.Warn("failed to lower the scanner's CPU priority", "error", err)
+		}
+		if _, _, errno := unix.Syscall(unix.SYS_IOPRIO_SET, ioprioWhoProcess, 0, ioprioClassIdle<<ioprioClassShift); errno != 0 {
+			slog.Warn("failed to lower the scanner's I/O priority", "error", errno)
+		}
+		started <- cmd.Start()
+	}()
+	return <-started
 }

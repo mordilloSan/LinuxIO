@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -113,9 +114,11 @@ func OpenStoreRecovering(ctx context.Context, path string, sameFile SameFileFunc
 }
 
 // quarantineDatabaseFiles renames a database and its sidecars aside instead of
-// deleting them, so the files stay available for recovery or inspection.
+// deleting them, so the files stay available for recovery or inspection. It
+// keeps one such copy: once the new one is made, those of earlier recoveries
+// are deleted.
 func quarantineDatabaseFiles(dbPath, reason string) error {
-	suffix := "." + reason + "-" + time.Now().UTC().Format("20060102T150405Z")
+	suffix := "." + reason + "-" + time.Now().UTC().Format(quarantineStamp)
 	if err := os.Rename(dbPath, dbPath+suffix); err != nil {
 		return fmt.Errorf("failed to quarantine database: %w", err)
 	}
@@ -125,5 +128,58 @@ func quarantineDatabaseFiles(dbPath, reason string) error {
 		}
 	}
 	slog.Warn("database quarantined", "path", dbPath+suffix, "reason", reason)
+	removeQuarantinedCopies(dbPath, filepath.Base(dbPath)+suffix)
 	return nil
+}
+
+// quarantineStamp is the time in a quarantined copy's name.
+const quarantineStamp = "20060102T150405Z"
+
+// quarantinedCopy reports whether name is one a quarantine of the database
+// named base gave: base, the reason, the time, and for a sidecar its suffix.
+// Any other file beside the database, such as a copy someone renamed to keep,
+// is not LinuxIO's to delete.
+func quarantinedCopy(name, base string) bool {
+	for _, reason := range []string{"corrupt", "incompatible"} {
+		rest, ok := strings.CutPrefix(name, base+"."+reason+"-")
+		if !ok || len(rest) < len(quarantineStamp) {
+			continue
+		}
+		if _, err := time.Parse(quarantineStamp, rest[:len(quarantineStamp)]); err != nil {
+			continue
+		}
+		switch rest[len(quarantineStamp):] {
+		case "", "-wal", "-shm":
+			return true
+		}
+	}
+	return false
+}
+
+// removeQuarantinedCopies deletes the copies earlier recoveries set aside and
+// leaves the files of the one named keep. Each copy is a whole database, and
+// nothing else ever removes them.
+func removeQuarantinedCopies(dbPath, keep string) {
+	dir, base := filepath.Dir(dbPath), filepath.Base(dbPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		slog.Warn("failed to list older quarantined databases", "path", dir, "error", err)
+		return
+	}
+	removed := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, keep) || !quarantinedCopy(name, base) {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if err := os.Remove(path); err != nil {
+			slog.Warn("failed to remove older quarantined database", "path", path, "error", err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		slog.Info("removed older quarantined databases", "path", dir, "files", removed)
+	}
 }

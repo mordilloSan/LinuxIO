@@ -97,6 +97,20 @@ if ! "${install_cmd[@]}" >"${SMOKE_DIR}/install.log" 2>&1; then
 	fail "the package install failed; full log is ${SMOKE_DIR}/install.log"
 fi
 
+# tmpfiles made the index folder at install, before the service ever ran, and
+# marked it no-CoW where the filesystem has that mark. The database is created
+# later and takes the mark from the folder.
+INDEX_DIR=/var/lib/linuxio/indexer
+[[ "$(stat -c '%a %U:%G' "$INDEX_DIR" 2>/dev/null)" == "750 root:root" ]] ||
+	fail "the install did not create ${INDEX_DIR} as 0750 root:root"
+if [[ "$(stat -f -c %T "$INDEX_DIR")" == btrfs ]]; then
+	lsattr -d "$INDEX_DIR" | cut -d' ' -f1 | grep -q C || fail "${INDEX_DIR} is not no-CoW on btrfs"
+fi
+# The packaged schedule: a first run soon after the timer starts, then daily.
+timers=$(systemctl show --value --property=TimersMonotonic linuxio-indexer-index.timer)
+[[ "$timers" == *"OnActiveUSec=15min"* && "$timers" == *"OnUnitActiveUSec=1d"* ]] ||
+	fail "index timer schedule is not 15min then daily: ${timers}"
+
 mkdir -p "$(dirname "$INDEX_DROPIN")" "$(dirname "$TIMER_DROPIN")"
 # Exercise timer wiring without launching a full-root scan.
 printf '%s\n' '[Service]' 'ExecStart=' \
@@ -123,10 +137,11 @@ for _ in {1..150}; do
 done
 systemctl is-active --quiet linuxio-indexer.service && fail "idle indexer did not shut down"
 
-# The timer came up with the socket (linuxio.target wants it) on its hourly
-# schedule. Only now, with the indexer stopped, is it made to fire 1s after a
-# restart: firing earlier would start the indexer before the checks above, and
-# the unit's 1min accuracy would let systemd put the firing off past the wait.
+# The timer came up with the socket (linuxio.target wants it), with its first
+# run 15 minutes away. Only now, with the indexer stopped, is it made to fire
+# 1s after a restart: firing earlier would start the indexer before the checks
+# above, and the unit's 1min accuracy would let systemd put the firing off past
+# the wait.
 printf '%s\n' '[Timer]' 'OnActiveSec=' 'OnActiveSec=1s' 'AccuracySec=1s' >"$TIMER_DROPIN"
 systemctl daemon-reload
 systemctl restart linuxio-indexer-index.timer

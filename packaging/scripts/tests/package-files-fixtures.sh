@@ -79,8 +79,15 @@ if grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$TARGET"; then
 	fail "linuxio.target must not bypass the timer's enabled state"
 fi
 grep -Fqx 'WantedBy=linuxio.target' "$INDEXER_TIMER" || fail "index timer install relationship"
-grep -Fqx 'OnActiveSec=1h' "$INDEXER_TIMER" || fail "index timer initial delay must match its default interval"
-grep -Fqx 'OnUnitActiveSec=1h' "$INDEXER_TIMER" || fail "index timer default recurring interval"
+grep -Fqx 'OnActiveSec=15min' "$INDEXER_TIMER" || fail "index timer must make its first run soon after it starts"
+grep -Fqx 'OnUnitActiveSec=24h' "$INDEXER_TIMER" || fail "index timer default recurring interval"
+# The index folder is no-CoW on btrfs. tmpfiles creates it first: at install the
+# service's StateDirectory has not made it yet, and "h" skips a missing path.
+index_folder_line=$(grep -Fnx 'd /var/lib/linuxio/indexer 0750 root root -' "${UNITS}/linuxio-tmpfiles.conf" | cut -d: -f1)
+index_nocow_line=$(grep -Fnx 'h /var/lib/linuxio/indexer - - - - +C' "${UNITS}/linuxio-tmpfiles.conf" | cut -d: -f1)
+[[ -n "$index_folder_line" ]] || fail "tmpfiles must create the index folder"
+[[ -n "$index_nocow_line" ]] || fail "tmpfiles must mark the index folder no-CoW"
+((index_folder_line < index_nocow_line)) || fail "tmpfiles must create the index folder before marking it"
 if grep -Fqx 'Persistent=true' "$INDEXER_TIMER"; then
 	fail "Persistent has no effect on a monotonic timer"
 fi

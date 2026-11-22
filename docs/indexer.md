@@ -65,7 +65,12 @@ scoped reindexing never start an independent daemon.
 
 The daemon is socket activated. Starting the webserver only warms the daemon
 for queries; it does not request an index. The timer makes its first request
-after its configured interval, hourly by default, and repeats at that cadence.
+15 minutes after it starts, so a new install or a rebooted host is not left
+without an index, and then repeats at the configured interval, 24 hours by
+default. Every start of the timer counts: a boot, a restart of
+`linuxio.target`, a package upgrade and a saved interval each bring one full
+index 15 minutes later. A monotonic timer has no memory of the last run across
+a restart, so it cannot tell that the index is still fresh.
 `linuxio-webserver.service` owns `/run/linuxio/webserver`, an activity marker
 that keeps the indexer warm while the webserver is running. The marker does not
 grant socket access.
@@ -73,6 +78,15 @@ grant socket access.
 When the marker is absent and no request, event stream, or scan is active, the
 daemon exits after a 90-second idle grace. The socket remains ready to activate
 it again.
+
+On btrfs the state directory is marked no-CoW (`+C`), by a line in the
+package's tmpfiles file, as systemd does for its journal. SQLite rewrites
+pages in place, which copy-on-write turns into tens of thousands of pieces: a
+1.25 GB index on one host was in 89,084. The mark applies to files created
+after it is set, so an index that already exists keeps copy-on-write until it
+is recreated, and it does nothing on other filesystems. tmpfiles also creates
+the directory, with the mode of the service's `StateDirectory`, because at
+install the service has not made it yet.
 
 The service can write only its configuration and state directories. It is
 limited to Unix sockets and receives `CAP_DAC_READ_SEARCH` for scanning the
@@ -130,7 +144,13 @@ database path (`storage.DefaultDBPath`) and SQLite options live in
 
 Both configuration fields apply to the next scan without a daemon restart. The
 recurring interval is a systemd timer setting, not a YAML field. LinuxIO writes
-it through `indexer.set_timer_interval`.
+it through `indexer.set_timer_interval`, as a drop-in that sets only
+`OnUnitActiveSec`; how soon the first index runs after the timer starts stays
+what the unit says. A drop-in saved before v0.57 also sets `OnActiveSec` to
+the interval and keeps doing so until the interval is saved again.
+
+The default is a day because a full index rewrites the whole database: on a
+host with 1.85 million entries one run wrote 9.2 GB.
 
 ### Size accounting
 
@@ -168,6 +188,16 @@ worker. The worker:
 4. streams entries into SQLite in batches and reports progress to the daemon;
 5. publishes the generation only after the scan succeeds;
 6. removes older completed generations, reclaims their pages, and checkpoints SQLite.
+
+The daemon starts the worker at the lowest CPU priority (nice 19) and in the
+idle I/O class, so a scan yields the CPU to everything else on the host, the
+daemon's own searches included. The I/O class covers what the worker reads
+while it walks, on a disk whose scheduler honours it (BFQ, mq-deadline). It
+does not cover the database pages the worker writes: the kernel flushes those
+later, outside the worker's priority. Linux keeps both per thread and hands
+them from a thread to what it starts, so one thread of the daemon gives up its
+priority, starts the worker and is then discarded (`startAtLowPriority` in
+`backend/indexer/internal/daemon/supervisor.go`).
 
 Queries continue to use the previous completed generation during the scan. A
 failed or cancelled scan does not replace it. Ordinary per-entry filesystem
@@ -219,6 +249,12 @@ version; a mismatch causes one incompatible-cache quarantine and creates an
 empty version 2 cache for the next scan to populate. Busy, timeout, permission,
 and ordinary I/O errors preserve the existing files and fail startup instead of
 replacing data.
+
+One quarantined copy is kept, the newest. Each is a whole database, so once a
+quarantine has set the new copy aside it deletes those of earlier ones
+(`removeQuarantinedCopies` in `backend/indexer/internal/storage/open.go`). A
+quarantine that fails deletes nothing, and only files named as a quarantine
+names them are deleted: a copy someone renamed to keep stays.
 
 The worker never performs quarantine. This prevents it from renaming a database
 behind the daemon's open handle.
@@ -384,6 +420,12 @@ old cache remains available for inspection.
 
 ## Known limits
 
+- On btrfs the index is not checksummed, which is what no-CoW costs. It is a
+  cache that a full index rebuilds. On a btrfs with mirrored data, a disk that
+  dropped out and came back can then serve old pages of the index without
+  btrfs noticing; the index is quarantined or wrong until the next full index.
+- A second quarantine before a scan has completed keeps the newer, empty copy
+  and deletes the one that held an index.
 - A scoped reindex reads each hardlink group in its subtree with a query of
   its own. The reconcile step alone took about 1.2 to 1.7 seconds per 100,000
   hardlinked files in a tree of 200,000 on a development machine, with the

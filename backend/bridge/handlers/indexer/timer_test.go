@@ -81,7 +81,8 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetTimerInterval: %v", err)
 	}
-	wantDropIn := "[Timer]\nOnActiveSec=\nOnActiveSec=30m0s\nOnUnitActiveSec=\nOnUnitActiveSec=30m0s\n"
+	// Only the recurring interval: the first run after boot stays the unit's.
+	wantDropIn := "[Timer]\nOnUnitActiveSec=\nOnUnitActiveSec=30m0s\n"
 	if dropInPath != indexerTimerDropInPath || dropIn != wantDropIn {
 		t.Fatalf("path=%q drop-in=%q", dropInPath, dropIn)
 	}

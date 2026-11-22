@@ -2,8 +2,9 @@
 
 ## Status
 
-Not built. This is the agreed plan from the audit of 2026-11-22. What exists
-today is in [Filesystem Indexer](../indexer.md).
+Step 1 is built; the rest is not. This is the agreed plan from the audit of
+2026-11-22. What exists today is in [Filesystem Indexer](../indexer.md), and
+the figures under Problem are from before step 1.
 
 ## Problem
 
@@ -119,19 +120,12 @@ Sizes are estimates and include tests and docs.
 
 ### Step 1: stop the bleeding
 
-About 10 files, packaging and a little Go. No new privileged or public
-surface. Changes units, so it is verified in the VM as installed and after a
-reboot.
-
-- Default interval 24 hours, with a first run soon after boot so a new
-  install has an index without waiting a day. A saved interval keeps its
-  value.
-- The scanner lowers its own CPU and I/O priority.
-- Older quarantined databases are deleted; at most the newest is kept.
-- `h /var/lib/linuxio/indexer - - - - +C` in the package's tmpfiles file. It
-  takes effect for a database created afterwards, which step 4 does.
-
-Effect on the host above: 220 GB a day becomes about 9 GB.
+Built. The default interval is 24 hours with a first run 15 minutes after the
+timer starts, the scanner runs at the lowest CPU and I/O priority, a
+quarantine keeps one copy, and the index folder is no-CoW on btrfs
+([Filesystem Indexer](../indexer.md)). On the host above that takes 220 GB a
+day of writes to about 9 GB. The no-CoW mark takes effect for a database
+created afterwards, which step 4 does.
 
 ### Step 2: what is left out of the walk
 
@@ -322,6 +316,19 @@ disk against 9.2 GB observed.
   next full scan.
 - **A smaller step 5**: build each scan in a new file and rename it over the
   old one. About 12 files, 91% fewer writes, but it keeps the full rewrite.
+- **A first run that happens only when the index is stale.** Since step 1
+  every start of the timer brings a full index 15 minutes later: a boot, a
+  restart of `linuxio.target`, a package upgrade, a saved interval. A calendar
+  timer with `Persistent=true` remembers its last run across restarts and
+  runs at once only when one was missed, but it turns the interval setting
+  into a schedule. Step 5 makes the extra run cheap, which may be enough.
+  Saving a shorter interval while the last index is older than it can bring
+  two: one at once, as before, and the first run 15 minutes later.
+- **`IOWeight=` on the scan unit** (step 5). The idle I/O class of step 1
+  covers the walk's reads, not the database pages the kernel flushes later.
+  Under BFQ an idle-class scan gets the disk only when nothing else wants
+  it, so on a busy disk it can take long; once updates wait for a scan to
+  end (step 3), the best-effort class at its lowest level may suit better.
 - **What `last_indexed` means.** Every add and delete rewrites it, so
   Settings shows the last change, not the last scan.
 

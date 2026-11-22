@@ -6,8 +6,11 @@ Requisite=linuxio-indexer.socket
 After=linuxio-indexer.socket
 
 [Timer]
-OnActiveSec=1h
-OnUnitActiveSec=1h
+# The first index runs soon after the timer starts, so a new install or a
+# rebooted host is not left a day without one. A saved interval changes
+# only OnUnitActiveSec (indexer.set_timer_interval).
+OnActiveSec=15min
+OnUnitActiveSec=24h
 AccuracySec=1min
 Unit=linuxio-indexer-index.service
 

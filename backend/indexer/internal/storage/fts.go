@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS fts_state (
 );`
 
 // ftsTriggers keeps entries_fts synchronized with entries. The update trigger
-// is guarded so the hourly rescan, which upserts every row with an unchanged
+// is guarded so the scheduled rescan, which upserts every row with an unchanged
 // name, does no FTS work.
 var ftsTriggers = []struct {
 	name string
