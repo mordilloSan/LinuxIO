@@ -49,14 +49,10 @@ after a change that issues ioctls).
   Fedora 45 (2026-11-21), right after Refresh Sources; the list asks again by
   itself after 50 s. The cause is not found. Ruled out in the test VM:
   PackageKit asked on one connection the instant a refresh ends lists the
-  update (4 of 4), also while `dnf` runs beside it (18 of 18). One defect
-  that gives the same picture is known and not fixed: `collectUpdatePackages`
-  (`backend/bridge/handlers/packages/updates.go`) ignores a transaction's
-  `ErrorCode`, so a `GetUpdates` that failed is an empty list with no error,
-  where the rest of that package reports it (`pkgkit.AwaitFinished`). Fixing
-  it makes a failed listing an error on the page and a Warn from
-  `control.version`, so it needs the `packagekit` suite and the Updates specs
-  on both distributions. **not verified**
+  update (4 of 4), also while `dnf` runs beside it (18 of 18). A `GetUpdates`
+  that failed was an empty list until 2026-11-22 and is an error on the page
+  since, so the picture seen again means the list was read and was empty.
+  **not verified**
 
 ## Tests that are missing
 
