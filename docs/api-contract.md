@@ -634,14 +634,43 @@ change that is still being saved on the page. A change to the same store made
 while that reload is in flight cancels it and leaves the store marked, so the
 store is read back again after that change's save.
 
+Nothing is saved until `config.get` has answered on the current connection,
+which is the case while the connection is closed and after a load that
+failed. A load that fails for a reason other than a lost session is reported
+once, like any failed query, and then tried again by the provider after 1 s,
+then 2 s, 4 s and so on up to 30 s, for as long as the connection stays open;
+those attempts raise no toast and turn off the query client's own retry. One
+failed answer therefore does not leave the page unable to save until the next
+reconnect, and before the first load succeeds the page is not rendered, so
+the retry is what brings it up. In that state the two stores are treated
+differently, because the load that ends it reads `config.get` again and keeps
+the page's copy of the UI settings:
+
+- A functional setting is refused: the page does not show it, a warning says
+  the server cannot be reached, at every attempt, and `onSaved` does not
+  fire. Showing it would be showing a value the next load takes back without
+  a word, and sending it later would change what the host does when nobody is
+  watching.
+- A UI setting is shown, with one warning for the outage, and the load that
+  succeeds next sends the whole UI snapshot once. That load also sends it
+  when a UI save failed and its read-back failed too, as both do when the
+  connection is lost mid-save. A refusal of the late save is handled like any
+  other: the store is read back.
+
+A patch that holds both kinds is taken apart the same way.
+
 Known limits:
 
 - `config.set_ui` takes the whole snapshot, so a UI save queued behind a
   refused one carries the refused value too: a value the bridge rejects as
   invalid takes the queued UI change down with it.
 - A read-back that fails is not retried by itself. The refused value stays on
-  the page until the next save reads the store back; for a functional setting
-  a reconnect does too.
+  the page until the next save reads the store back or the connection is
+  opened again.
+- The late UI save replaces UI changes another browser saved during the
+  outage, as any UI save does.
+- The history's seen time, which pages store by themselves, is refused with
+  the same warning while nothing can be saved, and is not stored that visit.
 
 Tabs of one browser follow each other's UI saves. After `config.set_ui` is
 confirmed, `ConfigProvider` writes a timestamp to `linuxio.uiConfigSaved` in

@@ -64,6 +64,9 @@ export interface ConfigContextType {
    * Apply a patch locally and persist it. `onSaved` fires only after the
    * backend confirms the save — domain-specific feedback (toasts,
    * follow-ups) belongs there, at the call site, not in the provider.
+   * While the bridge cannot be reached, a bridge setting is refused with a
+   * notice and not applied, an appearance setting is applied and saved once
+   * the bridge answers again, and `onSaved` does not fire.
    */
   updateConfig: (
     patch: ConfigPatch | ((prev: EffectiveAppConfig) => ConfigPatch),

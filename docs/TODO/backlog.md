@@ -44,12 +44,6 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- A settings save made while the bridge cannot be reached looks stored.
-  `updateConfig` (`frontend/src/contexts/ConfigProvider.tsx`) writes the
-  patch into the page's copy before `save` finds that nothing can be sent,
-  so the form shows the new value with nothing to save, and the warning
-  toast comes only once. Decide whether a bridge setting should be applied
-  to the page at all in that state, or taken back.
 - The Updates page can say "Your system is up to date" while the banner
   names a LinuxIO update. Seen once in four runs of `jobs-update.spec.ts` on
   Fedora 45 (2026-11-21), right after Refresh Sources; the list asks again by
