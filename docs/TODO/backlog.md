@@ -74,12 +74,6 @@ after a change that issues ioctls).
 
 ## Needs the owner
 
-- The release workflow has never run, so nothing is published at
-  `packages.engmariz.com` and the README's install commands do not work yet:
-  the keys, the public key in the repository and the `release` environment
-  with its secret are done (2026-11-21); Pages, the DNS record, the release
-  rules and then a first release remain
-  ([Releases](../releases.md#owner-setup), steps 5 to 8). **checked**
 - Whether `linuxio.repo` sets `skip_if_unavailable=False`: today dnf given a
   repository whose `repomd.xml` signature fails reports it, goes on without
   the repository and exits 0, so a tampered repository looks like "nothing to
