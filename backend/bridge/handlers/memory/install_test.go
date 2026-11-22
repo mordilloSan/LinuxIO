@@ -411,7 +411,7 @@ func TestSetSwapModeToZramClearsALeftoverInstallHold(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,8 +429,9 @@ func TestSetSwapModeToZramClearsALeftoverInstallHold(t *testing.T) {
 		"set " + scaleParam + "=125",
 		"write " + zswapTmpfilesPath,
 		"swapoff /swap.img",
-		holdOffCall("swap.img.swap"),
+		"fstab remove /swap.img",
 		"reload",
+		"delete /swap.img",
 	})
 	if got.Mode != apischema.SwapModeZram {
 		t.Errorf("mode = %q, want zram", got.Mode)
@@ -450,7 +451,7 @@ func TestSetSwapModeToZramLeavesAFileAtTheHoldsPathItDidNotWrite(t *testing.T) {
 	const admins = "[Service]\nNice=5\n"
 	f.write(zramInstallHoldPath, admins)
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -132,3 +132,50 @@ label.memory-row__text {
 .memory-row__chips {
   display: contents;
 }
+
+/* The swap files and the other swap devices, one row each. A path may be
+   longer than the line. */
+.memory-swap {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-swap__row {
+  display: grid;
+  gap: 2px;
+  padding: var(--app-space-8) 0;
+  border-top: 1px solid var(--app-palette-divider);
+  overflow-wrap: anywhere;
+}
+
+.memory-swap__row:last-child {
+  border-bottom: 1px solid var(--app-palette-divider);
+}
+
+.memory-swap__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.memory-swap__path {
+  min-width: 0;
+  color: var(--app-palette-text-primary);
+  font-size: var(--app-font-size-body);
+  font-weight: 500;
+}
+
+.memory-swap__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: -8px;
+}
+
+.memory-swap__create {
+  justify-self: start;
+}

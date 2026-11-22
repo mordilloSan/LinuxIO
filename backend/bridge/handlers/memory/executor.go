@@ -13,11 +13,10 @@ import (
 )
 
 // waits bounds how long a change waits for /proc/swaps, and how often it
-// looks. zramOff is for zram's unit to take zram away. stopGrace is how long
-// a unit may stay active after a stop before it is seen deactivating, how
-// long systemd is given to see that a device left, and how often a start it
-// did not act on is sent again. Taking a swap file or partition away has no
-// bound (see swapOffDevice).
+// looks. swapOn is for a device to appear, zramOff for zram's unit to take
+// zram away. stopGrace is how long zram's unit may stay active after a stop
+// before it is seen deactivating. Taking a swap file away has no bound (see
+// swapOffDevice).
 type waits struct {
 	swapOn, zramOff, poll, stopGrace time.Duration
 	// zramReset is how long a reset of zram0 is tried again while something
@@ -129,54 +128,6 @@ func (e *executor) swapOffDevice(ctx context.Context, device string) error {
 	return fmt.Errorf("swapoff %s: %w", device, err)
 }
 
-// startUntilBack starts unit and waits, within the swapOn bound, for its
-// device at path to swap again. systemd does nothing for a start of a unit
-// it still holds active, as it may one whose device was taken away behind
-// it a moment ago, so while the device is not back the start is sent again
-// every stopGrace.
-func (e *executor) startUntilBack(ctx context.Context, unit string, back func() (bool, error)) error {
-	if err := e.sys.startUnit(ctx, unit); err != nil {
-		return fmt.Errorf("start %s: %w", unit, err)
-	}
-	started := time.Now()
-	err := waitUntil(ctx, e.waits.swapOn, e.waits.poll, func() (bool, error) {
-		ok, err := back()
-		if err != nil || ok {
-			return ok, err
-		}
-		if time.Since(started) >= e.waits.stopGrace {
-			started = time.Now()
-			if err := e.sys.startUnit(ctx, unit); err != nil {
-				slog.Debug("start unit again failed", "unit", unit, "error", err)
-			}
-		}
-		return false, nil
-	})
-	if err != nil {
-		return fmt.Errorf("%s did not bring it back into %s: %w", unit, procSwaps, err)
-	}
-	return nil
-}
-
-// waitUnitSeenOff waits, within stopGrace, until systemd no longer reports
-// unit active or stopping, after its device was taken away behind it: a
-// start of a unit systemd still holds active does nothing. A state that
-// cannot be read is not waited for, and after the grace the caller goes on
-// and finds out from /proc/swaps.
-func (e *executor) waitUnitSeenOff(ctx context.Context, unit string) {
-	err := waitUntil(ctx, e.waits.stopGrace, e.waits.poll, func() (bool, error) {
-		state, err := e.sys.activeState(ctx, unit)
-		if err != nil {
-			slog.Debug("read unit state failed", "unit", unit, "error", err)
-			return true, nil
-		}
-		return state != "active" && state != "deactivating", nil
-	})
-	if err != nil {
-		slog.Debug("unit still reads active after its device left", "unit", unit, "error", err)
-	}
-}
-
 // unitNotRunning reports whether systemd says unit is inactive or failed.
 // A stop of such a unit does nothing, so the zram it should take away would
 // stay and the wait would run to its bound; this happens for zram set up by
@@ -190,7 +141,7 @@ func (e *executor) unitNotRunning(ctx context.Context, unit string) bool {
 	return state == "inactive" || state == "failed"
 }
 
-// mutationMu lets one memory change run at a time, across the three routes.
+// mutationMu lets one memory change run at a time, across the routes.
 var mutationMu sync.Mutex
 
 // lockMutation takes mutationMu, or refuses when another change holds it.
@@ -213,8 +164,8 @@ func newExecutor(report func(apischema.SwapProgress)) *executor {
 	return &executor{root: host, sys: liveSystem{root: host}, report: report, waits: hostWaits}
 }
 
-// swapView is the host a change is planned on: the status, the fstab swap
-// entries matched to its active devices and, with zram-generator as the
+// swapView is the host a change is planned on: the status, the swap files
+// /etc/fstab names that it was derived from and, with zram-generator as the
 // provider, the generator's files root could not read.
 type swapView struct {
 	status              apischema.SwapStatus
@@ -247,11 +198,9 @@ func (e *executor) statusAfterChange(ctx context.Context) (apischema.SwapStatus,
 	return status, nil
 }
 
-// readView reads the status fresh. Its fstab swap entries are the ones that
-// status was derived from: one reading of /etc/fstab serves the whole change,
-// so what the status decides, such as the drain's reason, and what the change
-// acts on, such as the drain's devices, cannot come from two readings of a
-// file that changed in between.
+// readView reads the status fresh. Its fstab swap files are the ones that
+// status was derived from, so the options a change turns a file on with come
+// from the reading of /etc/fstab its rows were decided on.
 func (e *executor) readView(ctx context.Context) (swapView, error) {
 	status, fstab, err := e.sys.status(ctx)
 	if err != nil {

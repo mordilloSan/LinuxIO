@@ -2,10 +2,21 @@ import { Icon } from "@iconify/react";
 import { useIsMutating, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import "./memory-overflow.css";
 
-import { linuxio, type SwapMode, type SwapStatus } from "@/api";
+import {
+  actionErrorMessage,
+  isTaskCancellationError,
+  type LinuxIOError,
+  linuxio,
+  type SwapMode,
+  type SwapModeRequest,
+  type SwapStatus,
+  type TaskSnapshot,
+} from "@/api";
+import { toastLinkOptions } from "@/api/toast-meta";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -19,6 +30,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppRadio from "@/components/ui/AppRadio";
 import AppSlider from "@/components/ui/AppSlider";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import {
   MEMORY_DRAIN_FAILED,
@@ -27,36 +39,52 @@ import {
   MEMORY_MODE_FAILED,
   MEMORY_TOAST_META,
   modeResultWarning,
+  type SwapFileAction,
+  swapFileDone,
+  swapProgressText,
 } from "@/tasks/memoryFeedback";
 import {
+  TASK_TYPE_MEMORY_CREATE_SWAP_FILE,
   TASK_TYPE_MEMORY_DRAIN,
+  TASK_TYPE_MEMORY_MOVE_SWAP_FILE,
+  TASK_TYPE_MEMORY_REMOVE_SWAP_FILE,
+  TASK_TYPE_MEMORY_RESIZE_SWAP_FILE,
   TASK_TYPE_MEMORY_SWAP_MODE,
 } from "@/tasks/taskTypes";
+import { requestString, taskMetadataObject } from "@/tasks/taskUtils";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 
 import {
   bannerView,
   canApply,
+  checkSize,
   confirmView,
-  fstabEntryNotes,
+  createView,
   generatorFilesNote,
   initialSelection,
   isRowMode,
+  otherSwapViews,
   presetSwappiness,
   rowName,
   rowViews,
-  swapFileNote,
+  swapFileViews,
   type BannerAction,
   type ConfirmView,
   type RowMode,
   type RowView,
+  type FileStepKind,
+  fileStepView,
 } from "./memoryStatusView";
 
 const CAPABILITIES_LINK_TEXT = "Open Capabilities to install zram";
-// The two long changes are found in the mutation cache by these keys.
+// The long changes are found in the mutation cache by these keys. The four
+// swap file jobs share a prefix, so one count holds the controls for all.
 const MODE_MUTATION_KEY = [TASK_TYPE_MEMORY_SWAP_MODE] as const;
 const DRAIN_MUTATION_KEY = [TASK_TYPE_MEMORY_DRAIN] as const;
+const SWAP_FILE_MUTATION_KEY = ["memory.swap_file"] as const;
+
+const MIB = 1024 ** 2;
 
 /** How long a key press on the eagerness slider waits for the next one. */
 const KEY_SAVE_DELAY_MS = 500;
@@ -77,6 +105,25 @@ interface Props {
   onClose: () => void;
   open: boolean;
 }
+
+/**
+ * The step the dialog shows in place of its first one: a change that asks
+ * first or needs a size. A change of mode is kept as it was shown when it
+ * opened, since its request carries the files the user agreed to remove. A
+ * swap file step sends only a path and a size, so it is built from the
+ * status on every render and follows the host while it is open.
+ */
+type Step =
+  | { kind: "mode"; mode: RowMode; view: ConfirmView }
+  | { kind: FileStepKind; path: string };
+
+/** The control that opened a step, which takes focus when it is left. */
+const stepOpener = (step: Step) =>
+  step.kind === "mode"
+    ? "apply"
+    : step.kind === "create"
+      ? "create"
+      : `${step.kind}:${step.path}`;
 
 const CapabilitiesLink = () => (
   <Link search={{ tab: "capabilities" }} to="/settings">
@@ -174,6 +221,11 @@ const ModeRow = ({
               {row.caution}
             </AppTypography>
           ) : null}
+          {row.note ? (
+            <AppTypography color="text.secondary" variant="caption">
+              {row.note}
+            </AppTypography>
+          ) : null}
           {row.disabledReason ? (
             <AppTypography color="text.secondary" variant="caption">
               {row.disabledReason}
@@ -191,6 +243,45 @@ const ModeRow = ({
 };
 
 /**
+ * Reports a swap file job the dialog follows: it marks the job reported, so
+ * the task tray stays quiet, shows its steps and toasts its end with the file
+ * it acted on.
+ */
+const swapFileJobConfig = (
+  action: SwapFileAction,
+  type: string,
+  setProgressMessage: (message: string | null) => void,
+) => {
+  const pathOf = (request: object) =>
+    ("path" in request && typeof request.path === "string" && request.path) ||
+    undefined;
+  return {
+    onStart: (task: TaskSnapshot) => void markTerminalFeedbackEmitted(task.id),
+    onProgress: (progress: Parameters<typeof swapProgressText>[0]) =>
+      setProgressMessage(swapProgressText(progress) ?? null),
+    success: (_status: SwapStatus, request: object) => {
+      toast.success(
+        swapFileDone(action, pathOf(request)).succeeded,
+        toastLinkOptions(MEMORY_TOAST_META),
+      );
+    },
+    // A cancelled job is not a failure: the task tray that cancelled it says
+    // so.
+    error: (error: LinuxIOError, request: object) => {
+      if (isTaskCancellationError(error)) return;
+      toast.error(
+        actionErrorMessage(error, swapFileDone(action, pathOf(request)).failed),
+        toastLinkOptions(MEMORY_TOAST_META),
+      );
+    },
+    options: {
+      mutationKey: [...SWAP_FILE_MUTATION_KEY, type],
+      onSettled: () => setProgressMessage(null),
+    },
+  };
+};
+
+/**
  * What the host does when memory runs out, opened from the dashboard's Memory
  * card. It stays mounted while closed, so it reads the status only while open
  * and drops its choices when it closes.
@@ -199,12 +290,13 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const groupName = useId();
   const groupLabelId = useId();
   const advancedId = useId();
+  const sizeFieldId = useId();
   const [selected, setSelected] = useState<RowMode | null>(null);
-  // The confirm step as it was shown when Apply was pressed: the request
-  // carries what the user agreed to, and the step does not change under
-  // them while a refresh or the change itself moves the host.
-  const [confirm, setConfirm] = useState<ConfirmView | null>(null);
-  const [focusApply, setFocusApply] = useState(false);
+  const [step, setStep] = useState<Step | null>(null);
+  const [sizeText, setSizeText] = useState("");
+  // The control that takes focus when the first step shows again: the one
+  // that opened a step that was left, or Close once a job started.
+  const [returnFocus, setReturnFocus] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [draftSwappiness, setDraftSwappiness] = useState<number | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
@@ -224,12 +316,13 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
     refetchInterval: 15000,
   });
 
-  // A task, not a call: stopping a swap file moves its data back first.
+  // A task, not a call: removing a swap file moves its data back first.
   // This dialog reports a job it follows, started here or taken up, so the
   // task tray does not report it as well.
   const setMode = linuxio.memory.set_swap_mode.useMutation({
     onStart: (task) => void markTerminalFeedbackEmitted(task.id),
-    onProgress: (progress) => setProgressMessage(progress.message ?? null),
+    onProgress: (progress) =>
+      setProgressMessage(swapProgressText(progress) ?? null),
     success: MEMORY_MODE_APPLIED,
     warning: (result, request) => modeResultWarning(result, request.mode),
     error: MEMORY_MODE_FAILED,
@@ -238,7 +331,6 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
       mutationKey: MODE_MUTATION_KEY,
       onSettled: () => {
         setProgressMessage(null);
-        setConfirm(null);
         // The choice was kept for a dialog closed while the change ran.
         if (!open) setSelected(null);
       },
@@ -246,7 +338,8 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   });
   const drain = linuxio.memory.drain_swap.useMutation({
     onStart: (task) => void markTerminalFeedbackEmitted(task.id),
-    onProgress: (progress) => setProgressMessage(progress.message ?? null),
+    onProgress: (progress) =>
+      setProgressMessage(swapProgressText(progress) ?? null),
     success: MEMORY_DRAINED,
     error: MEMORY_DRAIN_FAILED,
     toast: MEMORY_TOAST_META,
@@ -255,6 +348,34 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
       onSettled: () => setProgressMessage(null),
     },
   });
+  const createFile = linuxio.memory.create_swap_file.useMutation(
+    swapFileJobConfig(
+      "create",
+      TASK_TYPE_MEMORY_CREATE_SWAP_FILE,
+      setProgressMessage,
+    ),
+  );
+  const resizeFile = linuxio.memory.resize_swap_file.useMutation(
+    swapFileJobConfig(
+      "resize",
+      TASK_TYPE_MEMORY_RESIZE_SWAP_FILE,
+      setProgressMessage,
+    ),
+  );
+  const removeFile = linuxio.memory.remove_swap_file.useMutation(
+    swapFileJobConfig(
+      "remove",
+      TASK_TYPE_MEMORY_REMOVE_SWAP_FILE,
+      setProgressMessage,
+    ),
+  );
+  const moveFile = linuxio.memory.move_swap_file.useMutation(
+    swapFileJobConfig(
+      "move",
+      TASK_TYPE_MEMORY_MOVE_SWAP_FILE,
+      setProgressMessage,
+    ),
+  );
   const setSwappiness = linuxio.memory.set_swappiness.useMutation({
     success: "Eagerness updated",
     error: "Failed to change the eagerness",
@@ -275,16 +396,19 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   // the range input the user is holding would drop keyboard focus.
   const modeRunning = useIsMutating({ mutationKey: MODE_MUTATION_KEY }) > 0;
   const drainRunning = useIsMutating({ mutationKey: DRAIN_MUTATION_KEY }) > 0;
-  const otherChangeRunning = modeRunning || drainRunning;
+  const fileRunning =
+    useIsMutating({ mutationKey: SWAP_FILE_MUTATION_KEY }) > 0;
+  const otherChangeRunning = modeRunning || drainRunning || fileRunning;
   const busy = otherChangeRunning || setSwappiness.isPending;
 
   // A change is a job and runs on when this dialog, the page or the tab is
   // closed. One still running when the dialog opens, which nothing in this
   // tab follows, is taken up again, so the dialog shows its step, holds its
   // controls and reports its result.
+  const scanKey = open ? "open" : null;
   useActiveTaskRecovery({
     type: TASK_TYPE_MEMORY_SWAP_MODE,
-    scanKey: open ? "open" : null,
+    scanKey,
     match: () => true,
     onRecover: (task) => {
       const mode = task.metadata?.action as SwapMode | undefined;
@@ -295,11 +419,50 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   });
   useActiveTaskRecovery({
     type: TASK_TYPE_MEMORY_DRAIN,
-    scanKey: open ? "open" : null,
+    scanKey,
     match: () => true,
     onRecover: (task) => {
       if (otherChangeRunning) return;
       drain.watch(task.id, undefined);
+    },
+  });
+  // A swap file job's metadata names its file, which its result toast needs.
+  const recoveredPath = (task: TaskSnapshot) =>
+    requestString(taskMetadataObject(task.metadata), "path") ?? "";
+  useActiveTaskRecovery({
+    type: TASK_TYPE_MEMORY_CREATE_SWAP_FILE,
+    scanKey,
+    match: () => true,
+    onRecover: (task) => {
+      if (otherChangeRunning) return;
+      createFile.watch(task.id, { size: 0 });
+    },
+  });
+  useActiveTaskRecovery({
+    type: TASK_TYPE_MEMORY_RESIZE_SWAP_FILE,
+    scanKey,
+    match: () => true,
+    onRecover: (task) => {
+      if (otherChangeRunning) return;
+      resizeFile.watch(task.id, { path: recoveredPath(task), size: 0 });
+    },
+  });
+  useActiveTaskRecovery({
+    type: TASK_TYPE_MEMORY_REMOVE_SWAP_FILE,
+    scanKey,
+    match: () => true,
+    onRecover: (task) => {
+      if (otherChangeRunning) return;
+      removeFile.watch(task.id, { path: recoveredPath(task) });
+    },
+  });
+  useActiveTaskRecovery({
+    type: TASK_TYPE_MEMORY_MOVE_SWAP_FILE,
+    scanKey,
+    match: () => true,
+    onRecover: (task) => {
+      if (otherChangeRunning) return;
+      moveFile.watch(task.id, { path: recoveredPath(task) });
     },
   });
 
@@ -363,13 +526,13 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   // tray shows its progress and can cancel it, and its result is toasted by
   // whatever follows it, this dialog or the tray. The choice a mode change
   // is applying is kept, so the dialog shows that change when it is opened
-  // again, on its first step and not on the confirmation.
+  // again.
   const handleClose = () => {
     // A key press still waiting is saved, not dropped.
     if (keyWait !== null) commitSwappiness();
     if (!modeRunning) setSelected(null);
-    setConfirm(null);
-    setFocusApply(false);
+    setStep(null);
+    setReturnFocus(null);
     setAdvancedOpen(false);
     // A save that is running sends the newest step itself when it ends.
     if (!setSwappiness.isPending) {
@@ -389,7 +552,11 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   // Keyed so the button, which has focus while the status loads, is the same
   // element once the rows and Apply appear beside it.
   const closeButton = (
-    <AppButton key="close" onClick={handleClose}>
+    <AppButton
+      autoFocus={returnFocus === "close"}
+      key="close"
+      onClick={handleClose}
+    >
       Close
     </AppButton>
   );
@@ -419,65 +586,108 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const choice = selected ?? initialSelection(status);
   const rows = rowViews(status);
   const banner = bannerView(status);
-  const fileNote = swapFileNote(status);
-  const entryNotes = fstabEntryNotes(status);
   const generatorNote = generatorFilesNote(status);
 
-  // A change that stops the swap file, or replaces a zram configuration file
-  // that is not LinuxIO's, asks first, as a second step of this dialog that
-  // lists all of it; every other change applies at once.
+  const stepView = (current: Step) =>
+    current.kind === "mode"
+      ? current.view
+      : fileStepView(status, current.kind, current.path);
+  const openStep = (next: Step) => {
+    const size = stepView(next).size;
+    setSizeText(size ? String(size.start) : "");
+    setStep(next);
+  };
+
+  // A change of mode that removes swap files, creates one or replaces a zram
+  // configuration file that is not LinuxIO's asks first, as a second step of
+  // this dialog that lists all of it; every other change applies at once.
   const requestMode = (mode: RowMode) => {
     setSelected(mode);
     const view = confirmView(status, mode);
     if (view) {
-      setFocusApply(false);
-      setConfirm(view);
+      openStep({ kind: "mode", mode, view });
     } else {
       setMode.mutate({ mode });
     }
   };
 
-  if (confirm) {
-    // The request names the configuration file the step said is replaced.
-    const confirmed = confirm.replace
-      ? { confirm_replace: confirm.replace, mode: choice }
-      : { mode: choice };
+  if (step) {
+    const view = stepView(step);
+    const changed = "changed" in view && view.changed === true;
+    const size = view.size ? checkSize(sizeText, view.size) : undefined;
+    const unchanged =
+      view.sameSize !== undefined && size?.bytes === view.sameSize * MIB;
+    const ready =
+      !busy &&
+      !changed &&
+      (size === undefined || (size.bytes !== undefined && !unchanged));
+    const leave = () => {
+      setReturnFocus(stepOpener(step));
+      setStep(null);
+    };
+    // The step closes as its job starts: the task tray holds the progress
+    // and the cancel, and the first step holds its controls meanwhile.
+    const start = () => {
+      if (!ready) return;
+      const bytes = size?.bytes;
+      switch (step.kind) {
+        case "mode": {
+          const request: SwapModeRequest = { mode: step.mode };
+          if (step.view.replace) request.confirm_replace = step.view.replace;
+          if (step.view.remove) request.confirm_remove = step.view.remove;
+          if (bytes !== undefined) request.swap_file_size = bytes;
+          setMode.mutate(request);
+          break;
+        }
+        case "create":
+          createFile.mutate({ size: bytes ?? 0 });
+          break;
+        case "resize":
+          resizeFile.mutate({ path: step.path, size: bytes ?? 0 });
+          break;
+        case "remove":
+          removeFile.mutate({ path: step.path });
+          break;
+        case "move":
+          moveFile.mutate({ path: step.path });
+          break;
+      }
+      setReturnFocus("close");
+      setStep(null);
+    };
     return (
       <GeneralDialog {...dialogProps}>
-        <AppDialogTitle>{confirm.title}</AppDialogTitle>
+        <AppDialogTitle>{view.title}</AppDialogTitle>
         <AppDialogContent>
           <ul className="memory-overflow__steps">
-            {confirm.items.map((item) => (
+            {view.items.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <AppTypography
-            aria-live="polite"
-            color="text.secondary"
-            role="status"
-            variant="caption"
-          >
-            {modeRunning ? (progressMessage ?? "Starting…") : ""}
-          </AppTypography>
+          {view.size && size ? (
+            <AppTextField
+              autoFocus
+              error={size.error !== undefined}
+              fullWidth
+              helperText={size.error ?? size.help}
+              id={sizeFieldId}
+              label="Size in MiB"
+              onChange={(event) => setSizeText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") start();
+              }}
+              type="number"
+              value={sizeText}
+            />
+          ) : null}
         </AppDialogContent>
         <AppDialogActions>
-          {/* Focus lands on the way back, not on the change. */}
-          <AppButton
-            autoFocus
-            disabled={busy}
-            onClick={() => {
-              setConfirm(null);
-              setFocusApply(true);
-            }}
-          >
+          {/* Without a size to set, focus lands on the way back. */}
+          <AppButton autoFocus={!view.size} onClick={leave}>
             Back
           </AppButton>
-          <AppButton
-            disabled={busy}
-            onClick={() => setMode.mutate(confirmed)}
-            variant="contained"
-          >
-            {modeRunning ? "Applying…" : confirm.action}
+          <AppButton disabled={!ready} onClick={start} variant="contained">
+            {view.action}
           </AppButton>
         </AppDialogActions>
       </GeneralDialog>
@@ -515,14 +725,6 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
             ) : null}
           </AppAlert>
 
-          {fileNote ? <AppAlert severity="warning">{fileNote}</AppAlert> : null}
-
-          {entryNotes.map((note) => (
-            <AppAlert key={note} severity="warning">
-              {note}
-            </AppAlert>
-          ))}
-
           {generatorNote ? (
             <AppAlert severity="info">
               {generatorNote.text}
@@ -555,6 +757,16 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
               ))}
             </div>
           </div>
+
+          <SwapFilesSection
+            busy={busy}
+            onCreate={() =>
+              openStep({ kind: "create", path: status.create.path })
+            }
+            onFileAction={(kind, path) => openStep({ kind, path })}
+            returnFocus={returnFocus}
+            status={status}
+          />
 
           <div className="memory-overflow__group">
             <AppButton
@@ -601,11 +813,11 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
           role="status"
           variant="caption"
         >
-          {busy && progressMessage ? progressMessage : ""}
+          {otherChangeRunning && progressMessage ? progressMessage : ""}
         </AppTypography>
         {closeButton}
         <AppButton
-          autoFocus={focusApply}
+          autoFocus={returnFocus === "apply"}
           disabled={busy || !canApply(status, choice)}
           onClick={() => requestMode(choice)}
           variant="contained"
@@ -614,6 +826,117 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
         </AppButton>
       </AppDialogActions>
     </GeneralDialog>
+  );
+};
+
+/**
+ * The swap files, each with what LinuxIO may do to it or why it does
+ * nothing, then the other swap devices, then Create or why it is not offered.
+ */
+const SwapFilesSection = ({
+  busy,
+  onCreate,
+  onFileAction,
+  returnFocus,
+  status,
+}: {
+  busy: boolean;
+  onCreate: () => void;
+  onFileAction: (kind: "resize" | "remove" | "move", path: string) => void;
+  returnFocus: string | null;
+  status: SwapStatus;
+}) => {
+  const labelId = useId();
+  const files = swapFileViews(status);
+  const others = otherSwapViews(status);
+  const create = createView(status);
+  const action = (
+    kind: "resize" | "remove" | "move",
+    path: string,
+    label: string,
+  ) => (
+    <AppButton
+      aria-label={`${label} ${path}`}
+      autoFocus={returnFocus === `${kind}:${path}`}
+      disabled={busy}
+      onClick={() => onFileAction(kind, path)}
+      size="small"
+    >
+      {label}
+    </AppButton>
+  );
+  return (
+    <div className="memory-overflow__group">
+      <span className="memory-overflow__name" id={labelId}>
+        Swap files
+      </span>
+      <ul aria-labelledby={labelId} className="memory-swap">
+        {files.map((file) => (
+          <li className="memory-swap__row" key={file.path}>
+            <div className="memory-swap__head">
+              <span className="memory-swap__path">{file.path}</span>
+              <AppTypography color="text.secondary" variant="body2">
+                {file.summary}
+              </AppTypography>
+            </div>
+            {file.notes.map((note) => (
+              <AppTypography
+                color="text.secondary"
+                key={note}
+                variant="caption"
+              >
+                {note}
+              </AppTypography>
+            ))}
+            {file.snapshots ? (
+              <AppTypography color="warning" variant="caption">
+                {file.snapshots}
+              </AppTypography>
+            ) : null}
+            {file.resize || file.remove || file.move ? (
+              <div className="memory-swap__actions">
+                {file.resize ? action("resize", file.path, "Resize") : null}
+                {file.remove ? action("remove", file.path, "Remove") : null}
+                {file.move ? action("move", file.path, "Move") : null}
+              </div>
+            ) : null}
+          </li>
+        ))}
+        {others.map((device) => (
+          <li className="memory-swap__row" key={device.path}>
+            <div className="memory-swap__head">
+              <span className="memory-swap__path">{device.path}</span>
+              <AppTypography color="text.secondary" variant="body2">
+                {`${device.kind}, ${device.summary}`}
+              </AppTypography>
+            </div>
+          </li>
+        ))}
+        {files.length === 0 && others.length === 0 ? (
+          <li className="memory-swap__row">
+            <AppTypography color="text.secondary" variant="body2">
+              No swap is on, and no swap file is in /etc/fstab.
+            </AppTypography>
+          </li>
+        ) : null}
+      </ul>
+      {create.kind === "offer" ? (
+        <AppButton
+          autoFocus={returnFocus === "create"}
+          className="memory-swap__create"
+          disabled={busy}
+          onClick={onCreate}
+          size="small"
+          variant="outlined"
+        >
+          Create a swap file
+        </AppButton>
+      ) : create.kind === "blocked" ? (
+        <AppTypography color="text.secondary" variant="caption">
+          {create.reason}
+        </AppTypography>
+      ) : null}
+    </div>
   );
 };
 

@@ -25,6 +25,8 @@ import {
   MEMORY_MODE_FAILED,
   MEMORY_TOAST_META,
   modeResultWarning,
+  type SwapFileAction,
+  swapFileDone,
 } from "./memoryFeedback";
 import * as TaskTypes from "./taskTypes";
 import { requestString } from "./taskUtils";
@@ -152,6 +154,30 @@ const capabilityInstallError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
   );
 };
 
+/**
+ * A swap file job of the Memory overflow dialog that nobody follows, as after
+ * a reload. Its task metadata carries the swap file as its path.
+ */
+const swapFileFeedback = (action: SwapFileAction): TerminalFeedbackEntry => ({
+  onCompleted: (task) => {
+    const { succeeded } = swapFileDone(
+      action,
+      requestString(task.metadata, "path"),
+    );
+    toast.success(succeeded, toastLinkOptions(MEMORY_TOAST_META));
+  },
+  onFailed: (task, error) => {
+    const { failed } = swapFileDone(
+      action,
+      requestString(task.metadata, "path"),
+    );
+    toast.error(
+      getMutationErrorMessage(error, failed),
+      toastLinkOptions(MEMORY_TOAST_META),
+    );
+  },
+});
+
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 const dockerUpdateError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
   _task,
@@ -267,6 +293,10 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
       );
     },
   },
+  [TaskTypes.TASK_TYPE_MEMORY_CREATE_SWAP_FILE]: swapFileFeedback("create"),
+  [TaskTypes.TASK_TYPE_MEMORY_RESIZE_SWAP_FILE]: swapFileFeedback("resize"),
+  [TaskTypes.TASK_TYPE_MEMORY_REMOVE_SWAP_FILE]: swapFileFeedback("remove"),
+  [TaskTypes.TASK_TYPE_MEMORY_MOVE_SWAP_FILE]: swapFileFeedback("move"),
   // Page-owned: DiskOverview fires its own scoped toast for SMART tests, so
   // the global handler stays silent for every terminal state.
   [TaskTypes.TASK_TYPE_STORAGE_SMART_TEST]: {},

@@ -14,26 +14,27 @@ import (
 )
 
 const (
-	partitionUnit      = `dev-disk-by\x2duuid-7e8f.swap`
 	partitionSwapsLine = "/dev/sda3                               partition\t8388604\t\t262144\t\t-3\n"
 	unmanagedSwapsLine = "/home/extra                             file\t\t1048572\t\t131072\t\t-4\n"
+	swap2SwapsLine     = "/swap2.img                              file\t\t1048572\t\t131072\t\t-3\n"
 )
 
-// drainHost has data parked on /swap.img and on a partition fstab names by
-// UUID; the partition's unit is named after its /dev/disk/by-uuid link.
+// drainHost has data parked on two swap files fstab names, /swap.img and
+// /swap2.img with pri=5, and on a partition fstab names by UUID.
 func drainHost(t *testing.T) (fixture, *fakeSystem) {
 	t.Helper()
 	f, sys := diskHost(t)
-	f.write(etcFstab, "/swap.img none swap sw 0 0\nUUID=7e8f none swap sw 0 0\n")
-	f.write("/dev/sda3", "")
-	f.symlink("../../sda3", "/dev/disk/by-uuid/7e8f")
-	f.write(procSwaps, swapsHeader+swapFileSwapsLine+partitionSwapsLine)
-	sys.devices[partitionUnit] = partitionSwapsLine
+	f.write(etcFstab, "/swap.img none swap sw 0 0\n/swap2.img none swap sw,pri=5 0 0\nUUID=7e8f none swap sw 0 0\n")
+	f.writeSwapFile("/swap2.img", gib)
+	f.write(procSwaps, swapsHeader+swapFileSwapsLine+swap2SwapsLine+partitionSwapsLine)
 	return f, sys
 }
 
-func TestDrainSwapStopsAndStartsEachDeviceInTurn(t *testing.T) {
+// Each swap file that holds data is turned off and on again with the
+// options of its fstab line, one at a time; the partition is never touched.
+func TestDrainSwapTurnsEachSwapFileOffAndOnInTurn(t *testing.T) {
 	f, sys := drainHost(t)
+	logs := captureLogs(t)
 	var progress []apischema.SwapProgress
 
 	got, err := sys.executor(&progress).drainSwap(t.Context())
@@ -42,28 +43,31 @@ func TestDrainSwapStopsAndStartsEachDeviceInTurn(t *testing.T) {
 	}
 	assertCalls(t, sys.calls, []string{
 		"swapoff /swap.img",
-		"start swap.img.swap",
-		"swapoff /dev/sda3",
-		"start " + partitionUnit,
+		"swapon /swap.img sw",
+		"swapoff /swap2.img",
+		"swapon /swap2.img sw,pri=5",
 	})
 	want := []apischema.SwapProgress{
 		{Step: apischema.SwapStepDrainDevice, Index: 1, Total: 2, Device: "/swap.img"},
-		{Step: apischema.SwapStepDrainDevice, Index: 2, Total: 2, Device: "/dev/sda3"},
+		{Step: apischema.SwapStepDrainDevice, Index: 2, Total: 2, Device: "/swap2.img"},
 	}
 	if !slices.Equal(progress, want) {
 		t.Errorf("progress = %+v, want %+v", progress, want)
 	}
-	if len(got.Devices) != 2 || !strings.Contains(f.read(procSwaps), "/dev/sda3") {
-		t.Errorf("devices = %+v, want both back", got.Devices)
+	if len(got.Devices) != 3 || !strings.Contains(f.read(procSwaps), "/dev/sda3") {
+		t.Errorf("devices = %+v, want all three on", got.Devices)
+	}
+	if !strings.Contains(logs.String(), `msg="swap drained" devices="[/swap.img /swap2.img]"`) {
+		t.Errorf("logs = %s, want the drained files", logs)
 	}
 }
 
-// The status after the drain is read again when a read fails: the devices
+// The status after the drain is read again when a read fails: the files
 // were drained and the request succeeds.
 func TestDrainSwapReadsTheStatusAgainAfterTheDrain(t *testing.T) {
 	_, sys := drainHost(t)
 	sys.after = func(call string) {
-		if call == "start "+partitionUnit {
+		if call == "swapon /swap2.img sw,pri=5" {
 			sys.statusFails = 2
 		}
 	}
@@ -72,70 +76,73 @@ func TestDrainSwapReadsTheStatusAgainAfterTheDrain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Devices) != 2 {
-		t.Errorf("devices = %+v, want both back", got.Devices)
+	if len(got.Devices) != 3 {
+		t.Errorf("devices = %+v, want all back", got.Devices)
 	}
 }
 
-// A device whose unit is masked could not be started again, so the drain
-// refuses before stopping anything.
-func TestDrainSwapRefusesAMaskedUnit(t *testing.T) {
-	_, sys := drainHost(t)
-	sys.fileStates[partitionUnit] = "masked"
-
-	if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
-		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
-	}
-}
-
-// Room is checked per device on fresh status; a device already drained
-// stays drained when the next one no longer fits.
-func TestDrainSwapRefusesADeviceWithoutRoom(t *testing.T) {
+// Room is checked per file on a fresh status; a file already drained stays
+// drained when the next one no longer fits.
+func TestDrainSwapRefusesAFileWithoutRoom(t *testing.T) {
 	f, sys := drainHost(t)
 	sys.after = func(call string) {
-		if call == "start swap.img.swap" {
+		if call == "swapon /swap.img sw" {
+			f.write(procSwaps, swapsHeader+swapsLine("/swap.img", 2*gib, 2*gib-8*mib)+swap2SwapsLine)
 			f.setMemAvailable(600 * mib)
 		}
 	}
 
 	_, err := sys.executor(nil).drainSwap(t.Context())
-	if !errors.Is(err, bridgeipc.ErrConflict) {
-		t.Fatalf("err = %v, want a conflict", err)
+	if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, errNoRoom) || !strings.Contains(err.Error(), "stay drained") {
+		t.Fatalf("err = %v, want a conflict for room that says the first file stays drained", err)
 	}
-	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "start swap.img.swap"})
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "swapon /swap.img sw"})
 }
 
 func TestDrainSwapRefusesWithoutRoomForTheParkedData(t *testing.T) {
 	f, sys := drainHost(t)
-	f.setMemAvailable(1 * gib)
+	f.write(procSwaps, swapsHeader+swapFileSwapsLine)
+	f.setMemAvailable(gib)
 
 	if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
 		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
 	}
 }
 
-// Data parked only on a device fstab does not name cannot be drained: its
-// unit could not be started again by name.
-func TestDrainSwapRefusesAnUnmanagedDevice(t *testing.T) {
-	f, sys := drainHost(t)
-	f.write(procSwaps, swapsHeader+unmanagedSwapsLine)
-	f.write("/home/extra", "")
+// Data parked only on a partition or a swap file fstab does not name is on
+// swap LinuxIO does not turn off.
+func TestDrainSwapRefusesOtherSwap(t *testing.T) {
+	for name, swaps := range map[string]string{
+		"partition":           partitionSwapsLine,
+		"file not in fstab":   unmanagedSwapsLine,
+		"partition and other": partitionSwapsLine + unmanagedSwapsLine,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, sys := drainHost(t)
+			f.write(procSwaps, swapsHeader+swaps)
+			f.write("/home/extra", "")
 
-	if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
-		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
+			_, err := sys.executor(nil).drainSwap(t.Context())
+			if !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
+				t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
+			}
+			if want := drainRefusal(apischema.SwapDrainOtherSwap); !strings.Contains(err.Error(), want) {
+				t.Errorf("err = %v, want it to say %q", err, want)
+			}
+		})
 	}
 }
 
-// Beside a managed device, an unmanaged one is left untouched.
-func TestDrainSwapLeavesAnUnmanagedDeviceAlone(t *testing.T) {
+// Beside a swap file it drains, a file fstab does not name is left alone.
+func TestDrainSwapLeavesOtherSwapAlone(t *testing.T) {
 	f, sys := drainHost(t)
-	f.write(procSwaps, swapsHeader+swapFileSwapsLine+unmanagedSwapsLine)
+	f.write(procSwaps, swapsHeader+swapFileSwapsLine+unmanagedSwapsLine+partitionSwapsLine)
 	f.write("/home/extra", "")
 
 	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "start swap.img.swap"})
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "swapon /swap.img sw"})
 }
 
 func TestDrainSwapRefusesWithNothingParked(t *testing.T) {
@@ -147,9 +154,9 @@ func TestDrainSwapRefusesWithNothingParked(t *testing.T) {
 	}
 }
 
-// A request cancelled once a device has left /proc/swaps still brings the
-// device back: the start runs on a context the cancel does not reach.
-func TestDrainSwapStartsAStoppedDeviceAfterACancel(t *testing.T) {
+// A request cancelled once a file has left /proc/swaps still turns it on
+// again: the swapon runs on a context the cancel does not reach.
+func TestDrainSwapTurnsAFileOnAfterACancel(t *testing.T) {
 	f, sys := drainHost(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -162,211 +169,88 @@ func TestDrainSwapStartsAStoppedDeviceAfterACancel(t *testing.T) {
 	if _, err := sys.executor(nil).drainSwap(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want the cancel", err)
 	}
-	if !slices.Contains(sys.calls, "start swap.img.swap") || !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatalf("calls = %v, want swap.img.swap started again", sys.calls)
+	if !slices.Contains(sys.calls, "swapon /swap.img sw") || !strings.Contains(f.read(procSwaps), "/swap.img") {
+		t.Fatalf("calls = %v, want /swap.img on again", sys.calls)
 	}
-	if slices.Contains(sys.calls, "swapoff /dev/sda3") {
-		t.Fatalf("calls = %v, want the next device left alone", sys.calls)
+	if slices.Contains(sys.calls, "swapoff /swap2.img") {
+		t.Fatalf("calls = %v, want the next file left alone", sys.calls)
 	}
 }
 
-// A swapoff the kernel refuses leaves the device swapping: nothing is
-// started, the error names the device and the next device is not touched.
+// A swapoff the kernel refuses leaves the file swapping: nothing is turned
+// on, the error names the file and the next file is not touched.
 func TestDrainSwapStopsAtASwapoffThatFails(t *testing.T) {
 	f, sys := drainHost(t)
 	sys.failures["swapoff /swap.img"] = syscall.EBUSY
 
 	_, err := sys.executor(nil).drainSwap(t.Context())
 	if !errors.Is(err, syscall.EBUSY) || !strings.Contains(err.Error(), "swapoff /swap.img") {
-		t.Fatalf("err = %v, want the kernel's refusal naming the device", err)
+		t.Fatalf("err = %v, want the kernel's refusal naming the file", err)
 	}
 	assertCalls(t, sys.calls, []string{"swapoff /swap.img"})
 	if !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatal("the device is off")
+		t.Fatal("the file is off")
 	}
 }
 
-// A swapoff that reports an error after the device left still counts: the
-// device is started again.
-func TestDrainSwapStartsADeviceThatLeftWhateverSwapoffReturned(t *testing.T) {
+// A swapoff that reports an error after the file left still counts: the
+// file is turned on again.
+func TestDrainSwapTurnsOnAFileThatLeftWhateverSwapoffReturned(t *testing.T) {
 	f, sys := drainHost(t)
 	sys.failAfter["swapoff /swap.img"] = syscall.EIO
 
 	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(sys.calls, "start swap.img.swap") || !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatalf("calls = %v, want swap.img.swap started again", sys.calls)
+	if !slices.Contains(sys.calls, "swapon /swap.img sw") || !strings.Contains(f.read(procSwaps), "/swap.img ") {
+		t.Fatalf("calls = %v, want /swap.img on again", sys.calls)
 	}
 }
 
-// A request cancelled while swapoff runs ends the swapoff with the device
-// still swapping: nothing is started, and a device drained before it stays
+// A request cancelled while swapoff runs ends the swapoff with the file
+// still swapping: nothing is turned on, and a file drained before it stays
 // drained.
-func TestDrainSwapLeavesTheDeviceOnWhenCancelledDuringSwapoff(t *testing.T) {
+func TestDrainSwapLeavesTheFileOnWhenCancelledDuringSwapoff(t *testing.T) {
 	f, sys := drainHost(t)
-	sys.blocked["/dev/sda3"] = true
+	sys.blocked["/swap2.img"] = true
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 
 	_, err := sys.executor(nil).drainSwap(ctx)
-	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "swapoff /dev/sda3") || !strings.Contains(err.Error(), "stay drained") {
-		t.Fatalf("err = %v, want the cancelled swapoff and the device drained before it", err)
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "swapoff /swap2.img") || !strings.Contains(err.Error(), "stay drained") {
+		t.Fatalf("err = %v, want the cancelled swapoff and the file drained before it", err)
 	}
-	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "start swap.img.swap", "swapoff /dev/sda3"})
-	if swaps := f.read(procSwaps); !strings.Contains(swaps, "/dev/sda3") || !strings.Contains(swaps, "/swap.img") {
-		t.Fatalf("swaps = %q, want both devices on", swaps)
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "swapon /swap.img sw", "swapoff /swap2.img"})
+	if swaps := f.read(procSwaps); !strings.Contains(swaps, "/swap2.img") || !strings.Contains(swaps, "/swap.img") {
+		t.Fatalf("swaps = %q, want both files on", swaps)
 	}
 }
 
-// systemd learns from /proc/swaps that the device left; a start it gets
-// while it still holds the unit active does nothing. The drain waits for
-// the unit to read inactive before it starts it.
-func TestDrainSwapWaitsForSystemdToSeeTheDeviceLeft(t *testing.T) {
+// A file that left /proc/swaps before its turn is skipped: the success line
+// names only the files drained.
+func TestDrainSwapSkipsAFileThatLeft(t *testing.T) {
 	f, sys := drainHost(t)
-	sys.unseen["swap.img.swap"] = 5
+	logs := captureLogs(t)
+	sys.after = func(call string) {
+		if call == "swapon /swap.img sw" {
+			f.removeSwapsLine("/swap2.img")
+		}
+	}
 
 	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatal("the device stayed off")
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "swapon /swap.img sw"})
+	if !strings.Contains(logs.String(), `devices=[/swap.img]`) {
+		t.Errorf("logs = %s, want only /swap.img drained", logs)
 	}
 }
 
-// A start systemd did nothing for is sent again until the device is back.
-func TestDrainSwapStartsAgainWhenTheStartDidNothing(t *testing.T) {
-	f, sys := drainHost(t)
-	sys.ignoredStarts["swap.img.swap"] = 2
-	e := sys.executor(nil)
-	e.waits.stopGrace = 10 * time.Millisecond
-	e.waits.swapOn = 5 * time.Second
-
-	if _, err := e.drainSwap(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatal("the device stayed off")
-	}
-}
-
-// A unit systemd never sees inactive is started all the same after the
-// grace, and the drain reports the device off when that brings nothing back.
-func TestDrainSwapReportsADeviceSystemdNeverSawLeave(t *testing.T) {
-	_, sys := drainHost(t)
-	sys.unseen["swap.img.swap"] = 1 << 30
-
-	_, err := sys.executor(nil).drainSwap(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "/swap.img is off") {
-		t.Fatalf("err = %v, want the device reported off", err)
-	}
-	if !slices.Contains(sys.calls, "start swap.img.swap") || slices.Contains(sys.calls, "swapoff /dev/sda3") {
-		t.Fatalf("calls = %v, want the start tried and the drain stopped there", sys.calls)
-	}
-}
-
-// A unit held off at boot, by LinuxIO's drop-in or a mask on disk, shows in
-// the status as unit_held_off, and the drain refuses it the same way, before
-// stopping anything: a start of it would start nothing.
-func TestDrainSwapAndStatusAgreeOnAHeldOffUnit(t *testing.T) {
-	tests := map[string]func(f fixture){
-		"drop-in": func(f fixture) { f.write(holdOffDropInPath(partitionUnit), string(renderHoldOffDropIn())) },
-		"masked":  func(f fixture) { f.maskInFixture(partitionUnit) },
-	}
-	for name, holdOff := range tests {
-		t.Run(name, func(t *testing.T) {
-			f, sys := drainHost(t)
-			holdOff(f)
-
-			status, _, err := sys.status(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if status.CanDrain || status.DrainBlockedReason != apischema.SwapDrainUnitHeldOff {
-				t.Fatalf("can drain = %v, reason = %q; want false, unit_held_off", status.CanDrain, status.DrainBlockedReason)
-			}
-			if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
-				t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
-			}
-		})
-	}
-}
-
-// One reading of /etc/fstab serves the whole drain: the status that allows
-// it and the devices it takes away. Here fstab gains, after that reading, a
-// swap file whose unit is held off at boot. The status never counted it, so
-// the drain leaves it alone; a start would not bring it back.
-func TestDrainSwapActsOnTheFstabItsStatusRead(t *testing.T) {
-	f, sys := drainHost(t)
-	f.write(etcFstab, "UUID=7e8f none swap sw 0 0\n")
-	f.write(holdOffDropInPath("swap.img.swap"), string(renderHoldOffDropIn()))
-	sys.heldOff["swap.img.swap"] = true
-	sys.onStatus = func() { f.write(etcFstab, "/swap.img none swap sw 0 0\nUUID=7e8f none swap sw 0 0\n") }
-
-	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	assertCalls(t, sys.calls, []string{"swapoff /dev/sda3", "start " + partitionUnit})
-}
-
-// A device that left /proc/swaps before its turn is skipped: the success line
-// names only the devices drained, and an error at a later device counts only
-// those as staying drained.
-func TestDrainSwapCountsOnlyTheDevicesItDrained(t *testing.T) {
-	leaves := func(f fixture) func() {
-		return func() { f.write(procSwaps, strings.Replace(f.read(procSwaps), swapFileSwapsLine, "", 1)) }
-	}
-	t.Run("success", func(t *testing.T) {
-		logs := captureLogs(t)
-		f, sys := drainHost(t)
-		sys.onStatus = leaves(f)
-
-		if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-		assertCalls(t, sys.calls, []string{"swapoff /dev/sda3", "start " + partitionUnit})
-		if want := `msg="swap drained" devices=[/dev/sda3]`; !strings.Contains(logs.String(), want) {
-			t.Errorf("logs = %q, want %q", logs.String(), want)
-		}
-	})
-	t.Run("failure", func(t *testing.T) {
-		f, sys := drainHost(t)
-		sys.onStatus = leaves(f)
-		sys.failures["swapoff /dev/sda3"] = syscall.EBUSY
-
-		_, err := sys.executor(nil).drainSwap(t.Context())
-		if !errors.Is(err, syscall.EBUSY) || strings.Contains(err.Error(), "stay drained") {
-			t.Fatalf("err = %v, want the refusal and no device drained before it", err)
-		}
-	})
-	t.Run("nothing left to drain", func(t *testing.T) {
-		logs := captureLogs(t)
-		f, sys := drainHost(t)
-		sys.onStatus = func() { f.write(procSwaps, swapsHeader) }
-
-		if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(logs.String(), "swap drained") {
-			t.Errorf("logs = %q, want no success line for a drain that drained nothing", logs.String())
-		}
-	})
-}
-
-// A device that does not come back is reported off by its unit, and the
-// drain stops there.
-func TestDrainSwapReportsADeviceItCouldNotStart(t *testing.T) {
+// A file that does not come back is reported off, and the drain stops there.
+func TestDrainSwapReportsAFileItCouldNotTurnOn(t *testing.T) {
 	tests := map[string]func(sys *fakeSystem){
-		"start fails": func(sys *fakeSystem) {
-			sys.failures["start swap.img.swap"] = errors.New("unit swap.img.swap failed")
-		},
-		"device never returns": func(sys *fakeSystem) {
-			sys.after = func(call string) {
-				if call == "swapoff /swap.img" {
-					sys.stuck["swap.img.swap"] = true
-				}
-			}
-		},
+		"swapon fails":       func(sys *fakeSystem) { sys.failures["swapon /swap.img sw"] = errors.New("swapon failed") },
+		"file never returns": func(sys *fakeSystem) { sys.ignoredSwapOns["/swap.img"] = true },
 	}
 	for name, setup := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -374,91 +258,27 @@ func TestDrainSwapReportsADeviceItCouldNotStart(t *testing.T) {
 			setup(sys)
 
 			_, err := sys.executor(nil).drainSwap(t.Context())
-			if err == nil || !strings.Contains(err.Error(), "is off") || !strings.Contains(err.Error(), "swap.img.swap") {
-				t.Fatalf("err = %v, want the device reported off with its unit", err)
+			if err == nil || !strings.Contains(err.Error(), "/swap.img is off") {
+				t.Fatalf("err = %v, want the file reported off", err)
 			}
-			if slices.Contains(sys.calls, "swapoff /dev/sda3") {
-				t.Fatalf("calls = %v, want the drain stopped at the first device", sys.calls)
+			if slices.Contains(sys.calls, "swapoff /swap2.img") {
+				t.Fatalf("calls = %v, want the drain stopped at the first file", sys.calls)
 			}
 		})
 	}
 }
 
-// swapoff takes a device away whatever systemd says of its unit: a swap
-// file systemd tracks under another unit name, or a partition whose fstab
-// unit is an alias named after its /dev/disk/by-* link, is drained and
-// started again through the unit fstab gives it.
-func TestDrainSwapDrainsADeviceWhateverItsUnitReads(t *testing.T) {
-	f, sys := drainHost(t)
-	sys.activeStates["swap.img.swap"] = "inactive"
-	sys.activeStates[partitionUnit] = "failed"
-
-	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
-		t.Fatal(err)
+// fstab options swapon would not take are refused before any file is
+// turned off, which would otherwise stay off until the next boot.
+func TestDrainSwapRefusesOptionsSwaponWouldNotTakeBeforeAnything(t *testing.T) {
+	for _, options := range []string{"sw,pri=abc", "pri=40000", "pri=1,pri=2", "discard=foo"} {
+		t.Run(options, func(t *testing.T) {
+			f, sys := drainHost(t)
+			f.write(etcFstab, "/swap.img none swap sw 0 0\n/swap2.img none swap "+options+" 0 0\n")
+			if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "/swap2.img") {
+				t.Fatalf("err = %v, want a conflict naming /swap2.img", err)
+			}
+			assertCalls(t, sys.calls, nil)
+		})
 	}
-	assertCalls(t, sys.calls, []string{
-		"swapoff /swap.img", "start swap.img.swap",
-		"swapoff /dev/sda3", "start " + partitionUnit,
-	})
-	if swaps := f.read(procSwaps); !strings.Contains(swaps, "/swap.img") || !strings.Contains(swaps, "/dev/sda3") {
-		t.Fatalf("swaps = %q, want both devices back", swaps)
-	}
-}
-
-// openDrainHost is drainHost with the swap file in a folder users other than
-// root can change, holding data.
-func openDrainHost(t *testing.T, swaps string) (fixture, *fakeSystem) {
-	t.Helper()
-	f, sys := drainHost(t)
-	f.write(etcFstab, "/home/open/swapfile none swap sw 0 0\nUUID=7e8f none swap sw 0 0\n")
-	f.othersCanWrite("/home/open")
-	f.write("/home/open/swapfile", "")
-	f.write(procSwaps, swapsHeader+swaps)
-	return f, sys
-}
-
-// Data parked only in a swap file others can redirect is not drained, and
-// both the status and the refusal say why.
-func TestDrainSwapRefusesASwapFileOthersCanRedirect(t *testing.T) {
-	f, sys := openDrainHost(t, openSwapsLine)
-
-	_, err := sys.executor(nil).drainSwap(t.Context())
-
-	if !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
-		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
-	}
-	if want := drainRefusal(apischema.SwapDrainOthersCanWrite); !strings.Contains(err.Error(), want) {
-		t.Errorf("err = %v, want it to say %q", err, want)
-	}
-	status, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.DrainBlockedReason != apischema.SwapDrainOthersCanWrite {
-		t.Errorf("drain blocked reason = %q, want others_can_write", status.DrainBlockedReason)
-	}
-}
-
-// Data on a swap file whose unit LinuxIO cannot name, as one systemd names
-// with a hash, is not drained: a start by another name would not bring the
-// file back.
-func TestDrainSwapLeavesASwapFileItCannotNameAlone(t *testing.T) {
-	f, sys := drainHost(t)
-	f.write(etcFstab, longSwapPath+" none swap sw 0 0\n")
-	f.write(longSwapPath, "")
-	f.write(procSwaps, swapsHeader+longSwapsLine)
-
-	if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
-		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
-	}
-}
-
-// Beside a partition that holds data, such a file is left untouched.
-func TestDrainSwapLeavesASwapFileOthersCanRedirectAlone(t *testing.T) {
-	_, sys := openDrainHost(t, openSwapsLine+partitionSwapsLine)
-
-	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	assertCalls(t, sys.calls, []string{"swapoff /dev/sda3", "start " + partitionUnit})
 }

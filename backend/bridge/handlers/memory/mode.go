@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -61,7 +60,7 @@ func (e *executor) setSwapMode(ctx context.Context, req apischema.SwapModeReques
 	}
 	run := &modeRun{executor: e, target: target, before: view.status, dropInHeld: held}
 	for i, step := range steps {
-		e.report(apischema.SwapProgress{Step: step.code, Index: i + 1, Total: len(steps)})
+		e.report(apischema.SwapProgress{Step: step.code, Index: i + 1, Total: len(steps), Device: step.path})
 		if stepErr := run.do(ctx, step); stepErr != nil {
 			return apischema.SwapModeResult{}, errors.Join(fmt.Errorf("step %s: %w%s", step.code, stepErr, run.copyKept()), run.rollback(ctx), run.settleAfterRollback(ctx))
 		}
@@ -82,10 +81,11 @@ func (e *executor) setSwapMode(ctx context.Context, req apischema.SwapModeReques
 	}
 	run.explainMixed(status)
 	// What stays active is read from the host, not from what the steps left:
-	// a device no step reaches, such as a swap file LinuxIO does not manage,
-	// stays too, also on a host that did not end mixed.
+	// a swap file that appeared after the plan stays too.
 	slog.Info("swap mode changed", append([]any{"mode", target, "previous_mode", view.status.Mode,
-		"swap_file_left_active", target == apischema.SwapModeZram && hasDevice(status.Devices, apischema.SwapDeviceFile),
+		"swap_file_left_active", target == apischema.SwapModeZram && slices.ContainsFunc(status.SwapFiles, func(r apischema.SwapFileRow) bool {
+			return r.Active && r.LockedReason == ""
+		}),
 		"zram_left_active", target != apischema.SwapModeZram && hasDevice(status.Devices, apischema.SwapDeviceZram),
 		"zram_size_kept", run.leftHas(apischema.SwapLeftZramSize)}, run.replacedConfigAttrs()...)...)
 	if settled {
@@ -100,9 +100,10 @@ func (e *executor) setSwapMode(ctx context.Context, req apischema.SwapModeReques
 	return apischema.SwapModeResult{SwapStatus: status, Left: append([]apischema.SwapLeft{}, run.left...)}, nil
 }
 
-// validateSwapModeRequest refuses a mode the dialog does not offer, and a
+// validateSwapModeRequest refuses a mode the dialog does not offer, a
 // confirmation that names anything but one of the two zram configuration
-// files, before the change waits for the lock.
+// files, and a swap file size a swap file cannot have, before the change
+// waits for the lock.
 func validateSwapModeRequest(req apischema.SwapModeRequest) error {
 	if _, ok := presetFor(req.Mode); !ok {
 		return fmt.Errorf("%w: unknown swap mode %q", bridgeipc.ErrInvalidArgs, req.Mode)
@@ -110,12 +111,16 @@ func validateSwapModeRequest(req apischema.SwapModeRequest) error {
 	if c := req.ConfirmReplace; c != "" && c != zramswapConfigPath && c != zramGeneratorConfigPath {
 		return fmt.Errorf("%w: confirm_replace %q is not a zram configuration file", bridgeipc.ErrInvalidArgs, c)
 	}
+	if req.SwapFileSize != 0 {
+		return validateSwapFileSize(req.SwapFileSize)
+	}
 	return nil
 }
 
 // modeRun is one mode change in progress, with what it must undo if a step
 // fails: the files it wrote, the kernel values it changed and whether it
-// set zram to start at boot. Swap it added is never undone.
+// set zram to start at boot. Swap it added is never undone, and once it
+// removes a swap file, zram at boot counts as added swap (keepZramAtBoot).
 type modeRun struct {
 	*executor
 	target apischema.SwapMode
@@ -161,25 +166,21 @@ func (r *modeRun) leave(what apischema.SwapLeftWhat, reason apischema.SwapLeftRe
 	r.left = append(r.left, apischema.SwapLeft{What: what, Reason: reason})
 }
 
+// leaveFile records a swap file the run did not remove.
+func (r *modeRun) leaveFile(path string, reason apischema.SwapLeftReason) {
+	r.left = append(r.left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: reason, Path: path})
+}
+
 func (r *modeRun) leftHas(what apischema.SwapLeftWhat) bool {
 	return slices.ContainsFunc(r.left, func(l apischema.SwapLeft) bool { return l.What == what })
 }
 
-// explainMixed gives a reason for a device that swaps on though no step
-// left it: no step stops a swap file other than the one LinuxIO manages,
-// and none stops zram without a zram provider. A mixed result always says
-// why.
+// explainMixed gives a reason for zram that swaps on beside a swap file
+// after a switch away from zram though no step left it: none stops zram
+// without a zram provider.
 func (r *modeRun) explainMixed(status apischema.SwapStatus) {
 	if status.Mode != apischema.SwapModeMixed {
 		return
-	}
-	if r.target == apischema.SwapModeZram && !r.leftHas(apischema.SwapLeftSwapFile) {
-		reason := apischema.SwapLeftNotManaged
-		// The reported file is the one that stays only when it was swapping.
-		if file := r.before.SwapFile; file != nil && file.Active && file.UnmanagedReason == apischema.SwapFileOthersCanWrite {
-			reason = apischema.SwapLeftOthersCanWrite
-		}
-		r.leave(apischema.SwapLeftSwapFile, reason)
 	}
 	if r.target != apischema.SwapModeZram && !r.leftHas(apischema.SwapLeftZram) {
 		r.leave(apischema.SwapLeftZram, apischema.SwapLeftNotManaged)
@@ -198,10 +199,10 @@ func (r *modeRun) do(ctx context.Context, step swapStep) error {
 		return r.disableZswap()
 	case apischema.SwapStepEnableZswap:
 		return r.enableZswap()
-	case apischema.SwapStepStopSwapFile:
-		return r.stopSwapFile(ctx, step)
-	case apischema.SwapStepStartSwapFile:
-		return r.startSwapFile(ctx, step)
+	case apischema.SwapStepCreateSwapFile:
+		return r.createSwapFile(ctx, r.before, step.size)
+	case apischema.SwapStepRemoveSwapFile:
+		return r.removeSwapFileStep(ctx, step.path)
 	case apischema.SwapStepStopZram:
 		return r.stopZram(ctx, step.run)
 	default:
@@ -431,6 +432,16 @@ func (r *modeRun) stopZramToResize(ctx context.Context, unit string, status apis
 		return false, nil
 	}
 	if err := r.stopZramUnit(ctx, unit); err != nil {
+		// systemd starts zram-generator's swap unit again as soon as the
+		// stop has reset the device, from the configuration write_config
+		// wrote, and that can happen between two reads of the wait, which
+		// then sees the unit active again with zram swapping. zram at the
+		// planned size is what the stop was for.
+		if r.generated() && errors.Is(err, errStopAbandoned) {
+			if now, _, readErr := r.sys.status(ctx); readErr == nil && hasDevice(now.Devices, apischema.SwapDeviceZram) && zramSized(now, r.before.ZramPlannedSize) {
+				return false, nil
+			}
+		}
 		return false, err
 	}
 	return true, nil
@@ -618,135 +629,57 @@ func compressorRefused(err error) bool {
 	return errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOENT)
 }
 
-// stopSwapFile takes the swap file away with swapoff and holds its unit off,
-// so it stays off at boot, when zram swaps and the file's data fits in
-// memory on a fresh status; otherwise it leaves the file active. A file
-// proven off is only held off: one active swap file that cannot be resolved
-// might be it, and then the unit is left.
-func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
+// removeSwapFileStep removes one swap file on a switch to zram, as a fresh
+// status shows it: an active one only while zram swaps, since removing it
+// would otherwise leave the host without swap, and its data passes the room
+// check; otherwise the file stays, with its fstab line, and the result says
+// why. One that has gone meanwhile is skipped.
+func (r *modeRun) removeSwapFileStep(ctx context.Context, path string) error {
 	status, _, err := r.sys.status(ctx)
 	if err != nil {
 		return err
 	}
-	device, on := r.findSwap(step.path, status.Devices)
-	if !on {
-		if !r.swapFilesResolve(status.Devices) {
-			r.leave(apischema.SwapLeftSwapFile, apischema.SwapLeftNotIdentified)
-			return nil
-		}
-		return r.holdOff(ctx, step.unit)
-	}
-	// Without zram swapping now, as when it went away after the run found
-	// it, stopping the file would leave no swap at all.
-	var reason apischema.SwapLeftReason
-	switch {
-	case !hasDevice(status.Devices, apischema.SwapDeviceZram):
-		reason = apischema.SwapLeftZramNotSwapping
-	case !fitsInMemory(device.Used, status.MemAvailable):
-		reason = apischema.SwapLeftNotEnoughMemory
-	}
-	if reason != "" {
-		r.leave(apischema.SwapLeftSwapFile, reason)
+	row, ok := findRow(status, path)
+	if !ok {
 		return nil
 	}
-	if err := r.swapOffDevice(ctx, device.Path); err != nil {
-		// Refused before swapoff ran, so nothing changed.
-		if errors.Is(err, errOthersCanRedirect) {
-			r.leave(apischema.SwapLeftSwapFile, apischema.SwapLeftOthersCanWrite)
+	if row.LockedReason != "" {
+		return fmt.Errorf("%w: %s", bridgeipc.ErrConflict, lockedRefusal(row))
+	}
+	if row.Active {
+		switch {
+		case !hasDevice(status.Devices, apischema.SwapDeviceZram):
+			r.leaveFile(path, apischema.SwapLeftZramNotSwapping)
+			return nil
+		case !roomToTurnOff(status, path):
+			r.leaveFile(path, apischema.SwapLeftNotEnoughMemory)
 			return nil
 		}
-		return err
 	}
-	// The file is off: holding its unit off, which keeps it off at boot, is
-	// not cancelled with the request.
-	holdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
-	defer cancel()
-	return r.holdOff(holdCtx, step.unit)
+	err = r.removeRow(ctx, status, row)
+	// Once the file's fstab line is gone, nothing turns it on at boot, and
+	// zram at boot is what the host swaps on. A temporary swap file never
+	// had a line.
+	if !row.Temporary && (err == nil || !r.root.fstabNames(path)) {
+		r.keepZramAtBoot()
+	}
+	if errors.Is(err, errNoRoom) {
+		r.leaveFile(path, apischema.SwapLeftNotEnoughMemory)
+		return nil
+	}
+	return err
 }
 
-// holdOff keeps unit, the swap file's, off at boot: LinuxIO's drop-in for it
-// gives it a condition that never holds, and a reload makes systemd read it.
-// The unit is not masked, since swap.target requires it and systemd starts
-// no target that requires a masked unit; a skipped one does not hold the
-// target back, so zram that swap.target wants still starts. A mask an older
-// LinuxIO or an admin left is removed for the same reason: the drop-in holds
-// the file off in its place.
-func (r *modeRun) holdOff(ctx context.Context, unit string) error {
-	if err := r.root.makeHoldOffDropInDir(unit); err != nil {
-		return err
-	}
-	if err := r.writeFile(holdOffDropInPath(unit), renderHoldOffDropIn()); err != nil {
-		return err
-	}
-	if err := r.sys.reload(ctx); err != nil {
-		return err
-	}
-	return r.unmaskIfMasked(ctx, unit)
-}
-
-// letGo undoes what holds unit off at boot, so a start of it starts the
-// file: LinuxIO's drop-in goes, systemd is reloaded in every case, since a
-// unit fstab just gained has no unit until a reload and systemd keeps a
-// condition whose file is gone until one, and a mask, as an admin or a
-// LinuxIO that held swap files off with masks left it, is removed. The
-// drop-in is not kept for a rollback: letting the file go is adding swap,
-// which a rollback never undoes, and putting it back after zram was turned
-// off at boot would leave the next boot with no swap.
-func (r *modeRun) letGo(ctx context.Context, unit string) error {
-	if dropIn := holdOffDropInPath(unit); r.root.exists(dropIn) {
-		if err := r.sys.removeFile(dropIn); err != nil {
-			return fmt.Errorf("remove %s: %w", dropIn, err)
-		}
-	}
-	if err := r.sys.reload(ctx); err != nil {
-		return err
-	}
-	return r.unmaskIfMasked(ctx, unit)
-}
-
-// unmaskIfMasked unmasks unit when systemd reads it masked; the unmask
-// reloads systemd.
-func (r *modeRun) unmaskIfMasked(ctx context.Context, unit string) error {
-	state, err := r.sys.unitFileState(ctx, unit)
-	if err != nil {
-		return fmt.Errorf("read the file state of %s: %w", unit, err)
-	}
-	if strings.HasPrefix(state, "masked") {
-		return r.sys.unmaskUnit(ctx, unit)
-	}
-	return nil
-}
-
-// swapFilesResolve reports whether every active swap file resolves under
-// the root, so that none can be the swap file under another name.
-func (r *modeRun) swapFilesResolve(devices []apischema.SwapDevice) bool {
-	for _, device := range devices {
-		if device.Kind != apischema.SwapDeviceFile {
-			continue
-		}
-		if _, err := r.root.resolve(device.Path); err != nil {
-			return false
-		}
-	}
-	return true
-}
-
-// startSwapFile lets the swap file's unit go (letGo), starts it and waits
-// for the file in /proc/swaps. A file that already swaps is only let go.
-func (r *modeRun) startSwapFile(ctx context.Context, step swapStep) error {
-	if err := r.letGo(ctx, step.unit); err != nil {
-		return err
-	}
-	if on, err := r.swapIs(step.path, true)(); err != nil || on {
-		return err
-	}
-	// A file taken away with swapoff a moment ago may still read active to
-	// systemd, which would not start it.
-	r.waitUnitSeenOff(ctx, step.unit)
-	if err := r.startUntilBack(ctx, step.unit, r.swapIs(step.path, true)); err != nil {
-		return fmt.Errorf("%s: %w", step.path, err)
-	}
-	return nil
+// keepZramAtBoot keeps what makes zram start at boot out of the rollback
+// once the run removed a swap file's fstab line: a file removed is not made again, so
+// undoing zram at boot then would leave the next boot with no swap. The
+// provider's configuration file the run wrote stays, and so does zram's
+// start at boot.
+func (r *modeRun) keepZramAtBoot() {
+	r.zramEnabledByRun = false
+	r.files = slices.DeleteFunc(r.files, func(f savedFile) bool {
+		return f.name == zramswapConfigPath || f.name == zramGeneratorConfigPath
+	})
 }
 
 // stopZram stops zram's unit and waits for zram to leave /proc/swaps, then
@@ -820,29 +753,6 @@ func (r *modeRun) zramOffAtBoot(ctx context.Context) error {
 		return err
 	}
 	return r.sys.reload(ctx)
-}
-
-// findSwap returns the disk swap device path is, matched by name or
-// through symlinks under the root.
-func (r *modeRun) findSwap(path string, devices []apischema.SwapDevice) (apischema.SwapDevice, bool) {
-	for _, device := range devices {
-		if device.Kind != apischema.SwapDeviceZram && r.root.sameSwap(path, device.Path) {
-			return device, true
-		}
-	}
-	return apischema.SwapDevice{}, false
-}
-
-// swapIs returns a check that path is, or is not, active in /proc/swaps.
-func (r *modeRun) swapIs(path string, active bool) func() (bool, error) {
-	return func() (bool, error) {
-		devices, err := r.root.readSwaps()
-		if err != nil {
-			return false, err
-		}
-		_, on := r.findSwap(path, devices)
-		return on == active, nil
-	}
 }
 
 // writeFile writes a managed file, saving what was there first. The saved
@@ -931,8 +841,8 @@ func (r *modeRun) setParam(name, value string) error {
 
 // rollback undoes the run after a failed step: zram at boot if this run set
 // it, then the kernel values and the files, the last change first, and a
-// reload when zram-generator's configuration or a hold-off drop-in was put
-// back, so the units match the files again. It runs past a cancelled request, within a bound,
+// reload when zram-generator's configuration was put back, so the units
+// match the files again. It runs past a cancelled request, within a bound,
 // and joins every action that fails.
 func (r *modeRun) rollback(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
@@ -951,7 +861,7 @@ func (r *modeRun) rollback(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("rollback: %w", err))
 		}
 	}
-	if slices.ContainsFunc(r.files, func(f savedFile) bool { return f.name == zramGeneratorConfigPath || isHoldOffDropIn(f.name) }) {
+	if slices.ContainsFunc(r.files, func(f savedFile) bool { return f.name == zramGeneratorConfigPath }) {
 		if err := r.sys.reload(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("rollback: %w", err))
 		}

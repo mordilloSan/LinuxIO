@@ -10,7 +10,11 @@ import {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_FILE_CHMOD_BATCH,
   TASK_TYPE_FILE_DELETE_BATCH,
+  TASK_TYPE_MEMORY_CREATE_SWAP_FILE,
   TASK_TYPE_MEMORY_DRAIN,
+  TASK_TYPE_MEMORY_MOVE_SWAP_FILE,
+  TASK_TYPE_MEMORY_REMOVE_SWAP_FILE,
+  TASK_TYPE_MEMORY_RESIZE_SWAP_FILE,
   TASK_TYPE_MEMORY_SWAP_MODE,
   TASK_TYPE_FILE_INDEXER,
   TASK_TYPE_FILE_TRASH_RESTORE,
@@ -278,7 +282,7 @@ describe("useRecoveredTasks package updates", () => {
   // The Memory overflow dialog can be closed while its change runs: the tray
   // row is then where its step shows and where it can be cancelled.
   it.each([
-    [TASK_TYPE_MEMORY_SWAP_MODE, "Stopping the swap file"],
+    [TASK_TYPE_MEMORY_SWAP_MODE, "Starting zram"],
     [TASK_TYPE_MEMORY_DRAIN, "Moving swapped data back into memory"],
   ])("lists a running %s job in the tray with its step", async (type, step) => {
     const { controls, emitTerminalEvent } = renderRecoveredTasks();
@@ -305,6 +309,71 @@ describe("useRecoveredTasks package updates", () => {
       }),
     ]);
   });
+
+  // A swap file job names its file: in the step that acts on it, and before
+  // the first step from the job's metadata.
+  it.each([
+    [
+      TASK_TYPE_MEMORY_RESIZE_SWAP_FILE,
+      {
+        detail: {
+          device: "/swap.img",
+          index: 2,
+          step: "resize_swap_file",
+          total: 3,
+        },
+        message: "Resizing the swap file",
+        phase: "resize_swap_file",
+      },
+      "Resizing /swap.img",
+    ],
+    [TASK_TYPE_MEMORY_RESIZE_SWAP_FILE, undefined, "Resizing /swap.img"],
+    [TASK_TYPE_MEMORY_REMOVE_SWAP_FILE, undefined, "Removing /swap.img"],
+    [TASK_TYPE_MEMORY_MOVE_SWAP_FILE, undefined, "Moving /swap.img"],
+    [TASK_TYPE_MEMORY_CREATE_SWAP_FILE, undefined, "Creating a swap file"],
+    [
+      TASK_TYPE_MEMORY_CREATE_SWAP_FILE,
+      {
+        detail: {
+          device: "/var/lib/linuxio/swap/swapfile",
+          index: 1,
+          step: "create_swap_file",
+          total: 1,
+        },
+        message: "Creating the swap file",
+        phase: "create_swap_file",
+      },
+      "Creating the swap file /var/lib/linuxio/swap/swapfile",
+    ],
+  ])(
+    "lists a running %s job in the tray with its file",
+    async (type, progress, label) => {
+      const { controls, emitTerminalEvent } = renderRecoveredTasks();
+
+      await emitTerminalEvent({
+        created_at: "2026-01-01T00:00:00Z",
+        id: "swap-file-active",
+        metadata: { identity: ["memory", "swap_file"], path: "/swap.img" },
+        progress,
+        state: "running",
+        type,
+        updated_at: "2026-01-01T00:00:01Z",
+      });
+
+      const update =
+        controls.genericTasks.setBackgroundTasks.mock.calls[0]?.[0];
+      if (typeof update !== "function") {
+        throw new Error("expected recovered task state updater");
+      }
+      expect(update([])).toEqual([
+        expect.objectContaining({
+          id: "swap-file-active",
+          label,
+          taskType: type,
+        }),
+      ]);
+    },
+  );
 
   it("lists a running btrfs balance in the tray with progress", async () => {
     const { controls, emitTerminalEvent } = renderRecoveredTasks();

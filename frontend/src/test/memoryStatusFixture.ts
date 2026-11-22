@@ -1,7 +1,8 @@
 import type {
   ForeignZramConfig,
   SwapDevice,
-  SwapFile,
+  SwapFileCreate,
+  SwapFileRow,
   SwapLeft,
   SwapModeResult,
   SwapStatus,
@@ -9,6 +10,7 @@ import type {
 } from "@/api";
 
 const GIB = 1024 ** 3;
+const MIB = 1024 ** 2;
 
 export const zramDevice: SwapDevice = {
   kind: "zram",
@@ -18,22 +20,57 @@ export const zramDevice: SwapDevice = {
   used: 0,
 };
 
-export const swapFileDevice = (used = 0, fsType = "ext4"): SwapDevice => ({
+export const swapFileDevice = (
+  used = 0,
+  fsType = "ext4",
+  path = "/swap.img",
+): SwapDevice => ({
   fs_type: fsType,
   kind: "file",
-  path: "/swap.img",
+  path,
   priority: -2,
   size: 4 * GIB,
   used,
 });
 
-export const swapFile = (overrides: Partial<SwapFile> = {}): SwapFile => ({
+/** A swap partition, which LinuxIO lists and never turns off. */
+export const swapPartitionDevice = (used = 0): SwapDevice => ({
+  kind: "partition",
+  path: "/dev/vdb1",
+  priority: -3,
+  size: 2 * GIB,
+  used,
+});
+
+/** An active swap file of 4 GiB that /etc/fstab names and LinuxIO acts on. */
+export const swapFileRow = (
+  overrides: Partial<SwapFileRow> = {},
+): SwapFileRow => ({
   active: true,
-  disk_hint: "",
+  free_space: 40 * GIB,
   fs_type: "ext4",
-  managed: true,
+  in_fstab: true,
+  locked_reason: "",
+  max_size: 30 * GIB,
   path: "/swap.img",
-  unmanaged_reason: "",
+  resize_blocked_reason: "",
+  size: 4 * GIB,
+  used: 0,
+  ...overrides,
+});
+
+/** LinuxIO can create its swap file: 40 GiB free, 2 GiB kept free. */
+export const swapFileCreate = (
+  overrides: Partial<SwapFileCreate> = {},
+): SwapFileCreate => ({
+  blocked_reason: "",
+  default_size: 8 * GIB,
+  free_space: 40 * GIB,
+  fs_type: "ext4",
+  max_size: 38 * GIB,
+  min_size: 256 * MIB,
+  path: "/var/lib/linuxio/swap/swapfile",
+  reserve: 2 * GIB,
   ...overrides,
 });
 
@@ -65,6 +102,7 @@ export const swapStatus = (
   overrides: Partial<SwapStatus> = {},
 ): SwapStatus => ({
   can_drain: false,
+  create: swapFileCreate(),
   devices: [zramDevice],
   drain_blocked_reason: "nothing_parked",
   mem_available: 12 * GIB,
@@ -78,12 +116,12 @@ export const swapStatus = (
   ],
   recommended_mode: "zram",
   recommended_swappiness: 180,
+  swap_files: [],
   swap_total: 8 * GIB,
   swap_used: 0,
   swappiness: 180,
   tuned_active: false,
   tuned_profile: "",
-  unmanaged_fstab_swaps: [],
   watermark_boost_factor: 0,
   watermark_scale_factor: 125,
   zram_available: true,

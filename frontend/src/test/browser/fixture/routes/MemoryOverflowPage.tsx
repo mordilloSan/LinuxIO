@@ -6,8 +6,8 @@ import MemoryUsage from "@/routes/_authenticated/-dashboard/Memory";
 import { topologyLive } from "@/test/dockerTopologyFixture";
 import {
   foreignZramConfig,
-  swapFile,
   swapFileDevice,
+  swapFileRow,
   swapStatus,
 } from "@/test/memoryStatusFixture";
 
@@ -16,14 +16,14 @@ import "@fontsource-variable/inter/wght.css";
 const GIB = 1024 ** 3;
 
 // A desktop on its swap file, with zram-tools installed and an
-// /etc/default/zramswap the admin wrote: choosing zram stops the file and
+// /etc/default/zramswap the admin wrote: choosing zram removes the file and
 // replaces that configuration, so the dialog asks first.
 const status = swapStatus({
   devices: [swapFileDevice()],
   foreign_zram_config: foreignZramConfig(),
   mode: "disk",
   recommended_mode: "zswap",
-  swap_file: swapFile(),
+  swap_files: [swapFileRow()],
   swappiness: 60,
 });
 

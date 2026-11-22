@@ -586,6 +586,37 @@ does for `cockpit-session`.
   three permissions are all either program asks for.
   `package-files-fixtures.sh` holds the module's rules for other domains to
   these two lines.
+- **The swap file.** The memory page's swap file,
+  `/var/lib/linuxio/swap/swapfile`, and the file a resize turns on beside
+  it, `swapfile.linuxio-resize`, have the file context `swapfile_t`, in the
+  `optional` block `linuxio_swapfile`. `mkswap` gives a regular file that
+  type itself, so the file has it once it holds a swap header; the context
+  keeps `restorecon`, `fixfiles` or a full relabel from turning it into
+  `var_lib_t`, the type of its folder. Neither type matters for turning the
+  swap on: `fsadm_t`, the domain `swapon` runs in at boot, is in
+  `files_unconfined_type`, and on Fedora 45 the file was turned on from
+  `/etc/fstab` at boot, with no denial, labelled either way. What the type
+  decides is who may read the memory pages the file holds: measured as the
+  module was measured (attributes expanded, booleans as set, unconfined
+  domains left out), 23 confined domains may open and read a `var_lib_t`
+  file and not a `swapfile_t` one (`httpd_t`, `cupsd_t`, `dovecot_t`,
+  `init_t`, `user_t`, `staff_t` among them), and only `systemd_logind_t`
+  and `systemd_sleep_t`, for hibernation, the other way round. The block
+  holds the two file contexts and nothing else: it declares no type and
+  gives no domain, `linuxio_auth_t` included, a permission; the policy
+  `semodule` builds with it has the same rules as without it, and only
+  `file_contexts` gains the two lines. `linuxio_auth_t` already has every
+  permission on every file type, as `unconfined_service_t` has, and another
+  local user's domain gains nothing either, since `swapfile_t` is the
+  narrower type. The resize file is in it because it holds swapped-out
+  pages too, and a resize that fails can leave it behind
+  ([Memory](./memory.md)). The folder, `/var/lib/linuxio/swap`, keeps
+  `var_lib_t`. A btrfs subvolume is made without a label
+  (`unlabeled_t`, shown as `?` by `ls -Z`), so on btrfs LinuxIO gives the
+  subvolume it makes the context of `/var/lib/linuxio` (`labelLikeParent`);
+  where that cannot be set the folder stays `unlabeled_t`, which the boot
+  was the same with, and the file is labelled by `mkswap` either way.
+  `package-files-fixtures.sh` holds the block to these two lines.
 - **Finding a denial.** `agetty`'s refusal was logged
   (`avc: denied { read } ... comm="agetty" ... tcontext=...motd_var_run_t`)
   in `/var/log/audit/audit.log` and the journal. `ausearch` run over a
@@ -602,6 +633,7 @@ install and a reboot:
 | Job hosts, web server, monitoring, indexer | `system_u:system_r:unconfined_service_t:s0`, as without the module |
 | `/usr/libexec/linuxio/linuxio-auth` | `linuxio_auth_exec_t` |
 | `/run/linuxio/issue` | `motd_var_run_t` |
+| `/var/lib/linuxio/swap/swapfile` (and `swapfile.linuxio-resize` while a resize runs) | `swapfile_t` |
 
 Who gets in:
 
@@ -616,11 +648,12 @@ Who gets in:
 time needs `selinux-policy-devel` and what it pulls in (3 MiB to download,
 26 MiB installed). The CIL converted from such a module is 259 lines
 nobody reviews. Neither can carry the constraint: `checkmodule` refuses
-`constrain` in a module, and CIL takes it. The hand-written file is about 90
+`constrain` in a module, and CIL takes it. The hand-written file is about 100
 lines and needs no build step and nothing beyond `semodule` and
 `restorecon`, which a host with an SELinux policy has. Only the banner's file
-context and the console's two reads are in `optional` blocks, so a policy
-that lacks one of the other names it uses refuses the whole module.
+context, the console's two reads and the swap files' contexts are in
+`optional` blocks, so a policy that lacks one of the other names it uses
+refuses the whole module.
 
 **Why confined users are refused, not given a confined session.** A session
 in the user's own domain (`user_t`, `staff_t`) was tried. It needs lines added

@@ -3156,26 +3156,76 @@ export type SwapDrainBlockedReason =
   | ""
   | "nothing_parked"
   | "not_enough_memory"
-  | "unmanaged_device"
-  | "unit_held_off"
-  | "others_can_write";
+  | "other_swap";
 
-export interface SwapFile {
-  active: boolean;
-  disk_hint: SwapDiskHint;
+export interface SwapFileCreate {
+  blocked_reason: SwapFileCreateReason;
+  default_size: number;
+  free_space: number;
   fs_type: string;
-  managed: boolean;
+  max_size: number;
+  min_size: number;
   path: string;
-  unmanaged_reason: SwapFileUnmanagedReason;
+  reserve: number;
 }
 
-export type SwapFileUnmanagedReason =
+export type SwapFileCreateReason =
+  | ""
+  | "exists"
+  | "unsupported_filesystem"
+  | "read_only"
+  | "btrfs_layout"
+  | "not_enough_space"
+  | "folder_not_root_only"
+  | "path_taken";
+
+export interface SwapFileCreateRequest {
+  size: number;
+}
+
+export type SwapFileLockedReason =
   | ""
   | "not_in_fstab"
-  | "others_can_write"
-  | "unit_unusable";
+  | "not_root_only"
+  | "hibernation";
+
+export interface SwapFilePathRequest {
+  path: string;
+}
+
+export type SwapFileResizeReason =
+  | ""
+  | "missing"
+  | "no_swap_header"
+  | "off"
+  | "unsupported_filesystem"
+  | "read_only"
+  | "btrfs_layout";
+
+export interface SwapFileResizeRequest {
+  path: string;
+  size: number;
+}
+
+export interface SwapFileRow {
+  active: boolean;
+  blocks_snapshots?: boolean;
+  can_move?: boolean;
+  disk_hint?: SwapDiskHint;
+  free_space: number;
+  fs_type: string;
+  in_fstab: boolean;
+  locked_reason: SwapFileLockedReason;
+  max_size: number;
+  path: string;
+  resize_blocked_reason: SwapFileResizeReason;
+  size: number;
+  temporary?: boolean;
+  used: number;
+}
 
 export interface SwapLeft {
+  path?: string;
   reason: SwapLeftReason;
   what: SwapLeftWhat;
 }
@@ -3183,8 +3233,6 @@ export interface SwapLeft {
 export type SwapLeftReason =
   | "not_enough_memory"
   | "zram_not_swapping"
-  | "not_identified"
-  | "others_can_write"
   | "not_managed"
   | "no_other_swap"
   | "other_size";
@@ -3199,12 +3247,15 @@ export interface SwapModePreset {
 }
 
 export interface SwapModeRequest {
+  confirm_remove?: string[];
   confirm_replace?: string;
   mode: SwapMode;
+  swap_file_size?: number;
 }
 
 export interface SwapModeResult {
   can_drain: boolean;
+  create: SwapFileCreate;
   devices: SwapDevice[];
   drain_blocked_reason: SwapDrainBlockedReason;
   foreign_zram_config?: ForeignZramConfig;
@@ -3215,13 +3266,12 @@ export interface SwapModeResult {
   presets: SwapModePreset[];
   recommended_mode: SwapMode;
   recommended_swappiness: number;
-  swap_file?: SwapFile;
+  swap_files: SwapFileRow[];
   swap_total: number;
   swap_used: number;
   swappiness: number;
   tuned_active: boolean;
   tuned_profile: string;
-  unmanaged_fstab_swaps: UnmanagedFstabSwap[];
   watermark_boost_factor: number;
   watermark_scale_factor: number;
   zram_available: boolean;
@@ -3243,6 +3293,7 @@ export interface SwapProgress {
 
 export interface SwapStatus {
   can_drain: boolean;
+  create: SwapFileCreate;
   devices: SwapDevice[];
   drain_blocked_reason: SwapDrainBlockedReason;
   foreign_zram_config?: ForeignZramConfig;
@@ -3253,13 +3304,12 @@ export interface SwapStatus {
   presets: SwapModePreset[];
   recommended_mode: SwapMode;
   recommended_swappiness: number;
-  swap_file?: SwapFile;
+  swap_files: SwapFileRow[];
   swap_total: number;
   swap_used: number;
   swappiness: number;
   tuned_active: boolean;
   tuned_profile: string;
-  unmanaged_fstab_swaps: UnmanagedFstabSwap[];
   watermark_boost_factor: number;
   watermark_scale_factor: number;
   zram_available: boolean;
@@ -3273,13 +3323,16 @@ export interface SwapStatus {
 
 export type SwapStep =
   | "write_config"
-  | "start_swap_file"
+  | "create_swap_file"
   | "start_zram"
   | "stop_zram"
   | "apply_sysctls"
   | "disable_zswap"
   | "enable_zswap"
-  | "stop_swap_file"
+  | "make_temporary_swap"
+  | "resize_swap_file"
+  | "remove_temporary_swap"
+  | "remove_swap_file"
   | "drain_device";
 
 export interface SwappinessRequest {
@@ -3577,11 +3630,6 @@ export interface UnitInfo {
 
 export interface UnitNameRequest {
   unitName: string;
-}
-
-export interface UnmanagedFstabSwap {
-  reason: SwapFileUnmanagedReason;
-  source: string;
 }
 
 export interface Update {
@@ -3942,10 +3990,7 @@ export interface ZramGeneratorDevice {
 
 export type ZramProvider = "" | "zram-tools" | "zram-generator";
 
-export type ZramUnavailableReason =
-  | ""
-  | "package_missing"
-  | "swap_partition_active";
+export type ZramUnavailableReason = "" | "package_missing";
 
 export interface ZswapStatus {
   available: boolean;
@@ -4542,6 +4587,12 @@ export interface LinuxIOSchema {
   };
 
   memory: {
+    create_swap_file: {
+      input: [size: number];
+      request: SwapFileCreateRequest;
+      result: SwapStatus;
+      progress: TaskProgress<SwapProgress>;
+    };
     drain_swap: {
       input: [];
       request: void;
@@ -4549,6 +4600,24 @@ export interface LinuxIOSchema {
       progress: TaskProgress<SwapProgress>;
     };
     get_swap_status: { input: []; request: void; result: SwapStatus };
+    move_swap_file: {
+      input: [path: string];
+      request: SwapFilePathRequest;
+      result: SwapStatus;
+      progress: TaskProgress<SwapProgress>;
+    };
+    remove_swap_file: {
+      input: [path: string];
+      request: SwapFilePathRequest;
+      result: SwapStatus;
+      progress: TaskProgress<SwapProgress>;
+    };
+    resize_swap_file: {
+      input: [request: SwapFileResizeRequest];
+      request: SwapFileResizeRequest;
+      result: SwapStatus;
+      progress: TaskProgress<SwapProgress>;
+    };
     set_swap_mode: {
       input: [request: SwapModeRequest];
       request: SwapModeRequest;

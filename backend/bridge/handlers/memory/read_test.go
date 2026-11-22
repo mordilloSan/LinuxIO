@@ -24,7 +24,9 @@ func newFixture(t *testing.T) fixture {
 	if err := os.Chmod(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return fixture{t: t, root: root}
+	f := fixture{t: t, root: root}
+	f.useFolderFS(roomyExt4)
+	return f
 }
 
 func (f fixture) write(name, content string) {
@@ -281,89 +283,6 @@ func TestReadZramDevicesRefusesAShortMMStat(t *testing.T) {
 	if got, err := f.host().readZramDevices(); err == nil {
 		t.Fatalf("zram devices = %+v, want an error", got)
 	}
-}
-
-func TestFstabSwapFile(t *testing.T) {
-	tests := []struct {
-		name  string
-		fstab string
-		want  string
-	}{
-		{
-			name: "first swap file after comments, partitions and none entries",
-			fstab: `# /etc/fstab: static file system information.
-#
-# <file system> <mount point>   <type>  <options>       <dump>  <pass>
-UUID=0a1b2c3d-1111-2222-3333-444455556666 /               btrfs   defaults,subvol=@ 0 1
-UUID=7e8f9a0b-aaaa-bbbb-cccc-ddddeeeeffff none            swap    sw              0 0
-none                                      /dev/shm        tmpfs   defaults        0 0
-none                                      none            swap    sw              0 0
-#/old.img                                 none            swap    sw              0 0
-
-/swap.img                                 none            swap    sw              0 0
-/second.img                               none            swap    sw              0 0
-`,
-			want: "/swap.img",
-		},
-		{
-			name: "partitions only",
-			fstab: `UUID=7e8f9a0b-aaaa-bbbb-cccc-ddddeeeeffff none swap sw 0 0
-/dev/sda3 none swap sw 0 0
-LABEL=swap none swap sw 0 0
-`,
-		},
-		{
-			name:  "escaped space",
-			fstab: "/mnt/my\\040disk/swapfile none swap sw 0 0\n",
-			want:  "/mnt/my disk/swapfile",
-		},
-		{
-			name:  "file mounted elsewhere is not swap",
-			fstab: "/srv/disk.img /mnt/disk ext4 loop 0 0\n",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			f := newFixture(t)
-			f.write("/etc/fstab", test.fstab)
-			entries, _, err := f.host().fstabSwaps()
-			if err != nil {
-				t.Fatal(err)
-			}
-			entry, _ := fstabSwapFile(entries)
-			got := entry.path
-			if got != test.want {
-				t.Fatalf("swap file = %q, want %q", got, test.want)
-			}
-		})
-	}
-	t.Run("the first active one before a first that is off", func(t *testing.T) {
-		entries := []fstabSwap{
-			{path: "/old.img"},
-			{path: "/dev/sda3", device: "/dev/sda3"},
-			{path: "/swap.img", device: "/swap.img"},
-			{path: "/third.img", device: "/third.img"},
-		}
-		if got, ok := fstabSwapFile(entries); !ok || got.path != "/swap.img" {
-			t.Fatalf("swap file = %+v (found %v), want /swap.img", got, ok)
-		}
-	})
-	t.Run("a held-off one counts as the managed one", func(t *testing.T) {
-		entries := []fstabSwap{
-			{path: "/old.img"},
-			{path: "/swap.img", heldOff: true},
-			{path: "/third.img", device: "/third.img"},
-		}
-		if got, ok := fstabSwapFile(entries); !ok || got.path != "/swap.img" {
-			t.Fatalf("swap file = %+v (found %v), want /swap.img", got, ok)
-		}
-	})
-	t.Run("no fstab", func(t *testing.T) {
-		entries, _, err := newFixture(t).host().fstabSwaps()
-		if got, ok := fstabSwapFile(entries); err != nil || ok {
-			t.Fatalf("swap file = %+v, err = %v; want none", got, err)
-		}
-	})
 }
 
 const mountinfoText = `22 1 0:21 /@ / rw,relatime shared:1 - btrfs /dev/nvme0n1p2 rw,ssd,space_cache=v2,subvolid=256,subvol=/@

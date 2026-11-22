@@ -678,7 +678,8 @@ push_checkout() {
 #
 # TestMemoryDrainIntegration's second run caps its reads from the disk at this
 # many bytes a second, so the swapoff has to outlast the 90 seconds systemd
-# gives a swap unit.
+# gives a swap unit; TestSwapFileResizeIntegration caps its reads the same
+# way to cancel a resize while the file goes off.
 readonly DRAIN_READ_BPS=2097152
 
 tests() {
@@ -730,12 +731,35 @@ push_test() {
 }
 
 # run_test NAME PATTERN TIMEOUT [VAR=VALUE...] runs the tests of ./NAME.test
-# that PATTERN matches, as root and with those variables.
+# that PATTERN matches, as root and with those variables. A pattern that
+# matches no test fails, since go test passes it: a test renamed or deleted
+# never passes silently. With RUN_TEST_PASS set to a test's name, that test
+# must also have passed, not skipped.
 run_test() {
-	local name=$1 pattern=$2 timeout=$3 vars=""
+	local name=$1 pattern=$2 timeout=$3 vars="" log rc=0
 	shift 3
 	(($# == 0)) || vars="$(printf '%q ' "$@")"
-	vm_ssh "sudo env ${vars}./${name}.test -test.run $(printf %q "$pattern") -test.count=1 -test.v -test.timeout=${timeout}" </dev/null
+	log="$(mktemp)"
+	vm_ssh "sudo env ${vars}./${name}.test -test.run $(printf %q "$pattern") -test.count=1 -test.v -test.timeout=${timeout}" </dev/null | tee "$log" || rc=$?
+	if ((rc == 0)) && grep -q '^testing: warning: no tests to run' "$log"; then
+		say "${name}.test ran no test for ${pattern}"
+		rc=1
+	fi
+	if ((rc == 0)) && [[ -n ${RUN_TEST_PASS:-} ]] && ! grep -q -- "^--- PASS: ${RUN_TEST_PASS} (" "$log"; then
+		say "${RUN_TEST_PASS} did not pass: it skipped"
+		rc=1
+	fi
+	rm -f "$log"
+	return "$rc"
+}
+
+# memory_test TEST TIMEOUT [VAR=VALUE...] runs one test of memory.test, which
+# must pass: each test the memory suite names runs on a VM the suite set up
+# for it, so a skip there is a failure.
+memory_test() {
+	local test=$1
+	shift
+	RUN_TEST_PASS=$test run_test memory "^${test}\$" "$@"
 }
 
 # The tests of test-btrfs-integration, on the VM's kernel.
@@ -747,49 +771,103 @@ suite_btrfs() {
 	done
 }
 
-# TestMemoryIntegration (backend/bridge/handlers/memory) switches the VM to
-# zram and back through systemd and the kernel. It needs a zram tool and a
-# swap file in fstab: the first run installs one and adds a 1 GiB /swap.img,
-# and make vm-reset undoes both. Where the zram tool comes with a default zram
-# (Fedora's), TestMemoryDefaultZramIntegration first starts from it, without
-# and then with the swap file. TestMemoryStatusWithoutRootIntegration then
-# reads the status as a user without sudo with TuneD running.
-# TestMemoryDrainIntegration parks data on the data disk vdb, used whole as
-# swap, twice: with 2 GiB, then with 320 MiB read back at DRAIN_READ_BPS.
-# vdb's fstab entry is noauto, so it swaps only for the test (an active swap
-# partition rules the zram mode out), and pri=10 puts it ahead of /swap.img. A
-# vdb that holds anything but swap is another check's and is refused. Then
-# fstab names vdb by UUID= for TestMemoryDrainAliasIntegration. vdb stops
-# swapping when its tests end, passed, failed or interrupted. Last, the
-# reboots: TestMemoryRebootIntegration switches to zram, reboots and switches
-# back, once with fstab naming /swap.img and once through a link to it.
+# The memory suite (backend/bridge/handlers/memory, docs/memory.md "Tests"):
+# the root tests of the swap files LinuxIO creates, resizes and removes, of
+# the modes and of the drain, through the routes' own functions on the real
+# kernel and systemd. It needs a zram tool and a swap file in fstab: the
+# first run installs one and adds a 1 GiB /swap.img (swap_file), and
+# make vm-reset undoes both. In order:
+# - Where the zram tool comes with a default zram (Fedora's, and Ubuntu's
+#   systemd-zram-generator), TestMemoryDefaultZramIntegration starts from it,
+#   without and then with /swap.img. zram is then switched off
+#   (zram_default_off), so the rest starts from /swap.img alone.
+# - TestSwapFileBlocksIntegration drives the blocks under the routes.
+# - TestMemoryIntegration switches to zram and back, which removes /swap.img
+#   and makes LinuxIO's file in its place, and puts /swap.img back.
+# - The resize, leftover, missing-file and move tests each leave /swap.img
+#   as they found it; the move skips on a root that is not btrfs.
+# - status_without_root reads the status as a user without sudo.
+# - TestSwapPartitionIntegration runs beside the data disk vdb, used whole as
+#   a swap partition at priority 10 with a noauto fstab entry, so it swaps
+#   only for the test; it stops swapping when the test ends, passed, failed
+#   or interrupted. A vdb that holds anything but swap is another check's and
+#   is refused.
+# - TestMemoryDrainIntegration parks data on /swap.img twice: 768 MiB, then
+#   320 MiB read back at DRAIN_READ_BPS.
+# - Last, the reboots: TestSwapFilesRebootIntegration (create and resize,
+#   then remove, each followed by a reboot) and TestSwapModesRebootIntegration
+#   (zram, then zswap with LinuxIO's file, each followed by a reboot), with
+#   /swap.img made again after each.
 suite_memory() {
 	local -r run=(LINUXIO_RUN_MEMORY_INTEGRATION=1)
-	local -r drain=("${run[@]}" LINUXIO_MEMORY_DRAIN_DEVICE=/dev/vdb)
+	local -r drain=("${run[@]}" LINUXIO_MEMORY_DRAIN_DEVICE=/swap.img)
 	zram_install
 	push_test "$1" memory
-	link_swap_file off
-	default_zram
-	run_test memory '^TestMemoryDefaultZramIntegration$' 10m "${run[@]}"
+	memory_leftovers
+	if vm_ssh test -e /usr/lib/systemd/zram-generator.conf </dev/null; then
+		default_zram
+		memory_test TestMemoryDefaultZramIntegration 10m "${run[@]}"
+		swap_file
+		memory_test TestMemoryDefaultZramIntegration 10m "${run[@]}"
+	fi
 	swap_file
-	run_test memory '^TestMemoryDefaultZramIntegration$' 10m "${run[@]}"
 	zram_default_off
-	run_test memory '^TestMemoryIntegration$' 30m "${run[@]}"
+	RUN_TEST_PASS=TestSwapFileBlocksIntegration run_test memory '^TestSwapFileBlocksIntegration$' 10m LINUXIO_RUN_SWAPFILE_BLOCKS_INTEGRATION=1
+	memory_test TestMemoryIntegration 30m "${run[@]}"
+	memory_test TestSwapFileResizeIntegration 20m "${run[@]}"
+	memory_test TestSwapFileLeftoverTemporaryIntegration 10m "${run[@]}"
+	memory_test TestSwapFileRemoveMissingIntegration 5m "${run[@]}"
+	if [[ "$(vm_ssh stat -f -c %T / </dev/null)" == btrfs ]]; then
+		memory_test TestSwapFileMoveIntegration 10m "${run[@]}"
+	else
+		run_test memory '^TestSwapFileMoveIntegration$' 10m "${run[@]}"
+	fi
+	swap_file
 	status_without_root
 	trap vdb_swap_off EXIT
-	drain_setup
-	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=2048
-	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=320 \
-		LINUXIO_MEMORY_DRAIN_READ_BPS="$DRAIN_READ_BPS" LINUXIO_MEMORY_DRAIN_MIN_SECONDS=90
-	vdb_by_uuid
-	run_test memory '^TestMemoryDrainAliasIntegration$' 10m "${drain[@]}"
-	vdb_by_path
+	partition_setup
+	memory_test TestSwapPartitionIntegration 20m "${run[@]}" LINUXIO_MEMORY_PARTITION=/dev/vdb
 	trap - EXIT
 	vdb_swap_off
-	reboot_check
-	link_swap_file on
-	reboot_check
-	link_swap_file off
+	swap_file
+	memory_test TestMemoryDrainIntegration 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=768
+	memory_test TestMemoryDrainIntegration 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=320 \
+		LINUXIO_MEMORY_DRAIN_READ_BPS="$DRAIN_READ_BPS" LINUXIO_MEMORY_DRAIN_MIN_SECONDS=90
+	reboot_phases TestSwapFilesRebootIntegration create resized removed
+	swap_file
+	reboot_phases TestSwapModesRebootIntegration zram zswap disk
+	swap_file
+}
+
+# reboot_phases TEST PHASE... runs TEST with LINUXIO_MEMORY_REBOOT_PHASE set
+# to each PHASE in turn, with an orderly reboot of the VM between two.
+reboot_phases() {
+	local test=$1 first=1 phase
+	shift
+	for phase in "$@"; do
+		((first)) || reboot_vm
+		first=0
+		memory_test "$test" 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_REBOOT_PHASE="$phase"
+	done
+}
+
+# memory_leftovers undoes what a memory run cut short can leave on a VM it
+# ran on (VM=N): the files the tests make and their fstab lines, LinuxIO's
+# own swap file, and vdb swapping.
+memory_leftovers() {
+	vm_ssh sudo bash -s <<'LEFTOVERS'
+set -euo pipefail
+pkill -x memory.test || true
+for path in /var/lib/linuxio/swap/swapfile /linuxio-it-second.swap /linuxio-it-noheader.swap \
+	/linuxio-blocks-it.swap /linuxio-blocks-it-c/swapfile /swap.img.linuxio-resize /linuxio-it-second.swap.linuxio-resize; do
+	if grep -q "^${path}[[:space:]]" /proc/swaps; then swapoff "$path"; fi
+	sed -i "\|^${path}[[:space:]]|d" /etc/fstab
+	rm -f "$path"
+done
+sed -i '\|^/linuxio-it-missing.swap[[:space:]]|d' /etc/fstab
+if grep -q '^/dev/vdb[[:space:]]' /proc/swaps; then swapoff /dev/vdb; fi
+systemctl daemon-reload
+LEFTOVERS
 }
 
 # A 1 GiB /swap.img in fstab, swapping. On a btrfs root (Fedora's) the swap
@@ -826,18 +904,15 @@ SWAPFILE
 # with one (/usr/lib/systemd/zram-generator.conf): no swap file, no
 # zram-generator.conf in /etc, and zram0 swapping at the size the vendor file
 # sets. An earlier run changed all three, so /swap.img is taken away and out
-# of fstab (swap_file makes it again) and its unit let go (LinuxIO's
-# hold-off drop-in removed, a mask an older run left removed), the file in
-# /etc and LinuxIO's copy of it are removed, and zram0 is stopped, reset and
-# started again from the vendor file.
+# of fstab (swap_file makes it again), the file in /etc and LinuxIO's copy
+# of it are removed, and zram0 is stopped, reset and started again from the
+# vendor file.
 default_zram() {
 	vm_ssh sudo bash -s <<'DEFAULT'
 set -euo pipefail
 [[ -e /usr/lib/systemd/zram-generator.conf ]] || exit 0
 if grep -q '^/swap.img[[:space:]]' /proc/swaps; then swapoff /swap.img; fi
 sed -i '\|^/swap.img[[:space:]]|d' /etc/fstab
-systemctl unmask swap.img.swap
-rm -rf /etc/systemd/system/swap.img.swap.d
 rm -f /etc/systemd/zram-generator.conf /etc/systemd/zram-generator.conf.before-linuxio
 systemctl daemon-reload
 if grep -q '^/dev/zram0[[:space:]]' /proc/swaps; then systemctl stop dev-zram0.swap; fi
@@ -857,58 +932,38 @@ exit 1
 DEFAULT
 }
 
-# TestMemoryRebootIntegration: a switch to zram, a reboot, which must keep the
-# swap file off, and a switch back.
-reboot_check() {
-	run_test memory '^TestMemoryRebootIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_REBOOT_PHASE=before
-	reboot_vm
-	run_test memory '^TestMemoryRebootIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_REBOOT_PHASE=after
-}
-
-# link_swap_file on|off has fstab name the swap file through the link
-# /swap-link, in / like the file, or by its own path again. Off also undoes a
-# cut run: what holds the link's unit off at boot, LinuxIO's drop-in or the
-# mask an older run left, moves to the file's unit.
-link_swap_file() {
-	vm_ssh sudo bash -s -- "$1" <<'LINK'
-set -euo pipefail
-if [[ $1 == on ]]; then
-	ln -sfn /swap.img /swap-link
-	sed -i 's|^/swap.img\([[:space:]]\)|/swap-link\1|' /etc/fstab
-	systemctl daemon-reload
-	exit 0
-fi
-link=/etc/systemd/system/swap\\x2dlink.swap
-if grep -q '^/swap-link[[:space:]]' /etc/fstab; then
-	masked=$(systemctl is-enabled 'swap\x2dlink.swap' 2>/dev/null || true)
-	systemctl unmask 'swap\x2dlink.swap'
-	sed -i 's|^/swap-link\([[:space:]]\)|/swap.img\1|' /etc/fstab
-	if [[ $masked == masked ]]; then systemctl mask swap.img.swap; fi
-	if [[ -e $link.d/90-linuxio-memory.conf ]]; then
-		mkdir -p /etc/systemd/system/swap.img.swap.d
-		mv "$link.d/90-linuxio-memory.conf" /etc/systemd/system/swap.img.swap.d/
-	fi
-	systemctl daemon-reload
-fi
-rm -rf "$link.d"
-rm -f /swap-link
-LINK
-}
-
-# TestMemoryStatusWithoutRootIntegration reads the status as a user without
-# sudo, as the bridge of such a session does, with no sbin folder in PATH and
-# TuneD running, while a switch to zram, made as root with the job host's
-# umask (TestMemorySwitchIntegration), holds the swap file off; the host goes
-# back to disk after it. TuneD is installed and started for this alone and
-# stopped and disabled again, since its profile sets swappiness; the user and
-# the copy of the test binary it runs are removed.
+# status_without_root compares the status a user without sudo reads with
+# root's: TestMemoryStatusAsRootIntegration writes root's to a file, and
+# TestMemoryStatusWithoutRootIntegration reads it as a system user without
+# sudo, as the bridge of such a session does, with no sbin folder in PATH
+# and TuneD running, then TestReadFolderFSWithoutRootIntegration runs as the
+# same user. A 0600 file of root's without a swap header is put in fstab for
+# it, whose header only root can read. TuneD is installed and started for
+# this alone and stopped and disabled again, since its profile sets
+# swappiness; the user, the file, its line and the copy of the test binary
+# it runs are removed.
 status_without_root() {
 	vm_ssh test -x /usr/sbin/tuned-adm </dev/null || vm_install tuned
-	run_test memory '^TestMemorySwitchIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_SWITCH_TO=zram
+	vm_ssh sudo bash -s <<'NOHEADER'
+set -euo pipefail
+install -m 0600 -o root -g root /dev/null /linuxio-it-noheader.swap
+truncate -s 256M /linuxio-it-noheader.swap
+echo '/linuxio-it-noheader.swap none swap sw,nofail 0 0' >>/etc/fstab
+systemctl daemon-reload
+NOHEADER
+	memory_test TestMemoryStatusAsRootIntegration 2m LINUXIO_RUN_MEMORY_INTEGRATION=1 \
+		LINUXIO_MEMORY_STATUS_OUT=/var/tmp/linuxio-memory-root-status.json
 	vm_ssh sudo bash -s -- "${LINUXIO_VM_ZRAM_PROVIDER:-$ZRAM_DEFAULT}" "$VM_USER" <<'STATUS'
 set -euo pipefail
-user=linuxio-e2e-nosudo test=/var/tmp/linuxio-memory-status.test
-trap 'systemctl disable --now tuned.service >/dev/null 2>&1 || true; userdel "$user" 2>/dev/null || true; rm -f "$test"' EXIT
+user=linuxio-e2e-nosudo test=/var/tmp/linuxio-memory-status.test root_status=/var/tmp/linuxio-memory-root-status.json
+cleanup() {
+	systemctl disable --now tuned.service >/dev/null 2>&1 || true
+	userdel "$user" 2>/dev/null || true
+	rm -f "$test" "$root_status" /linuxio-it-noheader.swap
+	sed -i '\|^/linuxio-it-noheader.swap[[:space:]]|d' /etc/fstab
+	systemctl daemon-reload
+}
+trap cleanup EXIT
 id "$user" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$user"
 install -m 0755 "/home/$2/memory.test" "$test"
 systemctl start tuned.service
@@ -919,16 +974,26 @@ for _ in {1..30}; do
 	sleep 1
 done
 cd /
-sudo -u "$user" env -i PATH=/usr/bin:/bin LINUXIO_RUN_MEMORY_STATUS_WITHOUT_ROOT=1 LINUXIO_MEMORY_EXPECT_HELD_OFF=1 \
-	LINUXIO_MEMORY_TUNED_PROFILE="$profile" LINUXIO_MEMORY_ZRAM_PROVIDER="$1" \
-	"$test" -test.run '^TestMemoryStatusWithoutRootIntegration$' -test.count=1 -test.v -test.timeout=2m
+# Each test must pass, not skip.
+for name in TestMemoryStatusWithoutRootIntegration TestReadFolderFSWithoutRootIntegration; do
+	out=$(sudo -u "$user" env -i PATH=/usr/bin:/bin LINUXIO_RUN_MEMORY_STATUS_WITHOUT_ROOT=1 LINUXIO_RUN_FOLDER_FS_WITHOUT_ROOT=1 \
+		LINUXIO_MEMORY_ROOT_STATUS="$root_status" LINUXIO_MEMORY_TUNED_PROFILE="$profile" LINUXIO_MEMORY_ZRAM_PROVIDER="$1" \
+		"$test" -test.run "^${name}\$" -test.count=1 -test.v -test.timeout=2m 2>&1) || {
+		echo "$out"
+		exit 1
+	}
+	echo "$out"
+	grep -q -- "^--- PASS: ${name} (" <<<"$out" || {
+		echo "${name} did not pass: it skipped or did not run" >&2
+		exit 1
+	}
+done
 STATUS
-	run_test memory '^TestMemorySwitchIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_SWITCH_TO=disk
 }
 
-# After an interrupt the drain test can still be running in the VM, since ssh
-# gives it no terminal to hang up: it and the processes it parked on vdb are
-# ended first, so the swapoff does not pull their pages back under them.
+# After an interrupt a test can still be running in the VM, since ssh gives
+# it no terminal to hang up: it and the processes it parked on vdb are ended
+# first, so the swapoff does not pull their pages back under them.
 vdb_swap_off() {
 	vm_ssh sudo bash -s <<'SWAPOFF' || say "/dev/vdb still swaps in ${DOMAIN}: run make vm-reset"
 set -euo pipefail
@@ -999,9 +1064,11 @@ fi
 ZRAMOFF
 }
 
-drain_setup() {
-	vdb_by_path
-	vm_ssh sudo bash -s <<'DRAIN'
+# partition_setup makes the data disk vdb a swap partition for
+# TestSwapPartitionIntegration: used whole, with a noauto fstab entry at
+# priority 10, ahead of /swap.img, so it swaps only for the test.
+partition_setup() {
+	vm_ssh sudo bash -s <<'PARTITION'
 set -euo pipefail
 kind=$(blkid -o value -s TYPE /dev/vdb || true)
 if [[ -n $kind && $kind != swap ]]; then
@@ -1014,30 +1081,7 @@ if ! grep -qs '^/dev/vdb[[:space:]]' /etc/fstab; then
 	systemctl daemon-reload
 fi
 systemctl start dev-vdb.swap
-DRAIN
-}
-
-# vdb_by_uuid has fstab name vdb by UUID=, whose unit,
-# dev-disk-by\x2duuid-UUID.swap, is an alias of dev-vdb.swap
-# (TestMemoryDrainAliasIntegration); vdb_by_path names it /dev/vdb again, also
-# after a cut run.
-vdb_by_uuid() { vdb_fstab_source uuid; }
-vdb_by_path() { vdb_fstab_source path; }
-
-vdb_fstab_source() {
-	vm_ssh sudo bash -s -- "$1" <<'SOURCE'
-set -euo pipefail
-uuid=$(blkid -o value -s UUID /dev/vdb || true)
-[[ -n $uuid ]] || exit 0
-if [[ $1 == uuid ]]; then
-	sed -i "s|^/dev/vdb\([[:space:]]\)|UUID=${uuid}\1|" /etc/fstab
-elif grep -q "^UUID=${uuid}[[:space:]]" /etc/fstab; then
-	sed -i "s|^UUID=${uuid}\([[:space:]]\)|/dev/vdb\1|" /etc/fstab
-else
-	exit 0
-fi
-systemctl daemon-reload
-SOURCE
+PARTITION
 }
 
 # TestInstallByNameRefreshesAColdCacheIntegration (bridge/handlers/packages)

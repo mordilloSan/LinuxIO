@@ -107,18 +107,18 @@ func presetList() []apischema.SwapModePreset {
 }
 
 // deriveMode names how the active swap devices and zswap handle running out
-// of memory.
-func deriveMode(devices []apischema.SwapDevice, zswapEnabled bool) apischema.SwapMode {
-	var zram, disk bool
-	for _, device := range devices {
-		if device.Kind == apischema.SwapDeviceZram {
-			zram = true
-		} else {
-			disk = true
-		}
-	}
+// of memory, first match wins: zram beside a swap file LinuxIO can remove
+// (removable, one that passes the strict check) is mixed, which applying zram
+// finishes; zram is zram, whatever other swap stays beside it; any disk swap,
+// file or partition, is zswap or disk by zswap's enabled; otherwise none.
+func deriveMode(devices []apischema.SwapDevice, removable []string, zswapEnabled bool) apischema.SwapMode {
+	zram := hasDevice(devices, apischema.SwapDeviceZram)
+	disk := slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.Kind != apischema.SwapDeviceZram })
+	removableActive := slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool {
+		return d.Kind == apischema.SwapDeviceFile && slices.Contains(removable, d.Path)
+	})
 	switch {
-	case zram && disk:
+	case zram && removableActive:
 		return apischema.SwapModeMixed
 	case zram:
 		return apischema.SwapModeZram
@@ -131,28 +131,23 @@ func deriveMode(devices []apischema.SwapDevice, zswapEnabled bool) apischema.Swa
 	}
 }
 
-// recommendMode picks the mode for the host, first match wins: zram without a
-// swap file, or with one on an SD card, eMMC or removable drive (which
-// swapping wears out) or on btrfs (where it blocks snapshots), and zswap for
-// a swap file anywhere else. Disk swap that stays whatever is chosen rules
-// zram out (diskSwapStays): this feature never stops a swap partition, nor
-// an active swap file it does not manage, so such a host gets zswap. A
-// kernel without zswap never gets it recommended: disk beside such swap,
-// zram otherwise.
-func recommendMode(swapFile *apischema.SwapFile, diskSwapStays, zswapAvailable bool) apischema.SwapMode {
+// recommendMode picks the mode for the host, first match wins: zram with no
+// active disk swap, with disk swap on an SD card, eMMC or removable drive,
+// which swapping wears out, or with a swap file that blocks snapshots on
+// btrfs; a kernel without zswap gets disk beside its disk swap; anything else
+// gets zswap. A swap partition or a swap file LinuxIO cannot remove stays
+// beside zram, which takes the place of nothing but the files it removes.
+func recommendMode(devices []apischema.SwapDevice, rows []apischema.SwapFileRow, zswapAvailable bool) apischema.SwapMode {
+	disk := slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.Kind != apischema.SwapDeviceZram })
 	switch {
-	case diskSwapStays && zswapAvailable:
-		return apischema.SwapModeZswap
-	case diskSwapStays:
-		return apischema.SwapModeDisk
-	case swapFile == nil:
+	case !disk:
 		return apischema.SwapModeZram
-	case swapFile.DiskHint != "":
+	case slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.DiskHint != "" }):
 		return apischema.SwapModeZram
-	case swapFile.FSType == "btrfs":
+	case slices.ContainsFunc(rows, func(r apischema.SwapFileRow) bool { return r.Active && r.BlocksSnapshots }):
 		return apischema.SwapModeZram
 	case !zswapAvailable:
-		return apischema.SwapModeZram
+		return apischema.SwapModeDisk
 	default:
 		return apischema.SwapModeZswap
 	}
@@ -173,10 +168,28 @@ func recommendedSwappiness(mode, recommended apischema.SwapMode) int {
 const swapReturnMargin = 512 << 20
 
 // fitsInMemory reports whether used bytes of swap can come back into RAM
-// with swapReturnMargin to spare. Draining disk swap and stopping the swap
-// file both ask it before they take a swap device away.
-func fitsInMemory(used, memAvailable uint64) bool {
-	return used+swapReturnMargin < memAvailable
+// with swapReturnMargin to spare, with room counting memAvailable and any
+// free swap the pages can go to meanwhile.
+func fitsInMemory(used, room uint64) bool {
+	return used+swapReturnMargin < room
+}
+
+// roomToTurnOff is the room check before a disk swap device is turned off:
+// its used bytes, plus swapReturnMargin, must be less than MemAvailable plus
+// the free space on the other active disk swap devices, which the kernel can
+// push pages out to while it reads the device's back. A device that is not
+// active needs no room.
+func roomToTurnOff(status apischema.SwapStatus, path string) bool {
+	var used, otherFree uint64
+	for _, device := range status.Devices {
+		switch {
+		case device.Path == path:
+			used = device.Used
+		case device.Kind != apischema.SwapDeviceZram:
+			otherFree += device.Size - min(device.Used, device.Size)
+		}
+	}
+	return fitsInMemory(used, status.MemAvailable+otherFree)
 }
 
 // zramFits reports whether the data in the swapping zram devices can come
@@ -202,23 +215,28 @@ func zramFits(status apischema.SwapStatus) bool {
 }
 
 // drainBlockedReason says why the data parked on disk swap cannot be brought
-// back into memory now, or is empty when it can. diskUsed is the data on
-// every disk swap device, managedUsed the share on the devices LinuxIO
-// manages, which are the only ones a drain stops and starts again;
-// leftOutUsed is set when a device left out because others can redirect it
-// holds data, and unitHeldOff when a managed device holding data has a unit
-// held off at boot, which a start would not bring back.
-func drainBlockedReason(diskUsed, managedUsed, memAvailable uint64, leftOutUsed, unitHeldOff bool) apischema.SwapDrainBlockedReason {
+// back into memory now, or is empty when it can. A drain turns off and on
+// only the swap files LinuxIO can remove (drainTargets): data that sits only
+// on a partition, an LVM volume or a locked swap file is other_swap, and the
+// data on the targets must pass the room check counting the free space on
+// the disk swap a drain leaves alone.
+func drainBlockedReason(status apischema.SwapStatus) apischema.SwapDrainBlockedReason {
+	targets := drainTargets(status)
+	var drainable, otherFree uint64
+	for _, device := range status.Devices {
+		switch {
+		case slices.Contains(targets, device.Path):
+			drainable += device.Used
+		case device.Kind != apischema.SwapDeviceZram:
+			otherFree += device.Size - min(device.Used, device.Size)
+		}
+	}
 	switch {
-	case diskUsed == 0:
+	case diskSwapUsed(status.Devices) == 0:
 		return apischema.SwapDrainNothingParked
-	case managedUsed == 0 && leftOutUsed:
-		return apischema.SwapDrainOthersCanWrite
-	case managedUsed == 0:
-		return apischema.SwapDrainUnmanagedDevice
-	case unitHeldOff:
-		return apischema.SwapDrainUnitHeldOff
-	case !fitsInMemory(managedUsed, memAvailable):
+	case drainable == 0:
+		return apischema.SwapDrainOtherSwap
+	case !fitsInMemory(drainable, status.MemAvailable+otherFree):
 		return apischema.SwapDrainNotEnoughMemory
 	default:
 		return ""
@@ -235,14 +253,10 @@ func zramPlannedSize(memTotal uint64) uint64 {
 }
 
 // zramUnavailableReason says why the zram mode cannot be chosen, or is empty
-// when it can; a missing package wins when both reasons hold.
-func zramUnavailableReason(toolsInstalled, partitionActive bool) apischema.ZramUnavailableReason {
-	switch {
-	case !toolsInstalled:
+// when it can. A swap partition stays beside zram.
+func zramUnavailableReason(toolsInstalled bool) apischema.ZramUnavailableReason {
+	if !toolsInstalled {
 		return apischema.ZramPackageMissing
-	case partitionActive:
-		return apischema.ZramSwapPartitionActive
-	default:
-		return ""
 	}
+	return ""
 }

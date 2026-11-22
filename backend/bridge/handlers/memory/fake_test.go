@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -15,12 +17,16 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 )
 
 // fakeSystem plays systemd and the kernel for the executor. Files and kernel
 // parameters land in the fixture root; starting or stopping a unit adds or
 // removes its device's line in the fixture's /proc/swaps, as swapon and
-// swapoff would. Every side effect is recorded in order.
+// swapoff do for a swap file. Swap files are made, resized and deleted in
+// the fixture, with a swap signature for mkswap's header, and their fstab
+// lines are edited there. Every side effect is recorded in order.
 type fakeSystem struct {
 	f     fixture
 	tuned bool
@@ -47,19 +53,14 @@ type fakeSystem struct {
 	stuck map[string]bool
 	// blocked devices never leave on a swapoff, which returns when ctx ends.
 	blocked map[string]bool
-	// refused devices get this error from swapoff, which does nothing.
-	refused map[string]error
-	// unseen is how many reads of a unit's state still say active after its
-	// device left; systemd does nothing for a start meanwhile.
-	unseen map[string]int
-	// ignoredStarts is how many starts of a unit systemd does nothing for.
-	ignoredStarts map[string]int
 	// fileStates are unit file states; a unit not listed is "disabled".
 	fileStates map[string]string
-	// heldOff are the units whose hold-off condition systemd has loaded: it
-	// reads LinuxIO's drop-ins at a reload, and skips a start of such a unit
-	// whatever is on disk meanwhile.
-	heldOff map[string]bool
+	// noHeader makes a resize of the file at the path cut it to its new
+	// length and fail with errNoSwapHeader, as a mkswap that failed twice.
+	noHeader map[string]bool
+	// ignoredSwapOns are files a swapon succeeds for without the file ever
+	// showing in /proc/swaps.
+	ignoredSwapOns map[string]bool
 	// statusFails is how many status reads still fail with errStatusRace.
 	statusFails int
 	// onStatus runs once, after the next status read that succeeds, as the
@@ -96,15 +97,12 @@ func newFakeSystem(f fixture) *fakeSystem {
 		devices: map[string]string{
 			zramService:           zramSwapsLine,
 			zramGeneratorSwapUnit: zramSwapsLine,
-			"swap.img.swap":       swapFileSwapsLine,
 		},
-		stuck:   map[string]bool{},
-		blocked: map[string]bool{},
-		unseen:  map[string]int{},
-
-		ignoredStarts: map[string]int{},
-		fileStates:    map[string]string{},
-		heldOff:       map[string]bool{},
+		stuck:          map[string]bool{},
+		blocked:        map[string]bool{},
+		fileStates:     map[string]string{},
+		noHeader:       map[string]bool{},
+		ignoredSwapOns: map[string]bool{},
 	}
 }
 
@@ -197,15 +195,10 @@ func (s *fakeSystem) startUnit(ctx context.Context, name string) error {
 			stop.restart = true
 			return nil
 		}
-		// A unit systemd still holds active is not started.
-		if s.unseen[name] > 0 || s.ignoredStarts[name] > 0 {
-			s.ignoredStarts[name] = max(0, s.ignoredStarts[name]-1)
-			return nil
-		}
-		// A unit held off is skipped: its condition fails, and the start
-		// succeeds without starting anything. zramswap.service is held the
-		// same way by a runtime drop-in that holds the condition.
-		if s.heldOff[name] || name == zramService && s.zramToolsHeld() {
+		// zramswap.service held by the install's runtime drop-in is skipped:
+		// its condition fails, and the start succeeds without starting
+		// anything.
+		if name == zramService && s.zramToolsHeld() {
 			return nil
 		}
 		s.unitOn(name)
@@ -234,26 +227,18 @@ func (s *fakeSystem) restartUnit(ctx context.Context, name string) error {
 	})
 }
 
-// swapOff takes the device at path out of /proc/swaps, as swapoff(2) does,
-// and systemd then sees its unit inactive, at once or after unseen reads of
-// the unit's state. A path in blocked never returns until ctx ends, as a
-// swapoff that is still reading pages back, and leaves the device on.
+// swapOff takes the device at path out of /proc/swaps, as swapoff(2) does. A
+// path in
+// blocked never returns until ctx ends, as a swapoff that is still reading
+// pages back, and leaves the device on.
 func (s *fakeSystem) swapOff(ctx context.Context, path string) error {
-	if err := s.refused[path]; err != nil {
-		return err
-	}
 	if s.blocked[path] {
 		s.calls = append(s.calls, "swapoff "+path)
 		<-ctx.Done()
 		return ctx.Err()
 	}
 	return s.unitDo(ctx, "swapoff "+path, func() error {
-		for unit, line := range s.devices {
-			if strings.HasPrefix(line, path+" ") && !zramUnit(unit) {
-				s.f.write(procSwaps, strings.ReplaceAll(s.f.read(procSwaps), line, ""))
-				s.activeStates[unit] = "inactive"
-			}
-		}
+		s.f.removeSwapsLine(path)
 		return nil
 	})
 }
@@ -386,10 +371,6 @@ func (s *fakeSystem) activeState(ctx context.Context, name string) (string, erro
 	if err := s.failures["active "+name]; err != nil {
 		return "", err
 	}
-	if s.unseen[name] > 0 {
-		s.unseen[name]--
-		return "active", nil
-	}
 	if stop := s.stops[name]; stop != nil && stop.pending {
 		switch {
 		case stop.queued > 0:
@@ -408,21 +389,9 @@ func (s *fakeSystem) activeState(ctx context.Context, name string) (string, erro
 	return "active", nil
 }
 
-// reload has systemd read the hold-off drop-ins in the fixture again.
+// reload has systemd read its configuration again.
 func (s *fakeSystem) reload(ctx context.Context) error {
-	return s.unitDo(ctx, "reload", func() error {
-		s.heldOff = map[string]bool{}
-		dirs, err := os.ReadDir(filepath.Join(s.f.root, unitConfigDir))
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-		for _, dir := range dirs {
-			if unit, ok := strings.CutSuffix(dir.Name(), ".d"); ok && s.f.exists(holdOffDropInPath(unit)) {
-				s.heldOff[unit] = true
-			}
-		}
-		return nil
-	})
+	return s.unitDo(ctx, "reload", func() error { return nil })
 }
 
 func (s *fakeSystem) setFileState(ctx context.Context, call, name, state string) error {
@@ -438,30 +407,6 @@ func (s *fakeSystem) enableUnit(ctx context.Context, name string) error {
 
 func (s *fakeSystem) disableUnit(ctx context.Context, name string) error {
 	return s.setFileState(ctx, "disable "+name, name, "disabled")
-}
-
-func (s *fakeSystem) unmaskUnit(ctx context.Context, name string) error {
-	return s.unitDo(ctx, "unmask "+name, func() error {
-		s.fileStates[name] = "generated"
-		if err := os.Remove(filepath.Join(s.f.root, "/etc/systemd/system", name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-		return nil
-	})
-}
-
-// holdOffCall is the call that holds unit off at boot: LinuxIO's drop-in
-// for it written; a reload follows.
-func holdOffCall(unit string) string {
-	return "write " + holdOffDropInPath(unit)
-}
-
-// maskInFixture masks a unit in the fixture the way systemctl mask does, as
-// an admin, or a LinuxIO that held a swap file off with a mask, leaves it.
-func (f fixture) maskInFixture(unit string) {
-	f.t.Helper()
-	_ = os.Remove(filepath.Join(f.root, "/etc/systemd/system", unit))
-	f.symlink("/dev/null", "/etc/systemd/system/"+unit)
 }
 
 func (s *fakeSystem) unitFileState(_ context.Context, name string) (string, error) {
@@ -496,15 +441,16 @@ func (s *fakeSystem) readParam(name string) (string, error) {
 // zramswapPackageDefault is the /etc/default/zramswap zram-tools installs.
 const zramswapPackageDefault = "# Compression algorithm selection\n#ALGO=lz4\n# PERCENT=50\n"
 
-// diskHost is a desktop with an active /swap.img from fstab holding 512 MiB,
-// zswap off with lzo, zram-tools installed and its zram not running.
+// diskHost is a desktop with an active 2 GiB /swap.img from fstab holding
+// 512 MiB on a roomy ext4, zswap off with lzo, zram-tools installed and its
+// zram not running.
 func diskHost(t *testing.T) (fixture, *fakeSystem) {
 	t.Helper()
 	f := newFixture(t)
 	f.write(procSwaps, swapsHeader+swapFileSwapsLine)
 	f.write(procMeminfo, meminfoText)
 	f.write(etcFstab, "UUID=0a1b2c3d / ext4 defaults 0 1\n/swap.img none swap sw 0 0\n")
-	f.write("/swap.img", "")
+	f.writeSwapFile("/swap.img", 2*gib)
 	f.writeVMSysctls("60", "3", "15000", "10")
 	f.write("/sys/module/zswap/parameters/enabled", "N\n")
 	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
@@ -517,13 +463,15 @@ func diskHost(t *testing.T) (fixture, *fakeSystem) {
 }
 
 // zramHost is diskHost after a switch to zram: zram0 swapping 256 MiB, the
-// swap file stopped and held off at boot by LinuxIO's drop-in for its unit,
-// the zram presets live and in the sysctl drop-in.
+// swap file removed with its fstab line, the zram presets live and in the
+// sysctl drop-in.
 func zramHost(t *testing.T) (fixture, *fakeSystem) {
 	t.Helper()
 	f, sys := diskHost(t)
 	f.write(procSwaps, swapsHeader+"/dev/zram0                              partition\t8154200\t\t262144\t\t100\n")
 	sys.devices[zramService] = "/dev/zram0                              partition\t8154200\t\t262144\t\t100\n"
+	f.write(etcFstab, "UUID=0a1b2c3d / ext4 defaults 0 1\n")
+	f.remove("/swap.img")
 	f.write("/sys/block/zram0/disksize", "8349903872\n")
 	f.write("/sys/block/zram0/mm_stat", "268435456 89478485 95000000 0 95000000 0 0 0 0\n")
 	f.writeVMSysctls("180", "0", "0", "125")
@@ -536,22 +484,6 @@ func zramHost(t *testing.T) (fixture, *fakeSystem) {
 	f.write(zramswapConfigPath, string(renderZramswapConfig(7963*mib)))
 	sys.fileStates[zramService] = "enabled"
 	sys.activeStates[zramService] = "active"
-	f.write(holdOffDropInPath("swap.img.swap"), string(renderHoldOffDropIn()))
-	sys.heldOff["swap.img.swap"] = true
-	return f, sys
-}
-
-// maskedZramHost is zramHost as a LinuxIO that held the swap file off with a
-// mask left it: the swap file's unit masked and no drop-in.
-func maskedZramHost(t *testing.T) (fixture, *fakeSystem) {
-	t.Helper()
-	f, sys := zramHost(t)
-	if err := os.Remove(filepath.Join(f.root, holdOffDropInPath("swap.img.swap"))); err != nil {
-		t.Fatal(err)
-	}
-	delete(sys.heldOff, "swap.img.swap")
-	sys.fileStates["swap.img.swap"] = "masked"
-	f.maskInFixture("swap.img.swap")
 	return f, sys
 }
 
@@ -598,4 +530,208 @@ func (f fixture) param(name string) string {
 		f.t.Fatal(err)
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// removeSwapsLine takes the line of the device at path out of the fixture's
+// /proc/swaps.
+func (f fixture) removeSwapsLine(path string) {
+	f.t.Helper()
+	var kept []string
+	for i, line := range strings.SplitAfter(f.read(procSwaps), "\n") {
+		if fields := strings.Fields(line); i > 0 && len(fields) > 0 && octalescape.Unescape(fields[0]) == path {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	f.write(procSwaps, strings.Join(kept, ""))
+}
+
+// remove removes a file of the fixture.
+func (f fixture) remove(name string) {
+	f.t.Helper()
+	if err := os.Remove(filepath.Join(f.root, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		f.t.Fatal(err)
+	}
+}
+
+// swapsLine is the /proc/swaps line of a swap file of length bytes.
+func swapsLine(path string, length, used uint64) string {
+	return fmt.Sprintf("%-40s file\t\t%d\t\t%d\t\t-2\n", path, length/kib-uint64(os.Getpagesize())/kib, used/kib)
+}
+
+// writeSwapFile makes a swap file of length bytes at name, sparse, with a
+// swap signature, as mkswap leaves it.
+func (f fixture) writeSwapFile(name string, length uint64) {
+	f.t.Helper()
+	f.writeSwapArea(name)
+	if err := os.Truncate(filepath.Join(f.root, name), int64(length)); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// statID is the identity of a fixture file.
+func (s *fakeSystem) statID(path string) (fileID, error) {
+	return s.f.host().fileIDOf(path)
+}
+
+// makeSwapFile makes the file in the fixture the way the real one does it on
+// the host: a new name only, LinuxIO's folder first, then the length and the
+// header. Its effect lands only when the call does not fail.
+func (s *fakeSystem) makeSwapFile(ctx context.Context, path string, size uint64) (fileID, error) {
+	var id fileID
+	err := s.unitDo(ctx, "make "+path, func() error {
+		if s.f.exists(path) {
+			return fmt.Errorf("%w: %s is taken", bridgeipc.ErrConflict, path)
+		}
+		if path == ownSwapFilePath {
+			s.f.mkdir(ownSwapDir)
+		}
+		s.f.writeSwapFile(path, size)
+		var err error
+		id, err = s.statID(path)
+		return err
+	})
+	return id, err
+}
+
+// resizeSwapFile changes the length of an off swap file that is still the
+// one id names and writes a new header, or none for a path in noHeader.
+func (s *fakeSystem) resizeSwapFile(ctx context.Context, path string, id fileID, size uint64) error {
+	return s.unitDo(ctx, "resize "+path, func() error {
+		if strings.Contains(s.f.read(procSwaps), path+" ") {
+			return fmt.Errorf("%s swaps", path)
+		}
+		if got, err := s.statID(path); err != nil || got != id {
+			return fmt.Errorf("%w: %s is not the file that was checked", bridgeipc.ErrConflict, path)
+		}
+		if s.noHeader[path] {
+			s.f.write(path, "")
+			if err := os.Truncate(filepath.Join(s.f.root, path), int64(size)); err != nil {
+				return err
+			}
+			return errNoSwapHeader
+		}
+		return os.Truncate(filepath.Join(s.f.root, path), int64(size))
+	})
+}
+
+// deleteSwapFile deletes a swap file that does not swap and is still the
+// one id names.
+func (s *fakeSystem) deleteSwapFile(ctx context.Context, path string, id fileID) error {
+	return s.unitDo(ctx, "delete "+path, func() error {
+		swaps, err := s.f.host().readSwaps()
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(swaps, func(d apischema.SwapDevice) bool { return d.Path == path }) {
+			return fmt.Errorf("%w: %s swaps", bridgeipc.ErrConflict, path)
+		}
+		got, err := s.statID(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil || got != id {
+			return fmt.Errorf("%w: %s is not the file that was checked", bridgeipc.ErrConflict, path)
+		}
+		s.f.remove(path)
+		return nil
+	})
+}
+
+// swapOn adds the file's line to /proc/swaps, as swapon does for a file
+// with a swap header, and records the options it was given.
+func (s *fakeSystem) swapOn(ctx context.Context, path, options string) error {
+	return s.unitDo(ctx, "swapon "+path+" "+options, func() error {
+		// The real swapOn refuses options swapon would not take.
+		if _, err := swapOnFlags(path, options); err != nil {
+			return err
+		}
+		swap, err := s.f.host().holdsSwap(path)
+		if err != nil {
+			return err
+		}
+		if !swap {
+			return fmt.Errorf("swapon %s: read swap header failed", path)
+		}
+		if s.ignoredSwapOns[path] {
+			return nil
+		}
+		info, err := os.Stat(filepath.Join(s.f.root, path))
+		if err != nil {
+			return err
+		}
+		s.f.write(procSwaps, s.f.read(procSwaps)+swapsLine(path, uint64(info.Size()), 0))
+		return nil
+	})
+}
+
+// addFstabSwap appends LinuxIO's line for path to the fixture's fstab.
+func (s *fakeSystem) addFstabSwap(ctx context.Context, path string) error {
+	return s.unitDo(ctx, "fstab add "+path, func() error {
+		text := ""
+		if s.f.exists(etcFstab) {
+			text = s.f.read(etcFstab)
+		}
+		s.f.write(etcFstab, text+path+" none swap sw,nofail 0 0\n")
+		return nil
+	})
+}
+
+// removeFstabSwap drops every swap line of the fixture's fstab that names
+// path.
+func (s *fakeSystem) removeFstabSwap(ctx context.Context, path string) error {
+	return s.unitDo(ctx, "fstab remove "+path, func() error {
+		if !s.f.exists(etcFstab) {
+			return nil
+		}
+		var kept []string
+		for line := range strings.Lines(s.f.read(etcFstab)) {
+			if fields := strings.Fields(line); len(fields) >= 3 && fields[2] == "swap" && octalescape.Unescape(fields[0]) == path {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		s.f.write(etcFstab, strings.Join(kept, ""))
+		return nil
+	})
+}
+
+// fixtureFolderFS is what readFolderFS reports in a test for every folder
+// under the fixture root.
+func (f fixture) useFolderFS(info folderFS) {
+	f.t.Helper()
+	previous := readFolderFS
+	readFolderFS = func(dir string) (folderFS, error) {
+		if dir != f.root && !strings.HasPrefix(dir, f.root+"/") {
+			return folderFS{}, fmt.Errorf("%s is outside the fixture", dir)
+		}
+		return info, nil
+	}
+	f.t.Cleanup(func() { readFolderFS = previous })
+}
+
+// roomyExt4 is an ext4 filesystem of 100 GiB with 50 GiB free.
+var roomyExt4 = folderFS{kind: "ext4", total: 100 * gib, free: 50 * gib}
+
+// pageSize is the page /proc/swaps leaves out of a swap file's size.
+func pageSize() uint64 { return uint64(os.Getpagesize()) }
+
+// zramRequest is a switch to zram that confirms removing every swap file
+// the host's status says it removes.
+func zramRequest(t *testing.T, sys *fakeSystem) apischema.SwapModeRequest {
+	t.Helper()
+	status, _, err := sys.f.host().readSwapStatus(sys.provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmRemove: removableSwapFiles(status.SwapFiles)}
+}
+
+// zramReplacing is zramRequest that also confirms replacing the zram
+// configuration file at path.
+func zramReplacing(t *testing.T, sys *fakeSystem, path string) apischema.SwapModeRequest {
+	t.Helper()
+	req := zramRequest(t, sys)
+	req.ConfirmReplace = path
+	return req
 }

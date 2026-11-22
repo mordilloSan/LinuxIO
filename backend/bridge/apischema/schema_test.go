@@ -562,7 +562,8 @@ func TestTaskMetadataBuildersAreAllowlisted(t *testing.T) {
 		"storage.btrfs_snapshot_rollback": true, "storage.btrfs_device_remove": true, "storage.btrfs_device_replace": true,
 		"storage.btrfs_balance": true, "storage.btrfs_scrub_start": true, "storage.btrfs_replication_run": true,
 		"storage.btrfs_pool_create": true, "storage.partition_create": true, "storage.partition_format": true,
-		"memory.set_swap_mode": true, "memory.drain_swap": true,
+		"memory.set_swap_mode": true, "memory.drain_swap": true, "memory.create_swap_file": true,
+		"memory.resize_swap_file": true, "memory.remove_swap_file": true, "memory.move_swap_file": true,
 	}
 	for _, route := range handlers.Routes {
 		if route.Metadata == nil {

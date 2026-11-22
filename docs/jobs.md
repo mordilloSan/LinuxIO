@@ -874,7 +874,11 @@ keys, messages and settings are in
     mutations in the cache (`useIsMutating` with a `mutationKey`) so that a
     job an earlier instance still follows is not followed twice.
 
-  The dialogs that work this way: the Memory overflow dialog; the Docker
+  The dialogs that work this way: the Memory overflow dialog, whose second
+  steps (the confirm of a change of mode, and Create, Resize, Remove and
+  Move of a swap file) close as their job starts, back to its first step,
+  which holds its other controls while the job runs, keeps Close and Escape
+  working and leaves the progress and the cancel to the tray; the Docker
   storage confirm in Settings, whose section shows the running step in a note
   once the confirm is closed; and the file browser's upload dialog, which is
   held while it checks the destination and asks about conflicts, which need

@@ -13,15 +13,18 @@ var (
 	planSwapFileDevice = apischema.SwapDevice{Path: "/swap.img", Kind: apischema.SwapDeviceFile, Size: 2 * gib, Used: 512 * mib, Priority: -2}
 	planZramDevice     = apischema.SwapDevice{Path: "/dev/zram0", Kind: apischema.SwapDeviceZram, Size: 8 * gib, Used: 256 * mib, Priority: 100}
 	planPartition      = apischema.SwapDevice{Path: "/dev/sda3", Kind: apischema.SwapDevicePartition, Size: 8 * gib, Priority: -3}
+	planSwapFileRow    = apischema.SwapFileRow{Path: "/swap.img", Active: true, InFstab: true, Size: 2 * gib, Used: 512 * mib}
+	planCreate         = apischema.SwapFileCreate{Path: ownSwapFilePath, MinSize: swapFileMinSize, DefaultSize: 2 * gib, MaxSize: 45 * gib}
 )
 
-// planView builds what the planner reads for a host whose fstab declares
-// /swap.img, in the given mode. A host in mode none has no active device.
+// planView builds what the planner reads for a host in the given mode: on
+// disk, zswap and mixed it swaps on /swap.img from fstab; on zram and none a
+// switch to zram removed it. LinuxIO can make its own swap file.
 func planView(mode apischema.SwapMode) swapView {
 	status := apischema.SwapStatus{
 		ZramAvailable: true,
 		Zswap:         apischema.ZswapStatus{Available: true, Compressor: "lzo"},
-		SwapFile:      &apischema.SwapFile{Path: "/swap.img"},
+		Create:        planCreate,
 	}
 	switch mode {
 	case apischema.SwapModeDisk:
@@ -36,34 +39,37 @@ func planView(mode apischema.SwapMode) swapView {
 	default:
 	}
 	status.Mode = mode
-	entry := fstabSwap{path: "/swap.img", unit: "swap.img.swap"}
+	view := swapView{status: status}
 	if slices.Contains(status.Devices, planSwapFileDevice) {
-		entry.device = "/swap.img"
-		status.SwapFile.Active = true
+		view.status.SwapFiles = []apischema.SwapFileRow{planSwapFileRow}
+		view.fstab = []fstabSwap{{path: "/swap.img", options: "sw"}}
 	}
-	return swapView{status: status, fstab: []fstabSwap{entry}}
+	return view
 }
 
 var (
-	stepStopFile  = swapStep{code: apischema.SwapStepStopSwapFile, unit: "swap.img.swap", path: "/swap.img"}
-	stepStartFile = swapStep{code: apischema.SwapStepStartSwapFile, unit: "swap.img.swap", path: "/swap.img"}
-	stepSysctls   = swapStep{code: apischema.SwapStepApplySysctls}
+	stepSysctls    = swapStep{code: apischema.SwapStepApplySysctls}
+	stepRemoveFile = swapStep{code: apischema.SwapStepRemoveSwapFile, path: "/swap.img"}
+	stepCreateFile = swapStep{code: apischema.SwapStepCreateSwapFile, path: ownSwapFilePath, size: 2 * gib}
 )
 
 func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
-	toZram := func() []swapStep {
-		return []swapStep{
+	toZram := func(removes bool) []swapStep {
+		steps := []swapStep{
 			{code: apischema.SwapStepWriteConfig},
 			{code: apischema.SwapStepStartZram},
 			stepSysctls,
 			{code: apischema.SwapStepDisableZswap},
-			stepStopFile,
 		}
+		if removes {
+			steps = append(steps, stepRemoveFile)
+		}
+		return steps
 	}
-	toDiskSwap := func(last apischema.SwapStep, fileStopped, zramRunning bool) []swapStep {
+	toDiskSwap := func(last apischema.SwapStep, creates, zramRunning bool) []swapStep {
 		var steps []swapStep
-		if fileStopped {
-			steps = append(steps, stepStartFile)
+		if creates {
+			steps = append(steps, stepCreateFile)
 		}
 		return append(steps, swapStep{code: apischema.SwapStepStopZram, run: zramRunning}, stepSysctls, swapStep{code: last})
 	}
@@ -71,11 +77,11 @@ func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
 		from, to apischema.SwapMode
 		want     []swapStep
 	}{
-		{from: apischema.SwapModeNone, to: apischema.SwapModeZram, want: toZram()},
-		{from: apischema.SwapModeDisk, to: apischema.SwapModeZram, want: toZram()},
-		{from: apischema.SwapModeZswap, to: apischema.SwapModeZram, want: toZram()},
-		{from: apischema.SwapModeZram, to: apischema.SwapModeZram, want: toZram()},
-		{from: apischema.SwapModeMixed, to: apischema.SwapModeZram, want: toZram()},
+		{from: apischema.SwapModeNone, to: apischema.SwapModeZram, want: toZram(false)},
+		{from: apischema.SwapModeDisk, to: apischema.SwapModeZram, want: toZram(true)},
+		{from: apischema.SwapModeZswap, to: apischema.SwapModeZram, want: toZram(true)},
+		{from: apischema.SwapModeZram, to: apischema.SwapModeZram, want: toZram(false)},
+		{from: apischema.SwapModeMixed, to: apischema.SwapModeZram, want: toZram(true)},
 
 		{from: apischema.SwapModeNone, to: apischema.SwapModeZswap, want: toDiskSwap(apischema.SwapStepEnableZswap, true, false)},
 		{from: apischema.SwapModeDisk, to: apischema.SwapModeZswap, want: toDiskSwap(apischema.SwapStepEnableZswap, false, false)},
@@ -91,7 +97,11 @@ func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(string(test.from)+" to "+string(test.to), func(t *testing.T) {
-			got, err := planSwapMode(planView(test.from), apischema.SwapModeRequest{Mode: test.to})
+			req := apischema.SwapModeRequest{Mode: test.to}
+			if test.to == apischema.SwapModeZram {
+				req.ConfirmRemove = removableSwapFiles(planView(test.from).status.SwapFiles)
+			}
+			got, err := planSwapMode(planView(test.from), req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -102,17 +112,56 @@ func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
 	}
 }
 
-// Only a swap file fstab declares has a unit to stop, mask or start: an
-// active swap file without an fstab entry is left alone.
-func TestPlanSwapModeLeavesASwapFileOutsideFstabAlone(t *testing.T) {
+// A switch to zram removes every swap file that passes the strict check, a
+// temporary one first, and never one that does not.
+func TestPlanSwapModeRemovesEveryRemovableSwapFile(t *testing.T) {
 	view := planView(apischema.SwapModeDisk)
-	view.fstab = nil
-	got, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	view.status.SwapFiles = []apischema.SwapFileRow{
+		planSwapFileRow,
+		{Path: "/home/swapfile", Active: true, LockedReason: apischema.SwapFileNotInFstab},
+		{Path: "/swap.img.linuxio-resize", Active: true, Temporary: true},
+		{Path: "/old.img", InFstab: true, ResizeBlockedReason: apischema.SwapFileResizeOff},
+	}
+	confirm := []string{"/old.img", "/swap.img", "/swap.img.linuxio-resize"}
+	got, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmRemove: confirm})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(got, func(s swapStep) bool { return s.code == apischema.SwapStepStopSwapFile }) {
-		t.Fatalf("steps = %+v, want no swap file step", got)
+	var removed []string
+	for _, step := range got {
+		if step.code == apischema.SwapStepRemoveSwapFile {
+			removed = append(removed, step.path)
+		}
+	}
+	if want := []string{"/swap.img.linuxio-resize", "/swap.img", "/old.img"}; !slices.Equal(removed, want) {
+		t.Fatalf("removed = %v, want %v", removed, want)
+	}
+}
+
+// The request must name exactly the files the switch removes.
+func TestPlanSwapModeRefusesAnUnconfirmedRemove(t *testing.T) {
+	two := planView(apischema.SwapModeDisk)
+	two.status.SwapFiles = append(two.status.SwapFiles, apischema.SwapFileRow{Path: "/swap2.img", Active: true, InFstab: true})
+	tests := map[string]struct {
+		view    swapView
+		confirm []string
+	}{
+		"none confirmed":             {view: planView(apischema.SwapModeDisk)},
+		"another file confirmed":     {view: planView(apischema.SwapModeDisk), confirm: []string{"/swapfile"}},
+		"one of two confirmed":       {view: two, confirm: []string{"/swap.img"}},
+		"one more than removed":      {view: two, confirm: []string{"/swap.img", "/swap2.img", "/swap3.img"}},
+		"a file with none to remove": {view: planView(apischema.SwapModeZram), confirm: []string{"/swap.img"}},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := planSwapMode(test.view, apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmRemove: test.confirm})
+			if !errors.Is(err, bridgeipc.ErrConflict) {
+				t.Fatalf("plan = %+v, err = %v; want a conflict", got, err)
+			}
+		})
+	}
+	if _, err := planSwapMode(two, apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmRemove: []string{"/swap2.img", "/swap.img"}}); err != nil {
+		t.Fatalf("both confirmed in another order: %v", err)
 	}
 }
 
@@ -130,12 +179,10 @@ func TestPlanSwapModeLeavesZramWithoutZramToolsAlone(t *testing.T) {
 	}
 }
 
-// A swap partition is disk swap enough for zswap and disk; it is never
-// started, stopped or masked.
-func TestPlanSwapModeWithOnlyASwapPartition(t *testing.T) {
+// A swap partition is disk swap enough for zswap and disk, and zram can be
+// chosen beside it. No step ever names it.
+func TestPlanSwapModeWithASwapPartition(t *testing.T) {
 	view := planView(apischema.SwapModeNone)
-	view.status.SwapFile = nil
-	view.fstab = nil
 	view.status.Devices = []apischema.SwapDevice{planPartition}
 	got, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZswap})
 	if err != nil {
@@ -145,6 +192,24 @@ func TestPlanSwapModeWithOnlyASwapPartition(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("steps = %+v, want %+v", got, want)
 	}
+	got, err = planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(got, func(s swapStep) bool { return s.path != "" }) {
+		t.Fatalf("steps = %+v, want none that names a device", got)
+	}
+}
+
+// The size of the swap file a switch makes is the request's, or the default.
+func TestPlanSwapModeCreatesAtTheRequestedSize(t *testing.T) {
+	got, err := planSwapMode(planView(apischema.SwapModeZram), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk, SwapFileSize: 4 * gib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (swapStep{code: apischema.SwapStepCreateSwapFile, path: ownSwapFilePath, size: 4 * gib}); got[0] != want {
+		t.Fatalf("first step = %+v, want %+v", got[0], want)
+	}
 }
 
 func TestPlanSwapModeRefusals(t *testing.T) {
@@ -152,6 +217,7 @@ func TestPlanSwapModeRefusals(t *testing.T) {
 		name   string
 		target apischema.SwapMode
 		view   func() swapView
+		size   uint64
 		want   error
 	}{
 		{
@@ -166,37 +232,31 @@ func TestPlanSwapModeRefusals(t *testing.T) {
 			want: bridgeipc.ErrConflict,
 		},
 		{
-			name:   "zram beside an active swap partition",
-			target: apischema.SwapModeZram,
+			name:   "disk while a swap file in fstab is off",
+			target: apischema.SwapModeDisk,
 			view: func() swapView {
-				v := planView(apischema.SwapModeDisk)
-				v.status.Devices = append(v.status.Devices, planPartition)
-				v.status.ZramUnavailableReason = apischema.ZramSwapPartitionActive
+				v := planView(apischema.SwapModeZram)
+				v.status.SwapFiles = []apischema.SwapFileRow{{Path: "/swap.img", InFstab: true, ResizeBlockedReason: apischema.SwapFileResizeOff}}
 				return v
 			},
 			want: bridgeipc.ErrConflict,
 		},
 		{
-			name:   "zswap without a swap file or partition",
+			name:   "zswap when LinuxIO cannot make its swap file",
 			target: apischema.SwapModeZswap,
 			view: func() swapView {
 				v := planView(apischema.SwapModeZram)
-				v.status.SwapFile = nil
-				v.fstab = nil
+				v.status.Create.BlockedReason = apischema.SwapFileCreateUnsupportedFilesystem
 				return v
 			},
 			want: bridgeipc.ErrConflict,
 		},
 		{
-			name:   "disk without a swap file or partition",
+			name:   "a swap file larger than the disk allows",
 			target: apischema.SwapModeDisk,
-			view: func() swapView {
-				v := planView(apischema.SwapModeNone)
-				v.status.SwapFile = nil
-				v.fstab = nil
-				return v
-			},
-			want: bridgeipc.ErrConflict,
+			view:   func() swapView { return planView(apischema.SwapModeNone) },
+			size:   46 * gib,
+			want:   bridgeipc.ErrInvalidArgs,
 		},
 		{
 			name:   "zswap on a kernel without zswap",
@@ -217,7 +277,7 @@ func TestPlanSwapModeRefusals(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := planSwapMode(test.view(), apischema.SwapModeRequest{Mode: test.target})
+			got, err := planSwapMode(test.view(), apischema.SwapModeRequest{Mode: test.target, SwapFileSize: test.size})
 			if !errors.Is(err, test.want) {
 				t.Fatalf("plan = %+v, err = %v; want %v", got, err, test.want)
 			}
@@ -225,41 +285,12 @@ func TestPlanSwapModeRefusals(t *testing.T) {
 	}
 }
 
-// openPlanView is planView with the swap file in a folder users other than
-// root can change.
-func openPlanView(mode apischema.SwapMode) swapView {
-	view := planView(mode)
-	view.fstab[0].othersCanWrite = true
-	return view
-}
-
-// A swap file others can redirect is not managed: no step stops or starts
-// it.
-func TestPlanSwapModeLeavesASwapFileOthersCanRedirectAlone(t *testing.T) {
-	for _, test := range []struct{ from, to apischema.SwapMode }{
-		{apischema.SwapModeDisk, apischema.SwapModeZram},
-		{apischema.SwapModeDisk, apischema.SwapModeZswap},
-		{apischema.SwapModeMixed, apischema.SwapModeDisk},
-	} {
-		got, err := planSwapMode(openPlanView(test.from), apischema.SwapModeRequest{Mode: test.to})
-		if err != nil {
-			t.Fatalf("%s to %s: %v", test.from, test.to, err)
-		}
-		if slices.ContainsFunc(got, func(s swapStep) bool {
-			return s.code == apischema.SwapStepStopSwapFile || s.code == apischema.SwapStepStartSwapFile
-		}) {
-			t.Errorf("%s to %s: steps = %+v, want no swap file step", test.from, test.to, got)
-		}
-	}
-}
-
-// A mode that needs disk swap is refused when the only disk swap is such a
-// file and it is off, and the refusal says why it is not started.
-func TestPlanSwapModeRefusesToStartASwapFileOthersCanRedirect(t *testing.T) {
-	for _, target := range []apischema.SwapMode{apischema.SwapModeDisk, apischema.SwapModeZswap} {
-		got, err := planSwapMode(openPlanView(apischema.SwapModeZram), apischema.SwapModeRequest{Mode: target})
-		if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, errOthersCanRedirect) {
-			t.Errorf("%s: plan = %+v, err = %v; want a conflict that names the folder rule", target, got, err)
+// A size that is not whole MiB or below the smallest is refused before the
+// lock.
+func TestValidateSwapModeRequestRefusesASwapFileSize(t *testing.T) {
+	for _, size := range []uint64{gib + 1, 255 * mib} {
+		if err := validateSwapModeRequest(apischema.SwapModeRequest{Mode: apischema.SwapModeDisk, SwapFileSize: size}); !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+			t.Errorf("size %d: err = %v, want invalid", size, err)
 		}
 	}
 }

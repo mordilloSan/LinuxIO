@@ -181,11 +181,30 @@ File browser, after the link fix:
 
 Memory overflow:
 
-- A swap partition, or a swap device `/etc/fstab` does not name, is never
-  stopped or held off. A host with an active swap partition cannot choose
-  compressed memory only, and a device with no fstab entry cannot be drained:
-  only a device matched to an entry has a unit that can be started again, and
-  the feature never takes away swap it cannot bring back.
+- A `swapoff` can wake the OOM killer inside a memory-limited cgroup (a
+  container, or a unit with a memory limit, whose pages are in swap) although
+  the host has free memory and the room check passes: the kernel charges each
+  page it reads back to the cgroup that owns it, and the room check reads only
+  the host's `MemAvailable`. Seen in the test VM (Ubuntu 26.04, kernel 7.0): a
+  unit with `MemoryMax=256M` and about 800 MB in swap was killed by the memory
+  cgroup's OOM killer the moment `swapoff` started, and `swapoff` itself
+  failed with `Cannot allocate memory` and left the file swapping. It applies
+  to the drain, Resize, Remove and the switch to compressed memory alike, and
+  older releases had it in the drain and the switch too. Open: a check per
+  cgroup, or a warning in the confirm.
+- On btrfs, while a drain or a resize has a swap file off, a snapshot of the
+  subvolume it is in (snapper, Timeshift) makes the file's blocks shared, and
+  `swapon` then refuses the file, now and at boot, until that snapshot is
+  deleted; a balance or a device operation running at that moment refuses
+  `swapon` too, with `EBUSY`, until it ends (seen on Fedora 45 during a
+  balance: `/sys/fs/btrfs/<fsid>/exclusive_operation` reads `balance`, and
+  the kernel logs "cannot activate swapfile while exclusive operation is
+  running"). Only a file outside a subvolume
+  of its own is exposed to the snapshot: LinuxIO's own file is not, and a
+  resize that uses the temporary swap file is covered while that file swaps,
+  since an active swap file blocks snapshots of its subvolume. The owner's
+  choice: always swap on a temporary file beside it in that window, refuse
+  the drain and the resize for such a file and offer Move, or leave it.
 - A malformed optional kernel file (a non-numeric sysctl, an `mm_stat` with
   fewer than three fields) fails the status route instead of reading as zero:
   a format change in the kernel should surface.

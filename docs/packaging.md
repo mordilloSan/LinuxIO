@@ -97,7 +97,9 @@ file in place, and `apt purge` removes them. An RPM erase removes the ones
 nobody edited and keeps an edited one as `.rpmsave`. Files LinuxIO writes
 under `/etc/linuxio` at run time (scheduled scripts, the rsync module's
 configuration and the like) are not package files and stay on both.
-`/var/lib/linuxio`, LinuxIO's data, stays on removal and on a purge.
+`/var/lib/linuxio`, LinuxIO's data, stays on removal and on a purge, the
+memory page's swap file and its `/etc/fstab` line with it
+([Removal](#removal)).
 
 ## First install
 
@@ -213,6 +215,22 @@ with their definitions under `/etc/linuxio`. The settings whose files the
 removal deleted (snapshot rules, replication, Docker updates, verbose
 logging, the indexer's interval, the automatic-update schedule and its
 alerts) are switched on again by hand after a new install.
+
+The swap file the memory page makes, `/var/lib/linuxio/swap/swapfile`, and
+its `/etc/fstab` line stay too, on a removal and on a purge, as the rest of
+`/var/lib/linuxio` does: systemd turns it on at boot from the line, without
+LinuxIO, so the host keeps its swap. Neither package script touches either.
+An administrator who wants them gone turns the file off, removes the line
+and deletes the folder, in that order (the kernel refuses to delete a swap
+file that is on, and a line left without its file fails its swap unit at
+every boot):
+
+```sh
+sudo swapoff /var/lib/linuxio/swap/swapfile
+sudo sed -i '\#^/var/lib/linuxio/swap/swapfile[[:space:]]#d' /etc/fstab
+sudo systemctl daemon-reload
+sudo rm -r /var/lib/linuxio/swap
+```
 
 ## The SELinux module
 

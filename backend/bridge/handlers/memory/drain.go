@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
-// DrainSwap brings the data parked on disk swap back into memory by
-// stopping and starting, one at a time, each active disk swap device
-// /etc/fstab names. zram is never drained: its data is already in memory.
+// DrainSwap brings the data parked on disk swap back into memory by turning
+// off and on again, one at a time, each swap file LinuxIO can remove that
+// holds data. zram is never drained: its data is already in memory. A
+// partition, an LVM volume and a locked swap file are never turned off.
 func DrainSwap(ctx context.Context, report func(apischema.SwapProgress)) (apischema.SwapStatus, error) {
 	return newExecutor(report).drainSwap(ctx)
 }
@@ -31,106 +31,76 @@ func (e *executor) drainSwap(ctx context.Context) (apischema.SwapStatus, error) 
 	if reason := view.status.DrainBlockedReason; reason != "" {
 		return apischema.SwapStatus{}, fmt.Errorf("%w: %s", bridgeipc.ErrConflict, drainRefusal(reason))
 	}
-	targets := drainTargets(view)
-	// A unit held off at boot would not start its device again: refuse
-	// before any device stops. The status found LinuxIO's drop-ins and the
-	// masks it can see on disk; systemd is asked about masks as well.
-	for _, target := range targets {
-		state, err := e.sys.unitFileState(ctx, target.unit)
-		if err != nil {
+	targets := drainTargets(view.status)
+	// fstab options swapon would not take would leave a file off once it is
+	// turned off, so they are refused before any is.
+	for _, path := range targets {
+		if _, err := swapOnFlags(path, fstabOptions(view.fstab, path)); err != nil {
 			return apischema.SwapStatus{}, err
-		}
-		if strings.HasPrefix(state, "masked") {
-			return apischema.SwapStatus{}, fmt.Errorf("%w: %s is masked, so %s could not be started again", bridgeipc.ErrConflict, target.unit, target.device)
 		}
 	}
 	var drained []string
-	for i, target := range targets {
+	for i, path := range targets {
 		if err := ctx.Err(); err != nil {
 			return apischema.SwapStatus{}, err
 		}
-		e.report(apischema.SwapProgress{Step: apischema.SwapStepDrainDevice, Index: i + 1, Total: len(targets), Device: target.device})
-		done, err := e.drainDevice(ctx, target, len(drained))
+		e.report(apischema.SwapProgress{Step: apischema.SwapStepDrainDevice, Index: i + 1, Total: len(targets), Device: path})
+		done, err := e.drainFile(ctx, path, fstabOptions(view.fstab, path), len(drained))
 		if err != nil {
 			return apischema.SwapStatus{}, err
 		}
 		if done {
-			drained = append(drained, target.device)
+			drained = append(drained, path)
 		}
 	}
-	// A drain whose devices all left on their own changed nothing.
+	// A drain whose files all left on their own changed nothing.
 	if len(drained) > 0 {
 		slog.Info("swap drained", "devices", drained)
 	}
 	return e.statusAfterChange(ctx)
 }
 
-// drainTargets are the managed fstab entries active as a disk swap device
-// that holds data, in fstab order.
-func drainTargets(view swapView) []fstabSwap {
-	return holdingData(view.fstab, view.status.Devices)
-}
-
-// holdsData reports whether the fstab entry is active as a device that
-// holds data.
-func holdsData(entry fstabSwap, devices []apischema.SwapDevice) bool {
-	return slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.Path == entry.device && d.Used > 0 })
-}
-
-// holdingData returns the fstab entries a drain stops and starts: those
-// active as a device that holds data, less the ones others can redirect.
-func holdingData(fstab []fstabSwap, devices []apischema.SwapDevice) []fstabSwap {
-	var entries []fstabSwap
-	for _, entry := range fstab {
-		if !entry.othersCanWrite && holdsData(entry, devices) {
-			entries = append(entries, entry)
+// drainTargets are the swap files a drain turns off and on: the active ones
+// that pass the strict check and hold data, less a temporary one a resize
+// left, which is removed and not drained, in the order of the status.
+func drainTargets(status apischema.SwapStatus) []string {
+	var paths []string
+	for _, row := range status.SwapFiles {
+		if row.Active && row.LockedReason == "" && !row.Temporary && row.Used > 0 {
+			paths = append(paths, row.Path)
 		}
 	}
-	return entries
+	return paths
 }
 
-// leftOutHoldsData reports whether an entry a drain leaves out, since
-// others can redirect it, holds data.
-func leftOutHoldsData(fstab []fstabSwap, devices []apischema.SwapDevice) bool {
-	return slices.ContainsFunc(fstab, func(e fstabSwap) bool { return e.othersCanWrite && holdsData(e, devices) })
-}
-
-// drainDevice takes one device away with swapoff when its data fits in
-// memory on a fresh status, then starts its unit again and waits for the
-// device to return. drained counts the devices drained before it. It reports
-// false for a device that already left /proc/swaps, which it skips.
-func (e *executor) drainDevice(ctx context.Context, target fstabSwap, drained int) (bool, error) {
-	status, _, err := e.sys.status(ctx)
+// drainFile turns one swap file off, after the room check on a fresh
+// status, and on again with options, the options of its fstab line. drained
+// counts the files drained before it. It reports false for a file that
+// already left /proc/swaps, which it skips.
+func (e *executor) drainFile(ctx context.Context, path, options string, drained int) (bool, error) {
+	// A swapoff that fails or is cancelled leaves the file swapping.
+	off, err := e.turnOff(ctx, path)
 	if err != nil {
-		return false, err
-	}
-	i := slices.IndexFunc(status.Devices, func(d apischema.SwapDevice) bool { return d.Path == target.device })
-	if i < 0 {
-		slog.Debug("skipped swap device that left before its drain", "device", target.device)
-		return false, nil
-	}
-	if !fitsInMemory(status.Devices[i].Used, status.MemAvailable) {
-		return false, stayDrained(fmt.Errorf("%w: not enough free memory to take back the data on %s", bridgeipc.ErrConflict, target.device), drained)
-	}
-	// A swapoff that fails or is cancelled leaves the device swapping.
-	if err := e.swapOffDevice(ctx, target.device); err != nil {
 		return false, stayDrained(err, drained)
 	}
-	// The device is off: bringing it back is not cancelled with the request.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout+e.waits.stopGrace+e.waits.swapOn)
+	if !off {
+		slog.Debug("skipped swap file that left before its drain", "path", path)
+		return false, nil
+	}
+	// The file is off: bringing it back is not cancelled with the request.
+	ctx, cancel := e.cleanupContext(ctx)
 	defer cancel()
-	e.waitUnitSeenOff(ctx, target.unit)
-	if err := e.startUntilBack(ctx, target.unit, e.deviceIs(target.device, true)); err != nil {
-		return false, fmt.Errorf("%s is off: %w", target.device, err)
+	if err := e.turnOn(ctx, path, options); err != nil {
+		return false, fmt.Errorf("%s is off: %w", path, err)
 	}
 	return true, nil
 }
 
-// stayDrained adds to a refusal at one device that the drained devices
-// before it stay drained.
+// stayDrained adds to a refusal at one file that the files drained before
+// it stay drained.
 func stayDrained(err error, drained int) error {
 	if drained > 0 {
-		return fmt.Errorf("%w; the %d devices drained before it stay drained", err, drained)
+		return fmt.Errorf("%w; the %d swap files drained before it stay drained", err, drained)
 	}
 	return err
 }
@@ -153,13 +123,9 @@ func drainRefusal(reason apischema.SwapDrainBlockedReason) string {
 	case apischema.SwapDrainNothingParked:
 		return "no data is parked on disk swap"
 	case apischema.SwapDrainNotEnoughMemory:
-		return "there is not enough free memory to take back the data parked on disk swap"
-	case apischema.SwapDrainUnmanagedDevice:
-		return "the parked data is on swap devices /etc/fstab does not name, or names without a unit LinuxIO can use, which could not be started again"
-	case apischema.SwapDrainUnitHeldOff:
-		return "a swap device holding parked data is held off at boot, so it could not be started again"
-	case apischema.SwapDrainOthersCanWrite:
-		return "the parked data is on swap LinuxIO does not manage: " + errOthersCanRedirect.Error()
+		return "there is not enough free memory and free swap to take back the data parked on the swap files"
+	case apischema.SwapDrainOtherSwap:
+		return "the parked data is on swap LinuxIO does not turn off: a partition, an LVM volume or a swap file it does not change"
 	default:
 		return "drain is blocked: " + string(reason)
 	}

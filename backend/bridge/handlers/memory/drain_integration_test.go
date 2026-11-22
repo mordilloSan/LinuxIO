@@ -37,14 +37,14 @@ const drainBound = 15 * time.Minute
 // can be told to reclaim their memory and to cap their reads.
 const drainTestCgroup = "/sys/fs/cgroup/linuxio-drain-test"
 
-// TestMemoryDrainIntegration parks real data on a swap device and brings it
+// TestMemoryDrainIntegration parks real data on a swap file and brings it
 // back through the drain, on the real kernel and systemd: a drain cancelled
-// while swapoff reads pages back must leave the device swapping with most
-// of the data still on it, and a full drain must empty the device, start it
+// while swapoff reads pages back must leave the file swapping with most of
+// the data still on it, and a full drain must empty the file, turn it on
 // again and leave the data as it was.
 //
-// LINUXIO_MEMORY_DRAIN_DEVICE names the device, which must be active and in
-// /etc/fstab, and LINUXIO_MEMORY_DRAIN_MIB is how much to park.
+// LINUXIO_MEMORY_DRAIN_DEVICE names the swap file, which must be active and
+// one LinuxIO can remove, and LINUXIO_MEMORY_DRAIN_MIB is how much to park.
 // LINUXIO_MEMORY_DRAIN_READ_BPS caps the reads from the device, in bytes a
 // second, once the data is parked, and LINUXIO_MEMORY_DRAIN_MIN_SECONDS is
 // how long the full drain then has to take at least: together they show a
@@ -100,79 +100,14 @@ func TestMemoryDrainIntegration(t *testing.T) {
 	if elapsed < atLeast {
 		t.Errorf("the drain took %s, want more than %s to show a swapoff that outlasts systemd's timeout", elapsed.Round(time.Second), atLeast)
 	}
-	for i, holder := range holders {
-		if err := holder.check(); err != nil {
-			t.Errorf("holder %d: the data that came back from swap is not the data that was parked: %v", i, err)
-		}
-	}
+	checkHolders(t, holders)
 }
 
-// TestMemoryDrainAliasIntegration drains the swap device
-// LINUXIO_MEMORY_DRAIN_DEVICE, which /etc/fstab names by UUID=, through its
-// unit, dev-disk-by\x2duuid-<uuid>.swap: an alias of the device's own unit.
-// Once swapoff took the device away the alias must read inactive within the
-// 15 seconds a drain waits for it, or the drain would wait them out and its
-// start would do nothing; a start of the alias must bring the device back.
-// The rig names the drain's data disk by UUID= for this test.
-func TestMemoryDrainAliasIntegration(t *testing.T) {
-	if os.Getenv("LINUXIO_RUN_MEMORY_INTEGRATION") != "1" {
-		t.Skip("set LINUXIO_RUN_MEMORY_INTEGRATION=1 and run as root in the test VM")
-	}
-	device := os.Getenv("LINUXIO_MEMORY_DRAIN_DEVICE")
-	if os.Geteuid() != 0 || device == "" {
-		t.Skip("needs root and LINUXIO_MEMORY_DRAIN_DEVICE")
-	}
-	ctx := t.Context()
-	e := newExecutor(func(apischema.SwapProgress) {})
-	unit := drainUnit(t, e, device)
-	if !strings.HasPrefix(unit, `dev-disk-by\x2duuid-`) {
-		t.Fatalf("/etc/fstab names %s with the unit %s, want one by UUID=", device, unit)
-	}
-	own, escapeErr := systemd.EscapePath(device)
-	if escapeErr != nil {
-		t.Fatal(escapeErr)
-	}
-	own += ".swap"
-	assertSwapUnitActive(t, e, device, unit)
-	if err := e.swapOffDevice(ctx, device); err != nil {
-		t.Fatalf("swapoff %s: %v", device, err)
-	}
-	start := time.Now()
-	if err := waitUntil(ctx, e.waits.stopGrace, e.waits.poll, func() (bool, error) {
-		state, err := e.sys.activeState(ctx, unit)
-		return state != "active" && state != "deactivating", err
-	}); err != nil {
-		t.Fatalf("%s still reads active %s after %s left: %v", unit, e.waits.stopGrace, device, err)
-	}
-	t.Logf("%s read off %s after swapoff took %s away", unit, time.Since(start).Round(time.Millisecond), device)
-	if err := e.sys.startUnit(ctx, unit); err != nil {
-		t.Fatal(err)
-	}
-	// One start must do: a drain sends it again only after stopGrace.
-	if err := waitUntil(ctx, e.waits.stopGrace, e.waits.poll, e.deviceIs(device, true)); err != nil {
-		t.Fatalf("a start of %s did not bring %s back: %v", unit, device, err)
-	}
-	assertSwapUnitActive(t, e, device, unit)
-	assertSwapUnitActive(t, e, device, own)
-	view, err := e.readView(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	i := slices.IndexFunc(view.fstab, func(entry fstabSwap) bool { return entry.device == device })
-	start = time.Now()
-	if drained, err := e.drainDevice(ctx, view.fstab[i], 0); err != nil || !drained {
-		t.Fatalf("drain %s: drained %v, %v", device, drained, err)
-	}
-	if elapsed := time.Since(start); elapsed >= e.waits.stopGrace {
-		t.Errorf("the drain of %s took %s, want less than the %s it waits for %s", device, elapsed.Round(time.Second), e.waits.stopGrace, unit)
-	}
-	assertSwapUnitActive(t, e, device, unit)
-}
-
-// TestMemoryDrainHolder is one of the processes TestMemoryDrainIntegration
-// starts: it fills memory with data that does not compress, so zswap passes
-// it on to the disk, asks the kernel to page it out, says it is ready, and
-// when told to checks that the data is what it was.
+// TestMemoryDrainHolder is one of the processes the root tests start to park
+// data on swap: it fills memory with data that does not compress, so zswap
+// passes it on to the disk, asks the kernel to page it out and says it is
+// ready. Each "check" line it reads it answers "same" or "changed" by
+// comparing the data with what it was; it ends when its input does.
 func TestMemoryDrainHolder(t *testing.T) {
 	size := envInt(t, "LINUXIO_MEMORY_DRAIN_HOLD_MIB", 0) << 20
 	if size == 0 {
@@ -189,26 +124,49 @@ func TestMemoryDrainHolder(t *testing.T) {
 		t.Fatalf("page out: %v", err)
 	}
 	fmt.Println("ready")
-	if _, err := bufio.NewReader(os.Stdin).ReadString('\n'); err != nil {
-		t.Fatalf("wait to be told to check: %v", err)
-	}
-	if sha256.Sum256(data) != sum {
-		t.Fatal("the data changed")
+	in := bufio.NewScanner(os.Stdin)
+	for in.Scan() {
+		if in.Text() != "check" {
+			t.Fatalf("told %q, want check", in.Text())
+		}
+		if sha256.Sum256(data) != sum {
+			fmt.Println("changed")
+			continue
+		}
+		fmt.Println("same")
 	}
 }
 
 // drainHolder is one running TestMemoryDrainHolder.
 type drainHolder struct {
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
+	stdin  io.WriteCloser
+	stdout *bufio.Reader
 }
 
-// check tells the holder to compare its data and waits for its verdict.
+// check tells the holder to compare its data and reads its verdict.
 func (h drainHolder) check() error {
 	if _, err := io.WriteString(h.stdin, "check\n"); err != nil {
 		return err
 	}
-	return h.cmd.Wait()
+	line, err := h.stdout.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	if verdict := strings.TrimSpace(line); verdict != "same" {
+		return fmt.Errorf("the holder says its data %s", verdict)
+	}
+	return nil
+}
+
+// checkHolders has each holder compare its data with what it parked, which
+// any of it that went to swap and came back must be.
+func checkHolders(t *testing.T, holders []drainHolder) {
+	t.Helper()
+	for i, holder := range holders {
+		if err := holder.check(); err != nil {
+			t.Errorf("holder %d: the data that came back from swap is not the data that was parked: %v", i, err)
+		}
+	}
 }
 
 // startDrainHolders starts the holders, each with mib MiB, and waits until
@@ -231,11 +189,15 @@ func startDrainHolders(t *testing.T, mib int) []drainHolder {
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("start holder %d: %v", i, err)
 		}
-		t.Cleanup(func() { _ = cmd.Process.Kill() })
-		if line, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || strings.TrimSpace(line) != "ready" {
+		t.Cleanup(func() {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		})
+		out := bufio.NewReader(stdout)
+		if line, err := out.ReadString('\n'); err != nil || strings.TrimSpace(line) != "ready" {
 			t.Fatalf("holder %d said %q, %v; want ready", i, line, err)
 		}
-		holders = append(holders, drainHolder{cmd: cmd, stdin: stdin})
+		holders = append(holders, drainHolder{stdin: stdin, stdout: out})
 	}
 	return holders
 }
@@ -316,8 +278,10 @@ func stopSwapAheadOf(t *testing.T, e *executor, device string) {
 		restartCtx := context.WithoutCancel(ctx)
 		if err := resetLeftZram(restartCtx, e, provider); err != nil {
 			t.Errorf("start zram again: %v", err)
-		} else if err := e.startUntilBack(restartCtx, unit, e.zramIs(true)); err != nil {
+		} else if err := e.sys.startUnit(restartCtx, unit); err != nil {
 			t.Errorf("start zram again: %v", err)
+		} else if err := waitUntil(restartCtx, e.waits.swapOn, e.waits.poll, e.zramIs(true)); err != nil {
+			t.Errorf("wait for zram to swap again: %v", err)
 		}
 	})
 	if err := e.sys.stopUnit(ctx, unit); err != nil {
@@ -396,15 +360,12 @@ func cgroupStat(t *testing.T, key string) uint64 {
 	return 0
 }
 
-// capDrainReads caps what the cgroup reads from device, in bytes a second,
-// until the test ends. swapoff runs in the cgroup, so its reads are capped.
+// capDrainReads caps what the cgroup reads from the disk that holds device,
+// a swap file or partition, in bytes a second, until the test ends. swapoff
+// runs in the cgroup, so its reads are capped.
 func capDrainReads(t *testing.T, device string, bps int) {
 	t.Helper()
-	var stat unix.Stat_t
-	if err := unix.Stat(device, &stat); err != nil {
-		t.Fatal(err)
-	}
-	disk := fmt.Sprintf("%d:%d", unix.Major(stat.Rdev), unix.Minor(stat.Rdev))
+	disk := swapDisk(t, device)
 	ioMax := filepath.Join(drainTestCgroup, "io.max")
 	if err := os.WriteFile(ioMax, []byte(disk+" rbps="+strconv.Itoa(bps)), 0); err != nil {
 		t.Fatalf("cap the reads from %s: %v", device, err)
@@ -447,6 +408,41 @@ func cancelDrainMidway(t *testing.T, e *executor, device string, parked uint64) 
 	return left
 }
 
+// swapDisk is the whole disk, "major:minor", that holds the swap device at
+// path: a partition's or a disk's own, or for a swap file the source of the
+// mount that holds it (a file's st_dev is anonymous on btrfs). io.max takes
+// a disk, not a partition.
+func swapDisk(t *testing.T, path string) string {
+	t.Helper()
+	var stat unix.Stat_t
+	if err := unix.Stat(path, &stat); err != nil {
+		t.Fatal(err)
+	}
+	device := fmt.Sprintf("%d:%d", unix.Major(stat.Rdev), unix.Minor(stat.Rdev))
+	if stat.Mode&unix.S_IFMT != unix.S_IFBLK {
+		mounts, err := host.readMounts()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mount, _ := mountHolding(mounts, path)
+		if device = host.mountDevice(mount); device == "" {
+			t.Fatalf("the block device under %s (mount %+v) cannot be told", path, mount)
+		}
+	}
+	sys, err := filepath.EvalSymlinks("/sys/dev/block/" + device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(sys, "partition")); err == nil {
+		text, err := os.ReadFile(filepath.Join(filepath.Dir(sys), "dev"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		device = strings.TrimSpace(string(text))
+	}
+	return device
+}
+
 func envInt(t *testing.T, name string, fallback int) int {
 	t.Helper()
 	text := os.Getenv(name)
@@ -460,20 +456,23 @@ func envInt(t *testing.T, name string, fallback int) int {
 	return n
 }
 
-// drainUnit returns the unit of the fstab entry active as device.
+// drainUnit returns the unit systemd-fstab-generator makes for the swap
+// file device, which must be an active one LinuxIO can remove.
 func drainUnit(t *testing.T, e *executor, device string) string {
 	t.Helper()
 	view, err := e.readView(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, entry := range view.fstab {
-		if entry.device == device {
-			return entry.unit
-		}
+	row, ok := findRow(view.status, device)
+	if !ok || !row.Active || row.LockedReason != "" {
+		t.Fatalf("%s is not an active swap file LinuxIO can remove: %+v", device, view.status.SwapFiles)
 	}
-	t.Fatalf("%s is not an active swap device /etc/fstab names: %+v", device, view.fstab)
-	return ""
+	name, err := systemd.EscapePath(device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return name + ".swap"
 }
 
 // swapUsedElsewhere is the bytes in use on the swap devices other than

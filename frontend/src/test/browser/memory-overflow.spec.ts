@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 // The fixture is the dashboard's Memory card on a host that swaps to its
-// swap file, with an /etc/default/zramswap the admin wrote
+// swap file /swap.img, with an /etc/default/zramswap the admin wrote
 // (fixture/routes/MemoryOverflowPage.tsx). It has no bridge: nothing here
 // applies a change.
 
@@ -94,9 +94,7 @@ test("the confirm step names what it changes, opens on Back and returns to Apply
     name: "Switch to compressed memory?",
   });
   await expect(confirm).toBeVisible();
-  await expect(confirm).toContainText(
-    "The swap file is turned off and stays off after a restart.",
-  );
+  await expect(confirm).toContainText("/swap.img, 4 GB, is removed.");
   await expect(confirm).toContainText(
     "/etc/default/zramswap holds zram settings that are not LinuxIO's. It is replaced, and a copy is kept as /etc/default/zramswap.before-linuxio.",
   );
@@ -112,4 +110,64 @@ test("the confirm step names what it changes, opens on Back and returns to Apply
   await expect(page.getByRole("button", { name: "Apply" })).toBeFocused();
   await expect(radio(page, "Compressed memory only")).toBeChecked();
   await expect(page).toHaveURL(/\?dialog=memory-overflow$/);
+});
+
+test("a swap file's Resize opens a size field, and Back returns to the button", async ({
+  page,
+}) => {
+  await openFromPencil(page);
+  const swapFiles = page.getByRole("list", { name: "Swap files" });
+  await expect(swapFiles).toContainText("/swap.img");
+  await expect(swapFiles).toContainText("4 GB, none used");
+
+  const resizeButton = page.getByRole("button", { name: "Resize /swap.img" });
+  await resizeButton.click();
+  const resize = page.getByRole("dialog", { name: "Resize /swap.img" });
+  await expect(resize).toBeVisible();
+  const size = page.getByRole("spinbutton", { name: "Size in MiB" });
+  await expect(size).toBeFocused();
+  await expect(size).toHaveValue("4096");
+  await expect(resize).toContainText(
+    "From 256 to 30720 MiB. 30720 MiB is the largest size the disk allows.",
+  );
+  // The current size changes nothing; another size within the limits can be
+  // sent.
+  await expect(
+    page.getByRole("button", { name: "Resize", exact: true }),
+  ).toBeDisabled();
+  await size.fill("8192");
+  await expect(
+    page.getByRole("button", { name: "Resize", exact: true }),
+  ).toBeEnabled();
+  await size.fill("40000");
+  await expect(resize).toContainText(
+    "At most 30720 MiB, the largest size the disk allows.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Resize", exact: true }),
+  ).toBeDisabled();
+
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(dialog(page)).toBeVisible();
+  await expect(resizeButton).toBeFocused();
+});
+
+test("Remove asks first, naming the file, its size and that the host is left without swap", async ({
+  page,
+}) => {
+  await openFromPencil(page);
+  await page.getByRole("button", { name: "Remove /swap.img" }).click();
+
+  const remove = page.getByRole("dialog", { name: "Remove /swap.img?" });
+  await expect(remove).toContainText(
+    "/swap.img, 4 GB, is turned off, taken out of /etc/fstab and deleted.",
+  );
+  await expect(remove).toContainText(
+    "The host then has no swap. If memory runs out, Linux will close programs.",
+  );
+  await expect(page.getByRole("button", { name: "Back" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Remove /swap.img" }),
+  ).toBeFocused();
 });

@@ -129,14 +129,16 @@ var StringEnums = map[string][]string{
 	"SwapDeviceKind":            enumNames(SwapDeviceFile, SwapDevicePartition, SwapDeviceZram),
 	"SwapDiskHint":              enumNames("", SwapDiskHintMMC, SwapDiskHintRemovable),
 	"ZramProvider":              enumNames("", ZramProviderTools, ZramProviderGenerator),
-	"ZramUnavailableReason":     enumNames("", ZramPackageMissing, ZramSwapPartitionActive),
-	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainUnmanagedDevice, SwapDrainUnitHeldOff, SwapDrainOthersCanWrite),
-	"SwapFileUnmanagedReason":   enumNames("", SwapFileNotInFstab, SwapFileOthersCanWrite, SwapFileUnitUnusable),
+	"ZramUnavailableReason":     enumNames("", ZramPackageMissing),
+	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainOtherSwap),
+	"SwapFileLockedReason":      enumNames("", SwapFileNotInFstab, SwapFileNotRootOnly, SwapFileHibernation),
+	"SwapFileResizeReason":      enumNames("", SwapFileResizeMissing, SwapFileResizeNoHeader, SwapFileResizeOff, SwapFileResizeUnsupportedFilesystem, SwapFileResizeReadOnly, SwapFileResizeBtrfsLayout),
+	"SwapFileCreateReason":      enumNames("", SwapFileCreateExists, SwapFileCreateUnsupportedFilesystem, SwapFileCreateReadOnly, SwapFileCreateBtrfsLayout, SwapFileCreateNotEnoughSpace, SwapFileCreateFolderNotRootOnly, SwapFileCreatePathTaken),
 	"SwapStep":                  enumNames(SwapSteps...),
 	"SwapLeftWhat":              enumNames(SwapLeftSwapFile, SwapLeftZram, SwapLeftZramSize),
 	"BtrfsSpareState":           enumNames(btrfs.SpareReady, btrfs.SpareAbsent, btrfs.SpareTooSmall, btrfs.SpareInUse, btrfs.SpareUnknown),
 	"BtrfsRebuildState":         enumNames(btrfs.RebuildWaiting, btrfs.RebuildRunning, btrfs.RebuildFailed, btrfs.RebuildRefused),
-	"SwapLeftReason":            enumNames(SwapLeftNotEnoughMemory, SwapLeftZramNotSwapping, SwapLeftNotIdentified, SwapLeftOthersCanWrite, SwapLeftNotManaged, SwapLeftNoOtherSwap, SwapLeftOtherSize),
+	"SwapLeftReason":            enumNames(SwapLeftNotEnoughMemory, SwapLeftZramNotSwapping, SwapLeftNotManaged, SwapLeftNoOtherSwap, SwapLeftOtherSize),
 }
 
 var ExtraTypes = []TypeSpec{

@@ -234,9 +234,10 @@ fi
 pass "the RHEL PAM file is the Debian one line for line"
 
 # The SELinux policy: its file contexts name only files LinuxIO puts there (the
-# auth binary, the banner update-issue writes); the banner's sits in an
-# optional block, so a policy without its type still loads the rest; and its
-# parentheses balance outside comments and strings.
+# auth binary, the banner update-issue writes, the memory page's swap files);
+# the banner's and the swap files' sit in optional blocks, so a policy without
+# their types still loads the rest; and its parentheses balance outside
+# comments and strings.
 SELINUX_CIL="${PACKAGING}/selinux/linuxio.cil"
 UPDATE_ISSUE="${PACKAGING}/scripts/update-issue"
 auth_binary=/usr/libexec/linuxio/linuxio-auth
@@ -245,12 +246,30 @@ issue_file=$(sed -n 's/^OUTPUT_FILE="\${OUTPUT_FILE:-\(.*\)}"$/\1/p' "$UPDATE_IS
 [[ -n "$issue_file" ]] || fail "update-issue has no default OUTPUT_FILE"
 filecon_paths=$(sed -n 's/^[[:blank:]]*(filecon "\([^"]*\)".*/\1/p' "$SELINUX_CIL")
 printf '%s\n' "$filecon_paths" | grep -Fqx "$auth_binary" || fail "linuxio.cil gives no file context to ${auth_binary}"
+# The memory page's swap file and the file a resize turns on beside it, as
+# file-context regular expressions (docs/process-systemd-architecture.md,
+# "SELinux").
+swap_file_contexts=$(printf '%s\n' '/var/lib/linuxio/swap/swapfile' '/var/lib/linuxio/swap/swapfile\.linuxio-resize')
 while IFS= read -r path; do
 	case "$path" in
 	"$auth_binary" | "$issue_file") ;;
-	*) fail "linuxio.cil gives a file context to ${path}, which LinuxIO does not install" ;;
+	*) printf '%s\n' "$swap_file_contexts" | grep -Fqx -- "$path" ||
+		fail "linuxio.cil gives a file context to ${path}, which LinuxIO does not install" ;;
 	esac
 done <<<"$filecon_paths"
+# The swap files' contexts sit alone in the optional block linuxio_swapfile,
+# with swapfile_t, the type mkswap gives them, and nothing else is in it.
+swap_block=$(sed -e 's/;.*//' "$SELINUX_CIL" | awk '
+	/^\(optional linuxio_swapfile$/ { inside = 1; next }
+	inside && /^\)$/ { exit }
+	inside && NF { line = $0; sub(/^[[:blank:]]+/, "", line); print line }')
+expected_swap_block=$(while IFS= read -r path; do
+	printf '(filecon "%s" file (system_u object_r swapfile_t ((s0) (s0))))\n' "$path"
+done <<<"$swap_file_contexts")
+if ! swap_diff=$(diff <(printf '%s\n' "$expected_swap_block") <(printf '%s\n' "$swap_block")); then
+	fail "linuxio.cil's optional block linuxio_swapfile changed (expected <, linuxio.cil >):
+${swap_diff}"
+fi
 # A file made at run time has its folder's type until something relabels it.
 if printf '%s\n' "$filecon_paths" | grep -Fqx "$issue_file"; then
 	grep -Fq 'restorecon "${OUTPUT_FILE}"' "$UPDATE_ISSUE" ||

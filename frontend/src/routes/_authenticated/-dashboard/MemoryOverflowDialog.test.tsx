@@ -6,9 +6,11 @@ import { linuxio, LinuxIOError } from "@/api";
 import {
   foreignZramConfig,
   generatorDevice,
-  swapFile,
+  swapFileCreate,
   swapFileDevice,
+  swapFileRow,
   swapModeResult,
+  swapPartitionDevice,
   swapStatus,
   zramDevice,
 } from "@/test/memoryStatusFixture";
@@ -32,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   hold: null as Promise<unknown> | null,
   onClose: vi.fn(),
   progress: null as string | null,
+  progressDetail: null as unknown,
   requests: [] as { request: unknown; route: string }[],
   results: {} as Record<string, unknown>,
   status: null as unknown,
@@ -71,7 +74,12 @@ vi.mock("@/api/linuxio-core", async (importOriginal) => ({
     const route = `${handler}.${command}`;
     mocks.requests.push({ request, route });
     handlers.onSnapshot?.({ id: "task-1" });
-    if (mocks.progress) handlers.onProgress?.({ message: mocks.progress });
+    if (mocks.progress) {
+      handlers.onProgress?.({
+        detail: mocks.progressDetail,
+        message: mocks.progress,
+      });
+    }
     if (mocks.hold) await mocks.hold;
     if (mocks.failWith) throw mocks.failWith;
     const result = mocks.results[route];
@@ -87,7 +95,12 @@ vi.mock("@/api/linuxio-core", async (importOriginal) => ({
   ) => {
     mocks.watched.push(taskId);
     handlers.onSnapshot?.({ id: taskId });
-    if (mocks.progress) handlers.onProgress?.({ message: mocks.progress });
+    if (mocks.progress) {
+      handlers.onProgress?.({
+        detail: mocks.progressDetail,
+        message: mocks.progress,
+      });
+    }
     if (mocks.hold) await mocks.hold;
     if (mocks.failWith) throw mocks.failWith;
     mocks.status = mocks.watchResult;
@@ -100,7 +113,7 @@ const diskStatus = (overrides: Partial<SwapStatus> = {}) =>
     devices: [swapFileDevice()],
     mode: "disk",
     recommended_mode: "zswap",
-    swap_file: swapFile(),
+    swap_files: [swapFileRow()],
     swappiness: 60,
     ...overrides,
   });
@@ -127,7 +140,10 @@ const renderSection = async (status: SwapStatus) => {
 
 const radio = (name: string) => screen.getByRole("radio", { name });
 
-// The dialog while it asks before stopping the swap file.
+// The banner at the top; the running step's caption is a status too.
+const banner = () => screen.getAllByRole("status")[0];
+
+// The dialog while it asks before switching to compressed memory.
 const confirmStep = () =>
   screen.queryByRole("dialog", { name: "Switch to compressed memory?" });
 
@@ -144,6 +160,7 @@ beforeEach(() => {
   mocks.hold = null;
   mocks.onClose.mockClear();
   mocks.progress = null;
+  mocks.progressDetail = null;
   mocks.requests = [];
   mocks.results = {};
   mocks.tasks = [];
@@ -201,29 +218,30 @@ describe("MemoryOverflowDialog banner", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers no action when a swap partition blocks zram", async () => {
-    await renderSection(
+  it("offers compressed memory beside a swap partition, which stays on", async () => {
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
+    const { user } = await renderSection(
       swapStatus({
-        devices: [],
-        mode: "none",
-        zram_available: false,
-        zram_provider: "",
-        zram_unavailable_reason: "swap_partition_active",
+        devices: [swapPartitionDevice()],
+        mode: "disk",
+        swappiness: 60,
       }),
     );
 
-    expect(
-      screen.getByText("If memory runs out, Linux will close programs."),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Turn on compressed memory" }),
-    ).not.toBeInTheDocument();
-    expect(radio("Compressed memory only")).toBeDisabled();
-    expect(
-      screen.getByText(
-        "A swap partition is active. LinuxIO only manages swap files.",
-      ),
-    ).toBeVisible();
+    expect(radio("Compressed memory only")).toBeEnabled();
+    expect(radio("Compressed memory only")).toHaveAccessibleDescription(
+      /\/dev\/vdb1 stays on and takes what compressed memory cannot hold\./,
+    );
+    await user.click(radio("Compressed memory only"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    // Nothing is removed, so nothing is asked.
+    await waitFor(() =>
+      expect(mocks.requests).toEqual([
+        { request: { mode: "zram" }, route: "memory.set_swap_mode" },
+      ]),
+    );
+    expect(confirmStep()).not.toBeInTheDocument();
   });
 
   it("asks to finish a switch that left both active", async () => {
@@ -231,13 +249,13 @@ describe("MemoryOverflowDialog banner", () => {
       swapStatus({
         devices: [zramDevice, swapFileDevice(GIB)],
         mode: "mixed",
-        swap_file: swapFile(),
+        swap_files: [swapFileRow({ used: GIB })],
       }),
     );
 
     expect(
       screen.getByText(
-        "Compressed memory and the swap file are both active. Choose one below and apply to finish.",
+        "Compressed memory and a swap file are both active. Choose one below and apply to finish.",
       ),
     ).toBeVisible();
     expect(
@@ -280,18 +298,17 @@ describe("MemoryOverflowDialog banner", () => {
   it.each([
     ["not_enough_memory", "Not enough free memory right now"],
     [
-      "unmanaged_device",
-      "This swap device is not in /etc/fstab, or has no systemd unit LinuxIO can use, so LinuxIO cannot restart it",
-    ],
-    [
-      "unit_held_off",
-      "This swap device is switched off for the next start, so LinuxIO will not empty it",
+      "other_swap",
+      "The data is on /dev/vdb1, which LinuxIO does not turn off, so it stays there",
     ],
   ] as const)("disables the drain and says why for %s", async (code, hint) => {
     await renderSection(
       diskStatus({
         can_drain: false,
-        devices: [swapFileDevice(GIB)],
+        devices:
+          code === "other_swap"
+            ? [swapFileDevice(), swapPartitionDevice(GIB)]
+            : [swapFileDevice(GIB)],
         drain_blocked_reason: code,
       }),
     );
@@ -323,13 +340,13 @@ describe("MemoryOverflowDialog banner", () => {
     const { user } = await renderSection(
       diskStatus({
         devices: [swapFileDevice(0, "btrfs")],
-        swap_file: swapFile({ fs_type: "btrfs" }),
+        swap_files: [swapFileRow({ blocks_snapshots: true, fs_type: "btrfs" })],
       }),
     );
 
-    expect(
-      screen.getByText("The swap file blocks snapshots of the system drive."),
-    ).toBeVisible();
+    expect(banner()).toHaveTextContent(
+      "/swap.img blocks snapshots of the subvolume it is in.",
+    );
     await user.click(
       screen.getByRole("button", { name: "Switch to compressed memory" }),
     );
@@ -349,16 +366,16 @@ describe("MemoryOverflowDialog banner", () => {
     await renderSection(
       diskStatus({
         devices: [swapFileDevice(0, "btrfs")],
-        swap_file: swapFile({ fs_type: "btrfs" }),
+        swap_files: [swapFileRow({ blocks_snapshots: true, fs_type: "btrfs" })],
         zram_available: false,
         zram_provider: "",
         zram_unavailable_reason: "package_missing",
       }),
     );
 
-    expect(
-      screen.getByText("The swap file blocks snapshots of the system drive."),
-    ).toBeVisible();
+    expect(banner()).toHaveTextContent(
+      "/swap.img blocks snapshots of the subvolume it is in.",
+    );
     expect(
       screen.queryByRole("button", { name: "Switch to compressed memory" }),
     ).not.toBeInTheDocument();
@@ -368,64 +385,22 @@ describe("MemoryOverflowDialog banner", () => {
     await renderSection(
       diskStatus({
         devices: [swapFileDevice(0, "btrfs")],
-        swap_file: swapFile({ fs_type: "btrfs", managed: false }),
-      }),
-    );
-
-    expect(
-      screen.getByText("The swap file blocks snapshots of the system drive."),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Switch to compressed memory" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("says up front that it leaves a swap file in a folder others can change", async () => {
-    await renderSection(
-      diskStatus({
-        can_drain: false,
-        devices: [swapFileDevice(GIB)],
-        drain_blocked_reason: "others_can_write",
-        swap_file: swapFile({
-          managed: false,
-          path: "/home/ana/swapfile",
-          unmanaged_reason: "others_can_write",
-        }),
-      }),
-    );
-
-    expect(
-      screen.getByText(
-        /LinuxIO does not manage the swap file \/home\/ana\/swapfile/,
-      ),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Bring back to memory" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText(
-        "This swap device is in a folder that users other than root can change, so LinuxIO will not empty it",
-      ),
-    ).toBeVisible();
-  });
-
-  it("warns up front about each fstab swap entry whose unit LinuxIO cannot name", async () => {
-    await renderSection(
-      diskStatus({
-        unmanaged_fstab_swaps: [
-          { reason: "unit_unusable", source: "LABEL=swap!1" },
-          { reason: "unit_unusable", source: "PARTLABEL=café" },
+        swap_files: [
+          swapFileRow({
+            blocks_snapshots: true,
+            fs_type: "btrfs",
+            locked_reason: "not_in_fstab",
+          }),
         ],
       }),
     );
 
-    for (const source of ["LABEL=swap!1", "PARTLABEL=café"]) {
-      expect(
-        screen.getByText(
-          `LinuxIO does not manage the swap entry ${source} in /etc/fstab: it has no systemd unit LinuxIO can use. LinuxIO will not turn it on or off, empty it or keep it off after a restart, whatever is chosen here.`,
-        ),
-      ).toBeVisible();
-    }
+    expect(banner()).toHaveTextContent(
+      "/swap.img blocks snapshots of the subvolume it is in.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Switch to compressed memory" }),
+    ).not.toBeInTheDocument();
   });
 
   it("says memory is fine when nothing is parked", async () => {
@@ -460,8 +435,12 @@ describe("MemoryOverflowDialog rows", () => {
         "No backup. If it fills up, Linux closes the hungriest program, and a VM would stop like a power cut.",
       ),
     ).toBeVisible();
+    // An ext4 swap file blocks no snapshots, so neither row speaks of them.
     expect(
-      screen.getByText("Blocks snapshots of the system drive while in use."),
+      screen.queryByText("Blocks snapshots of the system drive while in use."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Writes nothing to disk\. Holds about/),
     ).toBeVisible();
     expect(radio("Disk only")).toHaveAccessibleDescription(
       /Rarely used data goes straight to the swap file/,
@@ -483,17 +462,38 @@ describe("MemoryOverflowDialog rows", () => {
     expect(radio("Compressed memory only")).toBeChecked();
   });
 
-  it("disables the rows that need a swap file, with their reason", async () => {
-    await renderSection(swapStatus());
+  it("disables the rows that need a swap file LinuxIO cannot create, with their reason", async () => {
+    await renderSection(
+      swapStatus({
+        create: swapFileCreate({ blocked_reason: "not_enough_space" }),
+      }),
+    );
 
+    const reason =
+      "Needs a swap file, and LinuxIO cannot create one: the disk has 40 GB free, and a swap file of at least 256 MB must still leave 2 GB free.";
     expect(radio("Compressed memory with the disk as backup")).toBeDisabled();
     expect(radio("Disk only")).toBeDisabled();
-    expect(
-      screen.getAllByText("Needs a swap file on the system drive"),
-    ).toHaveLength(2);
+    expect(screen.getAllByText(reason)).toHaveLength(2);
     expect(radio("Disk only")).toHaveAccessibleDescription(
-      /Needs a swap file on the system drive/,
+      expect.stringContaining(reason),
     );
+  });
+
+  it("disables the rows that need disk swap while a swap file in fstab is off", async () => {
+    await renderSection(
+      swapStatus({
+        swap_files: [
+          swapFileRow({ active: false, resize_blocked_reason: "off" }),
+        ],
+      }),
+    );
+
+    expect(radio("Disk only")).toBeDisabled();
+    expect(
+      screen.getAllByText(
+        "/swap.img is in /etc/fstab and off. LinuxIO does not turn it on: remove it under Swap files to choose this.",
+      ),
+    ).toHaveLength(2);
   });
 
   it("disables zswap on a kernel without it", async () => {
@@ -630,7 +630,7 @@ describe("MemoryOverflowDialog apply", () => {
       swapStatus({
         devices: [zramDevice, swapFileDevice(GIB)],
         mode: "mixed",
-        swap_file: swapFile(),
+        swap_files: [swapFileRow({ used: GIB })],
       }),
     );
 
@@ -662,9 +662,17 @@ describe("MemoryOverflowDialog apply", () => {
     expect(mocks.toast.warning).not.toHaveBeenCalled();
   });
 
-  it("confirms before turning zram on over an active swap file", async () => {
+  it("confirms before turning zram on, naming each swap file it removes", async () => {
     mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
-    const { user } = await renderSection(diskStatus());
+    const { user } = await renderSection(
+      diskStatus({
+        devices: [swapFileDevice(), swapFileDevice(0, "ext4", "/swap2.img")],
+        swap_files: [
+          swapFileRow(),
+          swapFileRow({ path: "/swap2.img", size: 20 * GIB }),
+        ],
+      }),
+    );
 
     await user.click(radio("Compressed memory only"));
     await user.click(screen.getByRole("button", { name: "Apply" }));
@@ -673,13 +681,11 @@ describe("MemoryOverflowDialog apply", () => {
       name: "Switch to compressed memory?",
     });
     expect(dialog).toHaveTextContent("Compressed memory is turned on.");
+    expect(dialog).toHaveTextContent("/swap.img, 4 GB, is removed.");
+    expect(dialog).toHaveTextContent("/swap2.img, 20 GB, is removed.");
     expect(dialog).toHaveTextContent(
-      "Data parked in the swap file is brought back to memory.",
+      "Data parked in a swap file is brought back to memory before the file is turned off and deleted.",
     );
-    expect(dialog).toHaveTextContent(
-      "The swap file is turned off and stays off after a restart.",
-    );
-    expect(dialog).toHaveTextContent("The file itself is not deleted.");
     expect(mocks.requests).toEqual([]);
     // The step opens on the way back, and going back returns to Apply.
     expect(screen.getByRole("button", { name: "Back" })).toHaveFocus();
@@ -696,22 +702,25 @@ describe("MemoryOverflowDialog apply", () => {
     await user.click(
       await screen.findByRole("button", { name: "Turn on compressed memory" }),
     );
+    // The request names the files the step listed.
     await waitFor(() =>
       expect(mocks.requests).toEqual([
-        { request: { mode: "zram" }, route: "memory.set_swap_mode" },
+        {
+          request: {
+            confirm_remove: ["/swap.img", "/swap2.img"],
+            mode: "zram",
+          },
+          route: "memory.set_swap_mode",
+        },
       ]),
     );
     await waitFor(() => expect(confirmStep()).not.toBeInTheDocument());
   });
 
-  it("does not ask when zram goes on and no swap file is active", async () => {
+  it("does not ask when zram goes on and no swap file is removed", async () => {
     mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
     const { user } = await renderSection(
-      diskStatus({
-        devices: [],
-        mode: "none",
-        swap_file: swapFile({ active: false }),
-      }),
+      diskStatus({ devices: [], mode: "none", swap_files: [] }),
     );
 
     await user.click(radio("Compressed memory only"));
@@ -724,7 +733,9 @@ describe("MemoryOverflowDialog apply", () => {
   it("does not ask before zram when the active swap file is not in fstab", async () => {
     mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
     const { user } = await renderSection(
-      diskStatus({ swap_file: swapFile({ managed: false }) }),
+      diskStatus({
+        swap_files: [swapFileRow({ locked_reason: "not_in_fstab" })],
+      }),
     );
 
     await user.click(radio("Compressed memory only"));
@@ -747,9 +758,7 @@ describe("MemoryOverflowDialog apply", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Switch to compressed memory?",
     });
-    expect(dialog).toHaveTextContent(
-      "The swap file is turned off and stays off after a restart.",
-    );
+    expect(dialog).toHaveTextContent("/swap.img, 4 GB, is removed.");
     expect(dialog).toHaveTextContent(
       "/etc/default/zramswap holds zram settings that are not LinuxIO's. It is replaced, and a copy is kept as /etc/default/zramswap.before-linuxio.",
     );
@@ -762,7 +771,11 @@ describe("MemoryOverflowDialog apply", () => {
     await waitFor(() =>
       expect(mocks.requests).toEqual([
         {
-          request: { confirm_replace: "/etc/default/zramswap", mode: "zram" },
+          request: {
+            confirm_remove: ["/swap.img"],
+            confirm_replace: "/etc/default/zramswap",
+            mode: "zram",
+          },
           route: "memory.set_swap_mode",
         },
       ]),
@@ -775,10 +788,10 @@ describe("MemoryOverflowDialog apply", () => {
     );
     const { user } = await renderSection(
       swapStatus({
+        devices: [zramDevice, swapPartitionDevice()],
         foreign_zram_config: foreignZramConfig(
           "/etc/systemd/zram-generator.conf",
         ),
-        swap_file: swapFile({ active: false }),
         zram_provider: "zram-generator",
       }),
     );
@@ -811,7 +824,6 @@ describe("MemoryOverflowDialog apply", () => {
   it("shows the other zram-generator files with the size each sets, and why leaving zram is refused", async () => {
     await renderSection(
       swapStatus({
-        swap_file: swapFile({ active: false }),
         zram_generator_devices: [generatorDevice()],
         zram_provider: "zram-generator",
       }),
@@ -836,25 +848,26 @@ describe("MemoryOverflowDialog apply", () => {
     ).toHaveLength(2);
   });
 
-  it("says LinuxIO left a swap file that fstab does not name when the switch ends mixed", async () => {
+  it("names the swap file a switch to zram left on", async () => {
     mocks.results["memory.set_swap_mode"] = swapModeResult(
       swapStatus({
         devices: [zramDevice, swapFileDevice(GIB)],
         mode: "mixed",
-        swap_file: swapFile({ managed: false }),
+        swap_files: [swapFileRow({ used: GIB })],
       }),
-      [{ reason: "not_managed", what: "swap_file" }],
+      [{ path: "/swap.img", reason: "zram_not_swapping", what: "swap_file" }],
     );
-    const { user } = await renderSection(
-      diskStatus({ swap_file: swapFile({ managed: false }) }),
-    );
+    const { user } = await renderSection(diskStatus());
 
     await user.click(radio("Compressed memory only"));
     await user.click(screen.getByRole("button", { name: "Apply" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Turn on compressed memory" }),
+    );
 
     await waitFor(() =>
       expect(mocks.toast.warning).toHaveBeenCalledWith(
-        "A swap file that LinuxIO does not manage is still on. LinuxIO manages only one swap file in /etc/fstab.",
+        "Compressed memory is not running, so /swap.img stays on.",
         undefined,
       ),
     );
@@ -866,9 +879,9 @@ describe("MemoryOverflowDialog apply", () => {
       swapStatus({
         devices: [zramDevice, swapFileDevice(GIB)],
         mode: "mixed",
-        swap_file: swapFile(),
+        swap_files: [swapFileRow({ used: GIB })],
       }),
-      [{ reason: "not_enough_memory", what: "swap_file" }],
+      [{ path: "/swap.img", reason: "not_enough_memory", what: "swap_file" }],
     );
     const { user } = await renderSection(
       diskStatus({ devices: [swapFileDevice()] }),
@@ -882,14 +895,14 @@ describe("MemoryOverflowDialog apply", () => {
 
     await waitFor(() =>
       expect(mocks.toast.warning).toHaveBeenCalledWith(
-        "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
+        "Not enough free memory to bring back the data in /swap.img, so it stays on. Apply again when more memory is free.",
         undefined,
       ),
     );
     expect(mocks.toast.success).not.toHaveBeenCalled();
     expect(
       await screen.findByText(
-        "Compressed memory and the swap file are both active. Choose one below and apply to finish.",
+        "Compressed memory and a swap file are both active. Choose one below and apply to finish.",
       ),
     ).toBeVisible();
   });
@@ -1012,7 +1025,7 @@ describe("MemoryOverflowDialog apply", () => {
     expect(mocks.requests).toHaveLength(1);
   });
 
-  it("goes back to the first step when closed from the confirmation while the change runs", async () => {
+  it("leaves the confirmation as the change starts and holds the first step", async () => {
     let finish: () => void = () => {};
     mocks.hold = new Promise<void>((resolve) => {
       finish = resolve;
@@ -1028,12 +1041,15 @@ describe("MemoryOverflowDialog apply", () => {
     await user.click(
       await screen.findByRole("button", { name: "Turn on compressed memory" }),
     );
-    await user.keyboard("{Escape}");
 
-    expect(mocks.onClose).toHaveBeenCalledTimes(1);
-    expect(confirmStep()).not.toBeInTheDocument();
+    await waitFor(() => expect(confirmStep()).not.toBeInTheDocument());
     expect(radio("Compressed memory only")).toBeChecked();
     expect(await screen.findByText("Starting zram")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(mocks.onClose).toHaveBeenCalledTimes(1);
 
     finish();
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledTimes(1));
@@ -1086,7 +1102,13 @@ describe("MemoryOverflowDialog apply", () => {
     mocks.hold = new Promise<void>((resolve) => {
       finish = resolve;
     });
-    mocks.progress = "Stopping the swap file";
+    mocks.progress = "Removing the swap file";
+    mocks.progressDetail = {
+      device: "/swap.img",
+      index: 5,
+      step: "remove_swap_file",
+      total: 5,
+    };
     mocks.tasks = [
       {
         id: "task-9",
@@ -1097,11 +1119,11 @@ describe("MemoryOverflowDialog apply", () => {
     ];
     mocks.watchResult = swapModeResult(
       swapStatus({ devices: [zramDevice, swapFileDevice(GIB)], mode: "mixed" }),
-      [{ reason: "not_enough_memory", what: "swap_file" }],
+      [{ path: "/swap.img", reason: "not_enough_memory", what: "swap_file" }],
     );
     await renderSection(diskStatus());
 
-    expect(await screen.findByText("Stopping the swap file")).toBeVisible();
+    expect(await screen.findByText("Removing /swap.img")).toBeVisible();
     expect(mocks.watched).toEqual(["task-9"]);
     expect(mocks.requests).toEqual([]);
     expect(radio("Compressed memory only")).toBeChecked();
@@ -1110,7 +1132,7 @@ describe("MemoryOverflowDialog apply", () => {
     finish();
     await waitFor(() =>
       expect(mocks.toast.warning).toHaveBeenCalledWith(
-        "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
+        "Not enough free memory to bring back the data in /swap.img, so it stays on. Apply again when more memory is free.",
         undefined,
       ),
     );
@@ -1199,6 +1221,693 @@ describe("MemoryOverflowDialog apply", () => {
       expect(
         screen.queryByText("Moving swapped data back into memory"),
       ).not.toBeInTheDocument(),
+    );
+  });
+});
+
+describe("MemoryOverflowDialog swap files", () => {
+  const MIB = 1024 ** 2;
+  // The list under "Swap files".
+  const swapList = () => screen.getByRole("list", { name: "Swap files" });
+  const sizeField = () =>
+    screen.getByRole("spinbutton", { name: "Size in MiB" });
+
+  it("lists each swap file with its use and actions, then the other swap", async () => {
+    await renderSection(
+      diskStatus({
+        devices: [
+          swapFileDevice(GIB),
+          swapFileDevice(0, "ext4", "/home/swapfile"),
+          swapPartitionDevice(),
+        ],
+        swap_files: [
+          swapFileRow({ used: GIB }),
+          swapFileRow({
+            locked_reason: "not_root_only",
+            path: "/home/swapfile",
+          }),
+          swapFileRow({
+            active: false,
+            path: "/old.img",
+            resize_blocked_reason: "off",
+            size: 2 * GIB,
+          }),
+        ],
+      }),
+    );
+
+    const list = swapList();
+    expect(list).toHaveTextContent("/swap.img4 GB, 1 GB used");
+    expect(
+      screen.getByRole("button", { name: "Resize /swap.img" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Remove /swap.img" }),
+    ).toBeEnabled();
+    // A file LinuxIO does not act on says why and has no buttons.
+    expect(list).toHaveTextContent(
+      "LinuxIO does not resize or remove it: another user could put a file of their own at this name.",
+    );
+    expect(
+      screen.queryByRole("button", { name: /\/home\/swapfile/ }),
+    ).not.toBeInTheDocument();
+    // A file in fstab that is off has Remove only, and says LinuxIO does not
+    // turn it on.
+    expect(list).toHaveTextContent("Off, 2 GB");
+    expect(list).toHaveTextContent(
+      "/etc/fstab names it, and LinuxIO does not turn it on.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Resize /old.img" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove /old.img" }),
+    ).toBeEnabled();
+    // A partition is a plain row.
+    expect(list).toHaveTextContent("/dev/vdb1Partition, 2 GB, none used");
+    expect(
+      screen.getByRole("button", { name: "Create a swap file" }),
+    ).toBeEnabled();
+  });
+
+  it("says why LinuxIO cannot create its swap file", async () => {
+    await renderSection(
+      diskStatus({
+        create: swapFileCreate({
+          blocked_reason: "unsupported_filesystem",
+          fs_type: "zfs",
+        }),
+      }),
+    );
+
+    expect(
+      screen.getByText(
+        "LinuxIO cannot create a swap file: /var/lib/linuxio/swap is on zfs, and LinuxIO makes swap files only on ext4, xfs and btrfs.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Create a swap file" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("resizes a swap file within the limits, and the step closes as the job starts", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.progress = "Resizing the swap file";
+    mocks.progressDetail = {
+      device: "/swap.img",
+      index: 2,
+      step: "resize_swap_file",
+      total: 3,
+    };
+    mocks.results["memory.resize_swap_file"] = diskStatus();
+    // Data is parked and the file can be moved, so the drain and Move are
+    // there to be held too.
+    const { user } = await renderSection(
+      diskStatus({
+        can_drain: true,
+        devices: [swapFileDevice(GIB, "btrfs")],
+        drain_blocked_reason: "",
+        swap_files: [
+          swapFileRow({
+            blocks_snapshots: true,
+            can_move: true,
+            fs_type: "btrfs",
+            used: GIB,
+          }),
+        ],
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+
+    await user.click(screen.getByRole("button", { name: "Resize /swap.img" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Resize /swap.img",
+    });
+    expect(dialog).toHaveTextContent(
+      "To change its size, LinuxIO turns the file off and on again. Data parked in it is brought back to memory first.",
+    );
+    expect(dialog).toHaveTextContent(
+      "From 256 to 30720 MiB. 30720 MiB is the largest size the disk allows.",
+    );
+    expect(sizeField()).toHaveFocus();
+    expect(sizeField()).toHaveValue(4096);
+    // The current size changes nothing.
+    const resize = screen.getByRole("button", { name: "Resize" });
+    expect(resize).toBeDisabled();
+
+    await user.clear(sizeField());
+    await user.type(sizeField(), "30721");
+    expect(dialog).toHaveTextContent(
+      "At most 30720 MiB, the largest size the disk allows.",
+    );
+    expect(resize).toBeDisabled();
+    await user.clear(sizeField());
+    await user.type(sizeField(), "100");
+    expect(dialog).toHaveTextContent("At least 256 MiB.");
+    expect(resize).toBeDisabled();
+    await user.clear(sizeField());
+    await user.type(sizeField(), "8192");
+    expect(resize).toBeEnabled();
+    expect(mocks.requests).toEqual([]);
+
+    await user.click(resize);
+
+    expect(mocks.requests).toEqual([
+      {
+        request: { path: "/swap.img", size: 8192 * MIB },
+        route: "memory.resize_swap_file",
+      },
+    ]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Resize /swap.img" }),
+      ).not.toBeInTheDocument(),
+    );
+    // The first step holds its controls and shows the step, naming the file.
+    expect(await screen.findByText("Resizing /swap.img")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Remove /swap.img" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Move /swap.img" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Create a swap file" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Bring back to memory" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("slider", {
+        name: "Eagerness to move data out of memory",
+      }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(radio("Disk only")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+
+    finish();
+    await waitFor(() =>
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Resized /swap.img",
+        undefined,
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Resize /swap.img" }),
+      ).toBeEnabled(),
+    );
+  });
+
+  it("starts a resize with Enter in the size field", async () => {
+    mocks.results["memory.resize_swap_file"] = diskStatus();
+    const { user } = await renderSection(diskStatus());
+
+    await user.click(screen.getByRole("button", { name: "Resize /swap.img" }));
+    await screen.findByRole("dialog", { name: "Resize /swap.img" });
+    await user.clear(sizeField());
+    await user.type(sizeField(), "2048{Enter}");
+
+    await waitFor(() =>
+      expect(mocks.requests).toEqual([
+        {
+          request: { path: "/swap.img", size: 2048 * MIB },
+          route: "memory.resize_swap_file",
+        },
+      ]),
+    );
+  });
+
+  it("goes back from a step to the button that opened it", async () => {
+    const { user } = await renderSection(diskStatus());
+
+    await user.click(screen.getByRole("button", { name: "Resize /swap.img" }));
+    await screen.findByRole("dialog", { name: "Resize /swap.img" });
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Memory overflow" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Resize /swap.img" }),
+    ).toHaveFocus();
+    expect(mocks.requests).toEqual([]);
+  });
+
+  it("asks before removing a swap file, naming it and its size", async () => {
+    mocks.results["memory.remove_swap_file"] = swapStatus();
+    const { user } = await renderSection(
+      diskStatus({ devices: [zramDevice, swapFileDevice()] }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remove /swap.img" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Remove /swap.img?",
+    });
+    expect(dialog).toHaveTextContent(
+      "/swap.img, 4 GB, is turned off, taken out of /etc/fstab and deleted.",
+    );
+    expect(dialog).toHaveTextContent(
+      "Data parked in it is brought back to memory first.",
+    );
+    expect(dialog).not.toHaveTextContent("The host then has no swap.");
+    expect(screen.getByRole("button", { name: "Back" })).toHaveFocus();
+    expect(mocks.requests).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(mocks.requests).toEqual([
+      { request: { path: "/swap.img" }, route: "memory.remove_swap_file" },
+    ]);
+    await waitFor(() =>
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Removed /swap.img",
+        undefined,
+      ),
+    );
+  });
+
+  it("warns before removing the last swap", async () => {
+    const { user } = await renderSection(diskStatus());
+
+    await user.click(screen.getByRole("button", { name: "Remove /swap.img" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Remove /swap.img?" }),
+    ).toHaveTextContent(
+      "The host then has no swap. If memory runs out, Linux will close programs.",
+    );
+  });
+
+  it("creates LinuxIO's swap file at the size set", async () => {
+    mocks.results["memory.create_swap_file"] = diskStatus();
+    const { user } = await renderSection(swapStatus());
+
+    await user.click(
+      screen.getByRole("button", { name: "Create a swap file" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create a swap file",
+    });
+    expect(dialog).toHaveTextContent(
+      "LinuxIO creates the swap file /var/lib/linuxio/swap/swapfile, adds it to /etc/fstab and turns it on.",
+    );
+    expect(dialog).toHaveTextContent(
+      "From 256 to 38912 MiB. 38912 MiB is the largest size the disk allows.",
+    );
+    expect(sizeField()).toHaveValue(8192);
+
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(mocks.requests).toEqual([
+      { request: { size: 8192 * MIB }, route: "memory.create_swap_file" },
+    ]);
+    await waitFor(() =>
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Swap file created",
+        undefined,
+      ),
+    );
+  });
+
+  it("offers Move only with the btrfs line that says LinuxIO can make the file again", async () => {
+    mocks.results["memory.move_swap_file"] = diskStatus();
+    const { user } = await renderSection(
+      diskStatus({
+        devices: [swapFileDevice(0, "btrfs")],
+        swap_files: [
+          swapFileRow({
+            blocks_snapshots: true,
+            can_move: true,
+            fs_type: "btrfs",
+          }),
+          swapFileRow({
+            blocks_snapshots: true,
+            fs_type: "btrfs",
+            path: "/data/swapfile",
+          }),
+        ],
+      }),
+    );
+
+    expect(swapList()).toHaveTextContent(
+      "/swap.img blocks snapshots of the subvolume it is in. LinuxIO can make it again in a subvolume of its own, at the same size.",
+    );
+    expect(swapList()).toHaveTextContent(
+      "/data/swapfile blocks snapshots of the subvolume it is in.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Move /data/swapfile" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Move /swap.img" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Move /swap.img?",
+    });
+    expect(dialog).toHaveTextContent(
+      "LinuxIO creates the swap file /var/lib/linuxio/swap/swapfile, 4 GB, in a subvolume of its own, adds it to /etc/fstab and turns it on.",
+    );
+    await user.click(screen.getByRole("button", { name: "Move" }));
+
+    expect(mocks.requests).toEqual([
+      { request: { path: "/swap.img" }, route: "memory.move_swap_file" },
+    ]);
+    await waitFor(() =>
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Moved /swap.img into LinuxIO's folder",
+        undefined,
+      ),
+    );
+  });
+
+  it("sets the size of the swap file a switch to disk creates", async () => {
+    mocks.results["memory.set_swap_mode"] = swapModeResult(diskStatus());
+    const { user } = await renderSection(swapStatus());
+
+    expect(radio("Disk only")).toHaveAccessibleDescription(
+      /Creates the swap file \/var\/lib\/linuxio\/swap\/swapfile first, at a size you choose\./,
+    );
+    await user.click(radio("Disk only"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Switch to disk only?",
+    });
+    expect(dialog).toHaveTextContent(
+      "LinuxIO creates the swap file /var/lib/linuxio/swap/swapfile, adds it to /etc/fstab and turns it on.",
+    );
+    await user.clear(sizeField());
+    await user.type(sizeField(), "4096");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(mocks.requests).toEqual([
+      {
+        request: { mode: "disk", swap_file_size: 4096 * MIB },
+        route: "memory.set_swap_mode",
+      },
+    ]);
+  });
+
+  it.each([
+    ["Remove /swap.img", "Remove", "Failed to remove /swap.img"],
+    ["Resize /swap.img", "Resize", "Failed to resize /swap.img"],
+    ["Move /swap.img", "Move", "Failed to move /swap.img"],
+    ["Create a swap file", "Create", "Failed to create the swap file"],
+  ])(
+    "says which file a %s job failed on when the error has no message",
+    async (opener, action, text) => {
+      mocks.failWith = new Error("");
+      const { user } = await renderSection(
+        diskStatus({
+          devices: [zramDevice, swapFileDevice(0, "btrfs")],
+          swap_files: [
+            swapFileRow({
+              blocks_snapshots: true,
+              can_move: true,
+              fs_type: "btrfs",
+            }),
+          ],
+        }),
+      );
+
+      await user.click(screen.getByRole("button", { name: opener }));
+      await screen.findByRole("button", { name: "Back" });
+      if (action === "Resize") {
+        await user.clear(sizeField());
+        await user.type(sizeField(), "8192");
+      }
+      await user.click(screen.getByRole("button", { name: action }));
+
+      await waitFor(() =>
+        expect(mocks.toast.error).toHaveBeenCalledWith(text, undefined),
+      );
+    },
+  );
+
+  it.each([
+    ["a mode change", "memory.set_swap_mode"],
+    ["a drain", "memory.drain_swap"],
+  ])("holds the swap file buttons while %s runs", async (_name, route) => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.results[route] =
+      route === "memory.set_swap_mode"
+        ? swapModeResult(diskStatus({ mode: "zswap" }))
+        : diskStatus();
+    const { user } = await renderSection(
+      diskStatus({
+        can_drain: true,
+        devices: [swapFileDevice(GIB, "btrfs")],
+        drain_blocked_reason: "",
+        swap_files: [
+          swapFileRow({
+            blocks_snapshots: true,
+            can_move: true,
+            fs_type: "btrfs",
+            used: GIB,
+          }),
+        ],
+      }),
+    );
+
+    if (route === "memory.set_swap_mode") {
+      await user.click(radio("Compressed memory with the disk as backup"));
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+    } else {
+      await user.click(
+        screen.getByRole("button", { name: "Bring back to memory" }),
+      );
+    }
+
+    for (const name of [
+      "Resize /swap.img",
+      "Remove /swap.img",
+      "Move /swap.img",
+      "Create a swap file",
+    ]) {
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name })).toBeDisabled(),
+      );
+    }
+
+    finish();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Resize /swap.img" }),
+      ).toBeEnabled(),
+    );
+  });
+
+  it("follows the host while a Resize step is open, and says when the file changed", async () => {
+    const { queryClient, user } = await renderSection(diskStatus());
+    // The status read again, as the 15-second refresh does.
+    const refresh = async (status: SwapStatus) => {
+      mocks.status = status;
+      await act(() =>
+        queryClient.invalidateQueries({
+          queryKey: linuxio.memory.get_swap_status.queryKey,
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          queryClient.getQueryData(linuxio.memory.get_swap_status.queryKey),
+        ).toEqual(status),
+      );
+    };
+
+    await user.click(screen.getByRole("button", { name: "Resize /swap.img" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Resize /swap.img",
+    });
+    await user.clear(sizeField());
+    await user.type(sizeField(), "20480");
+    expect(screen.getByRole("button", { name: "Resize" })).toBeEnabled();
+
+    // The disk filled up meanwhile: the limit follows it.
+    await refresh(
+      diskStatus({ swap_files: [swapFileRow({ max_size: 10 * GIB })] }),
+    );
+    expect(dialog).toHaveTextContent(
+      "At most 10240 MiB, the largest size the disk allows.",
+    );
+    expect(screen.getByRole("button", { name: "Resize" })).toBeDisabled();
+
+    // The file can no longer be resized.
+    await refresh(
+      diskStatus({
+        swap_files: [swapFileRow({ resize_blocked_reason: "read_only" })],
+      }),
+    );
+    expect(dialog).toHaveTextContent(
+      "/swap.img changed while this was open, so go back to see what can be done with it now.",
+    );
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resize" })).toBeDisabled();
+    expect(mocks.requests).toEqual([]);
+  });
+
+  it("says when the file of a Remove or Move step is gone or locked", async () => {
+    const movable = swapFileRow({
+      blocks_snapshots: true,
+      can_move: true,
+      fs_type: "btrfs",
+    });
+    const { queryClient, user } = await renderSection(
+      diskStatus({
+        devices: [zramDevice, swapFileDevice(0, "btrfs")],
+        swap_files: [movable],
+      }),
+    );
+    // The status read again, as the 15-second refresh does.
+    const refresh = async (status: SwapStatus) => {
+      mocks.status = status;
+      await act(() =>
+        queryClient.invalidateQueries({
+          queryKey: linuxio.memory.get_swap_status.queryKey,
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          queryClient.getQueryData(linuxio.memory.get_swap_status.queryKey),
+        ).toEqual(status),
+      );
+    };
+
+    await user.click(screen.getByRole("button", { name: "Remove /swap.img" }));
+    const remove = await screen.findByRole("dialog", {
+      name: "Remove /swap.img?",
+    });
+    expect(remove).not.toHaveTextContent("The host then has no swap.");
+    // zram went away: the file is now the last swap, and the step says so.
+    await refresh(
+      diskStatus({
+        devices: [swapFileDevice(0, "btrfs")],
+        swap_files: [movable],
+      }),
+    );
+    expect(remove).toHaveTextContent(
+      "The host then has no swap. If memory runs out, Linux will close programs.",
+    );
+    // The file is gone.
+    await refresh(diskStatus({ swap_files: [] }));
+    expect(remove).toHaveTextContent(
+      "/swap.img changed while this was open, so go back to see what can be done with it now.",
+    );
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await refresh(
+      diskStatus({
+        devices: [zramDevice, swapFileDevice(0, "btrfs")],
+        swap_files: [movable],
+      }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Move /swap.img" }),
+    );
+    const move = await screen.findByRole("dialog", { name: "Move /swap.img?" });
+    expect(screen.getByRole("button", { name: "Move" })).toBeEnabled();
+    // Move is no longer offered for it.
+    await refresh(
+      diskStatus({ swap_files: [{ ...movable, can_move: false }] }),
+    );
+    expect(move).toHaveTextContent(
+      "/swap.img changed while this was open, so go back to see what can be done with it now.",
+    );
+    expect(screen.getByRole("button", { name: "Move" })).toBeDisabled();
+    // Locked: nothing is offered.
+    await refresh(
+      diskStatus({
+        swap_files: [{ ...movable, locked_reason: "hibernation" }],
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Move" })).toBeDisabled();
+    expect(mocks.requests).toEqual([]);
+  });
+
+  it("reports a failed swap file job with the file, and not a cancelled one", async () => {
+    mocks.failWith = new Error("not enough free memory");
+    const { user } = await renderSection(
+      diskStatus({ devices: [zramDevice, swapFileDevice()] }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remove /swap.img" }));
+    await user.click(await screen.findByRole("button", { name: "Remove" }));
+
+    await waitFor(() =>
+      expect(mocks.toast.error).toHaveBeenCalledWith(
+        "not enough free memory",
+        undefined,
+      ),
+    );
+
+    mocks.toast.error.mockClear();
+    mocks.failWith = new LinuxIOError("operation aborted", 499);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Remove /swap.img" }),
+      ).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: "Remove /swap.img" }));
+    await user.click(await screen.findByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(mocks.requests).toHaveLength(2));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Remove /swap.img" }),
+      ).toBeEnabled(),
+    );
+    expect(mocks.toast.error).not.toHaveBeenCalled();
+  });
+
+  it("takes up a swap file job that is already running when it opens", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.progress = "Adding a temporary swap file";
+    mocks.progressDetail = {
+      device: "/swap.img.linuxio-resize",
+      index: 1,
+      step: "make_temporary_swap",
+      total: 3,
+    };
+    mocks.tasks = [
+      {
+        id: "task-5",
+        metadata: {
+          action: "resize",
+          identity: ["memory", "swap_file"],
+          path: "/swap.img",
+        },
+        state: "running",
+        type: "memory.resize_swap_file",
+      },
+    ];
+    mocks.watchResult = diskStatus();
+    await renderSection(diskStatus());
+
+    expect(
+      await screen.findByText(
+        "Adding the temporary swap file /swap.img.linuxio-resize",
+      ),
+    ).toBeVisible();
+    expect(mocks.watched).toEqual(["task-5"]);
+    expect(
+      screen.getByRole("button", { name: "Resize /swap.img" }),
+    ).toBeDisabled();
+
+    finish();
+    await waitFor(() =>
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Resized /swap.img",
+        undefined,
+      ),
     );
   });
 });

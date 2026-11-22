@@ -375,10 +375,7 @@ the package, seen as a reinstall in the test VM (Ubuntu 26.04,
 init-system-helpers 1.69), enabled and started it, with zram swapping. With the drop-in a reinstall leaves the unit `disabled` and
 `inactive`, as it does after any `systemctl disable`. `zramswap.service`
 is wanted by `multi-user.target` only (`RequiredBy` is empty), so holding
-it holds nothing else back; the rule that a swap unit is held off with a
-condition and never a mask, since `swap.target` requires it
-([Memory overflow](./memory.md#holding-a-swap-file-off-at-boot)), is not
-in play, and a condition is what is used anyway. An admin's own
+it holds nothing else back. An admin's own
 `zramswap.service` that is enabled and running, on a host where zram-tools
 was never installed, stays so (seen in the test VM): the hold does not stop
 a running unit, and its start at boot was the admin's before the install,

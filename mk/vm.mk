@@ -219,7 +219,7 @@ endef
 vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel tests in the test VM
 	@$(call vm_suite,btrfs)
 
-vm-test-memory-integration: ensure-go ## Run the root swap mode and drain tests in the test VM
+vm-test-memory-integration: ensure-go ## Run the root swap file, mode and drain tests in the test VM
 	@$(call vm_suite,memory)
 
 vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests in the test VM

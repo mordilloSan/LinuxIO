@@ -30,6 +30,7 @@ import {
   indexerResultFromFrame,
   mergeIndexerProgress,
 } from "@/tasks/indexerProgress";
+import { swapFileTaskLabel, swapProgressText } from "@/tasks/memoryFeedback";
 import {
   applyScheduledRunEvent,
   isScheduledRun,
@@ -220,9 +221,31 @@ export function useRecoveredTasks(
           case TaskTypes.TASK_TYPE_DOCKER_STORAGE:
             return message ?? "Changing Docker storage";
           case TaskTypes.TASK_TYPE_MEMORY_SWAP_MODE:
-            return message ?? "Changing how memory overflows";
+            return swapProgressText(value) ?? "Changing how memory overflows";
           case TaskTypes.TASK_TYPE_MEMORY_DRAIN:
-            return message ?? "Moving swapped data back into memory";
+            return (
+              swapProgressText(value) ?? "Moving swapped data back into memory"
+            );
+          case TaskTypes.TASK_TYPE_MEMORY_CREATE_SWAP_FILE:
+            return (
+              swapProgressText(value) ??
+              swapFileTaskLabel("create", requestString(metadata, "path"))
+            );
+          case TaskTypes.TASK_TYPE_MEMORY_RESIZE_SWAP_FILE:
+            return (
+              swapProgressText(value) ??
+              swapFileTaskLabel("resize", requestString(metadata, "path"))
+            );
+          case TaskTypes.TASK_TYPE_MEMORY_REMOVE_SWAP_FILE:
+            return (
+              swapProgressText(value) ??
+              swapFileTaskLabel("remove", requestString(metadata, "path"))
+            );
+          case TaskTypes.TASK_TYPE_MEMORY_MOVE_SWAP_FILE:
+            return (
+              swapProgressText(value) ??
+              swapFileTaskLabel("move", requestString(metadata, "path"))
+            );
           case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
             return data?.package_id
               ? `Updating ${data.package_id.split(";")[0]}`
@@ -355,6 +378,10 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_DOCKER_STORAGE:
         case TaskTypes.TASK_TYPE_MEMORY_SWAP_MODE:
         case TaskTypes.TASK_TYPE_MEMORY_DRAIN:
+        case TaskTypes.TASK_TYPE_MEMORY_CREATE_SWAP_FILE:
+        case TaskTypes.TASK_TYPE_MEMORY_RESIZE_SWAP_FILE:
+        case TaskTypes.TASK_TYPE_MEMORY_REMOVE_SWAP_FILE:
+        case TaskTypes.TASK_TYPE_MEMORY_MOVE_SWAP_FILE:
         case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
         case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
         case TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE:

@@ -55,7 +55,7 @@ func plannedDisksize(t *testing.T, f fixture) bool {
 func TestSetSwapModeRestartsZramAtThePlannedSize(t *testing.T) {
 	f, sys := smallZramHost(t)
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,8 +72,9 @@ func TestSetSwapModeRestartsZramAtThePlannedSize(t *testing.T) {
 		"set " + scaleParam + "=125",
 		"write " + zswapTmpfilesPath,
 		"swapoff /swap.img",
-		holdOffCall("swap.img.swap"),
+		"fstab remove /swap.img",
 		"reload",
+		"delete /swap.img",
 	})
 	if got.Mode != apischema.SwapModeZram || !plannedDisksize(t, f) {
 		t.Errorf("mode = %q, disksize = %s; want zram at the planned size", got.Mode, f.read("/sys/block/zram0/disksize"))
@@ -90,7 +91,7 @@ func TestSetSwapModeResetsAZramDeviceLeftSetUp(t *testing.T) {
 	f.write("/sys/block/zram0/disksize", "268435456\n")
 	f.writeSwapArea("/dev/zram0")
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +113,7 @@ func TestSetSwapModeSaysWhenTheZramDeviceCouldNotBeReset(t *testing.T) {
 	f.writeSwapArea("/dev/zram0")
 	sys.failures["reset "+zramDeviceName] = syscall.EBUSY
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestSetSwapModeRefusesAZramDeviceThatHoldsNoSwap(t *testing.T) {
 	f.write("/sys/block/zram0/disksize", "268435456\n")
 	f.write("/dev/zram0", strings.Repeat("ext4 data ", 1024))
 
-	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	_, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "/dev/zram0") {
 		t.Fatalf("err = %v, want a conflict naming the device", err)
 	}
@@ -149,7 +150,7 @@ func TestSetSwapModeStartsZramWithoutTheModule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +169,7 @@ func TestSetSwapModeRestartsTheGeneratorsZramAtThePlannedSize(t *testing.T) {
 	sys.provider = apischema.ZramProviderGenerator
 	sys.activeStates[zramGeneratorSetupUnit] = "active"
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,11 +183,31 @@ func TestSetSwapModeRestartsTheGeneratorsZramAtThePlannedSize(t *testing.T) {
 	assertLeft(t, got.Left)
 }
 
+// systemd can start zram-generator's swap unit again, from LinuxIO's new
+// configuration, before the wait sees zram leave: the unit reads active
+// again with zram swapping, which is zram at the planned size and not a stop
+// systemd gave up on.
+func TestSetSwapModeTakesTheGeneratorsZramBackAtThePlannedSize(t *testing.T) {
+	f, sys := smallZramHost(t)
+	sys.provider = apischema.ZramProviderGenerator
+	sys.activeStates[zramGeneratorSetupUnit] = "active"
+	sys.stops[zramGeneratorSwapUnit] = &fakeStop{polls: 1, restart: true}
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
+	if err != nil {
+		t.Fatalf("err = %v, want zram back at the planned size taken as the restart", err)
+	}
+	if got.Mode != apischema.SwapModeZram || !plannedDisksize(t, f) {
+		t.Errorf("mode = %q, disksize = %s; want zram at the planned size", got.Mode, f.read("/sys/block/zram0/disksize"))
+	}
+	assertLeft(t, got.Left)
+}
+
 // zram at the planned size is left alone: a restart empties it.
 func TestSetSwapModeLeavesZramAtThePlannedSizeAlone(t *testing.T) {
 	_, sys := zramHost(t)
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +235,7 @@ func TestSetSwapModeKeepsZramAtItsSize(t *testing.T) {
 			},
 			want: []apischema.SwapLeft{
 				{What: apischema.SwapLeftZramSize, Reason: apischema.SwapLeftNotEnoughMemory},
-				{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotEnoughMemory},
+				{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotEnoughMemory, Path: "/swap.img"},
 			},
 		},
 		"its service does not run it": {
@@ -238,7 +259,7 @@ func TestSetSwapModeKeepsZramAtItsSize(t *testing.T) {
 			f, sys := smallZramHost(t)
 			test.setup(f, sys)
 
-			got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+			got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -259,7 +280,7 @@ func TestSetSwapModeFailsWhenZramDoesNotComeBack(t *testing.T) {
 	f, sys := smallZramHost(t)
 	sys.failures["start "+zramService] = errNoBus
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err == nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys)); err == nil {
 		t.Fatal("want an error")
 	}
 	if swaps := f.read(procSwaps); !strings.Contains(swaps, "/swap.img") || strings.Contains(swaps, "/dev/zram0") {
@@ -279,7 +300,7 @@ func TestSetSwapModeRestartsAZramServiceThatSwapsNothing(t *testing.T) {
 	_, sys := diskHost(t)
 	sys.activeStates[zramService] = "active"
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +319,7 @@ func TestSetSwapModeLeavesZramOfUnknownSizeAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +341,7 @@ func TestSetSwapModeBringsZramBackAfterACancel(t *testing.T) {
 		}
 	}
 
-	_, _ = sys.executor(nil).setSwapMode(ctx, apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	_, _ = sys.executor(nil).setSwapMode(ctx, zramRequest(t, sys))
 	if !slices.Contains(sys.calls, "start "+zramService) || !strings.Contains(f.read(procSwaps), "/dev/zram0") {
 		t.Fatalf("calls = %v, want zram started again", sys.calls)
 	}
@@ -332,7 +353,7 @@ func TestSetSwapModeQueuesAStartWhenTheZramStopFails(t *testing.T) {
 	f, sys := smallZramHost(t)
 	sys.failAfter["stop "+zramService] = context.Canceled
 
-	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	_, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "a start was queued") {
 		t.Fatalf("err = %v, want the cancel and that a start was queued", err)
 	}
@@ -352,7 +373,7 @@ func TestSetSwapModeSaysWhenZramComesBackAtAnotherSize(t *testing.T) {
 		}
 	}
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +398,7 @@ func generatorStaleHost(t *testing.T) (fixture, *fakeSystem) {
 func TestSetSwapModeResetsTheGeneratorsZramLeftSetUp(t *testing.T) {
 	f, sys := generatorStaleHost(t)
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +421,7 @@ func TestSetSwapModeRestartsTheGeneratorsZramWhoseResetFailed(t *testing.T) {
 	sys.activeStates[zramGeneratorSetupUnit] = "active"
 	sys.generatorResetFails = true
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	got, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +445,7 @@ func TestSetSwapModeResetsTheGeneratorsZramBeforeAQueuedStart(t *testing.T) {
 	sys.generatorResetFails = true
 	sys.failAfter["stop "+zramGeneratorSwapUnit] = context.Canceled
 
-	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	_, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "a start was queued") {
 		t.Fatalf("err = %v, want the cancel and that a start was queued", err)
 	}
@@ -464,7 +485,7 @@ func TestSetSwapModeRetriesTheGeneratorsZramReset(t *testing.T) {
 		_, sys := generatorStaleHost(t)
 		sys.busyResets = 3
 
-		if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err != nil {
+		if _, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys)); err != nil {
 			t.Fatal(err)
 		}
 		resets := 0
@@ -481,7 +502,7 @@ func TestSetSwapModeRetriesTheGeneratorsZramReset(t *testing.T) {
 		f, sys := generatorStaleHost(t)
 		sys.busyResets = 1 << 30
 
-		_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+		_, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 		if !errors.Is(err, syscall.EBUSY) || !strings.Contains(err.Error(), "/dev/zram0") {
 			t.Fatalf("err = %v, want the busy device named", err)
 		}
