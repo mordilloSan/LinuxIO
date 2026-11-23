@@ -2,7 +2,8 @@
 
 How LinuxIO brings a WireGuard interface up and down, starts it at boot and
 removes it. Code: `backend/bridge/handlers/wireguard`
-(`interface_power.go`, `interface_boot.go`, `remove_interface.go`). An
+(`interface_power.go`, `interface_boot.go`, `remove_interface.go`,
+`forwarding.go`). An
 interface's config is `/etc/wireguard/<name>.conf` and its exported peer files
 are in `/etc/wireguard/<name>/`; both are wg-quick's own layout, so `wg-quick`
 and `systemctl` work on an interface LinuxIO made, and LinuxIO lists one made
@@ -71,6 +72,60 @@ running with SIGTERM, on which `wg-quick` deletes the link (see Known
 limits). An up of an interface that is already up starts nothing, so
 cancelling it stops nothing.
 
+## Forwarding
+
+An interface LinuxIO creates gets NAT: PostUp lines that accept forwarded
+packets between the interface and the chosen network card and masquerade
+what leaves by it (`natPostUpHooks`), and PostDown lines that delete them.
+Those rules pass nothing while the kernel's IPv4 forwarding
+(`net.ipv4.ip_forward`) is off, as it is on a server with no Docker or
+libvirt: peers connect, reach the server and nothing behind it.
+
+LinuxIO turns forwarding on itself (`ensureForwarding`), in the one place
+every up goes through (create, up, and the restart after an edit), before it
+starts the unit:
+
+- It writes `1` to `/proc/sys/net/ipv4/ip_forward` when the value is not `1`
+  already, and reads it back. A write of `ip_forward` resets the
+  per-interface settings to their defaults, so a host that forwards already
+  is left alone.
+- It writes `/etc/sysctl.d/90-linuxio-wireguard.conf`
+  (`net.ipv4.ip_forward = 1`), which `systemd-sysctl` applies at boot, before
+  an interface enabled at boot starts.
+- When either fails, the up fails and says so, and the unit is not started.
+  An interface that is up while its peers reach nothing is the failure
+  nobody would be told about.
+
+"Start at boot" writes the same file before it enables the unit
+(`ensureForwardingAtBoot`), and leaves the running value alone: an interface
+LinuxIO did not bring up itself, up since before this LinuxIO or started
+with `systemctl`, has no file yet.
+
+Both do this for an interface whose PreUp or PostUp lines hold a masquerade
+rule that is not `ip6tables`', or `net.ipv4.ip_forward=1`
+(`wantsForwarding`), so an interface without NAT leaves the host as it is,
+and one made by hand with the usual rules gets the same treatment. A config
+LinuxIO cannot read is left to `wg-quick`, which says what is wrong with it
+when the unit starts.
+
+Why not a hook: LinuxIO used to write `sysctl -w net.ipv4.ip_forward=1` as
+the first PostUp line. Ubuntu's AppArmor profile for `wg-quick` runs `sysctl`
+under a profile that may write only `net.ipv4.conf.all.src_valid_mark`; the
+write is refused, `sysctl` prints "permission denied on key
+"net.ipv4.ip_forward", ignoring" and exits 0, and the unit finishes with
+success. Seen in the test VM on Ubuntu 26.04 with forwarding off: the peer
+reached the server's tunnel address and lost every packet sent beyond it.
+Fedora's SELinux policy lets `wg-quick` run the line. A config from before
+keeps its line, which now does nothing on Ubuntu but print that message into
+the unit's journal; it can be deleted in the interface's hooks.
+
+Removing an interface, or saving an edit of its hooks, deletes the sysctl.d
+file once no config in `/etc/wireguard` needs forwarding
+(`dropForwardingAtBoot`). The running value
+is never turned off: Docker, libvirt or the administrator may count on it,
+and LinuxIO cannot tell. Removing the LinuxIO package leaves the file, since
+the interfaces stay and run without LinuxIO.
+
 ## Removal
 
 Remove takes the interface down, disables its unit and then deletes the config
@@ -90,7 +145,13 @@ and the peer folder.
 package in the test VM, on Ubuntu with wg-quick's AppArmor profile loaded:
 create, down, up, a unit left active by a hand-run down, a failed start's
 output, an interface outside its unit, an enabled interface across a reboot,
-and removal. `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=wireguard.spec.ts`.
+and removal. It starts with forwarding off, and a peer in a network namespace
+of the VM, built from the interface's exported client, pings the VM's gateway
+through the tunnel after the create, after an up that found forwarding turned
+off again, and after a reboot with Docker disabled, so that nothing but the
+sysctl.d file turns forwarding on in that boot. The file is deleted before
+"start at boot", which has to write it again.
+`make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=wireguard.spec.ts`.
 
 ## Known limits
 
@@ -106,5 +167,11 @@ and removal. `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=wireguard.spec.ts`.
   interface with a peer `Endpoint` whose name does not resolve stays starting
   until the job is cancelled; run by hand, `wg-quick` gives up after 15 tries.
   The configs LinuxIO writes give the server's peers no endpoint.
-- The NAT hook `sysctl -w net.ipv4.ip_forward=1` is refused by Ubuntu's
-  profile for `wg-quick`; see the [backlog](./TODO/backlog.md).
+- Forwarding is checked when LinuxIO brings an interface up, not while it
+  runs: if something turns it off later, or a later sysctl.d file sets it to
+  0 at boot, the page does not say so.
+- An interface that was up and set to start at boot before this LinuxIO was
+  installed gets the sysctl.d file at its next up or "start at boot" from
+  LinuxIO, not at the upgrade.
+- NAT is IPv4 only: the rules are `iptables` rules and only
+  `net.ipv4.ip_forward` is set.

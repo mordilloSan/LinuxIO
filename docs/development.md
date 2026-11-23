@@ -419,8 +419,8 @@ Only part of the tests is written for Fedora, and `mk/vm.mk` holds the two
 lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `packagekit`,
 `relay`, `userconfig` and `filebrowser`; `docs/TODO/e2e-testing.md`,
 "Distributions", has their results) and `vm_fedora_specs` (`login.spec.ts`,
-`capability-install.spec.ts`, `package-repository.spec.ts` and
-`indexer.spec.ts`). With
+`capability-install.spec.ts`, `package-repository.spec.ts`,
+`indexer.spec.ts` and `wireguard.spec.ts`). With
 `DISTRO=fedora`, `test-vm-backend` given no `SUITES` runs the first list, and
 `test-vm-browser` given no `PLAYWRIGHT_ARGS` runs the second and then the
 release-update spec, which is written for both distributions. The other
@@ -598,7 +598,12 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   AppArmor refusals ([WireGuard Interfaces](./wireguard.md#testing)). It
   installs `wireguard-tools`, runs `wg-quick` by hand for the cases where the
   unit and the interface disagree, reboots the VM once, and removes the
-  interface; the package stays installed.
+  interface; the package stays installed. It turns IPv4 forwarding off before
+  the create and before one up, makes a network namespace `wge2e-peer` for
+  the peer that pings through the tunnel, and disables Docker's units for
+  the reboot, enabling them again after it (their names are kept in
+  `/var/tmp/wge2e-docker-disabled` meanwhile, for the clean-up of the next
+  run after one that was cut short); forwarding is on when it ends.
 - The `vm-test-*` targets are the root suites. Each builds its test binaries
   on the host into `.cache/vm`, static so they also run on the older glibc
   of `VM_RELEASE=noble`, and the script's `test` command copies them into

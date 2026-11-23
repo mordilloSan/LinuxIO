@@ -56,18 +56,6 @@ after a change that issues ioctls).
   choice per schedule that the dialog shows. Units already saved keep the old
   line until they are rewritten. **not verified** with a real script
 
-- A WireGuard interface with NAT may forward nothing on Ubuntu 26.04. The
-  PostUp hook LinuxIO writes, `sysctl -w net.ipv4.ip_forward=1`
-  (`natPostUpHooks` in `backend/bridge/handlers/wireguard/config.go`), is
-  refused by Ubuntu's AppArmor profile for `wg-quick`, whose `sysctl` part may
-  write only `src_valid_mark`. `sysctl` reports "permission denied ...,
-  ignoring", prints the value and exits 0, so the interface comes up and
-  nobody is told. Seen on the owner's server (2026-11-23), where forwarding
-  was already on, as it is on any host with Docker; on a host where it is
-  not, peers connect and reach nothing behind the server. A fix has LinuxIO
-  turn forwarding on itself, for now and for boot, instead of through a hook.
-  **not verified** on a host with forwarding off
-
 - The Updates page can say "Your system is up to date" while the banner
   names a LinuxIO update. Seen once in four runs of `jobs-update.spec.ts` on
   Fedora 45 (2026-11-21), right after Refresh Sources; the list asks again by

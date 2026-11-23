@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -49,6 +50,14 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 	oldInterfaceGateway := getGatewayForInterfaceIPv4Func
 
 	wgConfigDir = env.dir
+	// The host's forwarding switch and its sysctl.d file, with forwarding off.
+	oldIPForward, oldForwardSysctl := ipForwardPath, forwardSysctlPath
+	state := t.TempDir()
+	ipForwardPath = filepath.Join(state, "ip_forward")
+	forwardSysctlPath = filepath.Join(state, "sysctl.d", "90-linuxio-wireguard.conf")
+	if err := os.WriteFile(ipForwardPath, []byte("0\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", ipForwardPath, err)
+	}
 	runWGQuickCommand = func(_ context.Context, action, name string) (string, error) {
 		env.wgQuick = append(env.wgQuick, wgQuickCall{action: action, name: name})
 		port := 0
@@ -92,6 +101,7 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 
 	t.Cleanup(func() {
 		wgConfigDir = oldConfigDir
+		ipForwardPath, forwardSysctlPath = oldIPForward, oldForwardSysctl
 		runWGQuickCommand = oldRunWGQuick
 		syncWireGuardConfigFunc = oldSyncConfig
 		isInterfaceUpFunc = oldIsInterfaceUp

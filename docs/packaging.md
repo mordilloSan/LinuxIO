@@ -212,7 +212,10 @@ their user; the run-record drop-in that hooks them goes with the package), the
 rsync service (`linuxio-rsync.service`, `rsync --daemon` on
 `/etc/linuxio/rsyncd.conf`) and Docker's drop-ins (`docker.service.d/linuxio-*.conf`:
 the mounts its data needs and the addresses it waits for). A new install finds
-them with their definitions under `/etc/linuxio`. The memory page writes no
+them with their definitions under `/etc/linuxio`. The WireGuard interfaces
+stay too, being wg-quick's own files, and with them
+`/etc/sysctl.d/90-linuxio-wireguard.conf`, which keeps IPv4 forwarding on at
+boot for those with NAT ([Forwarding](./wireguard.md#forwarding)). The memory page writes no
 unit or drop-in under `/etc/systemd/system`; a hold-off drop-in on a swap unit
 (`90-linuxio-memory.conf`) that an older LinuxIO left stays as well
 ([Upgrading](./memory.md#upgrading-from-an-older-linuxio)). The settings whose files the

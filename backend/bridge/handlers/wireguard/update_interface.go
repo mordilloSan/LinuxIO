@@ -60,6 +60,11 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 	if err := WriteWireGuardConfig(configPath(req.Name), cfg); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
+	if hooksChanged(cfg.Hooks, old.Hooks) {
+		// The NAT rules may be gone, and with them the last need for
+		// forwarding at boot; an up turns it on for hooks that add them.
+		dropForwardingAtBoot()
+	}
 	if restart {
 		if _, err := runWGQuickCommand(ctx, "up", req.Name); err != nil {
 			return fmt.Errorf("interface %s is down: bring up failed: %w", req.Name, err)

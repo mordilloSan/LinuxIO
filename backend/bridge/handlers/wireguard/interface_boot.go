@@ -19,6 +19,11 @@ func EnableInterface(ctx context.Context, req apischema.NameRequest) (any, error
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
+	// Before the unit is enabled: an interface that starts at boot with
+	// forwarding off has peers that reach nothing, and nobody is told.
+	if err := ensureForwardingAtBoot(name); err != nil {
+		return nil, err
+	}
 	serviceName := unitName(name)
 	if err := systemd.EnableUnit(ctx, serviceName); err != nil {
 		return nil, fmt.Errorf("enable %s: %w", serviceName, err)

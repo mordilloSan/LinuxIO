@@ -107,9 +107,14 @@ func bringUpInterface(ctx context.Context, name string) error {
 // runs as systemd starts it at boot and the unit's state follows the
 // interface. Started from the job host instead, wg-quick inherits the host's
 // NoNewPrivileges, under which the AppArmor profile Ubuntu confines it with
-// cannot run ip and wg under theirs: every call fails with EPERM.
+// cannot run ip and wg under theirs: every call fails with EPERM. Every up
+// goes through here, so this is where forwarding is turned on for an
+// interface that needs it.
 func runWGQuick(ctx context.Context, action, name string) (string, error) {
 	if action == "up" {
+		if err := ensureForwarding(name); err != nil {
+			return "", err
+		}
 		return "", startInterface(ctx, name)
 	}
 	return stopInterface(ctx, name)
