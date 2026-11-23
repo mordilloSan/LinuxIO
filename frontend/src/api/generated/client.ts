@@ -833,6 +833,10 @@ const linuxio = {
       field: "name",
     }),
     remove_peer: defineMutation("wireguard", "remove_peer", { kind: "object" }),
+    restore_forwarding: defineMutation("wireguard", "restore_forwarding", {
+      kind: "field",
+      field: "name",
+    }),
     up_interface: defineMutation("wireguard", "up_interface", {
       kind: "field",
       field: "name",

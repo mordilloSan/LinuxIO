@@ -60,6 +60,22 @@ const forwarding = () => sh("cat /proc/sys/net/ipv4/ip_forward");
 const forwardFileExists = async () =>
   (await sh(`test -e ${FORWARD_FILE} && echo yes || echo no`)) === "yes";
 
+/** What the list says of the interface: up while nothing is forwarded for it. */
+async function forwardingOff(page: Page) {
+  const answer = await bridgeCall(
+    page,
+    "wireguard.list_interfaces",
+    {},
+    randomUUID(),
+  );
+  expect(answer.error ?? "", "wireguard.list_interfaces").toBe("");
+  const list = answer.data as { name: string; forwardingOff: boolean }[];
+  return list.find((iface) => iface.name === IFACE)?.forwardingOff;
+}
+const ownForwarding = () =>
+  sh(`cat /proc/sys/net/ipv4/conf/${IFACE}/forwarding`);
+const linkIndex = () => sh(`cat /sys/class/net/${IFACE}/ifindex`);
+
 // Docker turns forwarding on when it starts, which would hide a boot that
 // LinuxIO's file did not cover, so the reboot runs without it.
 // The units it disabled are listed in a file on the VM, so that the clean-up
@@ -122,10 +138,10 @@ const cleanUp = async () => {
       `sudo rm -f ${PEER_KEYS}.key ${PEER_KEYS}.psk ${FORWARD_FILE}; true`,
   );
   await restoreDocker();
-  // The spec turns forwarding off twice, and a run that failed there would
-  // leave Docker's containers without a network.
+  // The spec turns forwarding off, on the host and for new interfaces, and
+  // a run that failed there would leave Docker's containers without a network.
   await vmSsh(
-    "systemctl is-active -q docker.service && sudo sysctl -qw net.ipv4.ip_forward=1; true",
+    "systemctl is-active -q docker.service && sudo sysctl -qw net.ipv4.ip_forward=1 net.ipv4.conf.default.forwarding=1; true",
   );
 };
 
@@ -194,6 +210,42 @@ test("an interface goes up, down and away through its unit, also after a reboot"
     await call(page, "up_interface", { name: IFACE });
     expect(await forwarding(), "forwarding after the up").toBe("1");
     expect(await peerPingsAnswered(), "pings after the up").toBe("2");
+  });
+
+  await test.step("the page says when forwarding is turned off, and turns it on again", async () => {
+    expect(await forwardingOff(page), "forwardingOff while it forwards").toBe(
+      false,
+    );
+    const link = await linkIndex();
+    await vmSsh("sudo sysctl -qw net.ipv4.ip_forward=0");
+    expect(await forwardingOff(page), "forwardingOff after the sysctl").toBe(
+      true,
+    );
+    expect(await peerPingsAnswered(), "pings with forwarding off").toBe("0");
+
+    await page.goto("/network/wireguard");
+    await expect(page.getByText("Not forwarding")).toBeVisible();
+    await page.getByRole("button", { name: "Turn on forwarding" }).click();
+    await expect(page.getByText("Not forwarding")).toHaveCount(0);
+
+    expect(await forwarding(), "forwarding after the fix").toBe("1");
+    expect(await forwardingOff(page), "forwardingOff after the fix").toBe(
+      false,
+    );
+    expect(await peerPingsAnswered(), "pings after the fix").toBe("2");
+    // The same link: the interface was not restarted for it.
+    expect(await linkIndex(), "the link's index").toBe(link);
+  });
+
+  await test.step("an interface that comes up with its own forwarding off is turned on", async () => {
+    // A host that forwards, where new interfaces start with forwarding off.
+    await call(page, "down_interface", { name: IFACE });
+    await vmSsh("sudo sysctl -qw net.ipv4.conf.default.forwarding=0");
+    await call(page, "up_interface", { name: IFACE });
+    await vmSsh("sudo sysctl -qw net.ipv4.conf.default.forwarding=1");
+    expect(await forwarding(), "the host's forwarding").toBe("1");
+    expect(await ownForwarding(), "the interface's own forwarding").toBe("1");
+    expect(await peerPingsAnswered(), "pings after that up").toBe("2");
   });
 
   await test.step("down and up", async () => {

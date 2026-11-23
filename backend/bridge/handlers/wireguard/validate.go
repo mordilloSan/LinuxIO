@@ -21,6 +21,11 @@ func validateInterfaceName(name string) error {
 	if len(name) > 15 { // Linux interface name limit
 		return fmt.Errorf("interface name too long (max 15 characters)")
 	}
+	// The kernel's own names under /proc/sys/net/ipv4/conf, where an
+	// interface's forwarding switch is: a write for "all" is the host's.
+	if name == "all" || name == "default" {
+		return fmt.Errorf("interface name %q is reserved", name)
+	}
 	if !validInterfaceName.MatchString(name) {
 		return fmt.Errorf("interface name contains invalid characters (allowed: a-z, A-Z, 0-9, _, and - after the first character)")
 	}

@@ -498,6 +498,9 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "wireguard.disable_interface": [
     endpointQueryPrefix("wireguard.list_interfaces"),
   ],
+  "wireguard.restore_forwarding": [
+    endpointQueryPrefix("wireguard.list_interfaces"),
+  ],
   "wireguard.add_peer": [
     endpointQueryPrefix("wireguard.list_interfaces"),
     endpointQueryPrefix("wireguard.list_peers"),

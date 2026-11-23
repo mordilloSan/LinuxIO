@@ -359,6 +359,7 @@ export const ROUTE_MODES = {
   "wireguard.remove_interface": "mutation",
   "wireguard.remove_peer": "mutation",
   "wireguard.up_interface": "mutation",
+  "wireguard.restore_forwarding": "mutation",
   "wireguard.update_interface": "mutation",
   "wireguard.update_peer": "mutation",
 } as const satisfies Record<string, RouteMode>;

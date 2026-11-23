@@ -22,16 +22,20 @@ type WireGuardHooks map[WireGuardHookKind][]string
 // WireGuardInterface carries every hook kind in Hooks, with an empty list
 // for a kind the interface does not use.
 type WireGuardInterface struct {
-	Address     string         `json:"address"`
-	DNS         []string       `json:"dns"`
-	Hooks       WireGuardHooks `json:"hooks"`
-	Host        string         `json:"host"`
-	IsConnected string         `json:"isConnected"`
-	IsEnabled   bool           `json:"isEnabled"`
-	MTU         int            `json:"mtu"`
-	Name        string         `json:"name"`
-	PeerCount   int            `json:"peerCount"`
-	Port        int            `json:"port"`
+	Address string   `json:"address"`
+	DNS     []string `json:"dns"`
+	// ForwardingOff is true for an interface that is up, whose hooks need
+	// IPv4 forwarding, while the host or the interface has it off: its peers
+	// connect and reach nothing behind the server.
+	ForwardingOff bool           `json:"forwardingOff"`
+	Hooks         WireGuardHooks `json:"hooks"`
+	Host          string         `json:"host"`
+	IsConnected   string         `json:"isConnected"`
+	IsEnabled     bool           `json:"isEnabled"`
+	MTU           int            `json:"mtu"`
+	Name          string         `json:"name"`
+	PeerCount     int            `json:"peerCount"`
+	Port          int            `json:"port"`
 }
 
 type Peer struct {

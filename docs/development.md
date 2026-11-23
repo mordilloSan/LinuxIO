@@ -599,7 +599,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   installs `wireguard-tools`, runs `wg-quick` by hand for the cases where the
   unit and the interface disagree, reboots the VM once, and removes the
   interface; the package stays installed. It turns IPv4 forwarding off before
-  the create and before one up, makes a network namespace `wge2e-peer` for
+  the create, before one up and under the running interface, and
+  `conf/default`'s for one up, makes a network namespace `wge2e-peer` for
   the peer that pings through the tunnel, and disables Docker's units for
   the reboot, enabling them again after it (their names are kept in
   `/var/tmp/wge2e-docker-disabled` meanwhile, for the clean-up of the next

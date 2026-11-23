@@ -3941,6 +3941,7 @@ export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
 export interface WireGuardInterface {
   address: string;
   dns: string[];
+  forwardingOff: boolean;
   hooks: WireGuardHooks;
   host: string;
   isConnected: string;
@@ -5500,6 +5501,11 @@ export interface LinuxIOSchema {
     remove_peer: {
       input: [request: WireGuardPeerRequest];
       request: WireGuardPeerRequest;
+      result: void;
+    };
+    restore_forwarding: {
+      input: [name: string];
+      request: NameRequest;
       result: void;
     };
     up_interface: { input: [name: string]; request: NameRequest; result: void };

@@ -13,6 +13,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 type addInterfaceRequest struct {
@@ -24,6 +25,11 @@ type addInterfaceRequest struct {
 	dns        []string
 	mtu        int
 	numPeers   int
+}
+
+var hasIptablesFunc = func() bool {
+	_, err := hostcmd.LookPath("iptables")
+	return err == nil
 }
 
 func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRequest) (any, error) {
@@ -43,6 +49,13 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		} else if !errors.Is(statErr, os.ErrNotExist) {
 			return nil, fmt.Errorf("check %s: %w", path, statErr)
 		}
+	}
+
+	// The NAT rules of a new interface are iptables lines in its hooks.
+	// Without the command the first of them fails and wg-quick takes the
+	// interface down again, leaving a config that never comes up.
+	if !hasIptablesFunc() {
+		return nil, fmt.Errorf("%w: iptables is not installed, and the NAT rules of a new interface need it: install the iptables package (iptables-nft on Fedora and RHEL)", bridgeipc.ErrConflict)
 	}
 
 	var peers []PeerConfig

@@ -6,11 +6,15 @@ import { type CSSProperties } from "react";
 import type { WireGuardInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
-import { getWireguardStatusColor } from "@/constants/statusColors";
+import {
+  getWireguardStatusColor,
+  SEMANTIC_STATUS_COLORS,
+} from "@/constants/statusColors";
 import { CARD_PADDING_SM, GAP_SM } from "@/theme/constants";
 
 export type WireguardInterfaceAction =
@@ -19,12 +23,14 @@ export type WireguardInterfaceAction =
   | "disable"
   | "down"
   | "enable"
+  | "forward"
   | "up";
 
 interface InterfaceCardProps {
   handleAddPeer: (name: string) => void;
   handleDelete: (name: string) => void;
   handleEdit: (name: string) => void;
+  handleRestoreForwarding: (name: string) => void;
   handleSelectInterface: (iface: WireGuardInterface) => void;
   handleToggleBootPersistence: (name: string, isEnabled: boolean) => void;
   handleToggleInterface: (name: string, status: "up" | "down") => void;
@@ -52,10 +58,23 @@ const InterfaceCard = ({
   handleDelete,
   handleEdit,
   handleAddPeer,
+  handleRestoreForwarding,
   pendingAction,
 }: InterfaceCardProps) => {
   const isActive = iface.isConnected === "Active";
-  const statusColor = getWireguardStatusColor(iface.isConnected);
+  // Up, with peers that connect and reach nothing behind the server: the
+  // card must not look healthy. Not while it is coming up, when the list can
+  // be read before LinuxIO has turned the interface's own switch on.
+  const notForwarding =
+    isActive && iface.forwardingOff && pendingAction !== "up";
+  const statusColor = notForwarding
+    ? SEMANTIC_STATUS_COLORS.warning
+    : getWireguardStatusColor(iface.isConnected);
+  const statusLabel = notForwarding
+    ? "Not forwarding"
+    : isActive
+      ? "Active"
+      : "Inactive";
   const isSelected = iface.name === selectedInterface;
   const actionBusy = Boolean(pendingAction);
   const togglePending = pendingAction === "up" || pendingAction === "down";
@@ -93,7 +112,7 @@ const InterfaceCard = ({
         <div style={{ position: "absolute", top: 12, right: 12 }}>
           <Chip
             color={statusColor}
-            label={isActive ? "Active" : "Inactive"}
+            label={statusLabel}
             labelStyle={{ paddingInline: 6 }}
             size="xsmall"
             variant="soft"
@@ -122,7 +141,8 @@ const InterfaceCard = ({
               display: "flex",
               alignItems: "center",
               gap: GAP_SM,
-              paddingRight: 72,
+              // Room for the status chip, whose warning label is longer.
+              paddingRight: notForwarding ? 116 : 72,
             }}
           >
             <Icon
@@ -164,6 +184,27 @@ const InterfaceCard = ({
             </div>
           </div>
         </AppButton>
+
+        {notForwarding && (
+          <AppAlert severity="warning" style={{ marginTop: 12 }}>
+            <AppAlertTitle>Peers can&apos;t reach your network</AppAlertTitle>
+            IPv4 forwarding is off for this interface, so peers connect but
+            reach nothing beyond this server.
+            <div style={{ marginTop: 8 }}>
+              <AppButton
+                aria-busy={pendingAction === "forward"}
+                disabled={actionBusy}
+                onClick={() => handleRestoreForwarding(iface.name)}
+                size="small"
+                variant="contained"
+              >
+                {pendingAction === "forward"
+                  ? "Turning on…"
+                  : "Turn on forwarding"}
+              </AppButton>
+            </div>
+          </AppAlert>
+        )}
 
         <AppDivider style={{ marginBlock: 12 }} />
 

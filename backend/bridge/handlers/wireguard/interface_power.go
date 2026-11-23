@@ -115,7 +115,20 @@ func runWGQuick(ctx context.Context, action, name string) (string, error) {
 		if err := ensureForwarding(name); err != nil {
 			return "", err
 		}
-		return "", startInterface(ctx, name)
+		if err := startInterface(ctx, name); err != nil {
+			return "", err
+		}
+		if err := ensureInterfaceForwards(name); err != nil {
+			// An up leaves a working interface or none: callers read an
+			// error as "it is down".
+			stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+			defer cancel()
+			if _, stopErr := stopInterface(stopCtx, name); stopErr != nil {
+				slog.Warn("failed to take down an interface that does not forward", "interface", name, "error", stopErr)
+			}
+			return "", err
+		}
+		return "", nil
 	}
 	return stopInterface(ctx, name)
 }

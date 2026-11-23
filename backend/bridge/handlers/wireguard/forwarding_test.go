@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func readTestFile(t *testing.T, path string) string {
@@ -18,6 +20,19 @@ func readTestFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(data)
+}
+
+// setInterfaceForwarding writes the interface's own forwarding switch, which
+// the kernel makes when the interface comes up.
+func setInterfaceForwarding(t *testing.T, name, value string) {
+	t.Helper()
+	path := interfaceForwardPath(name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(value), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
 }
 
 // writeHookInterface writes an interface config with the given PostUp lines
@@ -83,22 +98,115 @@ func TestUpTurnsForwardingOnBeforeTheUnitStarts(t *testing.T) {
 			if err := os.WriteFile(ipForwardPath, []byte(tc.forward), 0o644); err != nil {
 				t.Fatalf("write %s: %v", ipForwardPath, err)
 			}
+			// As on a host whose conf/default is off: the interface comes
+			// up with its own switch off, whatever the host's says.
+			setInterfaceForwarding(t, "wgtest", "0\n")
 
 			if _, err := runWGQuick(context.Background(), "up", "wgtest"); err != nil {
 				t.Fatalf("runWGQuick returned error: %v", err)
 			}
-			if got := readTestFile(t, ipForwardPath); got != tc.wantForward {
-				t.Fatalf("ip_forward = %q, want %q", got, tc.wantForward)
-			}
-			if !tc.wantBootFile {
-				assertPathMissing(t, forwardSysctlPath)
-			} else if got := readTestFile(t, forwardSysctlPath); !strings.Contains(got, "\nnet.ipv4.ip_forward = 1\n") {
-				t.Fatalf("%s = %q, want the ip_forward line", forwardSysctlPath, got)
-			}
+			assertForwardingAfterUp(t, tc.wantForward, tc.wantBootFile)
 			if want := []string{"start " + unit}; !slices.Equal(u.calls, want) {
 				t.Fatalf("calls = %v, want %v", u.calls, want)
 			}
 		})
+	}
+}
+
+// assertForwardingAfterUp checks the host's switch, the sysctl.d file and
+// wgtest's own switch, which an up turns on only where the config needs it.
+func assertForwardingAfterUp(t *testing.T, wantForward string, wanted bool) {
+	t.Helper()
+	if got := readTestFile(t, ipForwardPath); got != wantForward {
+		t.Fatalf("ip_forward = %q, want %q", got, wantForward)
+	}
+	if !wanted {
+		assertPathMissing(t, forwardSysctlPath)
+	} else if got := readTestFile(t, forwardSysctlPath); !strings.Contains(got, "\nnet.ipv4.ip_forward = 1\n") {
+		t.Fatalf("%s = %q, want the ip_forward line", forwardSysctlPath, got)
+	}
+	wantOwn := "0\n"
+	if wanted {
+		wantOwn = "1\n"
+	}
+	if got := readTestFile(t, interfaceForwardPath("wgtest")); got != wantOwn {
+		t.Fatalf("the interface's own forwarding = %q, want %q", got, wantOwn)
+	}
+}
+
+// The interface looks up and its peers connect: the list is the only place
+// that says they reach nothing behind the server.
+func TestListSaysWhenAnInterfaceThatIsUpDoesNotForward(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		nat, up   bool
+		host, own string
+		want      bool
+	}{
+		{name: "forwarding on", nat: true, up: true, host: "1\n", own: "1\n"},
+		{name: "off on the host", nat: true, up: true, host: "0\n", own: "0\n", want: true},
+		{name: "off on the interface alone", nat: true, up: true, host: "1\n", own: "0\n", want: true},
+		{name: "an interface that is down", nat: true, host: "0\n", own: "0\n"},
+		{name: "an interface without NAT", up: true, host: "0\n", own: "0\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newWireGuardTestEnv(t)
+			env.interfaceUp = tc.up
+			if tc.nat {
+				writeTestInterface(t, "wgtest", "10.7.0.1/24")
+			} else {
+				writeHookInterface(t, "wgtest", "ip rule add from 10.7.0.0/24 table 7")
+			}
+			if err := os.WriteFile(ipForwardPath, []byte(tc.host), 0o644); err != nil {
+				t.Fatalf("write %s: %v", ipForwardPath, err)
+			}
+			setInterfaceForwarding(t, "wgtest", tc.own)
+
+			interfaces, err := handleListInterfaces(context.Background(), apischema.NoRequest{})
+			if err != nil {
+				t.Fatalf("list returned error: %v", err)
+			}
+			if len(interfaces) != 1 || interfaces[0].ForwardingOff != tc.want {
+				t.Fatalf("interfaces = %+v, want one with ForwardingOff = %v", interfaces, tc.want)
+			}
+		})
+	}
+}
+
+func TestRestoreForwarding(t *testing.T) {
+	env := newWireGuardTestEnv(t)
+	env.interfaceUp = true
+	writeTestInterface(t, "wgtest", "10.7.0.1/24")
+	setInterfaceForwarding(t, "wgtest", "0\n")
+
+	if err := RestoreForwarding(context.Background(), apischema.NameRequest{Name: "wgtest"}); err != nil {
+		t.Fatalf("RestoreForwarding returned error: %v", err)
+	}
+	if got := readTestFile(t, ipForwardPath); got != "1\n" {
+		t.Fatalf("ip_forward = %q, want it on", got)
+	}
+	if got := readTestFile(t, interfaceForwardPath("wgtest")); got != "1\n" {
+		t.Fatalf("the interface's own forwarding = %q, want it on", got)
+	}
+	assertPathExists(t, forwardSysctlPath)
+	// The interface is neither started nor restarted: its peers stay connected.
+	if len(env.wgQuick) != 0 {
+		t.Fatalf("wg-quick calls = %v, want none", env.wgQuick)
+	}
+
+	err := RestoreForwarding(context.Background(), apischema.NameRequest{Name: "wgmissing"})
+	if !errors.Is(err, bridgeipc.ErrNotFound) {
+		t.Fatalf("error for a missing interface = %v, want ErrNotFound", err)
+	}
+	// Not a success that changed nothing.
+	writeHookInterface(t, "wgplain", "ip rule add from 10.8.0.0/24 table 7")
+	err = RestoreForwarding(context.Background(), apischema.NameRequest{Name: "wgplain"})
+	if !errors.Is(err, bridgeipc.ErrConflict) {
+		t.Fatalf("error for an interface without NAT = %v, want ErrConflict", err)
+	}
+	err = RestoreForwarding(context.Background(), apischema.NameRequest{Name: "../etc"})
+	if !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+		t.Fatalf("error for a bad name = %v, want ErrInvalidArgs", err)
 	}
 }
 
@@ -122,6 +230,42 @@ func TestUpFailsWhenForwardingCannotBeTurnedOn(t *testing.T) {
 	assertPathMissing(t, forwardSysctlPath)
 }
 
+// An up leaves a working interface or none: callers read an error as "it
+// is down", and the create and the edit say so.
+func TestUpTakesDownAnInterfaceItCannotMakeForward(t *testing.T) {
+	const unit = "wg-quick@wgtest.service"
+	newWireGuardTestEnv(t)
+	u := fakeUnit{state: "inactive"}
+	u.install(t)
+	writeTestInterface(t, "wgtest", "10.7.0.1/24")
+	// No switch of its own to write: the fake start makes no interface.
+
+	_, err := runWGQuick(context.Background(), "up", "wgtest")
+	if err == nil || !strings.Contains(err.Error(), "turn on IPv4 forwarding on wgtest") {
+		t.Fatalf("runWGQuick error = %v, want the interface's forwarding failure", err)
+	}
+	if want := []string{"start " + unit, "stop " + unit}; !slices.Equal(u.calls, want) {
+		t.Fatalf("calls = %v, want %v", u.calls, want)
+	}
+}
+
+func TestAddInterfaceWithoutIptablesSaysSoBeforeAnythingIsWritten(t *testing.T) {
+	env := newWireGuardTestEnv(t)
+	hasIptablesFunc = func() bool { return false }
+
+	_, err := AddInterface(context.Background(), apischema.WireGuardAddInterfaceRequest{
+		Name: "wgtest", Addresses: "10.7.0.1/24", ListenPort: "51820", EgressNic: "eth0", NumPeers: new("1"),
+	})
+	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "iptables is not installed") {
+		t.Fatalf("AddInterface error = %v, want the missing iptables", err)
+	}
+	assertPathMissing(t, configPath("wgtest"))
+	assertPathMissing(t, peerDirPath("wgtest"))
+	if len(env.wgQuick) != 0 {
+		t.Fatalf("wg-quick calls = %v, want none", env.wgQuick)
+	}
+}
+
 func TestWantsForwarding(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -132,6 +276,7 @@ func TestWantsForwarding(t *testing.T) {
 		{name: "an iptables masquerade rule", kind: apischema.WireGuardPostUp, line: "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE", want: true},
 		{name: "an nft masquerade rule", kind: apischema.WireGuardPreUp, line: "nft add rule ip nat postrouting oifname eth0 masquerade", want: true},
 		{name: "the sysctl line of a config from before", kind: apischema.WireGuardPostUp, line: "sysctl -w net.ipv4.ip_forward=1", want: true},
+		{name: "IPv4 and IPv6 rules on one line", kind: apischema.WireGuardPostUp, line: "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE", want: true},
 		// IPv6 only: IPv4 forwarding is not what it asks for.
 		{name: "an ip6tables masquerade rule", kind: apischema.WireGuardPostUp, line: "ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE"},
 		{name: "a line that turns forwarding off", kind: apischema.WireGuardPostUp, line: "sysctl -w net.ipv4.ip_forward=0"},

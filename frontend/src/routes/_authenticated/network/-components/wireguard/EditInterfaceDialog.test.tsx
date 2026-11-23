@@ -27,6 +27,7 @@ const wg0: WireGuardInterface = {
     PostDown: ["iptables -D FORWARD -i wg0 -j ACCEPT || true"],
   },
   host: "",
+  forwardingOff: false,
   isConnected: "Active",
   isEnabled: true,
   mtu: 0,

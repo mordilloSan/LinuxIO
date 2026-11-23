@@ -324,7 +324,11 @@ var capabilityRegistry = []CapabilitySpec{
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(checkDependencyCommand("wg-quick", "wireguard-tools"))
 		},
-		Install: &InstallSpec{PackageDebian: "wireguard-tools", PackageRHEL: "wireguard-tools"},
+		// iptables too: the NAT rules of an interface LinuxIO creates are
+		// iptables lines. It is not part of Detect, which would take the page
+		// away from a host whose interfaces work without it; a create on a
+		// host without it says so (wireguard.AddInterface).
+		Install: &InstallSpec{PackageDebian: "wireguard-tools iptables", PackageRHEL: "wireguard-tools iptables-nft"},
 	},
 	{
 		Name:    "libvirt",

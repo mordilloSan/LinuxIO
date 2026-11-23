@@ -74,6 +74,15 @@ cancelling it stops nothing.
 
 ## Forwarding
 
+The NAT rules below are `iptables` lines, and a host can have `wg-quick`
+without `iptables` (a minimal Debian, some RHEL-family installs). Installing
+the WireGuard capability from LinuxIO therefore installs `iptables` too
+(`iptables-nft` on the RHEL family), and a create on a host without the
+command is refused before anything is written, naming the package; it used to
+fail at the first hook, with a config left behind that never came up. The
+capability's detection still asks only for `wg-quick`, so a host whose
+interfaces work without `iptables` keeps its page.
+
 An interface LinuxIO creates gets NAT: PostUp lines that accept forwarded
 packets between the interface and the chosen network card and masquerade
 what leaves by it (`natPostUpHooks`), and PostDown lines that delete them.
@@ -95,6 +104,14 @@ starts the unit:
 - When either fails, the up fails and says so, and the unit is not started.
   An interface that is up while its peers reach nothing is the failure
   nobody would be told about.
+
+After the unit has started, LinuxIO turns on the interface's own switch
+(`/proc/sys/net/ipv4/conf/<name>/forwarding`, `ensureInterfaceForwards`) when
+it is off. That switch is what the kernel reads for a packet arriving on the
+interface; a new interface takes it from `conf/default`, which a host can
+have off while `ip_forward` is on, and the interface then came up forwarding
+nothing. When that write fails the interface is taken down again and the up
+fails: an up leaves a working interface or none.
 
 "Start at boot" writes the same file before it enables the unit
 (`ensureForwardingAtBoot`), and leaves the running value alone: an interface
@@ -126,6 +143,27 @@ is never turned off: Docker, libvirt or the administrator may count on it,
 and LinuxIO cannot tell. Removing the LinuxIO package leaves the file, since
 the interfaces stay and run without LinuxIO.
 
+### When forwarding goes off later
+
+Forwarding can be turned off while an interface is up (a `sysctl` by hand, a
+hardening script), or be off after a boot, where a sysctl.d file that sorts
+after LinuxIO's sets it to 0. Nothing else shows it: the interface is up and
+its peers connect and handshake.
+
+`wireguard.list_interfaces` therefore reports `forwardingOff` for an
+interface that is up, whose config needs forwarding, while `ip_forward` or
+the interface's own switch is off (`notForwarding`). The card shows "Not
+forwarding" in place of "Active", with a warning and a "Turn on forwarding"
+button. The button calls `wireguard.restore_forwarding` (`RestoreForwarding`),
+which does what an up does for forwarding (the host's value, the sysctl.d
+file, the interface's own switch) and neither starts nor restarts the
+interface, so its peers stay connected. For an interface whose config needs
+no forwarding it answers 409 and changes nothing.
+
+An interface cannot be named `all` or `default`: those are the kernel's own
+folders under `/proc/sys/net/ipv4/conf`, and a write for them would be the
+host's switch, not an interface's.
+
 ## Removal
 
 Remove takes the interface down, disables its unit and then deletes the config
@@ -150,7 +188,10 @@ of the VM, built from the interface's exported client, pings the VM's gateway
 through the tunnel after the create, after an up that found forwarding turned
 off again, and after a reboot with Docker disabled, so that nothing but the
 sysctl.d file turns forwarding on in that boot. The file is deleted before
-"start at boot", which has to write it again.
+"start at boot", which has to write it again. It also turns forwarding off
+under a running interface, reads `forwardingOff` from the list, clicks "Turn
+on forwarding" on the page and checks that the link was not replaced, and
+brings the interface up on a host whose `conf/default` has forwarding off.
 `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=wireguard.spec.ts`.
 
 ## Known limits
@@ -167,9 +208,13 @@ sysctl.d file turns forwarding on in that boot. The file is deleted before
   interface with a peer `Endpoint` whose name does not resolve stays starting
   until the job is cancelled; run by hand, `wg-quick` gives up after 15 tries.
   The configs LinuxIO writes give the server's peers no endpoint.
-- Forwarding is checked when LinuxIO brings an interface up, not while it
-  runs: if something turns it off later, or a later sysctl.d file sets it to
-  0 at boot, the page does not say so.
+- Where a sysctl.d file that sorts after `90-linuxio-wireguard.conf` sets
+  `net.ipv4.ip_forward` to 0, forwarding is off after every boot: the card
+  says so and "Turn on forwarding" lasts until the next one. LinuxIO does not
+  override that file.
+- The warning looks at the host's switch and the interface's own, not at the
+  switch of the network card the replies come in by, and not at the firewall
+  rules.
 - An interface that was up and set to start at boot before this LinuxIO was
   installed gets the sysctl.d file at its next up or "start at boot" from
   LinuxIO, not at the upgrade.

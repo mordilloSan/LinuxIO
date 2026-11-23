@@ -30,6 +30,7 @@ var api = apischema.Bindings(
 	apischema.MutationVoid("wireguard.down_interface", handleDownInterface, apischema.Privileged()),
 	apischema.MutationVoid("wireguard.enable_interface", handleEnableInterface, apischema.Privileged()),
 	apischema.MutationVoid("wireguard.disable_interface", handleDisableInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.restore_forwarding", RestoreForwarding, apischema.Privileged()),
 )
 
 var Routes = api.Routes()

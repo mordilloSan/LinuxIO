@@ -103,14 +103,18 @@ inlined for a plain binary check:
 
 ```go
 {
-    Name:    "wireguard",
-    LogName: "WireGuard tools",
+    Name:    "rsync",
+    LogName: "rsync",
     Detect: func(_ context.Context) (bool, string) {
-        return checkedCapability(checkDependencyCommand("wg-quick", "wireguard-tools"))
+        return checkedCapability(checkDependencyCommand("rsync", "rsync"))
     },
-    Install: &InstallSpec{PackageDebian: "wireguard-tools", PackageRHEL: "wireguard-tools"},
+    Install: &InstallSpec{PackageDebian: "rsync", PackageRHEL: "rsync"},
 },
 ```
+
+An install may bring more than the detection asks for: WireGuard is detected
+by `wg-quick` alone and installs `iptables` as well, which the NAT rules of a
+new interface need ([WireGuard Interfaces](./wireguard.md#forwarding)).
 
 ### Tests
 

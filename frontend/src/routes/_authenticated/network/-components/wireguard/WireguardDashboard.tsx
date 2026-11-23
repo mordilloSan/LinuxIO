@@ -119,6 +119,14 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     ),
   );
 
+  // The interface stays up and its peers connected: only forwarding changes.
+  const restoreForwarding = linuxio.wireguard.restore_forwarding.useMutation(
+    interfaceActionConfig(
+      "forwards its peers' traffic again.",
+      "Failed to turn on forwarding",
+    ),
+  );
+
   const handleClickOutside = useEffectEvent(
     (event: MouseEvent | KeyboardEvent) => {
       if (
@@ -221,6 +229,12 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     );
   };
 
+  const handleRestoreForwarding = (interfaceName: string) => {
+    runInterfaceAction(interfaceName, "forward", () =>
+      restoreForwarding.mutateAsync({ name: interfaceName }),
+    );
+  };
+
   const surface = useReorderableSurface({
     getId: getWireguardInterfaceId,
     items: interfaces,
@@ -243,6 +257,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
                 handleAddPeer={handleAddPeer}
                 handleDelete={handleDelete}
                 handleEdit={setEditTarget}
+                handleRestoreForwarding={handleRestoreForwarding}
                 handleSelectInterface={handleSelectInterface}
                 handleToggleBootPersistence={handleToggleBootPersistence}
                 handleToggleInterface={handleToggleInterface}

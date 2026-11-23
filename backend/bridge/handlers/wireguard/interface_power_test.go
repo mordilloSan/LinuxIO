@@ -242,11 +242,14 @@ func TestRemoveInterfaceKeepsTheConfigOfAnInterfaceStillUp(t *testing.T) {
 }
 
 // A name is an argument of wg-quick and part of a unit name, so it holds only
-// letters, digits, "_" and "-", and does not start with "-".
+// letters, digits, "_" and "-", and does not start with "-". It also names
+// the interface's folder under /proc/sys/net/ipv4/conf, where "all" and
+// "default" are the kernel's own.
 func TestValidateInterfaceName(t *testing.T) {
 	for name, ok := range map[string]bool{
 		"wg0": true, "wg-home_2": true, "_wg": true,
 		"": false, "-wg0": false, "--help": false, "wg0.conf": false, "wg/0": false, "wg@0": false, "abcdefghijklmnop": false,
+		"all": false, "default": false,
 	} {
 		if err := validateInterfaceName(name); (err == nil) != ok {
 			t.Errorf("validateInterfaceName(%q) = %v, want ok=%v", name, err, ok)
