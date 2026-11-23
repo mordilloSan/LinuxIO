@@ -36,19 +36,14 @@ func runIndexMode(args []string) int {
 		return 1
 	}
 
-	wire := daemon.NewWireProgress(os.Stdout)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	stats, err := daemon.RunIndexMode(
-		ctx,
-		fileCfg,
-		storage.DefaultDBPath,
-		wire,
-	)
-	if err != nil {
+	// The scan takes its turn with the daemon, which systemd starts for the
+	// request: by then the daemon has checked the database, and set a broken
+	// one aside.
+	if _, err := daemon.RunScan(ctx, fileCfg, storage.DefaultDBPath, daemon.NewSocketClient()); err != nil {
 		slog.Error("index failed", "error", err)
 		return 1
 	}
-	wire.Summary(stats)
 	return 0
 }

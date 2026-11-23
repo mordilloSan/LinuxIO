@@ -31,37 +31,6 @@ func TestEntryFromFileInfoUsesAllocatedSize(t *testing.T) {
 	}
 }
 
-func TestIsHidden(t *testing.T) {
-	mock := newMockFileSystem(t)
-
-	// Create hidden and regular files
-	mock.CreateFile(".hidden", "hidden")
-	mock.CreateFile("visible.txt", "visible")
-
-	tests := []struct {
-		name       string
-		filename   string
-		wantHidden bool
-	}{
-		{"hidden file", ".hidden", true},
-		{"visible file", "visible.txt", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			info, err := os.Stat(mock.Root + "/" + tt.filename)
-			if err != nil {
-				t.Fatalf("Failed to stat file: %v", err)
-			}
-
-			result := isHidden(info)
-			if result != tt.wantHidden {
-				t.Errorf("Expected isHidden=%v for %s, got %v", tt.wantHidden, tt.filename, result)
-			}
-		})
-	}
-}
-
 func TestSameFile(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "file")

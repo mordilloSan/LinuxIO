@@ -419,7 +419,8 @@ Only part of the tests is written for Fedora, and `mk/vm.mk` holds the two
 lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `packagekit`,
 `relay`, `userconfig` and `filebrowser`; `docs/TODO/e2e-testing.md`,
 "Distributions", has their results) and `vm_fedora_specs` (`login.spec.ts`,
-`capability-install.spec.ts` and `package-repository.spec.ts`). With
+`capability-install.spec.ts`, `package-repository.spec.ts` and
+`indexer.spec.ts`). With
 `DISTRO=fedora`, `test-vm-backend` given no `SUITES` runs the first list, and
 `test-vm-browser` given no `PLAYWRIGHT_ARGS` runs the second and then the
 release-update spec, which is written for both distributions. The other
@@ -585,6 +586,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `swap-files.spec.ts` creates, resizes and removes LinuxIO's swap file
   from the Memory overflow dialog and then switches to compressed memory; it
   leaves the VM with no swap and no zram tool, and skips itself on Fedora.
+  `indexer.spec.ts` presses Index filesystem and follows the scan unit
+  (`linuxio-indexer-index.service`) to its result, which is the one path from
+  the page through the bridge and systemd to the scanner and the daemon
+  ([Filesystem Indexer](./indexer.md#full-index)). It then makes a file
+  outside LinuxIO, opens its folder and finds the file by search, and renames
+  it through LinuxIO. It scans the whole VM, and creates and removes
+  `/srv/e2e-indexer`.
 - The `vm-test-*` targets are the root suites. Each builds its test binaries
   on the host into `.cache/vm`, static so they also run on the older glibc
   of `VM_RELEASE=noble`, and the script's `test` command copies them into
@@ -779,7 +787,8 @@ version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GO_TEST_PKGS` | `./...` | Go packages (relative to `backend/`) for `test-go`, for example `./bridge/handlers/filebrowser/...`. |
-| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. `test-go` builds with the `sqlite_fts5` tag `build-indexer` uses and, on amd64, the `glibc` tag `build-monitoring` uses, so the indexer's FTS5 search and the NVML collector are tested; `golint-only` adds `glibc` too. A `-tags` given here replaces both. |
+| `GO_BENCH`, `GO_BENCH_TIME` | `.`, `1x` | The benchmarks `bench-go` runs in `GO_TEST_PKGS` and for how long. It runs without the race detector `test-go` uses, which slows code several times over and says nothing about speed. |
+| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. `test-go` builds with the `sqlite_fts5` and `sqlite_omit_load_extension` tags `build-indexer` uses and, on amd64, the `glibc` tag `build-monitoring` uses, so the indexer's FTS5 search and the NVML collector are tested; `golint-only` adds `glibc` too. A `-tags` given here replaces both. |
 | `PLAYWRIGHT_ARGS` | empty | Extra arguments for the browser suite, such as one spec path. |
 | `VITEST_MAX_WORKERS` | `8` | Maximum Vitest workers; lower this on memory-constrained hosts. |
 | `VITEST_FILE` | empty | Frontend-relative test/spec file for a focused Vitest run. |

@@ -17,22 +17,15 @@ const (
 
 	// schemaVersion is stored in PRAGMA user_version. The cache is rebuildable,
 	// so a mismatch is quarantined and recreated rather than migrated.
-	schemaVersion = 2
+	schemaVersion = 3
 	schemaTimeout = 30 * time.Second
 
-	// The streaming writer flushes a batch at batchSize rows or batchTimeout,
-	// whichever comes first. defaultWriterBuffer sizes its entry channel.
-	batchSize           = 500
-	batchTimeout        = time.Second
-	defaultWriterBuffer = 1000
+	// batchSize is how many rows a scan writes in one statement.
+	batchSize = 500
 
 	// defaultSearchLimit applies when a caller passes no positive limit.
 	defaultSearchLimit = 100
 
 	// ftsMinTermRunes is the trigram size; shorter terms cannot match in FTS.
 	ftsMinTermRunes = 3
-
-	// ftsPruneBypassEntries is the prune size above which the per-row FTS
-	// delete triggers are bypassed in favour of one rebuild.
-	ftsPruneBypassEntries = 50000
 )

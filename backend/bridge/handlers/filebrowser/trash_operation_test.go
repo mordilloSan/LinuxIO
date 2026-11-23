@@ -2,7 +2,6 @@ package filebrowser
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
-	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 // The session user of the root trash tests, who has no account: their home
@@ -421,7 +419,8 @@ func trashTaskHome(t *testing.T) (string, *[]recordedIndexerRequest) {
 
 // A restore fails the items whose names are taken with reason "exists"; sent
 // again with the user's choices, an item to keep both gets a "name (copy)"
-// name and the others replace what is there, which the indexer drops first.
+// name and the others replace what is there, which the indexer is told of as
+// a move onto the taken name.
 func TestTrashRestoreTaskAsksAboutTakenNames(t *testing.T) {
 	home, requests := trashTaskHome(t)
 	docs := filepath.Join(home, "docs")
@@ -454,8 +453,7 @@ func TestTrashRestoreTaskAsksAboutTakenNames(t *testing.T) {
 	require.Equal(t, "newer a.txt", readString(t, filepath.Join(docs, "a.txt")))
 	require.Equal(t, "trashed a.txt", readString(t, filepath.Join(docs, "a (copy).txt")))
 	require.Equal(t, "trashed b.txt", readString(t, filepath.Join(docs, "b.txt")))
-	dropped := recordedIndexerRequest{method: http.MethodDelete, path: indexerapi.RouteDelete, query: url.Values{"path": {filepath.Join(docs, "b.txt")}}.Encode()}
-	require.Contains(t, *requests, dropped)
+	require.Contains(t, *requests, indexerMove(items[1], filepath.Join(docs, "b.txt")))
 }
 
 // A restore into a chosen folder takes an existing folder, checked once for

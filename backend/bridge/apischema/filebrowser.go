@@ -42,6 +42,9 @@ type DirectorySizeData struct {
 	Size        int64 `json:"size"`
 	FileCount   int64 `json:"fileCount"`
 	FolderCount int64 `json:"folderCount"`
+	// Pending is set while the index still has an update to apply that can
+	// change these numbers: the page asks again shortly after.
+	Pending bool `json:"pending,omitempty"`
 }
 
 type SubfolderData struct {
@@ -51,6 +54,8 @@ type SubfolderData struct {
 
 type SubfoldersResponse struct {
 	Subfolders []SubfolderData `json:"subfolders"`
+	// Pending is set as in DirectorySizeData, for the folder asked about.
+	Pending bool `json:"pending,omitempty"`
 }
 
 type SearchResult struct {

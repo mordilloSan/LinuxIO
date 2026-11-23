@@ -18,7 +18,7 @@ func (d *daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	running := d.running.Load()
+	running := d.busy()
 	resp := d.newStatusResponse(running)
 	if err := d.populateLatestIndexStatus(r.Context(), &resp); err != nil {
 		if !running {
@@ -33,7 +33,7 @@ func (d *daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *daemon) newStatusResponse(running bool) api.StatusResponse {
-	resp := api.StatusResponse{Status: api.StatusUninitialized}
+	resp := api.StatusResponse{Status: api.StatusUninitialized, WaitingOperations: d.waitingOperations()}
 	if !running {
 		return resp
 	}
@@ -98,6 +98,10 @@ func (d *daemon) handleDirSize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid path: path traversal not allowed", http.StatusBadRequest)
 		return
 	}
+	// Asked before the numbers are read: work that ends in between then
+	// marks numbers that are already new as pending, which costs one more
+	// request, where the other order would pass old numbers off as final.
+	pending := d.sizePending(path)
 	total, files, dirs, err := d.store.DirDetails(r.Context(), path)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotInitialized) {
@@ -111,7 +115,7 @@ func (d *daemon) handleDirSize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, api.DirSizeResponse{Path: path, Size: total, Files: files, Dirs: dirs})
+	writeJSON(w, api.DirSizeResponse{Path: path, Size: total, Files: files, Dirs: dirs, Pending: pending})
 }
 
 func (d *daemon) handleSubfolders(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +126,7 @@ func (d *daemon) handleSubfolders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pending := d.sizePending(path)
 	results, err := d.store.GetDirectSubfolders(ctx, path)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -131,5 +136,8 @@ func (d *daemon) handleSubfolders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), status)
 		return
 	}
-	writeJSON(w, results)
+	if results == nil {
+		results = []api.SubfolderResult{}
+	}
+	writeJSON(w, api.SubfoldersResponse{Subfolders: results, Pending: pending})
 }

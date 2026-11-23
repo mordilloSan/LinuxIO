@@ -112,7 +112,7 @@ anyone the version, which is that of all nine programs.
 | `linuxio-auth` | root only | `--help`, `-h`, `--version` | The sign-in helper, started by systemd for each connection (`linuxio-auth@.service`) with no arguments |
 | `linuxio-worker` | root only | `--help`, `-h`, `--version`; the help lists its words | The words systemd timers and hooks run (list below) |
 | `linuxio-docker-update` | root only | `--help`, `-h`, `--version` | One Docker update pass, started by its timer with `[--config PATH]` |
-| `linuxio-indexer` | root only | `--help`, `-h`, `--version` | The file index daemon, started by `linuxio-indexer.service` with `[--config PATH] [--verbose]`, plus two private modes: `--trigger-index` for its timer and `--index-mode` for the scanner the daemon starts |
+| `linuxio-indexer` | root only | `--help`, `-h`, `--version` | The file index daemon, started by `linuxio-indexer.service` with `[--config PATH] [--verbose]`, and in a second role, `--index-mode`, the scanner that `linuxio-indexer-index.service` runs |
 | `linuxio-monitoring` | root only | `--help`, `-h`, `--version` | The monitoring daemon, started by `linuxio-monitoring.service` with `[--config PATH] [--verbose]` |
 
 "Open" is mode `0755` and "root only" is `0700`
@@ -133,16 +133,16 @@ Seven programs start with flags only. These are all of them, beside `--help`,
 | `linuxio-auth` | none | | Started with no arguments |
 | `linuxio-claude-relay` | none of its own | | Every argument is Claude Code's |
 | `linuxio-docker-update` | `--config PATH` | `/etc/linuxio/docker-update.json` | `linuxio-docker-update.service`, with the default path |
-| `linuxio-indexer` | `--config PATH` | `/etc/linuxio/indexer/config.yaml` | `linuxio-indexer.service`, with the default path; the daemon passes it on to its scanner |
+| `linuxio-indexer` | `--config PATH` | `/etc/linuxio/indexer/config.yaml` | `linuxio-indexer.service` and `linuxio-indexer-index.service`, with the default path |
 | `linuxio-indexer` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
-| `linuxio-indexer` | `--trigger-index` | | `linuxio-indexer-index.service`, for the timer: it asks the running daemon for a full index and exits |
-| `linuxio-indexer` | `--socket-path PATH` | `/run/linuxio/indexer.sock` | `linuxio-indexer-index.service`, with the default path; only with `--trigger-index` |
-| `linuxio-indexer` | `--index-mode` | | The daemon itself, for the scanner it starts as a child process |
+| `linuxio-indexer` | `--index-mode` | | `linuxio-indexer-index.service`, for the scanner: one full index, which takes its turn with the daemon over `/run/linuxio/indexer.sock` |
 | `linuxio-monitoring` | `--config PATH` | `/etc/linuxio/monitoring/config.yaml` | `linuxio-monitoring.service`, with the default path |
 | `linuxio-monitoring` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
 
-`--trigger-index` and `--index-mode` must come first on the command line,
-since each chooses what the program does. The flags of the worker's words
+`--index-mode` must come first on the command line, since it chooses what the
+program does. The scanner reaches the daemon at a fixed path and takes no flag
+for it: the daemon gets its listener from systemd and the bridge has the path
+as a constant, so a flag could only point the scanner at nothing. The flags of the worker's words
 are in the list below.
 
 The words of `linuxio-worker` are:
@@ -179,8 +179,9 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 │  └─ linuxio-auth@.service          one instance per connection; root; forks+supervises a bridge
 ├─ linuxio-indexer.socket            unix /run/linuxio/indexer.sock → activates linuxio-indexer.service
 │  └─ linuxio-indexer.service        runs the managed daemon; exits when idle
-├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
-│  └─ linuxio-indexer-index.service asks the daemon for a full index
+├─ linuxio-indexer-index.timer      periodic start of linuxio-indexer-index.service
+│  └─ linuxio-indexer-index.service the scanner (`linuxio-indexer --index-mode`): one full index, oneshot,
+│                                    nice 19 and idle I/O; takes its turn with the daemon over its socket
 ├─ linuxio-btrfs-health.timer       every 10 min; enabled only on hosts with btrfs
 │  └─ linuxio-btrfs-health.service  runs `linuxio-worker health`; root
 ├─ linuxio-monitoring.service        runs `linuxio-monitoring`; root; owns
@@ -490,7 +491,7 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 | `make build-bridge` | `linuxio-bridge` | Go; `CGO_ENABLED=1`, so `os/user` finds SSSD and LDAP users |
 | `make build-auth` | `linuxio-auth` | C; hardened flags (RELRO, PIE, FORTIFY, stack-clash, LTO), links `libpam` + `libsystemd` |
 | `make build-docker-update` | `linuxio-docker-update` | Go; scheduled Docker updater |
-| `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled |
+| `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled, extension loading left out |
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
 | `make build-worker` | `linuxio-worker` | Go; the timer jobs and unit hooks systemd starts with a word |
 

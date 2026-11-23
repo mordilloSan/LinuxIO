@@ -154,6 +154,7 @@ func (tree *hardlinkBenchTree) entries(files int) []indexing.IndexEntry {
 func (tree *hardlinkBenchTree) addPairLink(entry *indexing.IndexEntry, i int) {
 	pair := i / 2
 	entry.Inode = uint64(10_000_000 + pair)
+	entry.Nlink = 2
 	entry.Size = int64(4096 * (1 + pair%7))
 	entry.SizeContribution = entry.Size
 	identity := hardlinkIdentity{device: 1, inode: int64(entry.Inode)}

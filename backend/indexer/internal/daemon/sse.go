@@ -183,6 +183,9 @@ func sendSSEError(s sseEventSender, msg string) {
 	}
 }
 
+// waitingMessage is what a client sees of work that waits for its turn.
+const waitingMessage = "Waiting for other index work to finish"
+
 func wantsStatusSSE(r *http.Request) bool {
 	streamParam := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("stream")))
 	if streamParam == "1" || streamParam == "true" || streamParam == "yes" {
@@ -192,11 +195,13 @@ func wantsStatusSSE(r *http.Request) bool {
 }
 
 func (d *daemon) attachStatusSSEIfActive(w http.ResponseWriter, r *http.Request) bool {
-	broadcaster := d.getWorkStreamBroadcaster()
+	// An operation can be attached to while it still waits for its turn: its
+	// events start when it does.
+	expectedID := strings.TrimSpace(r.URL.Query().Get("operation_id"))
+	broadcaster := d.streamOf(expectedID)
 	if broadcaster == nil {
 		return false
 	}
-	expectedID := strings.TrimSpace(r.URL.Query().Get("operation_id"))
 	expectedOperation := strings.TrimSpace(r.URL.Query().Get("operation"))
 	_, pathProvided := r.URL.Query()["path"]
 	expectedPath := api.NormalizePath(r.URL.Query().Get("path"))
@@ -218,12 +223,26 @@ func (d *daemon) attachStatusSSEIfActive(w http.ResponseWriter, r *http.Request)
 	}
 	defer broadcaster.unsubscribe(subscriberID)
 
-	if !sendSSEEvent(sse, api.EventStarted, api.WorkStartedEvent{
-		Status:      api.StatusRunning,
-		Operation:   broadcaster.Operation(),
-		OperationID: broadcaster.OperationID(),
-		Path:        broadcaster.Path(),
-	}) {
+	// A late subscriber is told the work runs; one that attaches while the
+	// work waits is told so, and the work's own started event follows.
+	var opened bool
+	if d.waits(broadcaster) {
+		opened = sendSSEEvent(sse, api.EventProgress, api.WorkProgressEvent{
+			Operation:   broadcaster.Operation(),
+			OperationID: broadcaster.OperationID(),
+			Path:        broadcaster.Path(),
+			Message:     waitingMessage,
+			CurrentPath: waitingMessage + "...",
+		})
+	} else {
+		opened = sendSSEEvent(sse, api.EventStarted, api.WorkStartedEvent{
+			Status:      api.StatusRunning,
+			Operation:   broadcaster.Operation(),
+			OperationID: broadcaster.OperationID(),
+			Path:        broadcaster.Path(),
+		})
+	}
+	if !opened {
 		return true
 	}
 
@@ -245,12 +264,6 @@ func (d *daemon) streamWorkEvents(ctx context.Context, sse *sseWriter, events <-
 			}
 		}
 	}
-}
-
-func (d *daemon) beginWorkStream(operation, operationID, path string) *workStreamBroadcaster {
-	b := newWorkStreamBroadcaster(operation, operationID, path)
-	d.setWorkStreamBroadcaster(b)
-	return b
 }
 
 func (d *daemon) endWorkStream(b *workStreamBroadcaster) {

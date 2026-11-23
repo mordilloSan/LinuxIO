@@ -7,10 +7,23 @@ After=linuxio-indexer.socket
 
 [Service]
 Type=oneshot
-ExecStart=/usr/libexec/linuxio/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock
+# The scanner. It asks the indexer daemon for its turn over the socket, which
+# starts the daemon when it is not running, and scans when no other index
+# work runs.
+ExecStart=/usr/libexec/linuxio/linuxio-indexer --index-mode --config /etc/linuxio/indexer/config.yaml
+# It yields the CPU to everything else on the host, the daemon's searches
+# included, and reads the disk only when nothing else wants it, on a disk
+# whose scheduler honours the class (BFQ, mq-deadline). The database pages it
+# writes are flushed later by the kernel and do not carry the class.
+Nice=19
+IOSchedulingClass=idle
+Environment=SQLITE_TMPDIR=/var/lib/linuxio/indexer
+
+# It reads the host's files and writes only the index.
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
+ReadWritePaths=/var/lib/linuxio/indexer
 ProtectHostname=true
 ProtectClock=true
 ProtectKernelLogs=true
@@ -22,5 +35,5 @@ RestrictSUIDSGID=true
 LockPersonality=true
 RestrictRealtime=true
 RestrictAddressFamilies=AF_UNIX
-AmbientCapabilities=
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+UMask=0027

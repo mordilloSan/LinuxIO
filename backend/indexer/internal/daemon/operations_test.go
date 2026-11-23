@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,9 +44,10 @@ func TestHandleAddRejectsRootAndDirectories(t *testing.T) {
 	})
 }
 
-func TestHandleAddSkipsExcludedPathBeforeOperationLock(t *testing.T) {
+func TestHandleAddSkipsExcludedPathWithoutWaiting(t *testing.T) {
 	d := &daemon{}
-	d.running.Store(true)
+	release := holdQueue(t, d)
+	defer release()
 	req := httptest.NewRequest(http.MethodPost, "/add", strings.NewReader(`{"path":"/proc/meminfo"}`))
 	rr := httptest.NewRecorder()
 	d.handleAdd(rr, req)
@@ -55,34 +57,27 @@ func TestHandleAddSkipsExcludedPathBeforeOperationLock(t *testing.T) {
 	}
 }
 
-func TestUnlockIndexStartsFreshIdleGrace(t *testing.T) {
+func TestFinishedWorkStartsFreshIdleGrace(t *testing.T) {
 	d := &daemon{}
-	d.running.Store(true)
 	d.activityMu.Lock()
 	d.lastActivity = time.Now().Add(-idleGrace)
 	d.activityMu.Unlock()
 
+	// With the activity clock held, the work cannot publish its end: the
+	// daemon must stay pinned until it has, or the idle watcher could see a
+	// free daemon with a stale clock.
 	d.activityMu.Lock()
-	started := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		close(started)
-		d.unlockIndex()
-		close(done)
-	}()
-	<-started
-	time.Sleep(10 * time.Millisecond)
-	heldUntilActivityPublished := d.running.Load()
+	queued, _ := d.enqueue(&job{run: func(context.Context) error { return nil }})
+	time.Sleep(20 * time.Millisecond)
+	heldUntilActivityPublished := d.busy()
 	d.activityMu.Unlock()
-	<-done
+	<-queued.done
 
 	if !heldUntilActivityPublished {
-		t.Fatal("operation pin released before activity was published")
+		t.Fatal("the daemon was free before the end of the work was published")
 	}
-	if d.running.Load() {
-		t.Fatal("operation pin remained active")
-	}
+	waitUntil(t, "the daemon is free again", func() bool { return !d.busy() })
 	if idleFor := time.Since(d.activityTime()); idleFor > 100*time.Millisecond {
-		t.Fatalf("operation release did not start a fresh grace: idle for %v", idleFor)
+		t.Fatalf("finished work did not start a fresh grace: idle for %v", idleFor)
 	}
 }

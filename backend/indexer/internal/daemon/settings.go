@@ -46,7 +46,9 @@ func (d *daemon) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "config writes require the Unix socket", http.StatusForbidden)
 		return
 	}
-	if d.running.Load() {
+	// A scan reads the exclusions when it starts, so they do not change
+	// under one. The small updates of file operations read them as they run.
+	if d.indexWorkQueued() {
 		http.Error(w, "indexer already running", http.StatusConflict)
 		return
 	}

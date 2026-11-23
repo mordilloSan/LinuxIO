@@ -69,7 +69,7 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 			if r.Method != http.MethodGet || r.URL.Query().Get("path") != "/docs" {
 				t.Errorf("subfolders request = %s %s", r.Method, r.URL.String())
 			}
-			_, _ = io.WriteString(w, `[{"path":"/docs/a","name":"a"}]`)
+			_, _ = io.WriteString(w, `{"subfolders":[{"path":"/docs/a","name":"a"}],"pending":true}`)
 			return
 		case indexerapi.RouteSearch:
 			if r.Method != http.MethodGet || r.URL.Query().Get("q") != "readme" || r.URL.Query().Get("limit") != "10" || r.URL.Query().Get("base") != "/docs" {
@@ -98,7 +98,7 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 	if got, err := DirSize(context.Background(), "docs"); err != nil || got.Size != 42 {
 		t.Fatalf("DirSize = %#v, %v", got, err)
 	}
-	if got, err := Subfolders(context.Background(), "docs"); err != nil || len(got) != 1 || got[0].Path != "/docs/a" {
+	if got, err := Subfolders(context.Background(), "docs"); err != nil || len(got.Subfolders) != 1 || got.Subfolders[0].Path != "/docs/a" || !got.Pending {
 		t.Fatalf("Subfolders = %#v, %v", got, err)
 	}
 	if got, err := Search(context.Background(), "readme", "10", "docs"); err != nil || len(got) != 1 || got[0].Name != "readme.txt" {

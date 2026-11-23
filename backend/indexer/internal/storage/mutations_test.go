@@ -31,7 +31,6 @@ func (h *testHelper) seedDir(relPath string) {
 		Size:         0,
 		ModTime:      time.Now(),
 		Type:         "directory",
-		Hidden:       false,
 		Inode:        0,
 	}
 	if relPath == "/" {
@@ -168,7 +167,6 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 		Size:         200,
 		ModTime:      time.Now(),
 		Type:         "file",
-		Hidden:       false,
 	}
 
 	h.upsertFile(fileEntry)
@@ -360,58 +358,4 @@ func TestHardlinkReconcileIgnoresStaleContributorAfterIdentityChange(t *testing.
 	}
 	h.assertSize(filepath.Join(root, "a"), 0, "after entirely stale reconciliation")
 	h.assertSize(filepath.Join(root, "b"), 0, "after entirely stale reconciliation")
-}
-
-func TestTransactionalStreamingWriterRollbackPreservesEntries(t *testing.T) {
-	ctx, db, _ := setupTestDB(t)
-	indexID := insertTestIndex(t, db)
-	original := indexing.IndexEntry{
-		RelativePath: "/docs/kept.txt",
-		Name:         "kept.txt",
-		Size:         10,
-		ModTime:      time.Now(),
-		Type:         "file",
-		Inode:        1,
-	}
-	if _, err := UpdateEntry(ctx, db, indexID, original); err != nil {
-		t.Fatalf("seed original entry: %v", err)
-	}
-
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatalf("begin transaction: %v", err)
-	}
-	writer := newStreamingWriter(ctx, nil, tx, indexID, 2, nil)
-	changed := original
-	changed.Size = 99
-	if err := writer.Write(changed); err != nil {
-		t.Fatalf("write changed entry: %v", err)
-	}
-	if err := writer.Write(indexing.IndexEntry{
-		RelativePath: "/docs/new.txt", Name: "new.txt", Size: 5,
-		ModTime: time.Now(), Type: "file", Inode: 2,
-	}); err != nil {
-		t.Fatalf("write new entry: %v", err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
-	}
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("rollback transaction: %v", err)
-	}
-
-	var size int64
-	if err := db.QueryRowContext(ctx, `SELECT size FROM entries WHERE index_id = ? AND relative_path = ?`, indexID, original.RelativePath).Scan(&size); err != nil {
-		t.Fatalf("read original entry: %v", err)
-	}
-	if size != original.Size {
-		t.Fatalf("original size = %d, want %d", size, original.Size)
-	}
-	var newCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE index_id = ? AND relative_path = '/docs/new.txt'`, indexID).Scan(&newCount); err != nil {
-		t.Fatalf("count new entry: %v", err)
-	}
-	if newCount != 0 {
-		t.Fatalf("new entry count = %d, want 0 after rollback", newCount)
-	}
 }

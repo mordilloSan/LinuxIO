@@ -20,6 +20,9 @@ type Status struct {
 	OperationID  string `json:"active_operation_id,omitempty"`
 	ActivePath   string `json:"active_path,omitempty"`
 	Warning      string `json:"warning,omitempty"`
+	// Waiting are the operations queued behind the one that runs. They stay
+	// in the bridge: a waiting operation is found again by them.
+	Waiting []indexerapi.WaitingOperation `json:"-"`
 }
 
 func FetchStatus(ctx context.Context) (Status, error) {
@@ -31,7 +34,7 @@ func FetchStatus(ctx context.Context) (Status, error) {
 		Status: raw.Status, NumDirs: raw.NumDirs, NumFiles: raw.NumFiles,
 		TotalSize: raw.TotalSize, LastIndexed: raw.LastIndexed,
 		DatabaseSize: raw.DatabaseSize, ActiveOp: raw.ActiveOperation, OperationID: raw.ActiveOperationID,
-		ActivePath: raw.ActivePath, Warning: raw.Warning,
+		ActivePath: raw.ActivePath, Warning: raw.Warning, Waiting: raw.WaitingOperations,
 	}
 	status.Status = strings.ToLower(strings.TrimSpace(status.Status))
 	status.Running = status.Status == indexerapi.StatusRunning

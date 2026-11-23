@@ -636,3 +636,81 @@ func TestStreamIndexerAttach_NoActiveOperation(t *testing.T) {
 		t.Errorf("expected code 404, got %d", gotErrCode)
 	}
 }
+
+// The daemon queues its work, so once an operation has ended the status can
+// show another one running: that is not this operation, which is over.
+func TestStreamIndexerRecoveryTreatsOtherRunningWorkAsItsOwnEnd(t *testing.T) {
+	for name, status := range map[string]string{
+		"another operation": `{"status":"running","active_operation":"index","active_operation_id":"someone-else","active_path":"/","num_files":4,"num_dirs":2,"total_size":128}`,
+		"an entry update":   `{"status":"running","num_files":4,"num_dirs":2,"total_size":128}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/reindex":
+					w.WriteHeader(http.StatusAccepted)
+					mustWrite(t, w, `{"status":"running","path":"/srv/data","operation_id":"mine"}`)
+				case r.Method == http.MethodGet && r.URL.Query().Get("stream") == "true":
+					w.WriteHeader(http.StatusOK)
+				case r.Method == http.MethodGet && r.URL.Path == "/status":
+					w.Header().Set("Content-Type", "application/json")
+					mustWrite(t, w, status)
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+				}
+			}))
+			defer srv.Close()
+			overrideClient(t, srv)
+
+			var got IndexerResult
+			var reported string
+			err := StreamIndexer(context.Background(), "/srv/data", IndexerCallbacks{
+				OnResult: func(result IndexerResult) error { got = result; return nil },
+				OnError:  func(msg string, _ int) error { reported = msg; return nil },
+			})
+			if err != nil || reported != "" {
+				t.Fatalf("StreamIndexer: %v (reported %q), want the operation taken as ended", err, reported)
+			}
+			if got.Operation != "reindex" || got.OperationID != "mine" || got.Path != "/srv/data" {
+				t.Fatalf("recovered result = %#v", got)
+			}
+		})
+	}
+}
+
+// A page that is reloaded while its operation still waits in the daemon's
+// queue finds it among the waiting ones, behind other work that runs.
+func TestStreamIndexerAttachFindsAnOperationThatWaits(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Query().Get("stream") == "true":
+			if got := r.URL.Query().Get("operation_id"); got != "waiting-index" {
+				t.Errorf("attached to operation %q, want the waiting one", got)
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			mustWrite(t, w, "event: complete\ndata: {\"status\":\"complete\",\"operation\":\"index\",\"operation_id\":\"waiting-index\",\"path\":\"/\",\"files_indexed\":7}\n\n")
+		case r.Method == http.MethodGet && r.URL.Path == "/status":
+			w.Header().Set("Content-Type", "application/json")
+			mustWrite(t, w, `{"status":"running","active_operation":"reindex","active_operation_id":"other","active_path":"/srv",`+
+				`"waiting_operations":[{"operation":"index","operation_id":"waiting-index","path":"/"}]}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer srv.Close()
+	overrideClient(t, srv)
+
+	var got IndexerResult
+	var reported string
+	err := StreamIndexerAttach(context.Background(), "/", IndexerCallbacks{
+		OnResult: func(result IndexerResult) error { got = result; return nil },
+		OnError:  func(msg string, _ int) error { reported = msg; return nil },
+	})
+	if err != nil || reported != "" {
+		t.Fatalf("StreamIndexerAttach: %v (reported %q)", err, reported)
+	}
+	if got.OperationID != "waiting-index" || got.FilesIndexed != 7 {
+		t.Fatalf("result = %#v", got)
+	}
+}

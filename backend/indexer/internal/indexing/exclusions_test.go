@@ -98,11 +98,11 @@ func TestShouldSkipExternalMountRespectsNetworkMountOption(t *testing.T) {
 		t.Skip("linux-specific path behavior")
 	}
 
-	restore := loadExternalMountPointsFn
-	loadExternalMountPointsFn = func() map[string]string {
+	restore := loadMountPointsFn
+	loadMountPointsFn = func() map[string]string {
 		return map[string]string{"/mnt/share": "nfs"}
 	}
-	defer func() { loadExternalMountPointsFn = restore }()
+	defer func() { loadMountPointsFn = restore }()
 
 	defaultIdx := Initialize("/mnt/share")
 	if !defaultIdx.shouldSkip(true, "/nested") {
@@ -118,5 +118,105 @@ func TestShouldSkipExternalMountRespectsNetworkMountOption(t *testing.T) {
 	}
 	if IsPathExcludedFromIndex("/", nil, true, "/mnt/share/file") {
 		t.Fatal("expected direct mutation below enabled network mount to be included")
+	}
+}
+
+func TestNetworkFilesystemTypes(t *testing.T) {
+	network := []struct{ fsType, source string }{
+		{"nfs4", "server:/export"},
+		{"cifs", "//server/share"},
+		{"fuse.sshfs", "user@host:/srv"},
+		{"fuse.rclone", "remote:bucket"},
+		{"fuse.s3fs", "bucket"},
+		{"ceph", "10.0.0.1:6789:/"},
+		{"glusterfs", "server:/volume"},
+		{"fuse.glusterfs", "server:/volume"},
+		{"9p", "hostshare"},
+		{"davfs", "https://dav.example/files"},
+		{"fuse", "https://dav.example/files"},
+	}
+	for _, mount := range network {
+		if !isExternalFilesystem(mount.fsType, mount.source) {
+			t.Errorf("%s from %s is not treated as a network mount", mount.fsType, mount.source)
+		}
+	}
+	// Local disks reached through FUSE stay indexed.
+	local := []struct{ fsType, source string }{
+		{"ext4", "/dev/sda1"},
+		{"btrfs", "/dev/nvme0n1p2"},
+		{"fuseblk", "/dev/sdb1"},
+		{"fuse.mergerfs", "/mnt/disk1:/mnt/disk2"},
+		{"fuse.gocryptfs", "/home/user/.encrypted"},
+	}
+	for _, mount := range local {
+		if isExternalFilesystem(mount.fsType, mount.source) {
+			t.Errorf("%s from %s is treated as a network mount", mount.fsType, mount.source)
+		}
+	}
+}
+
+func TestContainerOverlayMounts(t *testing.T) {
+	containers := []struct{ mountPoint, options string }{
+		// Docker with the containerd image store.
+		{"/var/lib/docker/rootfs/overlayfs/abc123", "rw,lowerdir=/var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs,upperdir=/var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/12/fs,workdir=/var/lib/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/12/work"},
+		// Docker's overlay2 driver, also with its data moved elsewhere.
+		{"/var/lib/docker/overlay2/abc123/merged", "rw,lowerdir=/var/lib/docker/overlay2/l/XYZ,upperdir=/var/lib/docker/overlay2/abc123/diff,workdir=/var/lib/docker/overlay2/abc123/work"},
+		{"/mnt/data/docker/overlay2/abc123/merged", "rw,lowerdir=/mnt/data/docker/overlay2/l/XYZ,upperdir=/mnt/data/docker/overlay2/abc123/diff,workdir=/mnt/data/docker/overlay2/abc123/work"},
+		// Podman, and containerd on its own.
+		{"/var/lib/containers/storage/overlay/abc123/merged", "rw,lowerdir=/var/lib/containers/storage/overlay/l/XYZ,upperdir=/var/lib/containers/storage/overlay/abc123/diff,workdir=/var/lib/containers/storage/overlay/abc123/work"},
+		{"/run/containerd/io.containerd.runtime.v2.task/k8s.io/abc123/rootfs", "rw,lowerdir=/srv/k/io.containerd.snapshotter.v1.overlayfs/snapshots/1/fs,upperdir=/srv/k/io.containerd.snapshotter.v1.overlayfs/snapshots/5/fs,workdir=/srv/k/io.containerd.snapshotter.v1.overlayfs/snapshots/5/work"},
+	}
+	for _, mount := range containers {
+		if !isContainerOverlay(mount.mountPoint, mount.options) {
+			t.Errorf("the overlay at %s is not taken for a container's", mount.mountPoint)
+		}
+	}
+	// Overlays that are part of the host: a system extension over /usr, and
+	// one an administrator put over a data folder.
+	hosts := []struct{ mountPoint, options string }{
+		{"/usr", "ro,lowerdir=/run/systemd/sysext/meta/usr:/usr"},
+		{"/srv/media", "rw,lowerdir=/srv/base,upperdir=/srv/changes,workdir=/srv/work"},
+		{"/", "rw,lowerdir=/sysroot,upperdir=/run/upper,workdir=/run/work"},
+	}
+	for _, mount := range hosts {
+		if isContainerOverlay(mount.mountPoint, mount.options) {
+			t.Errorf("the overlay at %s is taken for a container's and left out", mount.mountPoint)
+		}
+	}
+}
+
+func TestParseMountInfoReadsTheMountOptions(t *testing.T) {
+	line := `412 29 0:61 / /var/lib/docker/rootfs/overlayfs/abc123 rw,relatime shared:230 - overlay overlay rw,lowerdir=/a,upperdir=/b,workdir=/c`
+	mountPoint, fsType, source, options, ok := parseMountInfo(line)
+	if !ok || mountPoint != "/var/lib/docker/rootfs/overlayfs/abc123" || fsType != "overlay" || source != "overlay" || options != "rw,lowerdir=/a,upperdir=/b,workdir=/c" {
+		t.Fatalf("parsed %q %q %q %q ok=%v", mountPoint, fsType, source, options, ok)
+	}
+}
+
+func TestShouldSkipOverlayMountsWhateverTheNetworkSetting(t *testing.T) {
+	restore := loadMountPointsFn
+	loadMountPointsFn = func() map[string]string {
+		return map[string]string{
+			"/": "overlay",
+			"/var/lib/docker/rootfs/overlayfs/abc123": "overlay",
+		}
+	}
+	defer func() { loadMountPointsFn = restore }()
+
+	for _, includeNetwork := range []bool{false, true} {
+		idx := Initialize("/", WithNetworkMounts(includeNetwork))
+		if !idx.shouldSkip(true, "/var/lib/docker/rootfs/overlayfs/abc123") {
+			t.Errorf("network mounts %v: a container's overlay mount is walked", includeNetwork)
+		}
+		if !idx.shouldSkip(true, "/var/lib/docker/rootfs/overlayfs/abc123/usr/lib") {
+			t.Errorf("network mounts %v: a folder below a container's overlay mount is walked", includeNetwork)
+		}
+		// A host whose own root is an overlay is still indexed.
+		if idx.shouldSkip(true, "/usr") {
+			t.Errorf("network mounts %v: a root filesystem on overlay is left out", includeNetwork)
+		}
+		if !IsPathExcludedFromIndex("/", nil, includeNetwork, "/var/lib/docker/rootfs/overlayfs/abc123/etc/passwd") {
+			t.Errorf("network mounts %v: a file below a container's overlay mount is added", includeNetwork)
+		}
 	}
 }

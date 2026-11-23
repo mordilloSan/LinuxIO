@@ -19,9 +19,10 @@ type IndexEntry struct {
 	Size         int64
 	ModTime      time.Time
 	Type         string // "directory" or "file"
-	Hidden       bool
 	Device       uint64
 	Inode        uint64
+	// Nlink is the number of names the file has; above one it is a hard link.
+	Nlink uint64
 	// SizeContribution is the part of Size counted in ancestor aggregates.
 	// It is zero for duplicate paths to the same hard-linked allocation.
 	SizeContribution int64
@@ -35,9 +36,11 @@ func EntryFromFileInfo(path string, info os.FileInfo) IndexEntry {
 	}
 	size := info.Size()
 	var key devIno
-	if allocatedSize, _, fileKey, ok := getFileDetails(info.Sys()); ok {
+	var nlink uint64 = 1
+	if allocatedSize, links, fileKey, ok := getFileDetails(info.Sys()); ok {
 		size = int64(allocatedSize)
 		key = fileKey
+		nlink = links
 	}
 	return IndexEntry{
 		RelativePath: indexerapi.NormalizePath(path),
@@ -45,9 +48,9 @@ func EntryFromFileInfo(path string, info os.FileInfo) IndexEntry {
 		Size:         size,
 		ModTime:      info.ModTime().In(time.UTC),
 		Type:         typ,
-		Hidden:       isHidden(info),
 		Device:       key.dev,
 		Inode:        key.ino,
+		Nlink:        nlink,
 	}
 }
 
@@ -70,10 +73,4 @@ func getFileDetails(sys any) (uint64, uint64, devIno, bool) {
 		return realSize, stat.Nlink, devIno{dev: stat.Dev, ino: stat.Ino}, true
 	}
 	return 0, 1, devIno{}, false
-}
-
-func isHidden(file os.FileInfo) bool {
-	// Check if the file starts with a dot (Linux hidden files)
-	name := file.Name()
-	return len(name) > 0 && name[0] == '.'
 }

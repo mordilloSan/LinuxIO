@@ -2,7 +2,8 @@
 # Opt-in smoke test for a disposable systemd host: installs the LinuxIO
 # package LINUXIO_SMOKE_PACKAGE (a DEB or an RPM, made by make package-deb or
 # package-rpm) with apt or dnf, checks the indexer's socket activation, idle
-# exit and index timer under systemd, and removes the package again.
+# exit, index timer and scan unit under systemd, and removes the package
+# again. The scan reads the whole host.
 set -euo pipefail
 
 if [[ "${LINUXIO_SYSTEMD_SMOKE:-}" != 1 ]]; then
@@ -163,6 +164,27 @@ systemctl stop linuxio-indexer-index.timer
 systemctl stop linuxio-indexer.service
 curl_unix /status >/dev/null
 systemctl is-active --quiet linuxio-indexer.service || fail "indexer did not reactivate from its Unix socket"
+
+# The scan unit as packaged: the scanner takes its turn with the daemon, scans
+# the host and reports its result, and the unit's result is the scan's. With
+# the daemon stopped first, the scanner's request is what starts it.
+rm -f "$INDEX_DROPIN"
+systemctl daemon-reload
+[[ "$(systemctl show --value --property=Nice linuxio-indexer-index.service)" == 19 ]] ||
+	fail "the scan unit does not run at the lowest CPU priority"
+systemctl stop linuxio-indexer.service
+if ! systemctl start linuxio-indexer-index.service; then
+	journalctl --no-pager -n 40 -u linuxio-indexer-index.service -u linuxio-indexer.service >&2 || true
+	fail "the scan unit failed"
+fi
+[[ "$(systemctl show --value --property=Result linuxio-indexer-index.service)" == success ]] ||
+	fail "the scan unit did not end with success"
+status=$(curl_unix /status)
+jq -e '.status == "idle" and .num_files > 0 and .num_dirs > 0' >/dev/null <<<"$status" ||
+	fail "the scan left no index: ${status}"
+[[ -s "$DB_PATH" ]] || fail "the scan left no database at ${DB_PATH}"
+# A second scan finds the index of the first and ends the same way.
+systemctl start linuxio-indexer-index.service || fail "a second scan failed"
 
 # Removal stops and removes the units and keeps the indexer's data, as it
 # keeps all of /var/lib/linuxio.

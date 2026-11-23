@@ -13,26 +13,72 @@ import (
 
 // Exclusion policy: everything that decides whether a path is left out of the
 // index lives here. Operator and mandatory paths arrive through
-// WithExcludePaths; network mounts and Docker overlay "merged" views are fixed
-// rules. Mount discovery itself is in mounts.go.
+// WithExcludePaths; network mounts, overlay mounts and Docker overlay "merged"
+// views are fixed rules. Mount discovery itself is in mounts.go.
+
+// overlayFSType is what a running container's root filesystem is mounted as.
+// That mount shows again what its lower folders already hold, where Docker or
+// Podman stores them, so a container's overlay is left out whatever the
+// network setting and wherever the engine mounts it. Other overlays are part
+// of the host and are indexed: a system extension over /usr, one an
+// administrator put over a data folder, a root filesystem that is one.
+const overlayFSType = "overlay"
+
+// containerMountRoots are the folders the container engines mount under, and
+// containerLayerMarks what the folders an overlay is made of are named when a
+// container engine made them, wherever its data was moved to.
+var (
+	containerMountRoots = []string{
+		"/var/lib/docker", "/var/lib/containers", "/var/lib/containerd",
+		"/run/docker", "/run/containers", "/run/containerd",
+	}
+	containerLayerMarks = []string{"/overlay2/", "/containers/storage/overlay/", "io.containerd.snapshotter"}
+)
+
+// isContainerOverlay reports whether the overlay mounted at mountPoint with
+// those options is a container's: it is mounted below a container engine's
+// folder, or made of folders one keeps its layers in.
+func isContainerOverlay(mountPoint, options string) bool {
+	for _, root := range containerMountRoots {
+		if strings.HasPrefix(mountPoint, root+"/") {
+			return true
+		}
+	}
+	for _, mark := range containerLayerMarks {
+		if strings.Contains(options, mark) {
+			return true
+		}
+	}
+	return false
+}
 
 // dockerOverlayRoot holds overlay2 layers. Each layer's "merged" view
 // duplicates content already present under its "diff" directory.
 const dockerOverlayRoot = "/var/lib/docker/overlay2"
 
+// externalFSTypes are the network filesystems. A local disk reached through
+// FUSE (fuseblk for NTFS, fuse.mergerfs, fuse.gocryptfs) is not one of them.
 var externalFSTypes = map[string]struct{}{
-	"nfs":        {},
-	"nfs4":       {},
-	"cifs":       {},
-	"smbfs":      {},
-	"smb2":       {},
-	"smb3":       {},
-	"fuse.cifs":  {},
-	"fuse.smb":   {},
-	"fuse.smb3":  {},
-	"fuse.nfs":   {},
-	"fuse.ceph":  {},
-	"fuse.iscsi": {},
+	"nfs":            {},
+	"nfs4":           {},
+	"cifs":           {},
+	"smbfs":          {},
+	"smb2":           {},
+	"smb3":           {},
+	"ceph":           {},
+	"glusterfs":      {},
+	"9p":             {},
+	"davfs":          {},
+	"fuse.cifs":      {},
+	"fuse.smb":       {},
+	"fuse.smb3":      {},
+	"fuse.nfs":       {},
+	"fuse.ceph":      {},
+	"fuse.iscsi":     {},
+	"fuse.sshfs":     {},
+	"fuse.rclone":    {},
+	"fuse.s3fs":      {},
+	"fuse.glusterfs": {},
 }
 
 func isExternalFilesystem(fsType, source string) bool {
@@ -42,7 +88,8 @@ func isExternalFilesystem(fsType, source string) bool {
 	if strings.Contains(fsType, "iscsi") || strings.Contains(source, "iscsi") {
 		return true
 	}
-	if strings.HasPrefix(source, "//") {
+	// An SMB share, or a WebDAV one, which davfs2 mounts as plain "fuse".
+	if strings.HasPrefix(source, "//") || strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		return true
 	}
 	return false
@@ -61,7 +108,7 @@ func (idx *Index) shouldSkip(isDir bool, fullCombined string) bool {
 		}
 
 		if runtime.GOOS == "linux" {
-			if !idx.includeNetworkMounts && idx.isExternalMount(fullCombined) {
+			if idx.isBelowMount(idx.externalMounts, fullCombined) || idx.isBelowMount(idx.overlayMounts, fullCombined) {
 				return true
 			}
 			if idx.isDockerOverlayMergedPath(fullCombined) {
@@ -104,8 +151,10 @@ func IsPathExcludedFromIndex(indexPath string, excludedPaths []string, includeNe
 	return idx.shouldSkip(true, relativePath)
 }
 
-func (idx *Index) isExternalMount(fullCombined string) bool {
-	if len(idx.externalMounts) == 0 {
+// isBelowMount reports whether fullCombined is one of the mount points or
+// below one. The root is never a match.
+func (idx *Index) isBelowMount(mountPoints map[string]string, fullCombined string) bool {
+	if len(mountPoints) == 0 {
 		return false
 	}
 
@@ -115,7 +164,7 @@ func (idx *Index) isExternalMount(fullCombined string) bool {
 	}
 
 	path := filepath.Clean(realPath)
-	for mountPoint := range idx.externalMounts {
+	for mountPoint := range mountPoints {
 		if mountPoint == "" || mountPoint == "/" {
 			continue
 		}

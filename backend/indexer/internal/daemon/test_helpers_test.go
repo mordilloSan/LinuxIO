@@ -20,5 +20,8 @@ func newDaemonWithDB(t *testing.T) (*daemon, *sql.DB) {
 		t.Fatalf("open test database: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return &daemon{store: storage.NewStoreWithDB(db, dbPath, indexing.SameFile)}, db
+	d := &daemon{store: storage.NewStoreWithDB(db, dbPath, indexing.SameFile)}
+	// Registered last, so it runs first: queued work ends before the database closes.
+	t.Cleanup(d.waitBackground)
+	return d, db
 }

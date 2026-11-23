@@ -24,6 +24,9 @@ type sessionOwner struct {
 	uid uint32
 	gid uint32
 	set bool
+	// sudo is whether the session may use the routes that need root, the
+	// index among them.
+	sudo bool
 }
 
 // trashUser is whose trash a request works on: the session user's home and
@@ -147,9 +150,7 @@ func failureReason(err error) apischema.FileBatchFailureReason {
 
 func reconcileMoves(label string, updates []batchIndexerUpdate) {
 	reconcileDetached(label, updates, func(ctx context.Context, update batchIndexerUpdate) error {
-		return movePathInIndexer(ctx, update.source, update.dest, update.replaced, func() (os.FileInfo, error) {
-			return update.info, nil
-		})
+		return movePathInIndexer(ctx, update.source, update.dest)
 	})
 }
 

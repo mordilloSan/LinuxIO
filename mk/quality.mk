@@ -78,6 +78,17 @@ test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./p
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
 
+# Go benchmarks, without the race detector test-go runs under, which slows
+# code several times over and so says nothing about speed. For example:
+#   LINUXIO_INDEX_TREE=/usr make bench-go GO_TEST_PKGS=./indexer/internal/storage/ GO_BENCH=RescanOfTree
+GO_BENCH ?= .
+GO_BENCH_TIME ?= 1x
+bench-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go benchmarks without the race detector (GO_TEST_PKGS=./pkg/ GO_BENCH=Name GO_BENCH_TIME=1x)
+	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)⏱  Running Go benchmarks (backend)...$(COLOR_RESET)"
+	@cd "$(backend_dir)" && \
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test $(GO_TEST_PKGS) -run NONE -bench '$(GO_BENCH)' -benchtime $(GO_BENCH_TIME) -tags "$(strip $(indexer_go_tags) $(nvml_go_tags))" -timeout 30m
+
 test-packaging-scripts: ## Run host-independent fixture tests of the packaging files and scripts
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package file fixture tests...$(COLOR_RESET)"

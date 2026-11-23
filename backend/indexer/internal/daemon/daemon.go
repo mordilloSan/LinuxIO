@@ -22,7 +22,9 @@ type daemon struct {
 	settings       settings
 	store          *storage.Store
 	servers        []*http.Server
-	running        atomic.Bool
+	queue          workQueue
+	refreshes      refreshLog
+	workCtx        context.Context
 	workStreamMu   sync.RWMutex
 	workStream     *workStreamBroadcaster
 	activeRequests atomic.Int64
@@ -97,6 +99,7 @@ func (d *daemon) Close() {
 	}
 
 	d.shutdownHTTPServers()
+	d.closeQueue()
 
 	// Wait for cancelled maintenance work to unwind before closing the DB it
 	// writes to; closing under a running reindex turns cancellation into

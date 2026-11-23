@@ -68,8 +68,16 @@ if grep -Eq 'linuxio-webserver.socket|linuxio-indexer-tcp.socket' "$INDEXER_SERV
 fi
 grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --config /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" ||
 	fail "indexer service must start the managed daemon directly"
-grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock' \
-	"${UNITS}/linuxio-indexer-index.service" || fail "index timer must use the private socket trigger"
+INDEXER_SCAN="${UNITS}/linuxio-indexer-index.service"
+grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --index-mode --config /etc/linuxio/indexer/config.yaml' \
+	"$INDEXER_SCAN" || fail "index timer must run the scanner itself"
+grep -Fqx 'Type=oneshot' "$INDEXER_SCAN" || fail "the scan unit must be a oneshot, so that its result is the scan's"
+grep -Fqx 'Nice=19' "$INDEXER_SCAN" || fail "the scanner must run at the lowest CPU priority"
+grep -Fqx 'IOSchedulingClass=idle' "$INDEXER_SCAN" || fail "the scanner must run in the idle I/O class"
+grep -Fqx 'ReadWritePaths=/var/lib/linuxio/indexer' "$INDEXER_SCAN" || fail "the scanner must write only the index"
+grep -Fqx 'RestrictAddressFamilies=AF_UNIX' "$INDEXER_SCAN" || fail "the scanner must be Unix-only"
+grep -Fqx 'CapabilityBoundingSet=CAP_DAC_READ_SEARCH' "$INDEXER_SCAN" || fail "the scanner must keep only the capability to read the host's files"
+grep -Fqx 'Requisite=linuxio-indexer.socket' "$INDEXER_SCAN" || fail "the scanner must not run without the daemon's socket"
 if grep -rEq 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' "$UNITS" "${REPO_ROOT}/backend/auth"; then
 	fail "indexer socket access must not modify the auth launcher"
 fi

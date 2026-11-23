@@ -50,7 +50,6 @@ func TestSearchEntriesWithType(t *testing.T) {
 		Size:         100,
 		ModTime:      time.Now(),
 		Type:         "directory",
-		Hidden:       false,
 		Inode:        1,
 	}
 	file := indexing.IndexEntry{
@@ -59,7 +58,6 @@ func TestSearchEntriesWithType(t *testing.T) {
 		Size:         50,
 		ModTime:      time.Now(),
 		Type:         "file",
-		Hidden:       false,
 		Inode:        2,
 	}
 
@@ -308,7 +306,6 @@ func seedDirectories(t *testing.T, ctx context.Context, db *sql.DB, indexID int6
 			Size:         dir.size,
 			ModTime:      time.Now(),
 			Type:         "directory",
-			Hidden:       false,
 			Inode:        0,
 		}
 		if dir.path == "/" {

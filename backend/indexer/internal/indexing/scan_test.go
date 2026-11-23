@@ -3,6 +3,7 @@ package indexing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,18 +35,6 @@ func (w *memoryWriter) entriesByPath() map[string]IndexEntry {
 		result[e.RelativePath] = e
 	}
 	return result
-}
-
-func (w *memoryWriter) totalFileSize() int64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	var total int64
-	for _, e := range w.entries {
-		if e.Type != "directory" {
-			total += e.Size
-		}
-	}
-	return total
 }
 
 func newStreamingIndex(t *testing.T, _ string, root string, includeHidden bool) (*Index, *memoryWriter) {
@@ -133,25 +122,6 @@ func TestStartIndexingSkipsUnreadableEntry(t *testing.T) {
 	}
 }
 
-func TestDirMetadataKeyConsistency(t *testing.T) {
-	mock := newMockFileSystem(t)
-
-	mock.CreateDir("parent/child")
-	mock.CreateFile("parent/child/file1.txt", "abc")
-	mock.CreateFile("parent/file2.txt", "abcd")
-
-	idx, writer := newStreamingIndex(t, "test", mock.Root, false)
-	if err := idx.StartIndexing(context.Background()); err != nil {
-		t.Fatalf("StartIndexing failed: %v", err)
-	}
-
-	expectedDiskUsed := uint64(writer.totalFileSize())
-	if expectedDiskUsed == 0 {
-		t.Fatalf("expected non-zero file sizes from writer")
-	}
-
-}
-
 func TestHiddenFilesIncluded(t *testing.T) {
 	mock := newMockFileSystem(t)
 	mock.CreateStandardTestStructure()
@@ -177,7 +147,7 @@ func TestGetTotalSize(t *testing.T) {
 		t.Fatalf("StartIndexing failed: %v", err)
 	}
 
-	totalSize := idx.GetTotalSize()
+	_, _, totalSize := idx.Counts()
 	if totalSize == 0 {
 		t.Error("Expected totalSize > 0")
 	}
@@ -210,7 +180,7 @@ func TestScanDirectoryIncludesDirectoryBlocks(t *testing.T) {
 	if got.Size != want {
 		t.Fatalf("directory size = %d, want %d", got.Size, want)
 	}
-	if got := idx.GetTotalSize(); got != uint64(want) {
+	if _, _, got := idx.Counts(); got != uint64(want) {
 		t.Fatalf("total size = %d, want %d", got, want)
 	}
 }
@@ -266,7 +236,7 @@ func TestAllocatedSizeMatchesGNUDu(t *testing.T) {
 	if parseErr != nil {
 		t.Fatalf("parse GNU du output %q: %v", out, parseErr)
 	}
-	if got := idx.GetTotalSize(); got != want {
+	if _, _, got := idx.Counts(); got != want {
 		t.Fatalf("index total = %d, GNU du = %d", got, want)
 	}
 }
@@ -303,5 +273,95 @@ func assertHasEntry(t *testing.T, entries map[string]IndexEntry, path string, is
 	}
 	if entry.Type != expectedType {
 		t.Fatalf("entry %s expected Type=%s, got %s", path, expectedType, entry.Type)
+	}
+}
+
+func TestAFolderIsReadInChunksAndStillIndexedWhole(t *testing.T) {
+	old := readDirChunk
+	readDirChunk = 3
+	t.Cleanup(func() { readDirChunk = old })
+
+	mock := newMockFileSystem(t)
+	for i := range 10 {
+		mock.CreateFile(fmt.Sprintf("many/file%02d.txt", i), "x")
+	}
+	mock.CreateFile("many/sub/deep.txt", "x")
+
+	idx, writer := newStreamingIndex(t, "test", mock.Root, false)
+	if err := idx.StartIndexing(context.Background()); err != nil {
+		t.Fatalf("StartIndexing failed: %v", err)
+	}
+	entries := writer.entriesByPath()
+	for i := range 10 {
+		if _, ok := entries[fmt.Sprintf("/many/file%02d.txt", i)]; !ok {
+			t.Fatalf("file%02d.txt is missing from a folder read in chunks: %d entries", i, len(entries))
+		}
+	}
+	if _, ok := entries["/many/sub/deep.txt"]; !ok {
+		t.Fatal("a file below a subfolder of a chunked folder is missing")
+	}
+}
+
+// A folder another user controls can be swapped for a symlink between the
+// moment the scan sees it is a folder and the moment it opens it. The open
+// must not follow the link: root's scan would walk wherever it points.
+func TestAFolderSwappedForASymlinkIsNotFollowed(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "private.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "swapped")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	parent, err := os.Open(root)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = parent.Close() })
+
+	idx, writer := newStreamingIndex(t, "test", root, false)
+	// As if the entry had been a folder when it was looked at.
+	if _, err := idx.indexChildDirectory(context.Background(), parent, "swapped", "/swapped"); err == nil {
+		t.Fatal("a symlink that took a folder's place was opened")
+	}
+	if entries := writer.entriesByPath(); len(entries) != 0 {
+		t.Fatalf("the scan walked through the link: %v", entries)
+	}
+}
+
+// A scan starts at a folder named by a request. A folder above it that
+// another user controls can be a symlink by the time the scan opens it, and
+// root must not follow it there either.
+func TestAScanDoesNotStartThroughASymlinkedFolder(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "real", "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "real", "sub", "file.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "link")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	idx := Initialize("/")
+	writer := &memoryWriter{}
+	idx.EnableStreaming(writer)
+	if err := idx.StartIndexingFromPath(context.Background(), filepath.Join(root, "link", "sub")); err == nil {
+		t.Fatal("a scan started below a symlinked folder")
+	}
+	if entries := writer.entriesByPath(); len(entries) != 0 {
+		t.Fatalf("the scan walked through the link: %v", entries)
+	}
+	// The same folder by its real path is scanned.
+	if err := idx.StartIndexingFromPath(context.Background(), filepath.Join(root, "real", "sub")); err != nil {
+		t.Fatalf("scan by the real path: %v", err)
+	}
+	if entries := writer.entriesByPath(); len(entries) != 2 {
+		t.Fatalf("scan by the real path sent %d entries, want 2", len(entries))
 	}
 }

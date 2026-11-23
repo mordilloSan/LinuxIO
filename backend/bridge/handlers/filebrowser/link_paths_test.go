@@ -7,7 +7,6 @@ import (
 	"encoding/json/v2"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -136,7 +135,7 @@ func TestReadsGoBelowAFolderLinkWithAnAbsoluteTarget(t *testing.T) {
 	tree := newAbsLinkTree(t, t.TempDir())
 	ctx := t.Context()
 
-	listing, err := listDirectory(ctx, apischema.PathRequest{Path: tree.through("sub")})
+	listing, err := listOpenedDirectory(ctx, apischema.PathRequest{Path: tree.through("sub")}, sessionOwner{})
 	require.NoError(t, err)
 	require.Len(t, listing.Files, 1)
 	require.Equal(t, "notes.txt", listing.Files[0].Name)
@@ -320,8 +319,7 @@ func TestTrashWorksForAHomeBelowAFolderLinkWithAnAbsoluteTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, result.Succeeded, result.Failed)
 	require.FileExists(t, realTrashed)
-	require.Contains(t, *requests, indexerDelete(realNotes))
-	require.Contains(t, *requests, indexerAdd(realTrashed))
+	require.Contains(t, *requests, indexerMove(realNotes, realTrashed))
 
 	listed, err := listTrash(ctx, sessionOwner{})
 	require.NoError(t, err)
@@ -334,8 +332,7 @@ func TestTrashWorksForAHomeBelowAFolderLinkWithAnAbsoluteTarget(t *testing.T) {
 	require.Equal(t, 1, result.Succeeded, result.Failed)
 	require.Equal(t, "notes", readString(t, realNotes))
 	require.NoFileExists(t, realTrashed)
-	require.Contains(t, *requests, indexerDelete(realTrashed))
-	require.Contains(t, *requests, indexerAdd(realNotes))
+	require.Contains(t, *requests, indexerMove(realTrashed, realNotes))
 }
 
 // A trash move names the item to the indexer under the session user's link
@@ -354,14 +351,10 @@ func TestATrashMoveIsNamedToTheIndexerUnderTheLinkRule(t *testing.T) {
 	require.False(t, ok, "the link is not followed for the indexer")
 }
 
-// indexerDelete and indexerAdd are the requests that tell the indexer a file
-// at path went away or arrived.
-func indexerDelete(path string) recordedIndexerRequest {
-	return recordedIndexerRequest{method: http.MethodDelete, path: indexerapi.RouteDelete, query: url.Values{"path": {path}}.Encode()}
-}
-
-func indexerAdd(path string) recordedIndexerRequest {
-	return recordedIndexerRequest{method: http.MethodPost, path: indexerapi.RouteAdd, entry: &indexerapi.EntryRequest{Path: path}}
+// indexerMove is the request that tells the indexer what was at from is now
+// at to.
+func indexerMove(from, to string) recordedIndexerRequest {
+	return recordedIndexerRequest{method: http.MethodPost, path: indexerapi.RouteMove, move: &indexerapi.MoveRequest{From: from, To: to}}
 }
 
 // The editor offers to save a file only where a save for the session user
@@ -475,7 +468,7 @@ func TestLinkChainsLoopsAndDanglingLinks(t *testing.T) {
 	ctx := t.Context()
 	listedNames := func(path string) []string {
 		t.Helper()
-		listing, err := listDirectory(ctx, apischema.PathRequest{Path: path})
+		listing, err := listOpenedDirectory(ctx, apischema.PathRequest{Path: path}, sessionOwner{})
 		require.NoError(t, err, path)
 		names := []string{}
 		for _, folder := range listing.Folders {
@@ -500,12 +493,12 @@ func TestLinkChainsLoopsAndDanglingLinks(t *testing.T) {
 	a, b := filepath.Join(tree.home, "a"), filepath.Join(tree.home, "b")
 	require.NoError(t, os.Symlink(b, a))
 	require.NoError(t, os.Symlink(a, b))
-	_, err := listDirectory(ctx, apischema.PathRequest{Path: filepath.Join(a, "x")})
+	_, err := listOpenedDirectory(ctx, apischema.PathRequest{Path: filepath.Join(a, "x")}, sessionOwner{})
 	require.ErrorIs(t, err, syscall.ELOOP)
 
 	gone := filepath.Join(tree.home, "gone")
 	require.NoError(t, os.Symlink(filepath.Join(tree.base, "nowhere"), gone))
-	_, err = listDirectory(ctx, apischema.PathRequest{Path: filepath.Join(gone, "x")})
+	_, err = listOpenedDirectory(ctx, apischema.PathRequest{Path: filepath.Join(gone, "x")}, sessionOwner{})
 	require.ErrorIs(t, err, bridgeipc.ErrNotFound)
 }
 
@@ -558,7 +551,7 @@ func TestChangesBelowAUsersFolderLinkAreRefusedAsRoot(t *testing.T) {
 	require.NoError(t, os.Mkdir(outside, 0o755))
 	loose := seedFile(t, filepath.Join(outside, "loose.txt"), "loose")
 
-	listing, err := listDirectory(ctx, apischema.PathRequest{Path: tree.through("sub")})
+	listing, err := listOpenedDirectory(ctx, apischema.PathRequest{Path: tree.through("sub")}, sessionOwner{})
 	require.NoError(t, err)
 	require.Len(t, listing.Files, 1)
 	text, err := readText(ctx, apischema.PathRequest{Path: tree.through("sub/notes.txt")}, actingFor(session))

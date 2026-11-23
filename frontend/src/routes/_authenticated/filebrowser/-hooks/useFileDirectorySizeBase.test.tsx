@@ -31,6 +31,18 @@ describe("directory size query helpers", () => {
     expect(options.retry(DIRECTORY_SIZE_CONFIG.MAX_RETRIES)).toBe(false);
   });
 
+  it("asks again shortly after an answer the index still has an update for", () => {
+    const { refetchInterval } = getDirectorySizeQueryOptions();
+    expect(refetchInterval({ state: { data: { pending: true } } })).toBe(
+      DIRECTORY_SIZE_CONFIG.PENDING_REFETCH_DELAY,
+    );
+    expect(refetchInterval({ state: { data: { pending: false } } })).toBe(
+      false,
+    );
+    expect(refetchInterval({ state: { data: {} } })).toBe(false);
+    expect(refetchInterval({ state: { data: undefined } })).toBe(false);
+  });
+
   it("passes service errors through and ignores skipped paths", () => {
     expect(
       getDirectorySizeError(new Error("service unavailable"), false)?.message,

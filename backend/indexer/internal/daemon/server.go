@@ -46,6 +46,7 @@ func (d *daemon) Run(ctx context.Context) error {
 		d.bgCancel()
 	}
 	d.bgCancel = cancel
+	d.workCtx = runCtx
 
 	d.markActivity()
 	d.goBackground(func() { d.stopWhenIdle(runCtx, cancel, runtimeDirectoryExists, idleCheckInterval) })
@@ -59,9 +60,9 @@ func (d *daemon) Run(ctx context.Context) error {
 
 func (d *daemon) serveHTTP(ctx context.Context, listener net.Listener) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc(api.RouteIndex, func(w http.ResponseWriter, r *http.Request) {
-		d.handleIndex(ctx, w, r)
-	})
+	mux.HandleFunc(api.RouteIndex, d.handleIndex)
+	mux.HandleFunc(api.RouteScan, d.handleScan)
+	mux.HandleFunc(api.RouteScanEvent, d.handleScanEvent)
 	mux.HandleFunc(api.RouteReindex, func(w http.ResponseWriter, r *http.Request) {
 		d.handleReindex(ctx, w, r)
 	})
@@ -71,6 +72,8 @@ func (d *daemon) serveHTTP(ctx context.Context, listener net.Listener) error {
 	mux.HandleFunc(api.RouteSubfolders, d.handleSubfolders)
 	mux.HandleFunc(api.RouteAdd, d.handleAdd)
 	mux.HandleFunc(api.RouteDelete, d.handleDelete)
+	mux.HandleFunc(api.RouteRefresh, d.handleRefresh)
+	mux.HandleFunc(api.RouteMove, d.handleMove)
 	mux.HandleFunc(api.RouteConfig, d.handleConfig)
 
 	handler := d.activityMiddleware(loggerMiddleware(recoveryMiddleware(authorizeTransportMiddleware(mux))))

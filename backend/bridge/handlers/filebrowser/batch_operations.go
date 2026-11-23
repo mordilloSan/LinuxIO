@@ -326,9 +326,7 @@ func runMoveBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 		if update.partial {
 			return errors.Join(requestIndexerReindex(ctx, update.source), requestIndexerReindex(ctx, update.dest))
 		}
-		return movePathInIndexer(ctx, update.source, update.dest, update.replaced, func() (os.FileInfo, error) {
-			return update.info, nil
-		})
+		return movePathInIndexer(ctx, update.source, update.dest)
 	})
 }
 

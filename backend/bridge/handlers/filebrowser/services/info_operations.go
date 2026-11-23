@@ -21,10 +21,18 @@ func ListDirectory(ctx context.Context, path string) (iteminfo.DirectoryListing,
 		Folders: make([]iteminfo.ItemInfo, 0),
 		Files:   make([]iteminfo.ItemInfo, 0),
 	}
-	err := withDirectoryEntries(ctx, path, func(root *fsroot.FSRoot, dirPath string, entry os.FileInfo) error {
-		item, isDir, err := directoryItem(ctx, root, dirPath, entry)
-		if err != nil {
-			return err
+	root, dir, cleanPath, err := openDirectoryForRead(ctx, path)
+	if err != nil {
+		return listing, err
+	}
+	defer root.Close()
+	defer dir.Close()
+	listing.Path = cleanPath
+
+	err = readDirectoryEntries(ctx, root, dir, cleanPath, func(root *fsroot.FSRoot, dirPath string, entry os.FileInfo) error {
+		item, isDir, itemErr := directoryItem(ctx, root, dirPath, entry)
+		if itemErr != nil {
+			return itemErr
 		}
 		if isDir {
 			listing.Folders = append(listing.Folders, item)

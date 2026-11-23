@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
@@ -20,24 +19,27 @@ func (d *daemon) reindexPath(ctx context.Context, operationID, relativePath stri
 
 	indexID, err := d.store.LatestIndexID(ctx)
 	if err != nil {
-		sendSSEError(sender, fmt.Sprintf("no index present: %v", err))
+		failReindex(sender, relativePath, fmt.Sprintf("no index present: %v", err))
 		return
 	}
 
 	cfg := d.settings.config()
-	fi, statErr := os.Lstat(relativePath)
-	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-		sendSSEError(sender, fmt.Sprintf("cannot access %s: %v", relativePath, statErr))
+	// Never through a symlink: see indexing.Lstat. A path that leads through
+	// one names nothing the index holds, and loses its rows like one that is
+	// gone.
+	fi, statErr := indexing.Lstat(relativePath)
+	if statErr != nil && !indexing.NotThere(statErr) {
+		failReindex(sender, relativePath, fmt.Sprintf("cannot access %s: %v", relativePath, statErr))
 		return
 	}
 	if statErr == nil && !fi.IsDir() {
-		sendSSEError(sender, fmt.Sprintf("%s is not a directory; reindex its parent directory instead", relativePath))
+		failReindex(sender, relativePath, fmt.Sprintf("%s is not a directory; reindex its parent directory instead", relativePath))
 		return
 	}
 
 	if statErr != nil {
 		if deleteErr := d.store.DeletePath(ctx, indexID, relativePath); deleteErr != nil {
-			sendSSEError(sender, fmt.Sprintf("failed to delete stale entries: %v", deleteErr))
+			failReindex(sender, relativePath, fmt.Sprintf("failed to delete stale entries: %v", deleteErr))
 			return
 		}
 		sendSSEEvent(sender, api.EventComplete, api.WorkCompleteEvent{Status: api.StatusComplete, Operation: "reindex", OperationID: operationID, Path: relativePath, DurationMs: time.Since(start).Milliseconds()})
@@ -49,7 +51,7 @@ func (d *daemon) reindexPath(ctx context.Context, operationID, relativePath stri
 func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativePath string, sender sseEventSender, start time.Time, cfg configfile.Config, indexID int64) {
 	reindex, err := d.store.BeginReindex(ctx, indexID, relativePath)
 	if err != nil {
-		sendSSEError(sender, err.Error())
+		failReindex(sender, relativePath, err.Error())
 		return
 	}
 	defer reindex.Rollback()
@@ -58,26 +60,26 @@ func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativeP
 		"/",
 		indexing.WithNetworkMounts(cfg.IncludeNetworkMounts),
 		indexing.WithExcludePaths(configfile.EffectiveExcludePaths(cfg)),
+		indexing.WithHardlinkContributors(reindex.HardlinkContributors()),
 	)
-	writer := reindex.NewWriter(ctx, writerBufferEntries, reindexProgressCallback(operationID, relativePath, sender))
+	writer := reindex.NewReconciler(ctx, reindexProgressCallback(operationID, relativePath, sender))
 	index.EnableStreaming(writer)
 
 	if indexErr := index.StartIndexingFromPath(ctx, relativePath); indexErr != nil {
-		if closeErr := writer.Close(); closeErr != nil {
-			slog.Warn("failed to close streaming writer after reindex stream error", "error", closeErr)
-		}
-		sendSSEError(sender, fmt.Sprintf("indexing failed: %v", indexErr))
+		// Not closed: closing writes what the reconciler still holds, and the
+		// deferred rollback is what a reindex that failed wants.
+		failReindex(sender, relativePath, fmt.Sprintf("indexing failed: %v", indexErr))
 		return
 	}
 
 	if closeErr := writer.Close(); closeErr != nil {
-		sendSSEError(sender, fmt.Sprintf("streaming writer close: %v", closeErr))
+		failReindex(sender, relativePath, fmt.Sprintf("streaming writer close: %v", closeErr))
 		return
 	}
 
 	newSize, commitErr := reindex.Commit(ctx, writer.ScanTime())
 	if commitErr != nil {
-		sendSSEError(sender, commitErr.Error())
+		failReindex(sender, relativePath, commitErr.Error())
 		return
 	}
 	d.store.CheckpointAndRelease(ctx, "reindex")
@@ -110,4 +112,12 @@ func reindexProgressCallback(operationID, operationPath string, sender sseEventS
 			})
 		}
 	}
+}
+
+// failReindex reports a reindex that could not be done to whoever follows its
+// stream, and to the journal: a reindex the bridge asked for after a file
+// operation has nobody following it.
+func failReindex(sender sseEventSender, path, msg string) {
+	slog.Warn("reindex failed", "path", path, "error", errors.New(msg))
+	sendSSEError(sender, msg)
 }

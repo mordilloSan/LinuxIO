@@ -1211,6 +1211,7 @@ export interface DirectorySizeData {
   size: number;
   fileCount: number;
   folderCount: number;
+  pending?: boolean;
 }
 
 export interface DirectoryValidationResult {
@@ -3126,6 +3127,7 @@ export interface SubfolderData {
 
 export interface SubfoldersResponse {
   subfolders: SubfolderData[];
+  pending?: boolean;
 }
 
 export interface SuccessNameResponse {

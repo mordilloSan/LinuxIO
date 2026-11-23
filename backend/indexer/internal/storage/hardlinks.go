@@ -64,25 +64,37 @@ func snapshotHardlinksUnderPath(ctx context.Context, db dbExecutor, indexID int6
 
 func hardlinkGroupsUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string, sameFile SameFileFunc) (map[hardlinkIdentity]string, error) {
 	lo, childLo, hi := subtreeBounds(relativePath)
+	// The scan of everything looks at files recorded with several links
+	// only, which is nearly none of them: it rescans every row, so a link
+	// count that went stale is corrected or its row removed. The reindex of
+	// a folder reads every file of it. A row outside the folder can have a
+	// stale count (a file with one link that was moved here from there
+	// outside LinuxIO), and only its numbers show the two rows are one file.
+	severalLinks := ""
+	if relativePath == "/" {
+		severalLinks = "AND nlink > 1"
+	}
 	rows, err := db.QueryContext(ctx, `
 		WITH touched AS (
 			SELECT DISTINCT device, inode
 			FROM entries
-			WHERE index_id = ? AND type != 'directory' AND inode != 0
+			WHERE index_id = ? AND type != 1 AND inode != 0 `+severalLinks+`
 			  AND relative_path >= ? AND relative_path < ?
 			  AND (relative_path = ? OR relative_path >= ?)
 		), touched_groups AS (
 			SELECT touched.device, touched.inode
 			FROM touched
 			JOIN entries e ON e.device = touched.device AND e.inode = touched.inode
-			WHERE e.index_id = ? AND e.type != 'directory'
+			WHERE e.index_id = ? AND e.type != 1
 			GROUP BY touched.device, touched.inode
-			HAVING COUNT(*) > 1
+			-- A group, or one link that counts nothing: its other links are
+			-- not in the index, so it is the only place its size can be.
+			HAVING COUNT(*) > 1 OR (MAX(e.nlink) > 1 AND SUM(e.size_contribution != 0) = 0)
 		)
 		SELECT g.device, g.inode, COALESCE(contributor.relative_path, '')
 		FROM touched_groups g
 		LEFT JOIN entries contributor
-		  ON contributor.index_id = ? AND contributor.type != 'directory'
+		  ON contributor.index_id = ? AND contributor.type != 1
 		 AND contributor.device = g.device AND contributor.inode = g.inode
 		 AND contributor.size_contribution != 0
 		ORDER BY g.device, g.inode, contributor.relative_path;
@@ -123,14 +135,14 @@ func hardlinkGroupsUnderPath(ctx context.Context, db dbExecutor, indexID int64, 
 const currentHardlinkContributorQuery = `
 	SELECT relative_path
 	FROM entries INDEXED BY idx_entries_hardlinks
-	WHERE index_id = ? AND type != 'directory'
+	WHERE index_id = ? AND type != 1
 	  AND device = ? AND inode = ? AND size_contribution != 0
 	ORDER BY relative_path`
 
 const loadHardlinkGroupQuery = `
 	SELECT relative_path, size, size_contribution, last_seen
 	FROM entries INDEXED BY idx_entries_hardlinks
-	WHERE index_id = ? AND type != 'directory' AND device = ? AND inode = ?
+	WHERE index_id = ? AND type != 1 AND device = ? AND inode = ?
 	ORDER BY relative_path`
 
 func currentHardlinkContributor(ctx context.Context, db dbExecutor, indexID int64, identity hardlinkIdentity, sameFile SameFileFunc) (string, error) {
@@ -164,10 +176,11 @@ func currentHardlinkContributor(ctx context.Context, db dbExecutor, indexID int6
 
 func loadStoredEntryAccounting(ctx context.Context, db dbExecutor, indexID int64, path string) (storedEntryAccounting, error) {
 	var stored storedEntryAccounting
+	var typ int
 	err := db.QueryRowContext(ctx, `
 		SELECT type, device, inode, size_contribution FROM entries
 		WHERE index_id = ? AND relative_path = ?;
-	`, indexID, path).Scan(&stored.typ, &stored.identity.device, &stored.identity.inode, &stored.contribution)
+	`, indexID, path).Scan(&typ, &stored.identity.device, &stored.identity.inode, &stored.contribution)
 	if errors.Is(err, sql.ErrNoRows) {
 		return stored, nil
 	}
@@ -175,6 +188,7 @@ func loadStoredEntryAccounting(ctx context.Context, db dbExecutor, indexID int64
 	if err != nil {
 		return stored, fmt.Errorf("query stored accounting for %q: %w", path, err)
 	}
+	stored.typ = typeName(typ)
 	return stored, nil
 }
 
@@ -228,7 +242,7 @@ func replaceEntryAccounting(ctx context.Context, db dbExecutor, indexID int64, e
 }
 
 func removedContributionForPath(ctx context.Context, db dbExecutor, indexID int64, path string) (int64, error) {
-	var typ string
+	var typ int
 	var size, contribution int64
 	err := db.QueryRowContext(ctx, `
 		SELECT type, size, size_contribution FROM entries
@@ -238,14 +252,14 @@ func removedContributionForPath(ctx context.Context, db dbExecutor, indexID int6
 		target := indexerapi.NormalizePath(path)
 		lo, childLo, hi := subtreeBounds(target)
 		err = db.QueryRowContext(ctx, `
-			SELECT COALESCE(SUM(CASE WHEN entry.type = 'directory' THEN entry.size ELSE entry.size_contribution END), 0)
+			SELECT COALESCE(SUM(CASE WHEN entry.type = 1 THEN entry.size ELSE entry.size_contribution END), 0)
 			FROM entries entry
 			WHERE entry.index_id = ?
 			  AND entry.relative_path >= ? AND entry.relative_path < ?
 			  AND (entry.relative_path = ? OR entry.relative_path >= ?)
 			  AND NOT EXISTS (
 				SELECT 1 FROM entries parent
-				WHERE parent.index_id = entry.index_id AND parent.type = 'directory'
+				WHERE parent.index_id = entry.index_id AND parent.type = 1
 				  AND parent.relative_path >= ? AND parent.relative_path < ?
 				  AND (parent.relative_path = ? OR parent.relative_path >= ?)
 				  AND parent.relative_path != entry.relative_path
@@ -261,7 +275,7 @@ func removedContributionForPath(ctx context.Context, db dbExecutor, indexID int6
 	if err != nil {
 		return 0, fmt.Errorf("query removed contribution for %q: %w", path, err)
 	}
-	if typ == "directory" {
+	if typ == typeDirectory {
 		return size, nil
 	}
 	return contribution, nil
@@ -400,7 +414,7 @@ func writeHardlinkGroup(ctx context.Context, db dbExecutor, indexID int64, ident
 		UPDATE entries
 		SET size = %s,
 			size_contribution = CASE WHEN relative_path = ? THEN ? ELSE 0 END
-		WHERE index_id = ? AND type != 'directory' AND device = ? AND inode = ?;
+		WHERE index_id = ? AND type != 1 AND device = ? AND inode = ?;
 	`, sizeExpression)
 	if _, err := db.ExecContext(ctx, query, args...); err != nil {
 		return nil, fmt.Errorf("update hardlink group: %w", err)
@@ -500,7 +514,7 @@ func applyFolderDeltas(ctx context.Context, db dbExecutor, indexID int64, folder
 		if _, err := db.ExecContext(ctx, `
 			UPDATE entries
 			SET size = size + ?
-			WHERE index_id = ? AND relative_path = ? AND type = 'directory';
+			WHERE index_id = ? AND relative_path = ? AND type = 1;
 		`, delta, indexID, folder); err != nil {
 			return fmt.Errorf("update directory %q: %w", folder, err)
 		}
@@ -513,14 +527,14 @@ func promotedHardlinksForDelete(ctx context.Context, db dbExecutor, indexID int6
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT inside.device, inside.inode
 		FROM entries inside
-		WHERE inside.index_id = ? AND inside.type != 'directory'
+		WHERE inside.index_id = ? AND inside.type != 1
 		  AND inside.inode != 0 AND inside.size_contribution != 0
 		  AND inside.relative_path >= ? AND inside.relative_path < ?
 		  AND (inside.relative_path = ? OR inside.relative_path >= ?)
 		  AND EXISTS (
 			SELECT 1 FROM entries outside
 			WHERE outside.index_id = inside.index_id
-			  AND outside.type != 'directory'
+			  AND outside.type != 1
 			  AND outside.device = inside.device AND outside.inode = inside.inode
 			  AND NOT (outside.relative_path >= ? AND outside.relative_path < ?
 				AND (outside.relative_path = ? OR outside.relative_path >= ?))

@@ -123,7 +123,9 @@ build-indexer: go_binary_output := $(indexer_binary)
 build-indexer: go_binary_ldflags := $(go_version_ldflags)
 build-indexer: go_binary_extra_env := CGO_ENABLED=1
 # SQLite's FTS5 module, which search needs. test-go passes the same tag.
-indexer_go_tags := sqlite_fts5
+# sqlite_omit_load_extension: a root daemon that loads no SQLite extension
+# is built without the feature.
+indexer_go_tags := sqlite_fts5 sqlite_omit_load_extension
 build-indexer: go_binary_tags := $(indexer_go_tags)
 build-indexer: ## Build the filesystem indexer
 

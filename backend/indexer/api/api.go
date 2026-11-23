@@ -18,6 +18,10 @@ const (
 	RouteSubfolders = "/subfolders"
 	RouteAdd        = "/add"
 	RouteDelete     = "/delete"
+	RouteRefresh    = "/refresh"
+	RouteMove       = "/move"
+	RouteScan       = "/scan"
+	RouteScanEvent  = "/scan/event"
 	RouteConfig     = "/config"
 
 	EventStarted  = "started"
@@ -28,13 +32,15 @@ const (
 	// Words the daemon puts in a "status" field. /status reports
 	// uninitialized (no index yet), running (work in progress) or idle; an
 	// accepted operation answers running, and its work events running,
-	// complete or error; /add and /delete answer ok.
+	// complete or error; /add and /delete answer ok when the update was applied
+	// and queued when it waits behind other work.
 	StatusUninitialized = "uninitialized"
 	StatusIdle          = "idle"
 	StatusRunning       = "running"
 	StatusComplete      = "complete"
 	StatusError         = "error"
 	StatusOK            = "ok"
+	StatusQueued        = "queued"
 
 	MinSearchQueryRunes = 3
 )
@@ -70,6 +76,17 @@ type StatusResponse struct {
 	ActiveOperationID string `json:"active_operation_id,omitempty"`
 	ActivePath        string `json:"active_path,omitempty"`
 	Warning           string `json:"warning,omitempty"`
+	// WaitingOperations are the index and reindex operations queued behind the
+	// one that runs, in the order they will run.
+	WaitingOperations []WaitingOperation `json:"waiting_operations,omitempty"`
+}
+
+// WaitingOperation names an operation that waits for its turn and can be
+// attached to by these three values.
+type WaitingOperation struct {
+	Operation   string `json:"operation"`
+	OperationID string `json:"operation_id"`
+	Path        string `json:"path"`
 }
 
 func (resp *StatusResponse) AddWarning(msg string) {
@@ -84,6 +101,12 @@ type EntryRequest struct {
 	Path string `json:"path"`
 }
 
+// MoveRequest names a path that a file operation moved, and where it is now.
+type MoveRequest struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 type OperationResponse struct {
 	Status      string `json:"status"`
 	Path        string `json:"path,omitempty"`
@@ -95,6 +118,9 @@ type DirSizeResponse struct {
 	Size  int64  `json:"size"`
 	Files int64  `json:"files"`
 	Dirs  int64  `json:"dirs"`
+	// Pending is set while work that can change what is counted below the
+	// folder runs or waits: the numbers are those from before it.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // EntryResult is returned by /search.
@@ -108,6 +134,13 @@ type EntryResult struct {
 	TotalSize  int64     `json:"total_size,omitzero"`
 	TotalFiles int64     `json:"total_files,omitzero"`
 	TotalDirs  int64     `json:"total_dirs,omitzero"`
+}
+
+// SubfoldersResponse is returned by /subfolders.
+type SubfoldersResponse struct {
+	Subfolders []SubfolderResult `json:"subfolders"`
+	// Pending is set as in DirSizeResponse, for the folder asked about.
+	Pending bool `json:"pending,omitempty"`
 }
 
 type SubfolderResult struct {

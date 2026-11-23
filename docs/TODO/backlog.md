@@ -44,6 +44,20 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+- An index or reindex task ends as successful when the indexer daemon stops
+  or restarts while it runs. The daemon's event stream closes without a last
+  event, and the bridge then reads the status, finds nothing running and
+  reports the totals it finds (`recoverEndedStatusStream` in
+  `backend/bridge/handlers/indexer/reindex.go`); it cannot tell an operation
+  that completed from one that was lost, and a reindex that ended before
+  the bridge attached is the common, harmless case of the same path. The
+  same happens when the bridge attaches after a scan that failed at once, and
+  to an operation that waited in the daemon's queue when the daemon
+  restarted, since the queue is in memory. A fix needs the daemon to keep
+  the outcome of the operations it ended lately and answer for them by ID.
+  It was so before the scanner became a unit of its own; the queue made
+  waiting operations subject to it. **checked**
+
 - The Updates page can say "Your system is up to date" while the banner
   names a LinuxIO update. Seen once in four runs of `jobs-update.spec.ts` on
   Fedora 45 (2026-11-21), right after Refresh Sources; the list asks again by
@@ -57,6 +71,22 @@ after a change that issues ioctls).
 ## Tests that are missing
 
 ## Needs the owner
+
+- Whether every start of the index timer should bring a full index. The
+  timer is monotonic (`packaging/systemd/linuxio-indexer-index.timer`), so a
+  boot, a restart of `linuxio.target`, a package upgrade and a saved interval
+  each start a scan 15 minutes later, whatever the age of the index. A scan
+  that finds little changed is cheap now (9 seconds and 19 rows on 963,000
+  entries), which may be enough. A calendar timer with `Persistent=true`
+  remembers its last run and runs at once only when one was missed, but it
+  turns the interval setting into a schedule. **checked**
+- What "Last indexed" in Settings should mean. Every update of the index
+  rewrites the time (`updateIndexMetadata` in
+  `backend/indexer/internal/storage/generation.go`, pinned by its tests), so
+  the page shows the last change of any kind, a file operation or the refresh
+  of an opened folder included, and not when the last full scan ran. The scan
+  unit's own time is in `systemctl status linuxio-indexer-index.service`.
+  **checked**
 
 - Whether Gemini CLI and Codex get a LinuxIO profile as Claude Code has
   (`ProfileEnv` in `backend/bridge/internal/acpagents`): today their sign-in,
@@ -198,6 +228,18 @@ Docker startup:
   handoff would have to rewrite the drop-in inside the network manager's
   rollback window
   ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips)).
+
+Indexer, decided with the rework of 2026-11-22:
+
+- No indexer daemon, with the root bridge reading and writing the database.
+  It moves SQLite and the index writes into the bridge, takes the sandbox
+  away from scoped scans, and loses the one place that orders updates and
+  scans ([Filesystem Indexer](../indexer.md#full-index)).
+- A filesystem watcher for the index. It needs a root process that always
+  runs, and `CAP_SYS_ADMIN` for fanotify on whole filesystems; the indexer
+  runs on demand. A folder is refreshed when it is opened instead.
+- An index schedule that adapts to how often files change. It needs a process
+  that always runs.
 
 Without sudo:
 

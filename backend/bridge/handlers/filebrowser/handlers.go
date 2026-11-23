@@ -14,7 +14,9 @@ import (
 func routeBindings(owner sessionOwner) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeDownloadStream, apischema.NoEndpoint()).Duplex(streamFileDownload),
-		apischema.Call[apischema.PathRequest, apischema.DirectoryListing]("filebrowser.list_directory", apischema.RetrySafe()).Handle(handleListDirectory),
+		apischema.Call[apischema.PathRequest, apischema.DirectoryListing]("filebrowser.list_directory", apischema.RetrySafe()).Handle(func(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
+			return listOpenedDirectory(ctx, req, owner)
+		}),
 		apischema.Call[apischema.DirectoryChildrenRequest, apischema.DirectoryChildren]("filebrowser.directory_children", apischema.RetrySafe()).Handle(handleDirectoryChildren),
 		apischema.Call[apischema.PathRequest, apischema.TextFile]("filebrowser.read_text", apischema.RetrySafe()).Handle(func(ctx context.Context, req apischema.PathRequest) (apischema.TextFile, error) {
 			return readText(ctx, req, actingFor(owner))
@@ -39,13 +41,9 @@ var Routes = apischema.CombineRoutes(routeBindings(sessionOwner{}).Routes(), fil
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	owner := sessionOwner{uid: rt.Session.User.UID, gid: rt.Session.User.GID, set: true}
+	owner := sessionOwner{uid: rt.Session.User.UID, gid: rt.Session.User.GID, set: true, sudo: rt.Session.Privileged}
 	RegisterTaskRoutes(router, rt.Store, owner)
 	routeBindings(owner).Register(router)
-}
-
-func handleListDirectory(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
-	return listDirectory(ctx, req)
 }
 
 func handleDirectoryChildren(ctx context.Context, req apischema.DirectoryChildrenRequest) (apischema.DirectoryChildren, error) {

@@ -18,14 +18,16 @@ import (
 // entries_fts is an external-content FTS5 table kept in sync with entries by
 // the triggers below, so no Go write path needs to know about it. It is used
 // when the binary includes FTS5; searches transparently fall back to LIKE
-// when the SQLite module is unavailable.
+// when the SQLite module is unavailable. Results are ordered by time, never
+// ranked, so the per-row sizes ranking needs are not kept (columnsize=0).
 
 const ftsCreateTable = `
 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
 	name,
 	content='entries',
 	content_rowid='id',
-	tokenize='trigram'
+	tokenize='trigram',
+	columnsize=0
 );`
 
 // fts_state holds a single row recording that the last full rebuild of
@@ -201,9 +203,19 @@ func ftsRebuild(ctx context.Context, db *sql.DB) error {
 
 // searchEntriesFTS answers a search from the trigram index: match rowids in
 // entries_fts, then join back to entries for metadata and mod_time ordering.
-func (s *Store) searchEntriesFTS(ctx context.Context, match, basePath string, limit int) ([]api.EntryResult, error) {
-	where, args := appendSearchBaseFilter("1 = 1", nil, basePath)
-	args = append([]any{match}, args...)
+// The index folds case, so a case-sensitive search passes its terms as
+// exactTerms and keeps the matches whose name holds one as it was typed.
+func (s *Store) searchEntriesFTS(ctx context.Context, match string, exactTerms []string, basePath string, limit int) ([]api.EntryResult, error) {
+	where, args := "1 = 1", []any{match}
+	if len(exactTerms) > 0 {
+		exact := make([]string, 0, len(exactTerms))
+		for _, term := range exactTerms {
+			exact = append(exact, "instr(e.name, ?) > 0")
+			args = append(args, term)
+		}
+		where += " AND (" + strings.Join(exact, " OR ") + ")"
+	}
+	where, args = appendSearchBaseFilter(where, args, basePath)
 	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
         SELECT e.relative_path, e.name, e.type, e.size, e.mod_time, e.inode
@@ -235,13 +247,9 @@ func (s *Store) searchEntriesFTS(ctx context.Context, match, basePath string, li
 }
 
 // ftsMatchQuery converts parsed search options into an FTS5 MATCH expression.
-// ok is false when the query needs the LIKE path instead: case-sensitive
-// searches (the trigram tokenizer folds case) and terms shorter than three
-// runes (below the trigram size, they match nothing in FTS).
+// ok is false when the query needs the LIKE path instead: a term shorter than
+// three runes is below the trigram size and matches nothing in FTS.
 func ftsMatchQuery(opts searchquery.Options) (match string, ok bool) {
-	if opts.CaseSensitive {
-		return "", false
-	}
 	var quoted []string
 	for _, term := range opts.Terms {
 		term = strings.TrimSpace(term)

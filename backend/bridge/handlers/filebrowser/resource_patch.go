@@ -148,7 +148,7 @@ func resourcePatch(ctx context.Context, req apischema.ActionSourceDestinationReq
 		return apischema.MessageResponse{}, fsError(patchReq.action, err)
 	}
 
-	notifyIndexerAfterPatch(ctx, root, patchReq)
+	notifyIndexerAfterPatch(ctx, patchReq)
 	slog.Info("filebrowser operation completed", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest)
 	return apischema.MessageResponse{Message: "operation completed"}, nil
 }

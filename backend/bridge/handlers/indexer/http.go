@@ -121,6 +121,22 @@ func Reindex(ctx context.Context, path string) error {
 	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteReindex, q, nil, nil)
 }
 
+// Move tells the daemon that the entry at from is now at to.
+func Move(ctx context.Context, from, to string) error {
+	body, err := json.Marshal(indexerapi.MoveRequest{From: indexerapi.NormalizePath(from), To: indexerapi.NormalizePath(to)})
+	if err != nil {
+		return fmt.Errorf("marshal indexer move: %w", err)
+	}
+	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteMove, nil, bytes.NewReader(body), nil)
+}
+
+// Refresh asks the daemon to compare one folder's own entries with the disk.
+// The daemon answers at once and does the work in its turn.
+func Refresh(ctx context.Context, path string) error {
+	q := url.Values{"path": {indexerapi.NormalizePath(path)}}
+	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteRefresh, q, nil, nil)
+}
+
 func DirSize(ctx context.Context, path string) (indexerapi.DirSizeResponse, error) {
 	var out indexerapi.DirSizeResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteDirSize, url.Values{"path": {indexerapi.NormalizePath(path)}}, nil, &out)
@@ -133,8 +149,8 @@ func fetchDaemonStatus(ctx context.Context) (indexerapi.StatusResponse, error) {
 	return out, err
 }
 
-func Subfolders(ctx context.Context, path string) ([]indexerapi.SubfolderResult, error) {
-	var out []indexerapi.SubfolderResult
+func Subfolders(ctx context.Context, path string) (indexerapi.SubfoldersResponse, error) {
+	var out indexerapi.SubfoldersResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteSubfolders, url.Values{"path": {indexerapi.NormalizePath(path)}}, nil, &out)
 	return out, err
 }

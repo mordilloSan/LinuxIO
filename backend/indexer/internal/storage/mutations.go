@@ -38,16 +38,16 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO entries (
 			index_id, relative_path, path_depth, name, size, mod_time,
-			type, hidden, device, inode, size_contribution
+			type, device, inode, nlink, size_contribution
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(index_id, relative_path) DO UPDATE SET
 			name = excluded.name,
 			size = excluded.size,
 			mod_time = excluded.mod_time,
 			type = excluded.type,
-			hidden = excluded.hidden,
 			device = excluded.device,
 			inode = excluded.inode,
+			nlink = excluded.nlink,
 			size_contribution = excluded.size_contribution;
 	`,
 		indexID,
@@ -56,10 +56,10 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 		entry.Name,
 		entry.Size,
 		entry.ModTime.Unix(),
-		entry.Type,
-		boolToInt(entry.Hidden),
+		typeCode(entry.Type),
 		int64(entry.Device),
 		int64(entry.Inode),
+		storedNlink(entry),
 		entry.SizeContribution,
 	)
 
@@ -71,6 +71,11 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 
 // updateParentDirectorySizes propagates size changes up the directory tree.
 // sizeDelta is the change in size (positive for additions, negative for deletions).
+//
+// A folder on the way that has no row is passed over: the index has not
+// reached it yet, and the folders above it count what is below it all the
+// same. A reindex or a delete of such a folder therefore takes what the rows
+// below it count as its size (removedContributionForPath).
 func updateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int64, childPath string, sizeDelta int64) error {
 	if sizeDelta == 0 {
 		return nil
@@ -83,7 +88,7 @@ func updateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int6
 		_, err := db.ExecContext(ctx, `
 			UPDATE entries
 			SET size = size + ?
-			WHERE index_id = ? AND relative_path = ? AND type = 'directory';
+			WHERE index_id = ? AND relative_path = ? AND type = 1;
 		`, sizeDelta, indexID, currentPath)
 
 		if err != nil {
@@ -103,11 +108,20 @@ func updateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int6
 // countEntriesUnderPath counts queryable directory and non-directory entries
 // in one subtree.
 func countEntriesUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string) (dirs, files int64, err error) {
+	if relativePath == "/" {
+		// Everything: read the table once, not the path index and then a
+		// row for each of its entries.
+		err = db.QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(type = 1), 0), COALESCE(SUM(type != 1), 0)
+			FROM entries NOT INDEXED WHERE index_id = ?;
+		`, indexID).Scan(&dirs, &files)
+		return dirs, files, err
+	}
 	lo, childLo, hi := subtreeBounds(relativePath)
 	err = db.QueryRowContext(ctx, `
 		SELECT
-			COALESCE(SUM(CASE WHEN type = 'directory' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN type = 'directory' THEN 0 ELSE 1 END), 0)
+			COALESCE(SUM(CASE WHEN type = 1 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN type = 1 THEN 0 ELSE 1 END), 0)
 		FROM entries
 		WHERE index_id = ?
 		  AND relative_path >= ? AND relative_path < ?
@@ -138,28 +152,16 @@ func entryTypeDelta(oldType string, existed bool, newType string) (dirs, files i
 // UpsertEntry adds or replaces one non-directory entry in generation indexID
 // and propagates its size and hardlink accounting to the parent directories.
 func (s *Store) UpsertEntry(ctx context.Context, indexID int64, entry indexing.IndexEntry) error {
-	if entry.Type == "directory" {
-		return fmt.Errorf("cannot add a directory entry; reindex its subtree")
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin entry upsert: %w", err)
 	}
 	defer rollbackTx(tx, "UpsertEntry")
 
-	old, err := loadStoredEntryAccounting(ctx, tx, indexID, entry.RelativePath)
+	dirDelta, fileDelta, err := upsertEntry(ctx, tx, indexID, entry, s.sameFile)
 	if err != nil {
-		return fmt.Errorf("read existing entry type: %w", err)
+		return err
 	}
-	if old.exists && old.typ == "directory" {
-		return fmt.Errorf("cannot replace a directory entry; reindex its parent")
-	}
-	if err := replaceEntryAccounting(ctx, tx, indexID, entry, old, s.sameFile); err != nil {
-		return fmt.Errorf("replace entry accounting: %w", err)
-	}
-
-	dirDelta, fileDelta := entryTypeDelta(old.typ, old.exists, entry.Type)
 	if err := updateIndexMetadata(ctx, tx, indexID, dirDelta, fileDelta); err != nil {
 		return fmt.Errorf("update index metadata: %w", err)
 	}
@@ -170,48 +172,43 @@ func (s *Store) UpsertEntry(ctx context.Context, indexID int64, entry indexing.I
 	return nil
 }
 
+// upsertEntry adds or replaces one non-directory entry with its accounting,
+// and returns what that changes in the index's counts of folders and files.
+// A path that held a folder loses that folder and what was below it first.
+func upsertEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexing.IndexEntry, sameFile SameFileFunc) (dirDelta, fileDelta int64, err error) {
+	if entry.Type == "directory" {
+		return 0, 0, fmt.Errorf("cannot add a directory entry; reindex its subtree")
+	}
+	old, err := loadStoredEntryAccounting(ctx, db, indexID, entry.RelativePath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read existing entry type: %w", err)
+	}
+	if old.exists && old.typ == "directory" {
+		dirs, files, deleteErr := deletePath(ctx, db, indexID, entry.RelativePath, sameFile)
+		if deleteErr != nil {
+			return 0, 0, fmt.Errorf("remove the folder the entry replaces: %w", deleteErr)
+		}
+		dirDelta, fileDelta = -dirs, -files
+		old = storedEntryAccounting{}
+	}
+	if err := replaceEntryAccounting(ctx, db, indexID, entry, old, sameFile); err != nil {
+		return 0, 0, fmt.Errorf("replace entry accounting: %w", err)
+	}
+	dirs, files := entryTypeDelta(old.typ, old.exists, entry.Type)
+	return dirDelta + dirs, fileDelta + files, nil
+}
+
 // DeletePath deletes all entries under a path (including the path itself) and propagates size changes.
 func (s *Store) DeletePath(ctx context.Context, indexID int64, relativePath string) error {
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin recursive delete: %w", err)
 	}
 	defer rollbackTx(tx, "DeletePath")
 
-	deletedDirs, deletedFiles, err := countEntriesUnderPath(ctx, tx, indexID, relativePath)
+	deletedDirs, deletedFiles, err := deletePath(ctx, tx, indexID, relativePath, s.sameFile)
 	if err != nil {
-		return fmt.Errorf("count deleted entries: %w", err)
-	}
-
-	removedContribution, err := removedContributionForPath(ctx, tx, indexID, relativePath)
-	if err != nil {
-		return fmt.Errorf("read removed contribution: %w", err)
-	}
-	promotedGroups, err := promotedHardlinksForDelete(ctx, tx, indexID, relativePath)
-	if err != nil {
-		return fmt.Errorf("find hardlinks requiring promotion: %w", err)
-	}
-
-	// Delete all entries under this path (including the path itself)
-	lo, childLo, hi := subtreeBounds(relativePath)
-	_, err = tx.ExecContext(ctx, `
-		DELETE FROM entries
-		WHERE index_id = ?
-		  AND relative_path >= ? AND relative_path < ?
-		  AND (relative_path = ? OR relative_path >= ?);
-	`, indexID, lo, hi, lo, childLo)
-	if err != nil {
-		return fmt.Errorf("delete entries under %q: %w", relativePath, err)
-	}
-
-	if removedContribution != 0 {
-		if err := updateParentDirectorySizes(ctx, tx, indexID, relativePath, -removedContribution); err != nil {
-			return fmt.Errorf("subtract removed contribution: %w", err)
-		}
-	}
-	if err := promoteHardlinks(ctx, tx, indexID, promotedGroups, s.sameFile); err != nil {
-		return fmt.Errorf("promote surviving hardlinks: %w", err)
+		return err
 	}
 	if err := updateIndexMetadata(ctx, tx, indexID, -deletedDirs, -deletedFiles); err != nil {
 		return fmt.Errorf("update index metadata: %w", err)
@@ -223,29 +220,46 @@ func (s *Store) DeletePath(ctx context.Context, indexID int64, relativePath stri
 	return nil
 }
 
-// cleanupDeletedEntriesUnderPath removes entries under a specific path that were not seen during the latest scan.
-// This is used for partial reindexing to avoid deleting entries outside the reindexed path.
-// Returns the number of entries deleted.
-func cleanupDeletedEntriesUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string, scanTime int64) (int64, error) {
+// deletePath deletes a path and everything below it, takes what they counted
+// out of the folders above, and hands the size of a hard-linked file that
+// lost its counted link to one that is left. It returns how many folders and
+// files it deleted.
+func deletePath(ctx context.Context, db dbExecutor, indexID int64, relativePath string, sameFile SameFileFunc) (deletedDirs, deletedFiles int64, err error) {
+	deletedDirs, deletedFiles, err = countEntriesUnderPath(ctx, db, indexID, relativePath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count deleted entries: %w", err)
+	}
 
+	removedContribution, err := removedContributionForPath(ctx, db, indexID, relativePath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read removed contribution: %w", err)
+	}
+	promotedGroups, err := promotedHardlinksForDelete(ctx, db, indexID, relativePath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("find hardlinks requiring promotion: %w", err)
+	}
+
+	// Delete all entries under this path (including the path itself)
 	lo, childLo, hi := subtreeBounds(relativePath)
-	result, err := db.ExecContext(ctx, `
+	_, err = db.ExecContext(ctx, `
 		DELETE FROM entries
 		WHERE index_id = ?
-		  AND last_seen < ?
 		  AND relative_path >= ? AND relative_path < ?
 		  AND (relative_path = ? OR relative_path >= ?);
-	`, indexID, scanTime, lo, hi, lo, childLo)
+	`, indexID, lo, hi, lo, childLo)
 	if err != nil {
-		return 0, err
+		return 0, 0, fmt.Errorf("delete entries under %q: %w", relativePath, err)
 	}
 
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		return 0, err
+	if removedContribution != 0 {
+		if err := updateParentDirectorySizes(ctx, db, indexID, relativePath, -removedContribution); err != nil {
+			return 0, 0, fmt.Errorf("subtract removed contribution: %w", err)
+		}
 	}
-
-	return deleted, nil
+	if err := promoteHardlinks(ctx, db, indexID, promotedGroups, sameFile); err != nil {
+		return 0, 0, fmt.Errorf("promote surviving hardlinks: %w", err)
+	}
+	return deletedDirs, deletedFiles, nil
 }
 
 // rollbackTx rolls back tx unconditionally: after a successful Commit it

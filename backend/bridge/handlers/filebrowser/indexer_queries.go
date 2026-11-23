@@ -25,13 +25,16 @@ func fetchDirSizeFromIndexer(ctx context.Context, path string) (indexerapi.DirSi
 	return payload, nil
 }
 
-// fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
-func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.SubfolderData, error) {
-	folders, err := indexer.Subfolders(ctx, path)
+// fetchSubfoldersFromIndexer queries the indexer daemon for direct child
+// folders with sizes, and whether an update that can change them still waits.
+func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.SubfolderData, bool, error) {
+	// Read before the indexer is asked: see indexerUpdatesInFlight.
+	pending := indexerUpdatesInFlight()
+	resp, err := indexer.Subfolders(ctx, path)
 	if err != nil {
-		return nil, indexerError("subfolders", err)
+		return nil, false, indexerError("subfolders", err)
 	}
-	return subfoldersFromIndexer(folders), nil
+	return subfoldersFromIndexer(resp.Subfolders), pending || resp.Pending, nil
 }
 
 // searchInIndexer queries the indexer for files matching the search term
@@ -67,6 +70,8 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 		return apischema.DirectorySizeData{}, fmt.Errorf("%w: path is not a directory", bridgeipc.ErrInvalidArgs)
 	}
 
+	// Read before the indexer is asked: see indexerUpdatesInFlight.
+	pending := indexerUpdatesInFlight()
 	details, err := fetchDirSizeFromIndexer(ctx, path)
 	if err != nil {
 		return apischema.DirectorySizeData{}, fmt.Errorf("error fetching directory details: %w", err)
@@ -76,6 +81,7 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 		Size:        details.Size,
 		FileCount:   details.Files,
 		FolderCount: details.Dirs,
+		Pending:     pending || details.Pending,
 	}, nil
 }
 
@@ -99,7 +105,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 	}
 
 	// Fetch subfolders from indexer (it will handle path validation)
-	folders, err := fetchSubfoldersFromIndexer(ctx, path)
+	folders, pending, err := fetchSubfoldersFromIndexer(ctx, path)
 	if err != nil {
 		return apischema.SubfoldersResponse{}, fmt.Errorf("error fetching subfolders: %w", err)
 	}
@@ -107,7 +113,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 		folders[i].Path = pathAsRequested(requested, path, folders[i].Path)
 	}
 
-	return apischema.SubfoldersResponse{Subfolders: folders}, nil
+	return apischema.SubfoldersResponse{Subfolders: folders, Pending: pending}, nil
 }
 
 // pathAsRequested names p, a path below resolved, below requested instead,

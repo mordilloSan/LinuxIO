@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenStoreRecoveringQuarantinesConfirmedCorruption(t *testing.T) {
@@ -129,5 +131,56 @@ func TestQuarantineThatFailsKeepsTheEarlierCopy(t *testing.T) {
 	}
 	if _, statErr := os.Stat(earlier); statErr != nil {
 		t.Fatalf("the earlier copy was deleted although no new one was made: %v", statErr)
+	}
+}
+
+func TestAQueryOnANewConnectionDoesNotWaitForAWriteInProgress(t *testing.T) {
+	ctx := context.Background()
+	db, err := OpenContext(ctx, filepath.Join(t.TempDir(), "indexer.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	// A reindex holds one write transaction for as long as it walks.
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO indexes (last_indexed) VALUES (0)`); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// A search that needs a connection the pool does not have yet must not
+	// queue behind it: opening a connection takes no write lock.
+	for i := range 3 {
+		queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		conn, err := db.Conn(queryCtx)
+		if err != nil {
+			cancel()
+			t.Fatalf("connection %d: %v", i, err)
+		}
+		defer conn.Close()
+		var generations int
+		err = conn.QueryRowContext(queryCtx, `SELECT COUNT(*) FROM indexes`).Scan(&generations)
+		cancel()
+		if err != nil {
+			t.Fatalf("query on new connection %d while a write is in progress: %v", i, err)
+		}
+	}
+}
+
+// The indexer is a root daemon and loads no SQLite extension, so the build
+// leaves the feature out.
+func TestTheBuildCannotLoadSQLiteExtensions(t *testing.T) {
+	db, err := OpenContext(context.Background(), filepath.Join(t.TempDir(), "indexer.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.Exec(`SELECT load_extension('/nonexistent')`)
+	if err == nil || !strings.Contains(err.Error(), "no such function") {
+		t.Fatalf("load_extension answered %v, want the function to be absent", err)
 	}
 }

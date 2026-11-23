@@ -5,6 +5,8 @@ export const DIRECTORY_SIZE_CONFIG = {
   CACHE_DURATION: 5 * 60 * 1000, // 5 minutes (staleTime)
   CACHE_PERSISTENCE: 24 * 60 * 60 * 1000, // 24 hours (gcTime)
   FAILED_RETRY_DELAY: 30 * 1000, // 30 seconds
+  // How long after an answer marked pending the size is asked for again.
+  PENDING_REFETCH_DELAY: 1500,
   MAX_RETRIES: 2,
   EXCLUDED_DIRECTORIES: ["/proc", "/dev", "/sys", "/var/lib/linuxio/indexer"],
 } as const;
@@ -20,14 +22,27 @@ export const shouldSkipSizeCalculation = (path: string): boolean => {
   );
 };
 
+interface PendingSizeQuery {
+  state: { data?: { pending?: boolean } };
+}
+
 /**
- * Common query options for directory size queries
+ * Common query options for directory size queries.
+ *
+ * A file operation reports done before the index has caught up with it, so a
+ * size asked for right then is the old one. The answer says so (`pending`),
+ * and the query asks again shortly after, for as long as it does, instead of
+ * keeping that answer for the cache duration.
  */
 export const getDirectorySizeQueryOptions = () => ({
   staleTime: DIRECTORY_SIZE_CONFIG.CACHE_DURATION,
   gcTime: DIRECTORY_SIZE_CONFIG.CACHE_PERSISTENCE,
   refetchOnWindowFocus: false,
   refetchOnMount: false,
+  refetchInterval: (query: PendingSizeQuery) =>
+    query.state.data?.pending
+      ? DIRECTORY_SIZE_CONFIG.PENDING_REFETCH_DELAY
+      : false,
   retry: (failureCount: number) =>
     failureCount < DIRECTORY_SIZE_CONFIG.MAX_RETRIES,
   retryDelay: () => DIRECTORY_SIZE_CONFIG.FAILED_RETRY_DELAY,
