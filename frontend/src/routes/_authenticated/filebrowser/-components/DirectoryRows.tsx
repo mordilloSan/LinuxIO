@@ -121,10 +121,12 @@ export const DirectoryItem = memo<DirectoryItemProps>(
       : subfolderData
         ? subfolderData.size
         : null;
+    // A search result carries the size the index holds for the folder; any
+    // other folder waits for the sizes of the folder it is listed in.
     const shouldShowSize = !item.symlink;
-    const sizeIsLoading = shouldShowSize && isLoadingSubfolders;
-    const sizeIsUnavailable =
-      shouldShowSize && !isLoadingSubfolders && size === null;
+    const sizeIsLoading =
+      shouldShowSize && !isSearchResult && isLoadingSubfolders;
+    const sizeIsUnavailable = shouldShowSize && !sizeIsLoading && size === null;
 
     return (
       <ItemComponent

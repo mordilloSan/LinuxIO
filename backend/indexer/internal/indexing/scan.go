@@ -141,12 +141,17 @@ func (idx *Index) scanDirectory(ctx context.Context, dirInfo *os.File, stat os.F
 	normalizedDir := indexerapi.NormalizePath(adjustedPath)
 
 	for {
-		names, readErr := dirInfo.ReadDir(readDirChunk)
+		// Names only. ReadDir also wants each entry's type, and on a
+		// filesystem that does not report it looks at every entry of the
+		// chunk itself: a look that failed would lose the whole folder where
+		// indexChild loses one entry, and up to a chunk of slow ones would
+		// pass without the walk counting any (Looked).
+		names, readErr := dirInfo.Readdirnames(readDirChunk)
 		for _, name := range names {
 			if err := ctx.Err(); err != nil {
 				return IndexEntry{}, err
 			}
-			childSize, err := idx.indexChild(ctx, dirInfo, name.Name(), combinedPath, normalizedDir)
+			childSize, err := idx.indexChild(ctx, dirInfo, name, combinedPath, normalizedDir)
 			if err != nil {
 				return IndexEntry{}, err
 			}
@@ -179,6 +184,8 @@ func (idx *Index) scanDirectory(ctx context.Context, dirInfo *os.File, stat os.F
 func (idx *Index) indexChild(ctx context.Context, dir *os.File, name, combinedPath, normalizedDir string) (int64, error) {
 	fullCombined := combinedPath + name
 	file, err := statChild(dir, name)
+	// Counted once the look at it has returned, with or without an answer.
+	idx.looked.Add(1)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			slog.Debug("skipping deleted filesystem entry", "path", fullCombined, "error", err)

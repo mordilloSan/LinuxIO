@@ -76,6 +76,9 @@ type workStreamBroadcaster struct {
 	subscribers      map[int]chan workStreamEvent
 	nextSubscriberID int
 	closed           bool
+	// last is the event the operation ended with, complete or error: what
+	// is kept of it once its stream is gone.
+	last *workStreamEvent
 }
 
 func newWorkStreamBroadcaster(operation, operationID, path string) *workStreamBroadcaster {
@@ -106,6 +109,9 @@ func (b *workStreamBroadcaster) SendEvent(event string, data any) error {
 	}
 
 	evt := workStreamEvent{event: event, data: data}
+	if event == api.EventComplete || event == api.EventError {
+		b.last = &evt
+	}
 	for id, ch := range b.subscribers {
 		select {
 		case ch <- evt:
@@ -266,7 +272,11 @@ func (d *daemon) streamWorkEvents(ctx context.Context, sse *sseWriter, events <-
 	}
 }
 
+// endWorkStream ends the stream of an operation that is over. Its outcome is
+// kept first: a client that sees the stream close and finds the operation
+// neither running nor waiting asks for it next.
 func (d *daemon) endWorkStream(b *workStreamBroadcaster) {
+	d.outcomes.keep(b)
 	d.clearWorkStreamBroadcaster(b)
 	b.close()
 }

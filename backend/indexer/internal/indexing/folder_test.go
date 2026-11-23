@@ -152,3 +152,29 @@ func TestLstatDoesNotGoThroughASymlinkedFolder(t *testing.T) {
 		t.Fatalf("Lstat of the root = %v, %v", info, err)
 	}
 }
+
+// The scanner's watch for a walk that hangs counts what the walk looked at,
+// whatever came of it: an entry that is left out or cannot be read is work
+// done all the same, and a walk through many of those is not stuck.
+func TestTheWalkCountsEveryEntryItLooksAt(t *testing.T) {
+	root := t.TempDir()
+	writeFolderFile(t, filepath.Join(root, "kept", "a.txt"), 0)
+	writeFolderFile(t, filepath.Join(root, "left-out", "b.txt"), 0)
+	writeFolderFile(t, filepath.Join(root, "left-out-too", "c.txt"), 0)
+	idx := Initialize("/", WithExcludePaths([]string{filepath.Join(root, "left-out"), filepath.Join(root, "left-out-too")}))
+	idx.EnableStreaming(&memoryWriter{})
+
+	if err := idx.StartIndexingFromPath(context.Background(), root); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+
+	dirs, files, _ := idx.Counts()
+	// root, kept and a.txt are indexed; the two folders left out are looked
+	// at and no more.
+	if dirs+files != 3 {
+		t.Fatalf("indexed %d folders and %d files, want 3 entries", dirs, files)
+	}
+	if looked := idx.Looked(); looked != 4 {
+		t.Fatalf("the walk looked at %d entries, want 4: kept, a.txt and the two left out", looked)
+	}
+}

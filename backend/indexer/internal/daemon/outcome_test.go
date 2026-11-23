@@ -1,13 +1,15 @@
 package daemon
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,7 +154,31 @@ func TestAnOperationThatEndedWithoutALastEventIsKeptAsFailed(t *testing.T) {
 	outcomes.keep(stream)
 
 	outcome, found := outcomes.of("silent")
-	if !found || outcome.Event != api.EventError {
-		t.Fatalf("the outcome is %q (found %v), want an error", outcome.Event, found)
+	if !found || outcome.event != api.EventError {
+		t.Fatalf("the outcome is %q (found %v), want an error", outcome.event, found)
+	}
+}
+
+// File names are bytes, and an error names the path it failed at.
+func TestAnOutcomeThatNamesAPathThatIsNotUTF8IsAnsweredWhole(t *testing.T) {
+	d, _ := newIndexedDaemon(t)
+	stream := newWorkStreamBroadcaster("reindex", "latin-1", "/srv/caf\xe9")
+	sendSSEError(stream, "cannot access /srv/caf\xe9: permission denied")
+	d.outcomes.keep(stream)
+
+	rr := getOutcome(d, "latin-1")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("the outcome answered %d %q, want 200", rr.Code, rr.Body.String())
+	}
+	var outcome api.OperationOutcome
+	if err := json.Unmarshal(rr.Body.Bytes(), &outcome, jsontext.AllowInvalidUTF8(true)); err != nil {
+		t.Fatalf("decode the outcome: %v", err)
+	}
+	var failed api.WorkErrorEvent
+	if err := json.Unmarshal(outcome.Data, &failed, jsontext.AllowInvalidUTF8(true)); err != nil {
+		t.Fatalf("decode the last event: %v", err)
+	}
+	if outcome.Event != api.EventError || !strings.Contains(failed.Message, "permission denied") {
+		t.Fatalf("the outcome is %q %+v, want the error with its message", outcome.Event, failed)
 	}
 }

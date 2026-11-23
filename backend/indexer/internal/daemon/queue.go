@@ -151,11 +151,16 @@ func (d *daemon) withdraw(j *job, err error) bool {
 	if q.byKey[j.key] == j {
 		delete(q.byKey, j.key)
 	}
-	q.mu.Unlock()
-
 	j.err = err
 	if j.stream != nil {
+		// Kept before the queue is let go of: an operation is never seen
+		// neither waiting nor ended.
 		sendSSEError(j.stream, err.Error())
+		d.outcomes.keep(j.stream)
+	}
+	q.mu.Unlock()
+
+	if j.stream != nil {
 		j.stream.close()
 	}
 	close(j.done)

@@ -30,7 +30,7 @@ type Generation struct {
 
 // EnsureGeneration returns the generation a full scan writes into: the
 // published one, or the one a first scan has not completed yet, or a new one.
-// A generation is published when a scan of it commits (updateIndexMetadata
+// A generation is published when a scan of everything commits (setIndexCounts
 // sets last_indexed), so readers see no index until the first scan is done.
 func (s *Store) EnsureGeneration(ctx context.Context) (int64, error) {
 	var id int64
@@ -92,17 +92,24 @@ func (s *Store) hasCompletedGeneration(ctx context.Context) bool {
 	return err == nil && exists
 }
 
-// setIndexCounts records the entry counts of generation indexID as counted,
-// and then its total and timestamp as updateIndexMetadata does.
+// setIndexCounts ends a full index of generation indexID: it records the
+// entry counts as counted and the time, and then the total as
+// updateIndexMetadata does. The time is what "Last indexed" shows and what
+// publishes a first scan, and nothing else writes it: the updates between two
+// full indexes keep the index current without being one.
 func setIndexCounts(ctx context.Context, db dbExecutor, indexID, dirs, files int64) error {
-	if _, err := db.ExecContext(ctx, `UPDATE indexes SET num_dirs = ?, num_files = ? WHERE id = ?;`, dirs, files, indexID); err != nil {
+	if _, err := db.ExecContext(ctx, `
+		UPDATE indexes
+		SET num_dirs = ?, num_files = ?, last_indexed = CAST(strftime('%s', 'now') AS INTEGER)
+		WHERE id = ?;
+	`, dirs, files, indexID); err != nil {
 		return err
 	}
 	return updateIndexMetadata(ctx, db, indexID, 0, 0)
 }
 
 // updateIndexMetadata applies entry-count deltas to generation indexID and
-// synchronizes its stored total and timestamp with the queryable entries.
+// synchronizes its stored total with the queryable entries.
 func updateIndexMetadata(ctx context.Context, db dbExecutor, indexID, dirDelta, fileDelta int64) error {
 	_, err := db.ExecContext(ctx, `
 		UPDATE indexes
@@ -111,8 +118,7 @@ func updateIndexMetadata(ctx context.Context, db dbExecutor, indexID, dirDelta, 
 			total_size = COALESCE((
 				SELECT size FROM entries
 				WHERE index_id = ? AND relative_path = '/'
-			), 0),
-			last_indexed = CAST(strftime('%s', 'now') AS INTEGER)
+			), 0)
 		WHERE id = ?;
 	`, dirDelta, fileDelta, indexID, indexID)
 	return err

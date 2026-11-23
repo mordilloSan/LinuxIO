@@ -26,6 +26,10 @@ interface PendingSizeQuery {
   state: { data?: { pending?: boolean } };
 }
 
+interface MarkedSizeQuery {
+  state: { isInvalidated: boolean };
+}
+
 /**
  * Common query options for directory size queries.
  *
@@ -33,12 +37,19 @@ interface PendingSizeQuery {
  * size asked for right then is the old one. The answer says so (`pending`),
  * and the query asks again shortly after, for as long as it does, instead of
  * keeping that answer for the cache duration.
+ *
+ * A size is not asked for again merely because a row or a page mounts: it is
+ * kept for the cache duration. One that was marked stale while nothing showed
+ * it is the exception, since marking it starts no request then: a folder read
+ * by the route's loader before the page exists, or changed by an operation
+ * that ended while another page was open. A size whose last request failed
+ * counts as marked too, so the page asks again when it is next shown.
  */
 export const getDirectorySizeQueryOptions = () => ({
   staleTime: DIRECTORY_SIZE_CONFIG.CACHE_DURATION,
   gcTime: DIRECTORY_SIZE_CONFIG.CACHE_PERSISTENCE,
   refetchOnWindowFocus: false,
-  refetchOnMount: false,
+  refetchOnMount: (query: MarkedSizeQuery) => query.state.isInvalidated,
   refetchInterval: (query: PendingSizeQuery) =>
     query.state.data?.pending
       ? DIRECTORY_SIZE_CONFIG.PENDING_REFETCH_DELAY

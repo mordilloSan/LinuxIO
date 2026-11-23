@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -236,6 +237,43 @@ func TestDirDetailsIsCaseSensitive(t *testing.T) {
 	}
 	if files != 0 || dirs != 2 {
 		t.Fatalf("/a/Data counts = %d files, %d dirs, want 0 files, 2 dirs", files, dirs)
+	}
+}
+
+// Counting the rows below "/" reads the whole index. The index row already
+// holds the totals, kept by every write.
+func TestDirDetailsOfTheRootReadsTheTotalsOfTheIndex(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	seedDirectories(t, ctx, db, indexID, []directorySeed{
+		{path: "/", size: 30},
+		{path: "/a", size: 30},
+		{path: "/a/data", size: 20},
+	})
+	// Unlike the rows, to show where the answer comes from.
+	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 41, num_files = 7 WHERE id = ?`, indexID); err != nil {
+		t.Fatalf("seed totals: %v", err)
+	}
+	store := NewStoreWithDB(db, dbPath, nil)
+
+	size, files, dirs, err := store.DirDetails(ctx, "/")
+	if err != nil {
+		t.Fatalf("DirDetails: %v", err)
+	}
+	if size != 30 || files != 7 || dirs != 41 {
+		t.Fatalf("/ = %d bytes, %d files, %d dirs; want 30, 7 and 41 from the index row", size, files, dirs)
+	}
+
+	// Any other folder is counted from its rows.
+	if _, files, dirs, err = store.DirDetails(ctx, "/a"); err != nil || files != 0 || dirs != 2 {
+		t.Fatalf("/a = %d files, %d dirs (%v), want 0 and 2", files, dirs, err)
+	}
+}
+
+func TestDirDetailsOfTheRootBeforeTheFirstIndexIsNotInitialized(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	if _, _, _, err := NewStoreWithDB(db, dbPath, nil).DirDetails(ctx, "/"); !errors.Is(err, ErrNotInitialized) {
+		t.Fatalf("DirDetails of / with no index = %v, want ErrNotInitialized", err)
 	}
 }
 

@@ -181,7 +181,8 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 │  └─ linuxio-indexer.service        runs the managed daemon; exits when idle
 ├─ linuxio-indexer-index.timer      periodic start of linuxio-indexer-index.service
 │  └─ linuxio-indexer-index.service the scanner (`linuxio-indexer --index-mode`): one full index, oneshot,
-│                                    nice 19 and idle I/O; takes its turn with the daemon over its socket
+│                                    nice 19 and idle I/O; takes its turn with the daemon over its socket;
+│                                    ends itself when it stops moving, and after 7 days at the latest
 ├─ linuxio-btrfs-health.timer       every 10 min; enabled only on hosts with btrfs
 │  └─ linuxio-btrfs-health.service  runs `linuxio-worker health`; root
 ├─ linuxio-monitoring.service        runs `linuxio-monitoring`; root; owns

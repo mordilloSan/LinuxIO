@@ -549,7 +549,9 @@ same path, query function, key, and two-second `staleTime`. That short grace
 keeps the freshly loaded listing fresh while the observer mounts, eliminating
 the immediate duplicate request, while the `BACKGROUND` policy still
 revalidates stale or invalidated listings on a later navigation without hiding
-the cached directory.
+the cached directory. Its query function also marks the folder's sizes stale
+when a listing arrives, so both the loader's read and the observer's ask for
+them again ([Filesystem Indexer](./indexer.md#sizes-that-are-still-catching-up)).
 
 Transport only — `logs/route.tsx` and `terminal/route.tsx`:
 

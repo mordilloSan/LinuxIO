@@ -249,6 +249,25 @@ unit that is running. A request in the instant a scan has completed, while
 its unit is still ending, gets the operation that has just completed. An index that was asked for and that no scanner joins
 within 30 seconds of its turn fails, with a pointer to the unit's journal.
 
+A scanner that hangs would hold the queue for as long as it lives, and while
+its unit is active the timer starts no other scan. A scan has no fixed
+length, since one at idle priority on a busy disk takes hours, so the scanner
+does not limit how long it runs. It watches that it moves
+(`backend/indexer/internal/daemon/stall.go`): an entry the walk has looked
+at counts, whether it was indexed, left out or could not be read, and so does
+a step begun; a report of numbers that stand still does not. After 30
+minutes without either it tells the scan to stop, and when the scan does not
+come back from that within ten seconds, because it is in a call the kernel
+does not return from, it reports the failure to the daemon without it and
+exits, which is what ends the call and the transaction. The daemon ends the
+index with "the scan made no progress for 30m0s during ..." and takes up the
+work that waited. A scan that is told to stop for another reason and does not
+come back within 30 minutes ends the same way. The steps after the walk
+("Updating folder sizes", the checkpoint) have no counter, so 30 minutes is
+also the longest one of them may take. The unit's `TimeoutStartSec=7d` is the
+backstop for a scanner that cannot do this, and for one that keeps moving and
+never arrives.
+
 The scanner:
 
 1. opens the canonical SQLite database;
@@ -313,6 +332,13 @@ daemon aborts the scan; a progress report that does not arrive does not.
 Until the first scan has completed, status is `uninitialized`: its rows are
 in a generation that is published when the scan commits. Search, directory
 details, and subfolder queries return `503 Service Unavailable` in that state.
+
+`last_indexed`, "Last indexed" in Settings, is when a full index last
+completed, one that found nothing changed included. Only a full index writes
+it (`setIndexCounts` in `backend/indexer/internal/storage/generation.go`):
+the reindex of a folder, the refresh of an opened folder and the update after
+a file operation keep the index current in between without being one, and
+they happen all day.
 
 ### Scoped reindex
 
@@ -447,7 +473,25 @@ include what the refresh found.
 The page asks again 1.5 seconds after an answer marked pending, for as long
 as it is (`getDirectorySizeQueryOptions` in
 `frontend/src/routes/_authenticated/filebrowser/-hooks/useFileDirectorySizeBase.ts`),
-and keeps a final answer for five minutes as before.
+and keeps a final answer for five minutes.
+
+Reading a folder ends those five minutes for it. The bridge tells the indexer
+to refresh a folder whenever it lists it, so the sizes the page holds from
+before the listing may be old, and the listing's query marks them stale when
+its answer arrives (`markDirectorySizesStale` in
+`-hooks/useListingInvalidation.ts`): the sizes of the folder's
+subfolders and the folder's own details are asked for again each time the
+folder is read, and the answer says `pending` while the refresh has not run.
+When nothing shows the sizes at that moment, as when the route's loader
+reads the folder before the page exists, marking them starts no request, and
+they are asked for when they are next shown (`refetchOnMount` in
+`getDirectorySizeQueryOptions`); a size that was not marked is not asked for
+again because something mounts.
+
+A folder among search results shows the size the search answer carries, which
+is the one the index holds for it, and asks for nothing more. Asking for its
+details counted every row below it to fill in a number the result already
+had.
 
 ### Concurrency and recovery
 
@@ -482,7 +526,21 @@ or left out of the index loses its rows, a file is added or replaced, and a
 folder gets a reindex of its own, which a request for the same folder that
 follows joins, and the update answers `202 queued`. Work with a stream that
 fails, or is dropped because the daemon stops, ends its stream with an error
-event, since a client takes a stream that just closes for work that is done.
+event.
+
+A stream that closes does not say how its operation ended: a reindex is often
+over before the bridge has attached, and then there is no stream to read. The
+daemon therefore keeps the last event, complete or error, of the 4,096
+operations it ended most recently and answers for one by its ID
+(`GET /operation`, `backend/indexer/internal/daemon/outcome.go`). When a
+stream ends without a last event, or there was none to attach to, the bridge
+reads the status; an operation that neither runs nor waits is over, and the
+bridge asks how it ended and reports that, with the operation's own totals or
+its error (`reportEndedOperation` in
+`backend/bridge/handlers/indexer/reindex.go`). The outcomes are in memory, so
+a daemon that stopped or restarted while the operation ran or waited does not
+know it and answers `404`. The task then fails with "the indexer lost the
+operation", where it used to end as successful with the index half done.
 
 The queue is in memory. Work that waits when the daemon stops is not applied
 (a caller still waiting gets `503`), and the next full index makes it good. Active requests, streams, scans and
@@ -561,7 +619,7 @@ The status result contains:
 | `status` | `uninitialized`, `running`, or `idle` |
 | `running` | whether an index/reindex operation is active |
 | `num_dirs`, `num_files`, `total_size` | latest completed generation totals |
-| `last_indexed` | completion time in RFC 3339 form, when initialized |
+| `last_indexed` | when the last full index completed, in RFC 3339 form, when initialized |
 | `database_size` | current SQLite file size in bytes |
 | `active_operation`, `active_operation_id`, `active_path` | active work identity, when running |
 | `warning` | partial status-read warning, when available |
@@ -593,6 +651,7 @@ plain-text message.
 | `POST /reindex?path=<path>` | absolute path | `202` operation response | Reconciles one directory subtree |
 | `GET /status` | none | status object | Returns current state and latest completed totals |
 | `GET /status?stream=1&operation=<op>&operation_id=<id>&path=<path>` | exact operation tuple | `text/event-stream` | Attaches to work that runs or waits; a mismatch falls back to JSON status |
+| `GET /operation?operation_id=<id>` | operation ID | `event` (`complete` or `error`) and that event's `data` | How an operation that is over ended; `404` for one that still runs or waits, and for one this daemon never held |
 | `GET /search?q=<query>&base=<path>` | query and optional base, default `/` | array of entry results | Query max 256 bytes; result cap 100; `limit` is ignored |
 | `GET /dirsize?path=<path>` | optional path, default `/` | path, recursive size, file count, directory count, `pending` | Reads cached aggregates; `pending` is set while work that can change them runs or waits |
 | `GET /subfolders?path=<path>` | optional path, default `/` | `{"subfolders":[...],"pending":bool}` | Each result includes path, name, size, and modification time |
@@ -700,15 +759,33 @@ old cache remains available for inspection.
   commits every 50,000) leaves the folders it had not reached with their old
   sizes, which no longer add up with the rows below them, until the next
   full scan ends.
-- A scanner that hangs holds the queue for as long as it lives: once one has
-  attached, the daemon waits for its result or for its connection to close,
-  with no time limit, since a scan of a large host has no fixed length.
-  Stopping `linuxio-indexer-index.service` closes the connection and frees
-  the queue.
+- A scanner that keeps moving, however slowly, is never ended for being
+  slow: a mount that answers each call after 20 seconds holds the queue until
+  the scan is through or the unit's seven days are up. Stopping
+  `linuxio-indexer-index.service` frees the queue.
+- A scanner stuck in a call the kernel does not let a killed process leave
+  cannot exit, and holds SQLite's write lock until the call returns: the
+  daemon has taken up its work by then, and its writes fail with "database is
+  locked" until it does. systemd's own kill has the same limit.
 - Folder details count the files and folders below the folder on every
   request (`DirDetails` in `backend/indexer/internal/storage/queries.go`),
-  which for `/` on a host with 1.85 million entries takes over a second. The
-  size is read from the folder's row.
+  which takes a moment for a folder with millions of entries below it; the
+  size is read from the folder's row. For `/`, where the count read every row
+  of the index and took over a second on a host with 1.85 million entries,
+  the counts are the totals the index row holds. Those are counted by a full
+  index and kept by every update after it, so after a full scan that stopped
+  half-way they can differ from the rows until the next one ends.
+- A folder among search results shows the size the search found and does not
+  ask again while that size is pending. A search made in the moments after a
+  file operation can show the size from before it, for the 30 seconds the
+  page keeps a search answer.
+- Rows below a folder the index holds no row for are not found by a scan,
+  which compares each folder it reads with the rows of that folder's own
+  entries. Such rows come from a folder opened by its path, or a file
+  operation, inside a folder that was made outside LinuxIO and that no scan or
+  listing has seen yet. When that outer folder is then removed outside
+  LinuxIO before either happens, its rows stay: search finds entries that
+  open nothing.
 - The scanner's idle I/O class gives it the disk only when nothing else wants
   it. On a disk that stays busy a scan takes long, and the updates of file
   operations wait behind it; their sizes are marked pending for that time.
@@ -722,10 +799,9 @@ old cache remains available for inspection.
   folder before the move (a change made outside LinuxIO) it does not know
   after it either, where the walk every move used to cause would have found
   it.
-- A size the page already holds is kept for five minutes. Opening a folder
-  again inside that time refreshes it in the index, and the page shows the
-  new sizes when it next asks: after a file operation, or once the five
-  minutes have passed.
+- The sizes asked for again when a folder is read are that folder's. The
+  details of a folder selected in it, when its contents changed outside
+  LinuxIO, are kept for the five minutes or until that folder is opened.
 - A folder opened in the file browser is refreshed one level deep. A change
   made outside LinuxIO further down shows up when that folder is opened, or
   at the next scan; until then the sizes of the folders above it are the old

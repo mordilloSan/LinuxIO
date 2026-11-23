@@ -151,28 +151,44 @@ func scanSearchEntry(rows *sql.Rows) (api.EntryResult, error) {
 	return entry, nil
 }
 
-// DirDetails returns the pre-calculated size for a directory.
-// The size is calculated during indexing and stored in the directory entry.
+// DirDetails returns the size of a folder and how many files and folders it
+// holds, itself included. The size is the folder's own row, kept by every
+// write. The counts are read from the rows below it, which for a folder with
+// millions of entries takes a moment; for the root they are the totals of the
+// index row instead, which every write keeps too, since counting the root
+// reads every row there is.
 func (s *Store) DirDetails(ctx context.Context, path string) (totalSize, files, dirs int64, err error) {
-	lo, childLo, hi := subtreeBounds(path)
 	var size sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT e.size,
-		       COALESCE((SELECT COUNT(*) FROM entries c
-		                 WHERE c.index_id = e.index_id
-		                   AND c.relative_path >= ? AND c.relative_path < ?
-		                   AND (c.relative_path = ? OR c.relative_path >= ?)
-		                   AND c.type = 0), 0),
-		       COALESCE((SELECT COUNT(*) FROM entries c
-		                 WHERE c.index_id = e.index_id
-		                   AND c.relative_path >= ? AND c.relative_path < ?
-		                   AND (c.relative_path = ? OR c.relative_path >= ?)
-		                   AND c.type = 1), 0)
-		FROM entries e
-		JOIN `+latestGenerationSubquery+` latest
-		  ON latest.id = e.index_id
-		WHERE e.relative_path = ? AND e.type = 1
-	`, lo, hi, lo, childLo, lo, hi, lo, childLo, path).Scan(&size, &files, &dirs); err != nil {
+	if path == "/" {
+		err = s.db.QueryRowContext(ctx, `
+			SELECT e.size, latest.num_files, latest.num_dirs
+			FROM entries e
+			JOIN indexes latest
+			  ON latest.id = e.index_id
+			WHERE latest.id = `+latestGenerationSubquery+`
+			  AND e.relative_path = '/' AND e.type = 1
+		`).Scan(&size, &files, &dirs)
+	} else {
+		lo, childLo, hi := subtreeBounds(path)
+		err = s.db.QueryRowContext(ctx, `
+			SELECT e.size,
+			       COALESCE((SELECT COUNT(*) FROM entries c
+			                 WHERE c.index_id = e.index_id
+			                   AND c.relative_path >= ? AND c.relative_path < ?
+			                   AND (c.relative_path = ? OR c.relative_path >= ?)
+			                   AND c.type = 0), 0),
+			       COALESCE((SELECT COUNT(*) FROM entries c
+			                 WHERE c.index_id = e.index_id
+			                   AND c.relative_path >= ? AND c.relative_path < ?
+			                   AND (c.relative_path = ? OR c.relative_path >= ?)
+			                   AND c.type = 1), 0)
+			FROM entries e
+			JOIN `+latestGenerationSubquery+` latest
+			  ON latest.id = e.index_id
+			WHERE e.relative_path = ? AND e.type = 1
+		`, lo, hi, lo, childLo, lo, hi, lo, childLo, path).Scan(&size, &files, &dirs)
+	}
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			if initialized, checkErr := s.completedGeneration(ctx); checkErr == nil && !initialized {
 				return 0, 0, 0, ErrNotInitialized

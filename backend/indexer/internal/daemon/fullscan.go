@@ -32,12 +32,26 @@ type IndexProgress interface {
 	ScanProgress(dirs, files, size uint64)
 }
 
+// walkWatcher is an IndexProgress that also takes the number of entries the
+// walk has looked at, indexed or not: the scanner's watch for a scan that
+// hangs (stall.go). It is not part of what the daemon is told.
+type walkWatcher interface {
+	Looked(entries uint64)
+}
+
 // startScanProgress samples the traversal counters twice a second and
 // forwards them to progress. The returned stop function halts sampling,
 // waits for the sampler to exit, and emits one final exact snapshot.
 func startScanProgress(progress IndexProgress, index *indexing.Index) (stop func()) {
 	if progress == nil {
 		return func() {}
+	}
+	walk, _ := progress.(walkWatcher)
+	sample := func() {
+		progress.ScanProgress(index.Counts())
+		if walk != nil {
+			walk.Looked(index.Looked())
+		}
 	}
 	done := make(chan struct{})
 	finished := make(chan struct{})
@@ -50,14 +64,14 @@ func startScanProgress(progress IndexProgress, index *indexing.Index) (stop func
 			case <-done:
 				return
 			case <-ticker.C:
-				progress.ScanProgress(index.Counts())
+				sample()
 			}
 		}
 	}()
 	return func() {
 		close(done)
 		<-finished
-		progress.ScanProgress(index.Counts())
+		sample()
 	}
 }
 

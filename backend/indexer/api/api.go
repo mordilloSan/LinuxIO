@@ -3,6 +3,7 @@
 package api
 
 import (
+	"encoding/json/jsontext"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ const (
 	RouteIndex      = "/index"
 	RouteReindex    = "/reindex"
 	RouteStatus     = "/status"
+	RouteOperation  = "/operation"
 	RouteSearch     = "/search"
 	RouteDirSize    = "/dirsize"
 	RouteSubfolders = "/subfolders"
@@ -187,6 +189,15 @@ type WorkErrorEvent struct {
 	OperationID string `json:"operation_id"`
 	Path        string `json:"path"`
 	Message     string `json:"message"`
+}
+
+// OperationOutcome is the last event of an index or reindex operation that is
+// over: EventComplete or EventError, with that event's data. The daemon holds
+// the outcomes of the operations it ended lately, in memory, so one asked of a
+// daemon that started since is not found.
+type OperationOutcome struct {
+	Event string         `json:"event"`
+	Data  jsontext.Value `json:"data"`
 }
 
 // NormalizePath is the canonical index path both the daemon and the bridge

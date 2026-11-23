@@ -539,6 +539,12 @@ func TestStreamIndexerIdleRecoveryUsesExpectedIdentity(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/status":
 			w.Header().Set("Content-Type", "application/json")
 			mustWrite(t, w, `{"status":"idle","num_files":4,"num_dirs":2,"total_size":128}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/operation":
+			if got := r.URL.Query().Get("operation_id"); got != "idle-operation" {
+				t.Errorf("outcome asked for %q, want idle-operation", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			mustWrite(t, w, `{"event":"complete","data":{"status":"complete","operation":"index","operation_id":"idle-operation","path":"/","files_indexed":7,"dirs_indexed":3,"total_size":512}}`)
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
 		}
@@ -556,8 +562,131 @@ func TestStreamIndexerIdleRecoveryUsesExpectedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamIndexer: %v", err)
 	}
-	if got.Operation != "index" || got.OperationID != "idle-operation" || got.Path != "/" || got.FilesIndexed != 4 {
+	// What the operation did, not what the whole index holds.
+	if got.Operation != "index" || got.OperationID != "idle-operation" || got.Path != "/" || got.FilesIndexed != 7 || got.TotalSize != 512 {
 		t.Fatalf("recovered result = %#v", got)
+	}
+}
+
+// endedBeforeAttachServer is a daemon whose operation is over when the bridge
+// attaches: the stream closes at once, nothing runs, and outcome answers the
+// request for how it ended.
+func endedBeforeAttachServer(t *testing.T, outcome func(w http.ResponseWriter)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/reindex":
+			w.WriteHeader(http.StatusAccepted)
+			mustWrite(t, w, `{"status":"running","path":"/srv/data","operation_id":"mine"}`)
+		case r.Method == http.MethodGet && r.URL.Query().Get("stream") == "true":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodGet && r.URL.Path == "/status":
+			w.Header().Set("Content-Type", "application/json")
+			mustWrite(t, w, `{"status":"idle","num_files":4,"num_dirs":2,"total_size":128}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/operation":
+			outcome(w)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+}
+
+// A daemon that stopped and started again while the operation ran or waited
+// knows nothing of it. It did not complete: the index may hold half of it.
+func TestAnOperationTheDaemonLostIsReportedAsFailed(t *testing.T) {
+	srv := endedBeforeAttachServer(t, func(w http.ResponseWriter) {
+		http.Error(w, `no ended operation "mine"`, http.StatusNotFound)
+	})
+	defer srv.Close()
+	overrideClient(t, srv)
+
+	var reported string
+	var code int
+	var gotResult bool
+	err := StreamIndexer(context.Background(), "/srv/data", IndexerCallbacks{
+		OnResult: func(IndexerResult) error { gotResult = true; return nil },
+		OnError:  func(msg string, c int) error { reported, code = msg, c; return nil },
+	})
+	if err == nil || gotResult {
+		t.Fatalf("StreamIndexer: %v, result reported %v; want a failure and no result", err, gotResult)
+	}
+	if !strings.Contains(reported, "lost") || code != http.StatusServiceUnavailable {
+		t.Fatalf("reported %q with code %d, want the operation reported lost with 503", reported, code)
+	}
+}
+
+// An operation that failed before the bridge attached is reported with its
+// own error, not as done.
+func TestAnOperationThatFailedBeforeTheAttachReportsItsError(t *testing.T) {
+	srv := endedBeforeAttachServer(t, func(w http.ResponseWriter) {
+		w.Header().Set("Content-Type", "application/json")
+		mustWrite(t, w, `{"event":"error","data":{"status":"error","operation":"reindex","operation_id":"mine","path":"/srv/data","message":"cannot access /srv/data: permission denied"}}`)
+	})
+	defer srv.Close()
+	overrideClient(t, srv)
+
+	var reported string
+	var gotResult bool
+	err := StreamIndexer(context.Background(), "/srv/data", IndexerCallbacks{
+		OnResult: func(IndexerResult) error { gotResult = true; return nil },
+		OnError:  func(msg string, _ int) error { reported = msg; return nil },
+	})
+	if err == nil || gotResult {
+		t.Fatalf("StreamIndexer: %v, result reported %v; want a failure and no result", err, gotResult)
+	}
+	if !strings.Contains(reported, "permission denied") {
+		t.Fatalf("reported %q, want the operation's own error", reported)
+	}
+}
+
+// The daemon cannot say: neither a success nor a loss is known.
+func TestAnOutcomeThatCannotBeReadFailsTheOperation(t *testing.T) {
+	for name, answer := range map[string]func(w http.ResponseWriter){
+		"the daemon fails": func(w http.ResponseWriter) {
+			http.Error(w, "database is locked", http.StatusInternalServerError)
+		},
+		"an event that ends nothing": func(w http.ResponseWriter) {
+			w.Header().Set("Content-Type", "application/json")
+			mustWrite(t, w, `{"event":"progress","data":{"operation":"reindex","operation_id":"mine","path":"/srv/data"}}`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := endedBeforeAttachServer(t, answer)
+			defer srv.Close()
+			overrideClient(t, srv)
+
+			var reports, results int
+			var reported string
+			err := StreamIndexer(context.Background(), "/srv/data", IndexerCallbacks{
+				OnResult: func(IndexerResult) error { results++; return nil },
+				OnError:  func(msg string, _ int) error { reports++; reported = msg; return nil },
+			})
+			if err == nil || results != 0 || reports != 1 {
+				t.Fatalf("StreamIndexer: %v, %d results, %d errors reported; want a failure reported once", err, results, reports)
+			}
+			if strings.Contains(reported, "lost") {
+				t.Fatalf("reported %q: an outcome that cannot be read is not an operation that was lost", reported)
+			}
+		})
+	}
+}
+
+// An outcome that names another operation is not this one's.
+func TestAnOutcomeOfAnotherOperationIsRefused(t *testing.T) {
+	srv := endedBeforeAttachServer(t, func(w http.ResponseWriter) {
+		w.Header().Set("Content-Type", "application/json")
+		mustWrite(t, w, `{"event":"complete","data":{"status":"complete","operation":"reindex","operation_id":"someone-else","path":"/srv/data"}}`)
+	})
+	defer srv.Close()
+	overrideClient(t, srv)
+
+	var gotResult bool
+	err := StreamIndexer(context.Background(), "/srv/data", IndexerCallbacks{
+		OnResult: func(IndexerResult) error { gotResult = true; return nil },
+	})
+	if err == nil || gotResult {
+		t.Fatalf("StreamIndexer: %v, result reported %v; want a failure and no result", err, gotResult)
 	}
 }
 
@@ -655,6 +784,9 @@ func TestStreamIndexerRecoveryTreatsOtherRunningWorkAsItsOwnEnd(t *testing.T) {
 				case r.Method == http.MethodGet && r.URL.Path == "/status":
 					w.Header().Set("Content-Type", "application/json")
 					mustWrite(t, w, status)
+				case r.Method == http.MethodGet && r.URL.Path == "/operation":
+					w.Header().Set("Content-Type", "application/json")
+					mustWrite(t, w, `{"event":"complete","data":{"status":"complete","operation":"reindex","operation_id":"mine","path":"/srv/data","files_indexed":9}}`)
 				default:
 					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
 				}
@@ -671,7 +803,7 @@ func TestStreamIndexerRecoveryTreatsOtherRunningWorkAsItsOwnEnd(t *testing.T) {
 			if err != nil || reported != "" {
 				t.Fatalf("StreamIndexer: %v (reported %q), want the operation taken as ended", err, reported)
 			}
-			if got.Operation != "reindex" || got.OperationID != "mine" || got.Path != "/srv/data" {
+			if got.Operation != "reindex" || got.OperationID != "mine" || got.Path != "/srv/data" || got.FilesIndexed != 9 {
 				t.Fatalf("recovered result = %#v", got)
 			}
 		})

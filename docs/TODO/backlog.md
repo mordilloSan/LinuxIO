@@ -56,20 +56,6 @@ after a change that issues ioctls).
   choice per schedule that the dialog shows. Units already saved keep the old
   line until they are rewritten. **not verified** with a real script
 
-- An index or reindex task ends as successful when the indexer daemon stops
-  or restarts while it runs. The daemon's event stream closes without a last
-  event, and the bridge then reads the status, finds nothing running and
-  reports the totals it finds (`recoverEndedStatusStream` in
-  `backend/bridge/handlers/indexer/reindex.go`); it cannot tell an operation
-  that completed from one that was lost, and a reindex that ended before
-  the bridge attached is the common, harmless case of the same path. The
-  same happens when the bridge attaches after a scan that failed at once, and
-  to an operation that waited in the daemon's queue when the daemon
-  restarted, since the queue is in memory. A fix needs the daemon to keep
-  the outcome of the operations it ended lately and answer for them by ID.
-  It was so before the scanner became a unit of its own; the queue made
-  waiting operations subject to it. **checked**
-
 - A WireGuard interface with NAT may forward nothing on Ubuntu 26.04. The
   PostUp hook LinuxIO writes, `sysctl -w net.ipv4.ip_forward=1`
   (`natPostUpHooks` in `backend/bridge/handlers/wireguard/config.go`), is
@@ -104,13 +90,6 @@ after a change that issues ioctls).
   entries), which may be enough. A calendar timer with `Persistent=true`
   remembers its last run and runs at once only when one was missed, but it
   turns the interval setting into a schedule. **checked**
-- What "Last indexed" in Settings should mean. Every update of the index
-  rewrites the time (`updateIndexMetadata` in
-  `backend/indexer/internal/storage/generation.go`, pinned by its tests), so
-  the page shows the last change of any kind, a file operation or the refresh
-  of an opened folder included, and not when the last full scan ran. The scan
-  unit's own time is in `systemctl status linuxio-indexer-index.service`.
-  **checked**
 
 - Whether Gemini CLI and Codex get a LinuxIO profile as Claude Code has
   (`ProfileEnv` in `backend/bridge/internal/acpagents`): today their sign-in,

@@ -17,6 +17,12 @@ ExecStart=/usr/libexec/linuxio/linuxio-indexer --index-mode --config /etc/linuxi
 # writes are flushed later by the kernel and do not carry the class.
 Nice=19
 IOSchedulingClass=idle
+# A scan that stops moving ends itself after half an hour
+# (backend/indexer/internal/daemon/stall.go), however long it has run. This
+# is the backstop for a scanner that cannot do that, and for one that moves
+# without ever getting there: a oneshot has no start timeout of its own, and
+# while this unit is active the timer starts no other scan.
+TimeoutStartSec=7d
 Environment=SQLITE_TMPDIR=/var/lib/linuxio/indexer
 
 # It reads the host's files and writes only the index.

@@ -187,10 +187,20 @@ func (l *ScanLink) report(ctx context.Context, evt scanEvent) error {
 	return nil
 }
 
+// scanFunc is the scan a scanner runs once it has its turn.
+type scanFunc func(ctx context.Context, progress IndexProgress) (IndexRunStats, error)
+
 // RunScan is the scanner: it takes its turn with the daemon, brings the
 // index up to date with the whole filesystem and reports the result. It
-// stops when the daemon goes away.
+// stops when the daemon goes away, and when the scan has stopped moving
+// (stall.go).
 func RunScan(ctx context.Context, cfg configfile.Config, dbPath string, client *http.Client) (IndexRunStats, error) {
+	return runScanWith(ctx, client, func(scanCtx context.Context, progress IndexProgress) (IndexRunStats, error) {
+		return RunIndexMode(scanCtx, cfg, dbPath, progress)
+	})
+}
+
+func runScanWith(ctx context.Context, client *http.Client, scan scanFunc) (IndexRunStats, error) {
 	link, err := OpenScanLink(ctx, client)
 	if err != nil {
 		return IndexRunStats{}, err
@@ -206,8 +216,10 @@ func RunScan(ctx context.Context, cfg configfile.Config, dbPath string, client *
 		case <-scanCtx.Done():
 		}
 	}()
+	watch := newStallWatch(link)
+	go watch.run(scanCtx, cancel)
 
-	stats, scanErr := RunIndexMode(scanCtx, cfg, dbPath, link)
+	stats, scanErr := runWatchedScan(scanCtx, scan, watch)
 	if scanErr != nil && errors.Is(context.Cause(scanCtx), errDaemonGone) {
 		return IndexRunStats{}, fmt.Errorf("%w: %w", errDaemonGone, scanErr)
 	}
@@ -219,4 +231,52 @@ func RunScan(ctx context.Context, cfg configfile.Config, dbPath string, client *
 		return stats, fmt.Errorf("report the scan's result: %w", endErr)
 	}
 	return stats, scanErr
+}
+
+// runWatchedScan runs scan and returns its result. A scan that stopped
+// moving was told to stop through scanCtx and ends with the stall as its
+// error. One that does not come back from being told to stop, for that or
+// any other reason, is stuck in a call the kernel does not return from: it is
+// left behind, and what frees it and the transaction it holds is the end of
+// the process, which follows the return of its caller.
+func runWatchedScan(scanCtx context.Context, scan scanFunc, watch *stallWatch) (IndexRunStats, error) {
+	type result struct {
+		stats IndexRunStats
+		err   error
+	}
+	grace := scanStallGrace
+	done := make(chan result, 1)
+	go func() {
+		stats, err := scan(scanCtx, watch)
+		done <- result{stats, err}
+	}()
+
+	select {
+	case res := <-done:
+		if cause := context.Cause(scanCtx); res.err != nil && errors.Is(cause, errScanStalled) {
+			// It unwound in the instant it was given up on.
+			return IndexRunStats{}, cause
+		}
+		return res.stats, res.err
+	case <-scanCtx.Done():
+	}
+
+	cause := context.Cause(scanCtx)
+	if !errors.Is(cause, errScanStalled) {
+		// Told to stop, or the daemon went: a scan that moves unwinds and
+		// says how, and it has as long for that as for any other step.
+		grace = watch.limit
+	}
+	select {
+	case res := <-done:
+		if res.err == nil || !errors.Is(cause, errScanStalled) {
+			return res.stats, res.err
+		}
+		return IndexRunStats{}, cause
+	case <-time.After(grace):
+	}
+	if errors.Is(cause, errScanStalled) {
+		return IndexRunStats{}, cause
+	}
+	return IndexRunStats{}, fmt.Errorf("%w after it was told to stop (%w)", errScanStalled, cause)
 }

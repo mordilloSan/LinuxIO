@@ -143,6 +143,15 @@ func DirSize(ctx context.Context, path string) (indexerapi.DirSizeResponse, erro
 	return out, err
 }
 
+// Outcome asks the daemon how an operation that is over ended. The daemon
+// answers 404, a ResponseError, for one it does not hold: it keeps them in
+// memory, so a daemon that started since the operation knows nothing of it.
+func Outcome(ctx context.Context, operationID string) (indexerapi.OperationOutcome, error) {
+	var out indexerapi.OperationOutcome
+	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteOperation, url.Values{"operation_id": {operationID}}, nil, &out)
+	return out, err
+}
+
 func fetchDaemonStatus(ctx context.Context) (indexerapi.StatusResponse, error) {
 	var out indexerapi.StatusResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteStatus, nil, nil, &out)

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
@@ -54,6 +55,9 @@ type Index struct {
 	totalSize            uint64              // total size
 	skippedDirs          uint64              // directories unreadable due to permission/I-O errors
 	mu                   sync.RWMutex        // protects concurrent access
+	// looked counts the entries the walk has looked at, whatever came of
+	// them. It is how a walk that moves is told from one that hangs.
+	looked atomic.Uint64
 
 	// Streaming mode fields
 	streamWriter StreamingWriter // where to send entries in streaming mode
@@ -203,6 +207,14 @@ func (idx *Index) Counts() (dirs, files, size uint64) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	return idx.NumDirs, idx.NumFiles, idx.totalSize
+}
+
+// Looked reports how many entries the walk has looked at so far: those it
+// indexed, and those it left out, found gone or could not read. NumDirs and
+// NumFiles stand still while a walk works through a folder of entries that
+// fail one after another; this does not.
+func (idx *Index) Looked() uint64 {
+	return idx.looked.Load()
 }
 
 // SkippedDirCount reports how many directories were skipped because of

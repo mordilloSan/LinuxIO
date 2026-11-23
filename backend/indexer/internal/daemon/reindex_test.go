@@ -104,8 +104,9 @@ func TestPartialReindexSynchronizesMetadata(t *testing.T) {
 	if dirs != actualDirs || files != actualFiles || totalSize != rootSize {
 		t.Fatalf("metadata = dirs %d, files %d, size %d; entries = %d, %d, %d", dirs, files, totalSize, actualDirs, actualFiles, rootSize)
 	}
-	if lastIndexed <= 1 {
-		t.Fatalf("last indexed = %d, want refreshed timestamp", lastIndexed)
+	// Seeded as 1: the reindex of a folder is not a full index.
+	if lastIndexed != 1 {
+		t.Fatalf("last indexed = %d, want the time of the last full index kept", lastIndexed)
 	}
 }
 

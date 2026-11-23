@@ -16,14 +16,16 @@ import (
 )
 
 // daemon is the long-running server. Its roles live in sibling files: server.go
-// (HTTP wiring), idle.go (idle shutdown), operations.go and reindex.go (index
-// lifecycle), supervisor.go (worker subprocess), settings.go and sse.go.
+// (HTTP wiring), idle.go (idle shutdown), queue.go (the order of the work),
+// operations.go and reindex.go (updates of the index), scan.go (the scanner's
+// turn), outcome.go (how operations ended), settings.go and sse.go.
 type daemon struct {
 	settings       settings
 	store          *storage.Store
 	servers        []*http.Server
 	queue          workQueue
 	refreshes      refreshLog
+	outcomes       outcomeLog
 	workCtx        context.Context
 	workStreamMu   sync.RWMutex
 	workStream     *workStreamBroadcaster

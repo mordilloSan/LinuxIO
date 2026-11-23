@@ -95,8 +95,9 @@ func (h *testHelper) assertMetadata(wantDirs, wantFiles, wantSize int64, desc st
 	if dirs != wantDirs || files != wantFiles || size != wantSize {
 		h.t.Fatalf("%s: metadata = dirs %d, files %d, size %d; want %d, %d, %d", desc, dirs, files, size, wantDirs, wantFiles, wantSize)
 	}
-	if lastIndexed <= 1 {
-		h.t.Fatalf("%s: last indexed = %d, want refreshed timestamp", desc, lastIndexed)
+	// The fixtures seed it as 1: only a full index writes it.
+	if lastIndexed != 1 {
+		h.t.Fatalf("%s: last indexed = %d, want the time of the last full index kept", desc, lastIndexed)
 	}
 }
 
@@ -252,7 +253,7 @@ func TestDeletePathMissingTargetSubtractsStoredRoots(t *testing.T) {
 	h.seedDir("/")
 	h.seedDir("/parent")
 	h.seedDir("/parent/missing/nested")
-	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 3 WHERE id = ?`, indexID); err != nil {
+	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 3, last_indexed = 1 WHERE id = ?`, indexID); err != nil {
 		t.Fatalf("seed directory count: %v", err)
 	}
 

@@ -1,8 +1,29 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { linuxio } from "@/api";
 import { stripTrailingSlash } from "@/utils/path";
+
+/**
+ * The sizes of a folder are kept for minutes, the listing for seconds. When
+ * the bridge reads a folder it also tells the indexer to bring that folder's
+ * rows up to date, so the sizes held from before the read may be old: the
+ * listing's query calls this when its answer arrives, and they are asked for
+ * again whenever the folder itself was. An answer that comes before the
+ * indexer is done says so, and the size queries ask once more.
+ */
+export function markDirectorySizesStale(
+  queryClient: QueryClient,
+  normalizedPath: string,
+) {
+  const path = stripTrailingSlash(normalizedPath || "/");
+  void queryClient.invalidateQueries({
+    queryKey: linuxio.filebrowser.subfolders({ path }).queryKey,
+  });
+  void queryClient.invalidateQueries({
+    queryKey: linuxio.filebrowser.dir_size({ path }).queryKey,
+  });
+}
 
 /**
  * Invalidation shared by every flow that changes a directory's contents

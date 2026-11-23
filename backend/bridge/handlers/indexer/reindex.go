@@ -21,6 +21,10 @@ var ErrAborted = errors.New("operation aborted")
 
 var errIndexerStreamEnded = errors.New("indexer stream ended unexpectedly")
 
+// errIndexerOperationLost is returned for an operation the daemon no longer
+// knows: it stopped or restarted while the operation ran or waited.
+var errIndexerOperationLost = errors.New("indexer lost the operation")
+
 const maxStatusStreamReattachAttempts = 3
 
 // IndexerCallbacks defines how indexer events are delivered to the caller.
@@ -288,19 +292,44 @@ func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, expected
 		return pauseBeforeReattach(ctx, cb, attempt)
 	}
 
-	if cb.OnResult != nil {
-		if err := cb.OnResult(IndexerResult{
-			Operation:    expected.operation,
-			OperationID:  expected.operationID,
-			Path:         expected.path,
-			FilesIndexed: status.FilesIndexed,
-			DirsIndexed:  status.DirsIndexed,
-			TotalSize:    status.TotalSize,
-		}); err != nil {
-			return false, fmt.Errorf("on result callback: %w", err)
+	return false, reportEndedOperation(ctx, cb, expected)
+}
+
+// reportEndedOperation reports how an operation that neither runs nor waits
+// ended, as the daemon recorded it. A stream that closed does not say: the
+// operation completed before the bridge attached, failed, or went with a
+// daemon that stopped, and only the first is a success.
+func reportEndedOperation(ctx context.Context, cb IndexerCallbacks, expected *indexerStreamExpectation) error {
+	outcome, err := Outcome(ctx, expected.operationID)
+	var responseErr *ResponseError
+	switch {
+	case errors.As(err, &responseErr) && responseErr.StatusCode == http.StatusNotFound:
+		// The daemon that answers is not the one that held the operation.
+		if callbackErr := callOnError(cb, "the indexer lost the operation: it stopped or restarted before the operation ended", http.StatusServiceUnavailable); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
 		}
+		return errIndexerOperationLost
+	case err != nil && ctx.Err() != nil:
+		return reportIndexerAbort(cb)
+	case err != nil:
+		if callbackErr := callOnError(cb, "indexer stream ended unexpectedly", 500); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return fmt.Errorf("read the operation's outcome: %w", err)
 	}
-	return false, nil
+
+	switch outcome.Event {
+	case indexerapi.EventComplete:
+		_, err = reportIndexerComplete(cb, string(outcome.Data), expected)
+		return err
+	case indexerapi.EventError:
+		return reportIndexerError(cb, string(outcome.Data), expected)
+	default:
+		if callbackErr := callOnError(cb, "indexer reported an outcome that is neither complete nor error", 500); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return fmt.Errorf("indexer outcome %q is neither complete nor error", outcome.Event)
+	}
 }
 
 // reattachToRunningOperation reports where the operation stands and says

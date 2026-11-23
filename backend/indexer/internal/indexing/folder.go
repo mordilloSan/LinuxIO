@@ -50,7 +50,8 @@ func (idx *Index) ReadFolder(ctx context.Context, path string, limit int) (Folde
 	var contents FolderContents
 	read := 0
 	for {
-		names, readErr := dir.ReadDir(readDirChunk)
+		// Names only, as the scan reads a folder (indexOpenDirectory).
+		names, readErr := dir.Readdirnames(readDirChunk)
 		if read += len(names); read > limit {
 			return FolderContents{}, ErrFolderTooLarge
 		}
@@ -58,7 +59,7 @@ func (idx *Index) ReadFolder(ctx context.Context, path string, limit int) (Folde
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return FolderContents{}, ctxErr
 			}
-			idx.readFolderEntry(dir, folder, name.Name(), &contents)
+			idx.readFolderEntry(dir, folder, name, &contents)
 		}
 		if errors.Is(readErr, io.EOF) {
 			return contents, nil

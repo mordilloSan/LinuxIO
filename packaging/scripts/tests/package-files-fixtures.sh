@@ -78,6 +78,7 @@ grep -Fqx 'ReadWritePaths=/var/lib/linuxio/indexer' "$INDEXER_SCAN" || fail "the
 grep -Fqx 'RestrictAddressFamilies=AF_UNIX' "$INDEXER_SCAN" || fail "the scanner must be Unix-only"
 grep -Fqx 'CapabilityBoundingSet=CAP_DAC_READ_SEARCH' "$INDEXER_SCAN" || fail "the scanner must keep only the capability to read the host's files"
 grep -Fqx 'Requisite=linuxio-indexer.socket' "$INDEXER_SCAN" || fail "the scanner must not run without the daemon's socket"
+grep -Fqx 'TimeoutStartSec=7d' "$INDEXER_SCAN" || fail "the scan unit must not stay active for ever: a oneshot has no start timeout of its own"
 if grep -rEq 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' "$UNITS" "${REPO_ROOT}/backend/auth"; then
 	fail "indexer socket access must not modify the auth launcher"
 fi

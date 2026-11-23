@@ -67,6 +67,7 @@ func (d *daemon) serveHTTP(ctx context.Context, listener net.Listener) error {
 		d.handleReindex(ctx, w, r)
 	})
 	mux.HandleFunc(api.RouteStatus, d.handleStatus)
+	mux.HandleFunc(api.RouteOperation, d.handleOperation)
 	mux.HandleFunc(api.RouteSearch, d.handleSearch)
 	mux.HandleFunc(api.RouteDirSize, d.handleDirSize)
 	mux.HandleFunc(api.RouteSubfolders, d.handleSubfolders)
