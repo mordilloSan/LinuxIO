@@ -20,11 +20,13 @@ const wg0: WireGuardInterface = {
 };
 
 const renderCard = (iface: WireGuardInterface) => {
+  const onCheck = vi.fn();
   const onRestore = vi.fn();
   const onSelect = vi.fn();
   const view = render(
     <WireguardInterfaceCard
       handleAddPeer={vi.fn()}
+      handleCheck={onCheck}
       handleDelete={vi.fn()}
       handleEdit={vi.fn()}
       handleRestoreForwarding={onRestore}
@@ -36,7 +38,7 @@ const renderCard = (iface: WireGuardInterface) => {
       selectedInterface={null}
     />,
   );
-  return { ...view, onRestore, onSelect };
+  return { ...view, onCheck, onRestore, onSelect };
 };
 
 // An interface that is up while the server forwards nothing looks healthy
@@ -73,5 +75,22 @@ describe("WireGuard interface card, forwarding", () => {
 
     expect(screen.getByText("Inactive")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("WireGuard interface card, connection check", () => {
+  it("checks an interface that is up", async () => {
+    const { user, onCheck } = renderCard(wg0);
+
+    await user.click(screen.getByRole("button", { name: "Check connection" }));
+    expect(onCheck).toHaveBeenCalledWith("wg0");
+  });
+
+  it("cannot check an interface that is down", () => {
+    renderCard({ ...wg0, isConnected: "Inactive" });
+
+    expect(
+      screen.getByRole("button", { name: "Check connection" }),
+    ).toBeDisabled();
   });
 });

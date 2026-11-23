@@ -350,6 +350,7 @@ export const ROUTE_MODES = {
   "wireguard.add_interface": "mutation",
   "wireguard.add_peer": "mutation",
   "wireguard.disable_interface": "mutation",
+  "wireguard.check_interface": "mutation",
   "wireguard.down_interface": "mutation",
   "wireguard.enable_interface": "mutation",
   "wireguard.list_interfaces": "call",
@@ -358,9 +359,9 @@ export const ROUTE_MODES = {
   "wireguard.peer_qrcode": "call",
   "wireguard.remove_interface": "mutation",
   "wireguard.remove_peer": "mutation",
-  "wireguard.up_interface": "mutation",
   "wireguard.restore_forwarding": "mutation",
   "wireguard.update_interface": "mutation",
+  "wireguard.up_interface": "mutation",
   "wireguard.update_peer": "mutation",
 } as const satisfies Record<string, RouteMode>;
 

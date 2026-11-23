@@ -26,6 +26,7 @@ import {
 } from "@/theme/constants";
 
 import AddPeerDialog from "./AddPeerDialog";
+import CheckConnectionDialog from "./CheckConnectionDialog";
 import EditInterfaceDialog from "./EditInterfaceDialog";
 import InterfaceDetails from "./InterfaceClients";
 
@@ -54,7 +55,12 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     (name: string | null) => {
       void navigate({
         to: ".",
-        search: (previous) => ({ ...previous, iface: name ?? undefined }),
+        // A QR code open for the old interface's peer goes with it.
+        search: (previous) => ({
+          ...previous,
+          iface: name ?? undefined,
+          qr: undefined,
+        }),
       });
     },
     [navigate],
@@ -69,6 +75,11 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   const [editTarget, setEditTarget] = useState<string | null>(null);
   const editingInterface = interfaces.find(
     (iface) => iface.name === editTarget,
+  );
+  // Interface the connection check dialog is open for.
+  const [checkTarget, setCheckTarget] = useState<string | null>(null);
+  const checkingInterface = interfaces.find(
+    (iface) => iface.name === checkTarget,
   );
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
@@ -126,6 +137,9 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
       "Failed to turn on forwarding",
     ),
   );
+
+  // The dialog shows the result and the error itself: no toast.
+  const checkConnection = linuxio.wireguard.check_interface.useMutation();
 
   const handleClickOutside = useEffectEvent(
     (event: MouseEvent | KeyboardEvent) => {
@@ -235,6 +249,18 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     );
   };
 
+  const runCheck = (interfaceName: string) => {
+    checkConnection.reset();
+    runInterfaceAction(interfaceName, "check", () =>
+      checkConnection.mutateAsync({ name: interfaceName }),
+    );
+  };
+
+  const handleCheck = (interfaceName: string) => {
+    setCheckTarget(interfaceName);
+    runCheck(interfaceName);
+  };
+
   const surface = useReorderableSurface({
     getId: getWireguardInterfaceId,
     items: interfaces,
@@ -255,6 +281,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
             renderItem={(iface) => (
               <WireguardInterfaceCard
                 handleAddPeer={handleAddPeer}
+                handleCheck={handleCheck}
                 handleDelete={handleDelete}
                 handleEdit={setEditTarget}
                 handleRestoreForwarding={handleRestoreForwarding}
@@ -323,6 +350,18 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
           key={editingInterface.name}
           onClose={() => setEditTarget(null)}
           open
+        />
+      )}
+      {checkingInterface && (
+        <CheckConnectionDialog
+          error={checkConnection.error}
+          interfaceName={checkingInterface.name}
+          onClose={() => setCheckTarget(null)}
+          onRunAgain={() => runCheck(checkingInterface.name)}
+          open
+          port={checkingInterface.port}
+          result={checkConnection.data}
+          running={checkConnection.isPending}
         />
       )}
       <AddPeerDialog

@@ -19,6 +19,47 @@ var WireGuardHookKinds = []WireGuardHookKind{WireGuardPreUp, WireGuardPostUp, Wi
 // WireGuardHooks holds wg-quick hook command lines by kind.
 type WireGuardHooks map[WireGuardHookKind][]string
 
+// WireGuardCheckStepID names one step of wireguard.check_interface.
+type WireGuardCheckStepID string
+
+const (
+	// WireGuardCheckHandshake: a peer completes a handshake with the server.
+	WireGuardCheckHandshake WireGuardCheckStepID = "handshake"
+	// WireGuardCheckTunnel: the server's tunnel address answers through the tunnel.
+	WireGuardCheckTunnel WireGuardCheckStepID = "tunnel"
+	// WireGuardCheckBeyond: something behind the server answers.
+	WireGuardCheckBeyond WireGuardCheckStepID = "beyond"
+	// WireGuardCheckDNS: the clients' DNS server answers through the tunnel.
+	WireGuardCheckDNS WireGuardCheckStepID = "dns"
+)
+
+// WireGuardCheckStepIDs is every step, in the order a check reports them.
+var WireGuardCheckStepIDs = []WireGuardCheckStepID{WireGuardCheckHandshake, WireGuardCheckTunnel, WireGuardCheckBeyond, WireGuardCheckDNS}
+
+// WireGuardCheckStatus is how one step of a check ended. A step whose
+// prerequisite failed is skipped.
+type WireGuardCheckStatus string
+
+const (
+	WireGuardCheckOK      WireGuardCheckStatus = "ok"
+	WireGuardCheckFailed  WireGuardCheckStatus = "failed"
+	WireGuardCheckSkipped WireGuardCheckStatus = "skipped"
+)
+
+// WireGuardCheckStep is one step of a check. Target is the address it
+// probed; Detail is the technical reason for a failed or skipped step.
+type WireGuardCheckStep struct {
+	ID     WireGuardCheckStepID `json:"id"`
+	Status WireGuardCheckStatus `json:"status"`
+	Target string               `json:"target,omitzero"`
+	Detail string               `json:"detail,omitzero"`
+}
+
+// WireGuardCheckResult holds every step of WireGuardCheckStepIDs, in that order.
+type WireGuardCheckResult struct {
+	Steps []WireGuardCheckStep `json:"steps"`
+}
+
 // WireGuardInterface carries every hook kind in Hooks, with an empty list
 // for a kind the interface does not use.
 type WireGuardInterface struct {

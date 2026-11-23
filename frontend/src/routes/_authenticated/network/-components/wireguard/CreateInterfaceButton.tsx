@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getRouteApi } from "@tanstack/react-router";
+import { useState } from "react";
 
 import {
   getMutationErrorMessage,
@@ -9,12 +10,52 @@ import {
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
-import CreateInterfaceDialog from "./CreateInterfaceDialog";
+import CreateInterfaceDialog, { dnsServers } from "./CreateInterfaceDialog";
 import { getEgressNICOptions } from "./wireguardEgressNICs";
 
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
+
+const wireguardRouteApi = getRouteApi("/_authenticated/network/wireguard");
+
+const nextAvailableWgName = (existing: string[]): string => {
+  let n = 0;
+  let candidate = `wg${n}`;
+  while (existing.includes(candidate)) {
+    n += 1;
+    candidate = `wg${n}`;
+  }
+  return candidate;
+};
+
+const nextAvailablePort = (existingPorts: number[], base = 51820): number => {
+  let port = base;
+  while (existingPorts.includes(port)) {
+    port += 1;
+  }
+  return port;
+};
+
+// Parses 10.10.X.0/24 and returns X
+const parseCidrThirdOctet = (cidr: string): number | null => {
+  const match = cidr.match(/^10\.10\.(\d+)\.0\/24$/);
+  return match ? parseInt(match[1], 10) : null;
+};
+
+const nextAvailableCIDR = (existingCIDRs: string[]): string => {
+  let octet = BASE_CIDR_START;
+  let candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
+  const usedOctets = existingCIDRs
+    .map(parseCidrThirdOctet)
+    .filter((n): n is number => typeof n === "number");
+
+  while (usedOctets.includes(octet)) {
+    octet += 10; // Step by 10 (for 20, 30, 40, ...)
+    candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
+  }
+  return candidate;
+};
 
 interface CreateInterfaceButtonProps {
   interfaces: WireGuardInterface[];
@@ -35,6 +76,9 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   const [dns, setDns] = useState("");
   const [host, setHost] = useState("");
   const [mtu, setMtu] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const navigate = wireguardRouteApi.useNavigate();
 
   // Network data is only needed by the create workflow. Keeping this observer
   // disabled until the dialog opens avoids a page-level speculative request.
@@ -61,54 +105,10 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
       },
     });
 
-  const nextAvailableWgName = useCallback((existing: string[]): string => {
-    let n = 0;
-    let candidate = `wg${n}`;
-    while (existing.includes(candidate)) {
-      n += 1;
-      candidate = `wg${n}`;
-    }
-    return candidate;
-  }, []);
-
-  const nextAvailablePort = useCallback(
-    (existingPorts: number[], base = 51820): number => {
-      let port = base;
-      while (existingPorts.includes(port)) {
-        port += 1;
-      }
-      return port;
-    },
-    [],
-  );
-
-  const parseCidrThirdOctet = useCallback((cidr: string): number | null => {
-    // Parses 10.10.X.0/24 and returns X
-    const match = cidr.match(/^10\.10\.(\d+)\.0\/24$/);
-    return match ? parseInt(match[1], 10) : null;
-  }, []);
-
-  const nextAvailableCIDR = useCallback(
-    (existingCIDRs: string[]): string => {
-      let octet = BASE_CIDR_START;
-      let candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
-      const usedOctets = existingCIDRs
-        .map(parseCidrThirdOctet)
-        .filter((n): n is number => typeof n === "number");
-
-      while (usedOctets.includes(octet)) {
-        octet += 10; // Step by 10 (for 20, 30, 40, ...)
-        candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
-      }
-      return candidate;
-    },
-    [parseCidrThirdOctet],
-  );
-
   // Preselect values derived from the already observed route-level interface
   // list. The NIC falls back to the first suitable result from the
   // dialog-owned network query without synchronizing derived state.
-  const handleOpenDialog = useCallback(() => {
+  const handleOpenDialog = () => {
     const names = interfaces.map((iface) => iface.name);
     const ports = interfaces.map((iface) => iface.port);
     const cidrs = interfaces.map((iface) => iface.address);
@@ -117,9 +117,33 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
     setPort(nextAvailablePort(ports));
     setCIDR(nextAvailableCIDR(cidrs));
     setNic("");
+    setAdvancedOpen(false);
     setError(null);
     setShowDialog(true);
-  }, [interfaces, nextAvailableWgName, nextAvailablePort, nextAvailableCIDR]);
+  };
+
+  // The new interface is selected so its devices are listed, and the first
+  // device's QR code opens (?qr=) so a phone can scan it at once. The peer id
+  // comes from the interface's own peer list; when that read fails the
+  // interface is still selected and the code is one click away.
+  const showCreatedInterface = async (name: string, devices: number) => {
+    let qr: string | undefined;
+    if (devices > 0) {
+      try {
+        const createdPeers = await queryClient.query({
+          ...linuxio.wireguard.list_peers({ interfaceName: name }),
+          staleTime: 0,
+        });
+        qr = createdPeers[0]?.id;
+      } catch {
+        qr = undefined;
+      }
+    }
+    await navigate({
+      to: ".",
+      search: (previous) => ({ ...previous, iface: name, qr }),
+    });
+  };
 
   const availableNICs = getEgressNICOptions(networkData);
   const firstOnlineNIC = availableNICs.find(
@@ -131,11 +155,7 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   const handleCreateInterface = () => {
     setError(null);
 
-    const dnsStr = dns
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(",");
+    const dnsStr = dnsServers(dns).join(",");
 
     addInterface(
       {
@@ -149,12 +169,16 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         numPeers: String(peers),
       },
       {
-        onSuccess: () => {
-          toast.success(`WireGuard interface '${serverName}' created`);
+        onSuccess: (_result, variables) => {
+          toast.success(`WireGuard interface '${variables.name}' created`);
           setShowDialog(false);
           setDns("");
           setHost("");
           setMtu("");
+          void showCreatedInterface(
+            variables.name,
+            Number(variables.numPeers),
+          ).catch(() => undefined);
         },
       },
     );
@@ -175,6 +199,7 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         onClick={handleOpenDialog}
       />
       <CreateInterfaceDialog
+        advancedOpen={advancedOpen}
         availableNICs={availableNICs}
         CIDR={CIDR}
         dns={dns}
@@ -193,6 +218,7 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         peers={peers}
         port={port}
         serverName={serverName}
+        setAdvancedOpen={setAdvancedOpen}
         setCIDR={setCIDR}
         setDns={setDns}
         setHost={setHost}

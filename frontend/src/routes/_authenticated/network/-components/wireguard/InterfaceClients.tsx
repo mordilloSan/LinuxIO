@@ -1,12 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Peer, useCallMutation } from "@/api";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
-import { AppDialogContent } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -16,6 +15,7 @@ import WireguardPeerCard, {
 } from "@/routes/_authenticated/network/-components/wireguard/WireguardPeerCard";
 
 import EditPeerDialog from "./EditPeerDialog";
+import PeerQrDialog from "./PeerQrDialog";
 
 const WIREGUARD_TOAST_META = {
   label: "Open WireGuard",
@@ -38,11 +38,22 @@ export const selectPeerIdentities = (peers: Peer[]): PeerIdentity[] =>
 
 const EMPTY_PEER_IDENTITIES: PeerIdentity[] = [];
 const getPeerId = (peer: PeerIdentity) => peer.id;
+const wireguardRouteApi = getRouteApi("/_authenticated/network/wireguard");
 
 const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
-  // Peer whose QR code dialog is open; opening the dialog drives the fetch.
-  const [qrPeer, setQrPeer] = useState<string | null>(null);
+  // The peer whose QR code is open lives in ?qr=, so the create can open
+  // the first device's code; opening the dialog drives the fetch.
+  const qrSearch = wireguardRouteApi.useSearch({
+    select: (search) => (typeof search.qr === "string" ? search.qr : null),
+  });
+  const navigate = wireguardRouteApi.useNavigate();
+  const setQrPeer = (peerId: string | null) => {
+    void navigate({
+      to: ".",
+      search: (previous) => ({ ...previous, qr: peerId ?? undefined }),
+    });
+  };
   const [editPeer, setEditPeer] = useState<string | null>(null);
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, WireguardPeerAction>
@@ -63,6 +74,12 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
 
   const peerLabel = (peerId: string) =>
     peerIdentities?.find((peer) => peer.id === peerId)?.name ?? peerId;
+  // Only a peer of this interface's list opens: a stale or mistyped ?qr=
+  // shows nothing rather than a code that fails to load.
+  const qrPeer =
+    qrSearch && peerIdentities?.some((peer) => peer.id === qrSearch)
+      ? qrSearch
+      : null;
 
   // Mutations
   const deletePeer = linuxio.wireguard.remove_peer.useMutation({
@@ -208,30 +225,17 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
         />
       )}
 
-      <GeneralDialog
-        aria-label="WireGuard peer QR code"
-        onClose={() => setQrPeer(null)}
-        open={qrPeer !== null}
-      >
-        <AppDialogContent>
-          {qrQuery.isLoading ? (
-            <AppTypography>Loading QR code...</AppTypography>
-          ) : qrQuery.data?.qrcode ? (
-            <img
-              alt="QR Code"
-              src={qrQuery.data.qrcode}
-              style={{
-                width: 300,
-                height: 300,
-                maxWidth: "100%",
-                display: "block",
-              }}
-            />
-          ) : (
-            <AppTypography>Failed to load QR code</AppTypography>
-          )}
-        </AppDialogContent>
-      </GeneralDialog>
+      {qrPeer !== null && (
+        <PeerQrDialog
+          downloading={pendingActions.get(qrPeer) === "download"}
+          loading={qrQuery.isLoading}
+          onClose={() => setQrPeer(null)}
+          onDownload={() => handleDownloadConfig(qrPeer)}
+          open
+          peerName={peerLabel(qrPeer)}
+          qrcode={qrQuery.data?.qrcode}
+        />
+      )}
     </>
   );
 };

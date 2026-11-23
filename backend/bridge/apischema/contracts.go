@@ -126,6 +126,8 @@ var StringEnums = map[string][]string{
 	"NetworkBridgeHookState":    enumNames(NetworkBridgeHookInstalled, NetworkBridgeHookMissing, NetworkBridgeHookNotExecutable),
 	"WireGuardHookKind":         enumNames(WireGuardHookKinds...),
 	"SwapMode":                  enumNames(SwapModeDisk, SwapModeZswap, SwapModeZram, SwapModeNone, SwapModeMixed),
+	"WireGuardCheckStepID":      enumNames(WireGuardCheckStepIDs...),
+	"WireGuardCheckStatus":      enumNames(WireGuardCheckOK, WireGuardCheckFailed, WireGuardCheckSkipped),
 	"SwapDeviceKind":            enumNames(SwapDeviceFile, SwapDevicePartition, SwapDeviceZram),
 	"SwapDiskHint":              enumNames("", SwapDiskHintMMC, SwapDiskHintRemovable),
 	"ZramProvider":              enumNames("", ZramProviderTools, ZramProviderGenerator),

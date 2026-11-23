@@ -609,7 +609,7 @@ inherits its ancestor's.
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | `unit`, `invocationId` | — |
 | `/network` | `network/route.tsx` | — | — | — | — |
 | `/network/` | `network/index.tsx` | `loadRouteQueries` ×1 | — | `iface`, `handoffOperationId` | — |
-| `/network/wireguard` | `network/wireguard.tsx` | `loadRouteQueries` ×1 | — | `iface` | `requireAccess` wireguard, privileged |
+| `/network/wireguard` | `network/wireguard.tsx` | `loadRouteQueries` ×1 | — | `iface`, `qr` (only with `iface`) | `requireAccess` wireguard, privileged |
 | `/services` | `services/route.tsx` | — | — | — | — |
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |

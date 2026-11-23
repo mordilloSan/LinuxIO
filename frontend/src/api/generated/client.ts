@@ -810,6 +810,10 @@ const linuxio = {
       kind: "object",
     }),
     add_peer: defineMutation("wireguard", "add_peer", { kind: "object" }),
+    check_interface: defineMutation("wireguard", "check_interface", {
+      kind: "field",
+      field: "name",
+    }),
     disable_interface: defineMutation("wireguard", "disable_interface", {
       kind: "field",
       field: "name",

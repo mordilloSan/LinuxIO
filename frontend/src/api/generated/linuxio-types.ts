@@ -3937,6 +3937,21 @@ export interface WireGuardAddPeerRequest {
 export type WireGuardHookKind = "PreUp" | "PostUp" | "PreDown" | "PostDown";
 
 export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
+export interface WireGuardCheckResult {
+  steps: WireGuardCheckStep[];
+}
+
+export type WireGuardCheckStatus = "ok" | "failed" | "skipped";
+
+export interface WireGuardCheckStep {
+  id: WireGuardCheckStepID;
+  status: WireGuardCheckStatus;
+  target?: string;
+  detail?: string;
+}
+
+export type WireGuardCheckStepID = "handshake" | "tunnel" | "beyond" | "dns";
+
 
 export interface WireGuardInterface {
   address: string;
@@ -5465,6 +5480,11 @@ export interface LinuxIOSchema {
     disable_interface: {
       input: [name: string];
       request: NameRequest;
+    check_interface: {
+      input: [name: string];
+      request: NameRequest;
+      result: WireGuardCheckResult;
+    };
       result: void;
     };
     down_interface: {

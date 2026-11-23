@@ -130,6 +130,59 @@ rm -f ${PEER_KEYS}.key ${PEER_KEYS}.psk
 const peerPingsAnswered = async () =>
   (await vmSsh("sudo bash -s", PEER_PROBE)).trim();
 
+// The connection check (docs/wireguard.md, "Connection check"): a throwaway
+// peer on the running device and its side in an anonymous namespace, with
+// nothing left behind afterwards.
+const CHECK_LINK = "linuxio.check";
+const CHECK_TITLES = [
+  "Connects to the server",
+  "Traffic passes through the tunnel",
+  "Reaches the network behind the server",
+  "Names resolve",
+];
+
+interface CheckStep {
+  detail?: string;
+  id: string;
+  status: string;
+  target?: string;
+}
+
+/** wireguard.check_interface's statuses by step, and the steps for a message. */
+async function checkConnection(page: Page) {
+  const answer = await bridgeCall(
+    page,
+    "wireguard.check_interface",
+    { name: IFACE },
+    randomUUID(),
+  );
+  expect(answer.error ?? "", "wireguard.check_interface").toBe("");
+  const steps = (answer.data as { steps: CheckStep[] }).steps;
+  return {
+    statuses: Object.fromEntries(steps.map((step) => [step.id, step.status])),
+    steps: JSON.stringify(steps),
+  };
+}
+
+/** What a check must not leave: device peers, a link, a namespace, a listed peer. */
+async function checkLeftovers(page: Page) {
+  const listed = await bridgeCall(
+    page,
+    "wireguard.list_peers",
+    { interfaceName: IFACE },
+    randomUUID(),
+  );
+  expect(listed.error ?? "", "wireguard.list_peers").toBe("");
+  return {
+    devicePeers: await sh(`sudo wg show ${IFACE} peers | sort`),
+    links: await sh(`ip -o link show | grep -cF '${CHECK_LINK}' || true`),
+    namespaces: await sh("sudo ip netns list"),
+    listedPeers: (listed.data as { public_key: string }[])
+      .map((peer) => peer.public_key)
+      .sort(),
+  };
+}
+
 const cleanUp = async () => {
   await vmSsh(
     `sudo systemctl disable --now ${UNIT} >/dev/null 2>&1; sudo wg-quick down ${IFACE} >/dev/null 2>&1; ` +
@@ -187,13 +240,38 @@ test("an interface goes up, down and away through its unit, also after a reboot"
     // A host that forwards nothing yet, as one without Docker is.
     await vmSsh("sudo sysctl -qw net.ipv4.ip_forward=0");
     expect(await forwarding(), "forwarding before the create").toBe("0");
-    await call(page, "add_interface", {
-      name: IFACE,
-      addresses: "10.99.0.1/24",
-      listenPort: "51999",
-      egressNic,
-      numPeers: "1",
-    });
+
+    // Through the page, as a user makes one: a name and one device shown,
+    // the port, network and NIC under Advanced.
+    await page.goto("/network/wireguard");
+    await page.getByRole("button", { name: "Create New Interface" }).click();
+    const create = page.getByRole("dialog", { name: "Create New Interface" });
+    await create.getByLabel("Interface Name").fill(IFACE);
+    await create.getByLabel("Devices").fill("1");
+    await create.getByRole("button", { name: "Advanced" }).click();
+    await create.getByLabel("Port").fill("51999");
+    await create.getByLabel("CIDR").fill("10.99.0.1/24");
+    const nic = create.getByRole("combobox", { name: "NIC" });
+    await expect(nic).not.toHaveText(/Loading/);
+    await nic.click();
+    await page
+      .getByRole("option", { name: new RegExp(`^${egressNic} \\(`) })
+      .click();
+    await expect(nic).toHaveText(new RegExp(`^${egressNic} \\(`));
+    await expect(create.getByText(`through ${egressNic}`)).toBeVisible();
+    await create.getByRole("button", { name: "Create Interface" }).click();
+
+    // The first device's QR code opens by itself, carried in ?qr=.
+    const qr = page.getByRole("dialog", { name: /^Connect / });
+    await expect(qr).toBeVisible({ timeout: 60_000 });
+    await expect(qr.getByRole("img", { name: /^QR code for / })).toBeVisible();
+    await expect(page).toHaveURL(/[?&]iface=wge2e(&|$)/);
+    await expect(page).toHaveURL(/[?&]qr=[^&]+/);
+    await expect(page.getByText(`Clients for ${IFACE}`)).toBeVisible();
+    await qr.getByRole("button", { name: "Done" }).click();
+    await expect(qr).toHaveCount(0);
+    await expect(page).not.toHaveURL(/[?&]qr=/);
+
     expect(await linkExists(), "the interface").toBe(true);
     expect(await unitState(), UNIT).toBe("active");
     expect(await refusedProfileChanges(), "refused profile changes").toBe("0");
@@ -210,6 +288,57 @@ test("an interface goes up, down and away through its unit, also after a reboot"
     await call(page, "up_interface", { name: IFACE });
     expect(await forwarding(), "forwarding after the up").toBe("1");
     expect(await peerPingsAnswered(), "pings after the up").toBe("2");
+  });
+
+  await test.step("a connection check proves the tunnel, finds forwarding off and leaves nothing", async () => {
+    const before = await checkLeftovers(page);
+    expect(before.links, "a probe link before any check").toBe("0");
+
+    const ok = await checkConnection(page);
+    expect(ok.statuses, ok.steps).toEqual({
+      handshake: "ok",
+      tunnel: "ok",
+      beyond: "ok",
+      dns: "ok",
+    });
+    expect(await checkLeftovers(page), "after a check").toEqual(before);
+
+    await vmSsh("sudo sysctl -qw net.ipv4.ip_forward=0");
+    const off = await checkConnection(page);
+    expect(
+      [off.statuses.handshake, off.statuses.tunnel, off.statuses.beyond],
+      off.steps,
+    ).toEqual(["ok", "ok", "failed"]);
+    expect(await checkLeftovers(page), "after a failed check").toEqual(before);
+
+    await call(page, "restore_forwarding", { name: IFACE });
+    const again = await checkConnection(page);
+    expect(again.statuses, again.steps).toEqual({
+      handshake: "ok",
+      tunnel: "ok",
+      beyond: "ok",
+      dns: "ok",
+    });
+
+    await page.goto("/network/wireguard");
+    await page
+      .getByRole("button", { name: "Check connection", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    for (const title of CHECK_TITLES) {
+      await expect(
+        dialog
+          .getByRole("listitem")
+          .filter({ hasText: title })
+          .getByRole("img", { name: "Passed" }),
+        title,
+      ).toBeVisible({ timeout: 30_000 });
+    }
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(await checkLeftovers(page), "after the page's check").toEqual(
+      before,
+    );
   });
 
   await test.step("the page says when forwarding is turned off, and turns it on again", async () => {

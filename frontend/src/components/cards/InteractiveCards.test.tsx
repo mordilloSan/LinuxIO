@@ -74,6 +74,7 @@ describe("interactive cards", () => {
     const { user } = render(
       <WireguardInterfaceCard
         handleAddPeer={vi.fn()}
+        handleCheck={vi.fn()}
         handleDelete={vi.fn()}
         handleEdit={vi.fn()}
         handleRestoreForwarding={vi.fn()}

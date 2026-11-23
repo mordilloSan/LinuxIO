@@ -19,6 +19,7 @@ import { CARD_PADDING_SM, GAP_SM } from "@/theme/constants";
 
 export type WireguardInterfaceAction =
   | "add-peer"
+  | "check"
   | "delete"
   | "disable"
   | "down"
@@ -28,6 +29,7 @@ export type WireguardInterfaceAction =
 
 interface InterfaceCardProps {
   handleAddPeer: (name: string) => void;
+  handleCheck: (name: string) => void;
   handleDelete: (name: string) => void;
   handleEdit: (name: string) => void;
   handleRestoreForwarding: (name: string) => void;
@@ -58,6 +60,7 @@ const InterfaceCard = ({
   handleDelete,
   handleEdit,
   handleAddPeer,
+  handleCheck,
   handleRestoreForwarding,
   pendingAction,
 }: InterfaceCardProps) => {
@@ -280,6 +283,21 @@ const InterfaceCard = ({
             loading={pendingAction === "add-peer"}
             onClick={() => {
               handleAddPeer(iface.name);
+            }}
+          />
+          <AppActionIconButton
+            ariaLabel={
+              pendingAction === "check"
+                ? `Checking the connection of ${iface.name}`
+                : "Check connection"
+            }
+            disabled={actionBusy || !isActive}
+            icon="mdi:lan-check"
+            iconSize={20}
+            label="Check Connection"
+            loading={pendingAction === "check"}
+            onClick={() => {
+              handleCheck(iface.name);
             }}
           />
           <AppActionIconButton

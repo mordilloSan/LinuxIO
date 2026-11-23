@@ -1,13 +1,54 @@
 # WireGuard Interfaces
 
-How LinuxIO brings a WireGuard interface up and down, starts it at boot and
-removes it. Code: `backend/bridge/handlers/wireguard`
+How LinuxIO brings a WireGuard interface up and down, starts it at boot,
+checks that it works and removes it. Code: `backend/bridge/handlers/wireguard`
 (`interface_power.go`, `interface_boot.go`, `remove_interface.go`,
-`forwarding.go`). An
+`forwarding.go`, `check.go`, `check_probe.go`, `check_packet.go`). An
 interface's config is `/etc/wireguard/<name>.conf` and its exported peer files
 are in `/etc/wireguard/<name>/`; both are wg-quick's own layout, so `wg-quick`
 and `systemctl` work on an interface LinuxIO made, and LinuxIO lists one made
 by hand.
+
+## Creating an interface
+
+The create dialog (`CreateInterfaceDialog.tsx` in
+`frontend/src/routes/_authenticated/network/-components/wireguard`) asks two
+things: the interface's name, prefilled with the first free `wgN`, and how
+many devices it is for, one by default. Each device is a peer with its own
+client configuration (the request's `numPeers`); more can be added later.
+
+Everything else is under **Advanced**, closed by default, with these
+defaults:
+
+- **Port**: the first free one from 51820.
+- **CIDR**: the first free `10.10.N.0/24`, N from 20 in steps of 10.
+- **NIC**, the network card the peers' traffic leaves by: the first ethernet
+  or wireless card with an IPv4 address, else the first one listed.
+- **DNS**, **Endpoint host** and **MTU**: empty, so the peers' DNS server
+  is the NIC's gateway, their endpoint is the detected public IP and the
+  interface's MTU is the one wg-quick picks.
+
+A line under the visible fields names what will be used, such as
+`Port 51820 · 10.10.20.0/24 · through enp1s0`, with the DNS, endpoint host
+and MTU once set, so the choices made for the user are in view while
+Advanced is closed. Advanced shows by itself while one of its fields stops
+the create (a port or CIDR another interface uses, an empty port or CIDR, an
+MTU out of range, no NIC to pick), so the reason is never hidden; a click on
+Advanced then keeps it open, so fixing the field does not fold it away.
+
+After the create the new interface becomes the selected one, `?iface=<name>`,
+so its devices are listed, and when it has any the QR code of the first one
+opens by itself, `?qr=<peer id>`: making a VPN ends with a phone scanning a
+code, not with finding the interface, its peer and the QR button. The id is
+the first entry of the interface's own peer list (`list_peers`), read once
+the create succeeded. When that read fails the interface is still selected,
+with no error, and the code is one click away. The QR dialog says how to
+use it ("In the WireGuard app, tap + and choose Scan from QR code."), offers
+the configuration file for a computer, and is the same whichever way it
+opens: the QR button of a peer's card also sets `?qr=`, and closing it
+clears it. `qr` is kept only beside `iface`, selecting another interface or
+none clears it, and a `qr` that names no peer of the interface opens
+nothing.
 
 ## One control: the interface's unit
 
@@ -164,6 +205,87 @@ An interface cannot be named `all` or `default`: those are the kernel's own
 folders under `/proc/sys/net/ipv4/conf`, and a write for them would be the
 host's switch, not an interface's.
 
+## Connection check
+
+An interface can be up, with its peers connecting and handshaking, and still
+be of no use to them: forwarding off, a NAT rule missing, a firewall in the
+way, a DNS server that does not answer. "Check Connection" on the interface's
+card runs `wireguard.check_interface`, which plays a client on the server
+itself and sends real traffic through the tunnel. The dialog opens with the
+check and shows each step as it ended.
+
+How it builds the client, in Go through `wgctrl` and netlink, with no
+command (the job host's `NoNewPrivileges` keeps `wg`, `ip` and `ping` from
+their AppArmor profiles on Ubuntu):
+
+- A key pair is made in memory and its public key is added as a peer to the
+  running device only, with the probe address as its one allowed IP: the
+  first free host address of the interface's subnet, from offset 2 as for
+  peers, that no peer of the config, exported peer file or device holds. The
+  config file is never written, so nothing persistent changes.
+- A WireGuard link (`linuxio.check`, a name LinuxIO refuses for an
+  interface) is created in the host's namespace and configured with the
+  server as its one peer, at `127.0.0.1:<listen port>`, allowed IPs
+  `0.0.0.0/0`. It is then moved into an anonymous network namespace. A
+  WireGuard link keeps its UDP socket in the namespace it was created in, so
+  its encrypted packets still reach the server through the host's loopback,
+  while everything sent inside the namespace has to go through the tunnel.
+- The namespace has no name and lives only while the check holds a handle or
+  a socket in it. If the job host dies mid-check, the kernel takes the
+  namespace and the link with it.
+- The check needs the root job host to be able to create a network namespace
+  and raw sockets: hardening `linuxio-jobs@.service` with
+  `RestrictNamespaces=`, a capability bounding set without `CAP_SYS_ADMIN` or
+  `CAP_NET_RAW`, or `RestrictAddressFamilies=` would break it.
+- The check holds the lock the config edits hold, so an edit or the sync
+  after one cannot remove the temporary peer under it, and one check runs at
+  a time. It is a `Mutation`, so it runs in the root job host beside those
+  edits, and a lost answer is never sent again as a second check.
+  `wireguard.list_peers` lists the exported peer files, so the temporary peer
+  never shows on the page.
+- Afterwards, whatever ended the check, the temporary peer is removed from
+  the device, the link and the namespace are deleted, and a link of that name
+  left in the host's namespace is deleted. A cleanup that fails is logged and
+  does not turn a finished check into an error.
+- Before it adds its peer, a check removes the probe peers an earlier check
+  that died left behind: device peers whose key is in no config and whose one
+  allowed IP is the probe address. A peer added by hand with `wg set` and not
+  saved to the config looks the same; the next edit's sync removes such a
+  peer as well.
+
+The steps, always all four and in this order; a step whose prerequisite
+failed is skipped:
+
+1. **handshake**: the first packet through the link starts a handshake, and
+   the server's device shows one for the temporary peer within 5 s. It proves
+   the server answers on its port.
+2. **tunnel**: the server's own tunnel address answers a ping through the
+   tunnel. It proves traffic passes both ways.
+3. **beyond**: the host's default IPv4 gateway answers a ping through the
+   tunnel. Only a packet the server forwarded and masqueraded gets there, so
+   it proves forwarding, the NAT rule and the firewall's forward rules. The
+   step also passes when the DNS step got an answer from a server that is not
+   one of this host's own addresses. Some gateways, cloud routers among them,
+   never answer a ping, so a gateway that is silent through the tunnel is
+   pinged once more from the host itself: only when it answers the host is
+   the step failed. When it answers neither, and no outside DNS server
+   answered, the step is skipped, saying it cannot be judged, rather than
+   telling the admin that peers reach nothing. With no default gateway and no
+   such DNS answer it is skipped too. The host's ping runs only after the
+   tunnel's failed, so a healthy check takes no longer.
+4. **dns**: the DNS servers the exported client configs carry (the
+   interface's DNS, else the default gateway: `defaultClientDNS`) answer a
+   query for the root's name servers sent through the tunnel; any reply to it
+   counts, up to three servers are asked, and the step names the first that
+   answered. With no DNS server it is skipped. It runs before "beyond" is
+   decided.
+
+Each probe has its own short wait (5 s for the handshake, 2 s for each
+ping and each DNS server) and the whole check ends within 20 s. Above the
+steps the dialog gives one verdict: the VPN works, how many steps failed, or
+how many could not be checked. Under them it says that the check runs on the
+server: it cannot see a router in front of it or a firewall outside it.
+
 ## Removal
 
 Remove takes the interface down, disables its unit and then deletes the config
@@ -181,7 +303,9 @@ and the peer folder.
 
 `frontend/src/test/vm/wireguard.spec.ts` runs the routes against the installed
 package in the test VM, on Ubuntu with wg-quick's AppArmor profile loaded:
-create, down, up, a unit left active by a hand-run down, a failed start's
+create, made through the page's dialog with its port, CIDR and NIC set under
+Advanced and checked to end on the first device's QR code with `iface` and
+`qr` in the URL, down, up, a unit left active by a hand-run down, a failed start's
 output, an interface outside its unit, an enabled interface across a reboot,
 and removal. It starts with forwarding off, and a peer in a network namespace
 of the VM, built from the interface's exported client, pings the VM's gateway
@@ -192,6 +316,11 @@ sysctl.d file turns forwarding on in that boot. The file is deleted before
 under a running interface, reads `forwardingOff` from the list, clicks "Turn
 on forwarding" on the page and checks that the link was not replaced, and
 brings the interface up on a host whose `conf/default` has forwarding off.
+It runs the connection check through the route, where all four steps pass,
+and with forwarding off, where the handshake and the tunnel pass and
+"beyond" fails, then from the card's dialog, and checks after each that the
+device's peers, the listed peers, the links and the named namespaces are what
+they were.
 `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=wireguard.spec.ts`.
 
 ## Known limits
@@ -220,3 +349,12 @@ brings the interface up on a host whose `conf/default` has forwarding off.
   LinuxIO, not at the upgrade.
 - NAT is IPv4 only: the rules are `iptables` rules and only
   `net.ipv4.ip_forward` is set.
+- The connection check runs on the server: it cannot tell whether a router
+  forwards the UDP port to it, or whether a firewall outside it lets the
+  port through.
+- The connection check is IPv4 only: an interface with no IPv4 address is
+  refused, and only IPv4 DNS servers are asked.
+- A job host killed during a connection check leaves the temporary peer on
+  the running device (never in the config) until the next check, the next
+  edit's sync or the interface's restart removes it. The namespace and the
+  link go with the process.

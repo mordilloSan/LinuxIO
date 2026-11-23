@@ -593,15 +593,20 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   outside LinuxIO, opens its folder and finds the file by search, and renames
   it through LinuxIO. It scans the whole VM, and creates and removes
   `/srv/e2e-indexer`.
-  `wireguard.spec.ts` calls the WireGuard routes for an interface `wge2e`
-  and checks the link, `wg-quick@wge2e.service` and the kernel log for
+  `wireguard.spec.ts` creates an interface `wge2e` through the page's create
+  dialog, setting its port, CIDR and NIC under Advanced, checks that the
+  first device's QR code opens with `iface` and `qr` in the URL, then calls
+  the WireGuard routes for it and checks the link, `wg-quick@wge2e.service` and the kernel log for
   AppArmor refusals ([WireGuard Interfaces](./wireguard.md#testing)). It
   installs `wireguard-tools`, runs `wg-quick` by hand for the cases where the
   unit and the interface disagree, reboots the VM once, and removes the
   interface; the package stays installed. It turns IPv4 forwarding off before
   the create, before one up and under the running interface, and
   `conf/default`'s for one up, makes a network namespace `wge2e-peer` for
-  the peer that pings through the tunnel, and disables Docker's units for
+  the peer that pings through the tunnel, runs the connection check through
+  the route and from the card's dialog, with forwarding on and off, and
+  checks that each check leaves no device peer, link (`linuxio.check`),
+  namespace or listed peer behind, and disables Docker's units for
   the reboot, enabling them again after it (their names are kept in
   `/var/tmp/wge2e-docker-disabled` meanwhile, for the clean-up of the next
   run after one that was cut short); forwarding is on when it ends.
