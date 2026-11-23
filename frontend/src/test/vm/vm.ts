@@ -254,15 +254,17 @@ export interface BridgeResult {
 /**
  * Calls route of the signed-in session's bridge on a WebSocket of its own,
  * the way the app's call() does, for an answer the app never asks for (such
- * as a privileged route from a session without sudo).
+ * as a privileged route from a session without sudo). A mutation runs as a
+ * job and needs the job's ID, a UUID, in `id`; its answer is the job's result.
  */
 export function bridgeCall(
   page: Page,
   route: string,
   request: unknown,
+  id?: string,
 ): Promise<BridgeResult> {
   return page.evaluate(
-    async ({ route, request }) => {
+    async ({ route, request, id }) => {
       // The framing of frontend/src/api/StreamMultiplexer.ts: a WebSocket
       // frame [stream:4][flags:1] around a bridge frame [opcode:1][stream:4]
       // [length:4][payload]. SYN 0x01, DATA 0x04; open 0x80, result 0x85.
@@ -282,7 +284,7 @@ export function bridgeCall(
             );
           ws.onopen = () => {
             const body = new TextEncoder().encode(
-              JSON.stringify({ route, request }),
+              JSON.stringify({ route, request, id }),
             );
             const frame = new Uint8Array(14 + body.length);
             const view = new DataView(frame.buffer);
@@ -323,7 +325,7 @@ export function bridgeCall(
         ws.close();
       }
     },
-    { route, request },
+    { route, request, id },
   );
 }
 

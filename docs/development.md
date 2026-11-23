@@ -593,6 +593,12 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   outside LinuxIO, opens its folder and finds the file by search, and renames
   it through LinuxIO. It scans the whole VM, and creates and removes
   `/srv/e2e-indexer`.
+  `wireguard.spec.ts` calls the WireGuard routes for an interface `wge2e`
+  and checks the link, `wg-quick@wge2e.service` and the kernel log for
+  AppArmor refusals ([WireGuard Interfaces](./wireguard.md#testing)). It
+  installs `wireguard-tools`, runs `wg-quick` by hand for the cases where the
+  unit and the interface disagree, reboots the VM once, and removes the
+  interface; the package stays installed.
 - The `vm-test-*` targets are the root suites. Each builds its test binaries
   on the host into `.cache/vm`, static so they also run on the older glibc
   of `VM_RELEASE=noble`, and the script's `test` command copies them into

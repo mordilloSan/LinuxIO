@@ -44,6 +44,18 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+- A scheduled script cannot run a tool that an AppArmor profile confines with
+  profile changes on exec. LinuxIO writes `NoNewPrivileges=yes` into every
+  generated schedule unit (`backend/bridge/handlers/schedules/native.go`,
+  documented in `docs/scheduled-scripts.md`), and under that flag the kernel
+  refuses the change: on Ubuntu 26.04 a script that calls `wg-quick` is
+  expected to fail with "Operation not permitted", as the root job host did
+  (2026-11-23, `docs/wireguard.md`). The same flag stops a script from using
+  `sudo`, `su` or any setuid program. Scripts should be able to
+  gain privileges: either drop the line from the generated unit, or make it a
+  choice per schedule that the dialog shows. Units already saved keep the old
+  line until they are rewritten. **not verified** with a real script
+
 - An index or reindex task ends as successful when the indexer daemon stops
   or restarts while it runs. The daemon's event stream closes without a last
   event, and the bridge then reads the status, finds nothing running and
@@ -57,6 +69,18 @@ after a change that issues ioctls).
   the outcome of the operations it ended lately and answer for them by ID.
   It was so before the scanner became a unit of its own; the queue made
   waiting operations subject to it. **checked**
+
+- A WireGuard interface with NAT may forward nothing on Ubuntu 26.04. The
+  PostUp hook LinuxIO writes, `sysctl -w net.ipv4.ip_forward=1`
+  (`natPostUpHooks` in `backend/bridge/handlers/wireguard/config.go`), is
+  refused by Ubuntu's AppArmor profile for `wg-quick`, whose `sysctl` part may
+  write only `src_valid_mark`. `sysctl` reports "permission denied ...,
+  ignoring", prints the value and exits 0, so the interface comes up and
+  nobody is told. Seen on the owner's server (2026-11-23), where forwarding
+  was already on, as it is on any host with Docker; on a host where it is
+  not, peers connect and reach nothing behind the server. A fix has LinuxIO
+  turn forwarding on itself, for now and for boot, instead of through a hook.
+  **not verified** on a host with forwarding off
 
 - The Updates page can say "Your system is up to date" while the banner
   names a LinuxIO update. Seen once in four runs of `jobs-update.spec.ts` on
@@ -132,6 +156,19 @@ Do one of these only when something shows it is needed.
 ## Rejected
 
 Listed once, with the reason, so they are not raised again.
+
+WireGuard, after interfaces went through their unit (2026-11-23):
+
+- `NoNewPrivileges=no` for the root job host, so that it can run a tool its
+  distribution confines with AppArmor (Ubuntu's `wg-quick`). No: the flag is
+  also what keeps the commands the root host runs as the signed-in admin
+  (npm for a capability, `claude plugin`) away from `sudo`. Such a tool is
+  started through its unit instead ([WireGuard Interfaces](../wireguard.md)).
+- Adding rules to Ubuntu's AppArmor profile for `wg-quick`
+  (`/etc/apparmor.d/local/wg-quick`). No: it belongs to another package and
+  to the administrator, and loosens the profile for everyone on the host.
+- Taking the WireGuard writes out of the job host. No: every write is a job
+  ([Jobs](../jobs.md)), and the host would still be unable to run the tool.
 
 File browser, after the link fix:
 

@@ -455,14 +455,21 @@ func ListUnitsWithPrefix(ctx context.Context, prefix string) ([]UnitStatus, erro
 }
 
 func callUnitJob(ctx context.Context, name, method, operation string) error {
+	_, err := queueUnitJob(ctx, name, method, operation)
+	return err
+}
+
+// queueUnitJob asks the manager for a job on the unit and returns the job's
+// object path. The manager answers once the job is queued, not when it ends.
+func queueUnitJob(ctx context.Context, name, method, operation string) (dbusclient.ObjectPath, error) {
 	if err := requireUnitName(name); err != nil {
-		return err
+		return "", err
 	}
 	var job dbusclient.ObjectPath
 	if err := managerIface.CallStore(ctx, method, dbusclient.CallPolicy{}, []any{name, "replace"}, &job); err != nil {
-		return fmt.Errorf("%s unit %s: %w", operation, name, err)
+		return "", fmt.Errorf("%s unit %s: %w", operation, name, err)
 	}
-	return nil
+	return job, nil
 }
 
 // unitFilesOp runs a systemd *UnitFiles method for one unit, then reloads the
