@@ -271,13 +271,18 @@ advertises the matching capability.
 - **Read-only commands.** `transcript/readOnlyCommand.ts` decides which
   commands only read: a list of readers (`cat`, `ls`, `ss`, `df`, ...),
   read-only subcommands (`systemctl status`, `docker ps`, `btrfs filesystem
-  usage`, ...) and commands that read unless a mutating flag is present
-  (`find -delete`, `sed -i`, `journalctl --vacuum-*`). Every segment of a
-  pipeline must read, and a redirection or command substitution makes the
-  whole command count as acting. Quoted text is literal, so a `|` or `>`
-  inside a search pattern does not split or redirect; a substitution inside
-  double quotes still counts. This is presentation only and errs towards
-  "acting"; permissions stay with the agent.
+  usage`, ...) and, for either, the arguments that make it act (`find
+  -delete`, `sed -i`, `sort -o`, `date -s`, `hostname NAME`, `git diff
+  --output`, ...). `env` is read through: the command after its options and
+  assignments, and the text of `-S`, is what is judged. Every segment of a
+  pipeline must read, and a redirection to a file, input from a file or
+  here-document, a command substitution or an unclosed quote makes the whole
+  command count as acting; output sent to `/dev/null` or another descriptor
+  does not. Quotes are read in one pass as the shell reads them, so a `|` or
+  `>` inside a search pattern does not split or redirect, an apostrophe inside
+  double quotes does not open a quote, and a substitution inside double
+  quotes still counts. This is presentation only and errs towards "acting";
+  permissions stay with the agent.
 - **Turn footer.** A turn that ran in this page ends in a footer showing how
   long it took (in hours and minutes from an hour on) and, when the agent's
   `session/prompt` response carries `usage`, the output tokens
