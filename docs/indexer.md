@@ -264,9 +264,16 @@ index with "the scan made no progress for 30m0s during ..." and takes up the
 work that waited. A scan that is told to stop for another reason and does not
 come back within 30 minutes ends the same way. The steps after the walk
 ("Updating folder sizes", the checkpoint) have no counter, so 30 minutes is
-also the longest one of them may take. The unit's `TimeoutStartSec=7d` is the
-backstop for a scanner that cannot do this, and for one that keeps moving and
-never arrives.
+also the longest one of them may take.
+
+A scan that keeps moving is not caught by that watch, however slow it is, and
+the index's other work waits for as long as it runs. The unit's
+`TimeoutStartSec=24h` is its limit, and the backstop for a scanner that
+cannot end itself: systemd stops the scanner, which unwinds, reports and
+gives up its turn, and the unit ends as failed with result `timeout`. A day
+is the timer's default interval, so a scan that is still running when the
+next one is due is given up on. The rows it had committed stay, and the next
+scan has that much less to write.
 
 The scanner:
 
@@ -759,14 +766,24 @@ old cache remains available for inspection.
   commits every 50,000) leaves the folders it had not reached with their old
   sizes, which no longer add up with the rows below them, until the next
   full scan ends.
-- A scanner that keeps moving, however slowly, is never ended for being
-  slow: a mount that answers each call after 20 seconds holds the queue until
-  the scan is through or the unit's seven days are up. Stopping
-  `linuxio-indexer-index.service` frees the queue.
-- A scanner stuck in a call the kernel does not let a killed process leave
-  cannot exit, and holds SQLite's write lock until the call returns: the
-  daemon has taken up its work by then, and its writes fail with "database is
-  locked" until it does. systemd's own kill has the same limit.
+- A slow scan delays the index's other work for up to a day. A scan that
+  still makes progress, even at one file every 20 seconds on a failing disk,
+  is not ended by the 30-minute watch, and while it runs the updates after
+  file operations wait, so sizes stay marked pending and search does not see
+  those changes, Index now waits, and a change to the exclusions is refused.
+  Nothing is lost: it all catches up when the scan ends, when the unit's 24
+  hours are up, or when someone stops `linuxio-indexer-index.service`.
+- A scan that needs more than 24 hours never completes. Each run is stopped
+  at the limit and the next one walks the disk from the start, with only what
+  changed left to write, and "Last indexed" does not move.
+- A scanner frozen inside the kernel blocks writes to the index. A process
+  can hang in a kernel call so deeply that not even `kill -9` ends it until
+  the call returns; a disk that is failing in the middle of a retry does
+  that. The scanner then cannot exit, and a process that has not exited
+  still holds its lock on the database. Search and sizes keep working, and
+  the daemon's writes fail with "database is locked" until the call returns
+  or the host is restarted. Neither the scanner nor systemd can do anything
+  about it.
 - Folder details count the files and folders below the folder on every
   request (`DirDetails` in `backend/indexer/internal/storage/queries.go`),
   which takes a moment for a folder with millions of entries below it; the

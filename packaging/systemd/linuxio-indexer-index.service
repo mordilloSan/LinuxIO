@@ -19,10 +19,13 @@ Nice=19
 IOSchedulingClass=idle
 # A scan that stops moving ends itself after half an hour
 # (backend/indexer/internal/daemon/stall.go), however long it has run. This
-# is the backstop for a scanner that cannot do that, and for one that moves
-# without ever getting there: a oneshot has no start timeout of its own, and
-# while this unit is active the timer starts no other scan.
-TimeoutStartSec=7d
+# is the limit for a scan that keeps moving and is too slow to be of use, and
+# the backstop for a scanner that cannot end itself: a oneshot has no start
+# timeout of its own, the index's other work waits while a scan runs, and
+# while this unit is active the timer starts no other scan. A day is the
+# default interval of the timer: a scan still running when the next is due
+# is given up on.
+TimeoutStartSec=24h
 Environment=SQLITE_TMPDIR=/var/lib/linuxio/indexer
 
 # It reads the host's files and writes only the index.
