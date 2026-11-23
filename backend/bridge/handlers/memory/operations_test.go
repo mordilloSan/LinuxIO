@@ -584,12 +584,15 @@ func TestRemoveSwapFileFailures(t *testing.T) {
 			sys.failures["fstab remove /swap.img"] = errors.New("fstab is locked")
 		}, wantCalls: []string{"swapoff /swap.img", "fstab remove /swap.img"}, inFstab: true, onDisk: true},
 		// Another file at the name between the check and the delete is never
-		// deleted.
+		// deleted. It is renamed over the old one, since a file made after a
+		// remove may get the freed inode number back (ext4 often does).
 		{name: "the name holds another file", setup: func(f fixture, sys *fakeSystem) {
 			sys.after = func(call string) {
 				if call == "reload" {
-					f.remove("/swap.img")
-					f.writeSwapFile("/swap.img", gib)
+					f.writeSwapFile("/swap.img.new", gib)
+					if err := os.Rename(filepath.Join(f.root, "/swap.img.new"), filepath.Join(f.root, "/swap.img")); err != nil {
+						f.t.Fatal(err)
+					}
 				}
 			}
 		}, want: bridgeipc.ErrConflict, wantCalls: []string{"swapoff /swap.img", "fstab remove /swap.img", "reload", "delete /swap.img"}, onDisk: true},

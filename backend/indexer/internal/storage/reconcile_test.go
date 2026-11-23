@@ -107,7 +107,10 @@ func TestARescanWritesOnlyWhatChanged(t *testing.T) {
 
 	// One new file, one file that grew, one file and one folder gone.
 	writeTestFile(t, filepath.Join(root, "docs", "new.txt"), 4096)
-	writeTestFile(t, filepath.Join(root, "a.txt"), 12288)
+	// a.txt grows by more than the folders it replaces, so the root's size
+	// moves on any filesystem: on ext4, where a folder takes 4096 bytes, a
+	// growth to 12288 would leave the root's size where it was.
+	writeTestFile(t, filepath.Join(root, "a.txt"), 16384)
 	if err := os.Remove(filepath.Join(root, "docs", "b.txt")); err != nil {
 		t.Fatalf("remove: %v", err)
 	}

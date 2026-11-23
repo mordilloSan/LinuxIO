@@ -72,18 +72,14 @@ func TestMoveRenamesTheRowsOfAFolderWithoutReadingTheDisk(t *testing.T) {
 		t.Fatal("the move was not applied")
 	}
 
+	// The rows are what a scan from nothing says of the tree without the file
+	// the move did not read. A folder's own size depends on the filesystem
+	// (0 on tmpfs, 4096 on ext4), so the sizes are not written out here.
 	rows := indexRows(t, db, root)
-	want := []string{
-		" 1 16384 0",
-		"/a.txt 0 4096 4096",
-		"/empty 1 12288 0",
-		"/empty/.keep 0 0 0",
-		"/empty/papers 1 12288 0",
-		"/empty/papers/b.txt 0 8192 8192",
-		"/empty/papers/deep 1 4096 0",
-		"/empty/papers/deep/c.txt 0 4096 4096",
+	if err := os.Remove(filepath.Join(to, "unseen.txt")); err != nil {
+		t.Fatalf("remove: %v", err)
 	}
-	if !slices.Equal(rows, want) {
+	if want := rebuildFromNothing(t, root); !slices.Equal(rows, want) || len(rows) != 8 {
 		t.Fatalf("rows after the move:\n got %v\nwant %v", rows, want)
 	}
 	assertDepthsAndNames(t, db, indexID)

@@ -33,11 +33,13 @@ func TestDeleteSwapFileRefuses(t *testing.T) {
 	}{
 		"while it swaps":           {func(b *blocksHost, _ *fileID) { b.swapping(ownSwapFilePath) }, errSwapFileActive},
 		"another file at the name": {func(_ *blocksHost, id *fileID) { id.ino++ }, errSwapFileChanged},
+		// Renamed over the old file, since a file made after a remove may get
+		// the freed inode number back (ext4 often does).
 		"a file put at the name since": {func(b *blocksHost, _ *fileID) {
-			if err := os.Remove(b.path(ownSwapFilePath)); err != nil {
+			b.write(ownSwapFilePath+".new", "new")
+			if err := os.Rename(b.path(ownSwapFilePath+".new"), b.path(ownSwapFilePath)); err != nil {
 				b.t.Fatal(err)
 			}
-			b.write(ownSwapFilePath, "new")
 		}, errSwapFileChanged},
 		"a folder others can write": {func(b *blocksHost, _ *fileID) { b.mkdir(ownSwapDir, 0o777) }, errOthersCanRedirect},
 	} {
