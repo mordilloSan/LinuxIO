@@ -42,6 +42,23 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
+- On kernel 7.3 (Fedora 45's `7.3.4-300.fc45`, test VM, 2026-11-24) a pool
+  member whose disk is pulled off the bus is marked missing at once ("has
+  gone missing, continue as degraded"), and what was proven on 7.0 does not
+  all hold ([E2E testing](./e2e-testing.md#distributions)). With the target
+  pulled mid-rebuild the kernel finished the replace "from `<missing disk>`
+  (devid 2) to `<missing disk>`" rather than suspending it, so LinuxIO's
+  degraded mount found no replace to cancel (`TestBtrfsAutoRebuildIntegration`,
+  "dies again", replace state 2 at 100%); whether a person's replace then
+  makes the pool whole was not reached, and the unmount before that mount hit
+  a kernel `WARNING` at `fs/btrfs/volumes.c:1208`
+  (`btrfs_close_one_device`). The rebuild proof's not-missing leg
+  (`TestBtrfsRebuildProofIntegration`) finds the `single` chunks written
+  while the member was missing still there after the replace alone; the
+  automatic rebuild's resync converts them and passes the same leg.
+  `btrfs-rebuild.spec.ts` never shows "Disk dropped out", not looked into.
+  Each starts from what changed in the kernel between 7.0 and 7.3.
+
 ## Visible bugs
 
 - A scheduled script cannot run a tool that an AppArmor profile confines with
@@ -126,8 +143,8 @@ after a change that issues ioctls).
   disks, 7.0, whose serials the rig sets. A SATA or SAS disk pulled and
   reseated on a real machine (its WWN as udev reads it, `sd` naming while the
   pool holds the dead disk, a hot-plug that resets the link rather than
-  removing the disk), and a kernel with `btrfs_remove_bdev` (7.1), are not
-  run.
+  removing the disk) is not run. On the VM's 7.3 it differs from 7.0
+  ([Storage safety](#storage-safety)).
 
 - Docker's wait for published host IPs
   ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips))

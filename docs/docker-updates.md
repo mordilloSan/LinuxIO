@@ -182,9 +182,11 @@ A Compose service is updated with the project its labels name: its
 configuration files in order, its environment files and its working folder,
 with the environment of the `docker compose` process reduced to a fixed
 list. The update runs `config --quiet`, `pull <service>` (retried while the
-registry throttles) and `up -d --no-deps --no-build <service>`, which builds
-nothing whatever the service's pull policy says, then waits for the
-service's new container to be ready. A service with more than one replica is
+registry throttles) and `up -d --no-deps --no-build --force-recreate <service>`,
+which builds nothing whatever the service's pull policy says and recreates
+the container even when Compose 5 sees no change (a tag moved to an index
+that differs only in its attestations or its other platforms; step 4 of the
+rollback below), then waits for the service's new container to be ready. A service with more than one replica is
 refused, and a scheduled pass does not update a stopped service. A container
 whose service label starts with a dash, which `docker compose` would read as
 an option, is refused before any Compose command runs, by the check too.
@@ -217,8 +219,13 @@ error says so. When it failed:
    one that names no image runs Compose's default name for it
    (`<project>-<service>`), the tag its container was created from.
 3. The tag goes back on the old image (`docker image tag <old id> <image>`).
-4. `up -d --no-deps --pull never --no-build` brings the services up on it,
-   pulling and building nothing whatever their pull policy says.
+4. `up -d --no-deps --pull never --no-build --force-recreate` brings the
+   services up on it, pulling and building nothing whatever their pull
+   policy says. The recreate is forced because Compose 5 decides whether a
+   container is out of date by the digest of the image's platform manifest,
+   not its ID: two images whose indexes differ only in their attestations
+   share that digest, and Compose 5.7 left the container on the image it ran
+   (Compose 2.40 compares the ID and recreates it).
 5. Each restored container is waited for, and must run the old image;
    otherwise the rollback is reported as failed.
 
@@ -318,8 +325,12 @@ update does:
    job ends there, reported as not updated, and the container is left as it
    is. When the files name another image than the container was created
    from, a rollback is refused for that reason.
-5. Otherwise `up -d --no-deps --pull never --no-build <service>` brings the
-   service up on exactly the image the host now holds, and the new container
+5. Otherwise `up -d --no-deps --pull never --no-build --force-recreate <service>`
+   brings the service up on exactly the image the host now holds, recreated
+   as a rollback's are ([Compose services](#compose-services), step 4 of the
+   rollback): the first rebuild of an image that `docker compose up --build`
+   made changes only its attestations, a change Compose 5 does not act on.
+   The new container
    is waited for and, when it fails, rolled back to the image it ran before,
    as an update is.
 

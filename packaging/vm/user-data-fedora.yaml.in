@@ -23,6 +23,10 @@ packages:
   - docker-compose
   - docker-buildx
   - btrfs-progs
+  # Ubuntu's image has mdadm and Fedora's does not; the btrfs suite's md
+  # tests (TestBtrfsArrayMemberIntegration, the md leg of
+  # TestBtrfsUnreadyIntegration) skip without it.
+  - mdadm
   # What the RPM requires besides systemd, so installing it in the VM needs
   # no download (packaging/rpm/linuxio.spec).
   - pam

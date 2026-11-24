@@ -416,19 +416,28 @@ and the packages they install. Fedora's is:
   it ships, so a new release is a new version in the profile.
 - `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
   passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
-  `docker-compose` and `docker-buildx`, `btrfs-progs`, the RPM tools
+  `docker-compose` and `docker-buildx`, `btrfs-progs`, `mdadm` (in Ubuntu's
+  image already; the btrfs suite's md tests skip without it), the RPM tools
   above, `pam`, `polkit` and `PackageKit` (what the RPM requires), every
   package upgraded, and
   `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
   filesystem is btrfs.
 - `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
+- The test binaries the suites copy into the VM user's home are labelled
+  `bin_t` where SELinux is on (`push_test`): a test that starts its own
+  binary as a systemd unit, as `TestBtrfsReplicateIntegration` does, fails
+  with `203/EXEC` on a file labelled `user_home_t`.
 
 Only part of the tests is written for Fedora, and `mk/vm.mk` holds the two
-lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `packagekit`,
-`relay`, `userconfig` and `filebrowser`; `docs/TODO/e2e-testing.md`,
-"Distributions", has their results) and `vm_fedora_specs` (`login.spec.ts`,
+lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `docker`,
+`packagekit`, `relay`, `userconfig`, `filebrowser` and `network`; `btrfs`
+passes there but for two tests written for kernel 7.0;
+`docs/TODO/e2e-testing.md`, "Distributions", has their results) and
+`vm_fedora_specs` (`login.spec.ts`,
 `capability-install.spec.ts`, `package-repository.spec.ts`,
-`indexer.spec.ts` and `wireguard.spec.ts`). With
+`indexer.spec.ts`, `wireguard.spec.ts`, `docker-host-ip-wait.spec.ts`,
+`jobs-phase3.spec.ts`, `jobs-phase4b.spec.ts` and `jobs-journal.spec.ts`;
+`btrfs-rebuild.spec.ts` fails there on the same kernel difference). With
 `DISTRO=fedora`, `test-vm-backend` given no `SUITES` runs the first list, and
 `test-vm-browser` given no `PLAYWRIGHT_ARGS` runs the second and then the
 release-update spec, which is written for both distributions. The other

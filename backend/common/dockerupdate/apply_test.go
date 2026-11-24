@@ -1985,8 +1985,8 @@ func TestRebuildComposeContainerBringsTheServiceUpOnTheNewImage(t *testing.T) {
 		t.Fatalf("result = %+v, want the container replaced on the rebuilt image", result)
 	}
 	commands := composeCommandsRun(t, args)
-	if len(commands) != 3 || commands[2] != "compose --progress=json --project-name media --file compose.yml up -d --no-deps --pull never --no-build web" {
-		t.Fatalf("commands = %q, want the build followed by an up that pulls and builds nothing", commands)
+	if len(commands) != 3 || commands[2] != "compose --progress=json --project-name media --file compose.yml up -d --no-deps --pull never --no-build --force-recreate web" {
+		t.Fatalf("commands = %q, want the build followed by an up that pulls and builds nothing and recreates the container", commands)
 	}
 	if !slices.Equal(phases, []string{"building", ProgressPhaseBuildOutput, "starting", "verifying"}) {
 		t.Fatalf("phases = %v", phases)
@@ -2022,7 +2022,7 @@ func TestRebuildComposeContainerRollsBackAContainerThatFails(t *testing.T) {
 	if !reflect.DeepEqual(commands.restores, [][]string{{"web"}}) {
 		t.Fatalf("restored services = %v, want web", commands.restores)
 	}
-	if last := composeCommandsRun(t, args); !strings.HasSuffix(last[len(last)-1], "up -d --no-deps --pull never --no-build web") {
+	if last := composeCommandsRun(t, args); !strings.HasSuffix(last[len(last)-1], "up -d --no-deps --pull never --no-build --force-recreate web") {
 		t.Fatalf("commands = %q, want the rebuild's up last", last)
 	}
 	if status, ok := ReadStatusSnapshot().ForContainerName("web"); ok {
@@ -2172,7 +2172,7 @@ func TestComposePullAndUpServicesBuildsNothing(t *testing.T) {
 	}
 	want := []string{
 		"compose --progress=json --project-name media --file compose.yml pull web worker",
-		"compose --progress=json --project-name media --file compose.yml up -d --no-deps --no-build web worker",
+		"compose --progress=json --project-name media --file compose.yml up -d --no-deps --no-build --force-recreate web worker",
 	}
 	if commands := composeCommandsRun(t, args); !slices.Equal(commands, want) {
 		t.Fatalf("commands = %q, want %q", commands, want)

@@ -733,10 +733,14 @@ run_suite() {
 	step "$2" "suite_$2" "$1"
 }
 
-# push_test DIR NAME copies DIR/NAME.test into the VM user's home.
+# push_test DIR NAME copies DIR/NAME.test into the VM user's home. Where
+# SELinux is on (Fedora), the copy is labelled bin_t: a test that starts it
+# as a systemd unit (TestBtrfsReplicateIntegration) is otherwise refused by
+# the policy, since systemd may not run a file of a home folder
+# (user_home_t), and the unit fails with 203/EXEC.
 push_test() {
 	[[ -f "$1/$2.test" ]] || die "no test binary $1/$2.test"
-	vm_ssh "cat > $2.test && chmod +x $2.test" <"$1/$2.test"
+	vm_ssh "cat > $2.test && chmod +x $2.test && { ! command -v selinuxenabled >/dev/null || ! selinuxenabled || chcon -t bin_t $2.test; }" <"$1/$2.test"
 }
 
 # run_test NAME PATTERN TIMEOUT [VAR=VALUE...] runs the tests of ./NAME.test

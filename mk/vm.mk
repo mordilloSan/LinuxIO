@@ -138,9 +138,13 @@ vm_suites := memory btrfs indexer docker packagekit relay userconfig filebrowser
 # What is written for Fedora as well: the other suites and specs do things
 # with apt or were never run there. With DISTRO=fedora these are what
 # test-vm-backend and test-vm-browser run when SUITES and PLAYWRIGHT_ARGS name
-# nothing; add a suite or a spec here once it passes on Fedora.
-vm_fedora_suites := memory indexer packagekit relay userconfig filebrowser
-vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts indexer.spec.ts wireguard.spec.ts
+# nothing; add a suite or a spec here once it passes on Fedora. btrfs passes
+# there but for TestBtrfsRebuildProofIntegration and
+# TestBtrfsAutoRebuildIntegration, and btrfs-rebuild.spec.ts fails, all three
+# written for kernel 7.0's handling of a disk pulled off the bus
+# (docs/TODO/e2e-testing.md, "Distributions").
+vm_fedora_suites := memory indexer docker packagekit relay userconfig filebrowser network
+vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts indexer.spec.ts wireguard.spec.ts docker-host-ip-wait.spec.ts jobs-phase3.spec.ts jobs-phase4b.spec.ts jobs-journal.spec.ts
 SUITES ?= $(if $(filter fedora,$(DISTRO)),$(vm_fedora_suites),$(vm_suites))
 # The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
 RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
