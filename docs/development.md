@@ -398,6 +398,21 @@ the scheduled-script specs and `package-repository.spec.ts` were run on it,
 and the DEB's removal, purge and install again were checked there by hand
 ([Packages](./packaging.md#removal)).
 
+Two more VMs are there for the package on the releases it names besides the
+default ones: `DISTRO=fedora VM_RELEASE=44` selects Fedora 44, the previous
+Fedora release (the domain `linuxio-e2e-fedora44`, the
+`Fedora-Cloud-Base-Generic-44-1.7` image), and `DISTRO=debian` selects
+Debian 13 (`linuxio-e2e-debian`, Debian's `debian-13-generic-amd64.qcow2`
+from `cloud.debian.org`, checked against the SHA-512 in its `SHA512SUMS`,
+and the Ubuntu seed with Debian's `docker-compose` for Ubuntu's
+`docker-compose-v2`). The Debian VM has a VGA card with no display: its
+GRUB draws on `gfxterm`, and without a video device the VM resets at every
+"Booting `Debian GNU/Linux'". Debian is in the apt family for the rig and the
+specs.
+`package-repository.spec.ts` and the DEB's or RPM's removal, purge and
+install again are what was run there; no other suite or spec is written for
+them, so name one with `SUITES` or `PLAYWRIGHT_ARGS`.
+
 `DISTRO=fedora` on a `vm-*` or `test-vm-*` target selects the Fedora VMs
 instead of Ubuntu's: the domain `linuxio-e2e-fedora` (`linuxio-e2e-fedora-2`
 and so on), its `linuxio-e2e-fedora-*` volumes and
@@ -417,7 +432,8 @@ and the packages they install. Fedora's is:
 - `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
   passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
   `docker-compose` and `docker-buildx`, `btrfs-progs`, `mdadm` (in Ubuntu's
-  image already; the btrfs suite's md tests skip without it), the RPM tools
+  image already; the btrfs suite's md tests skip without it), `jq` (which
+  the specs read job records with; Fedora 44's image lacks it), the RPM tools
   above, `pam`, `polkit` and `PackageKit` (what the RPM requires), every
   package upgraded, and
   `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
@@ -509,7 +525,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
   Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
   `btrfs-progs`, the tools that assemble and publish the package, and what
-  the DEB depends on (`libpam0g`, `packagekit`, `polkitd`), so an install of
+  the DEB depends on (`libnss-systemd`, `libpam0g`, `packagekit`, `polkitd`),
+  and `jq`, which the specs read job records with, so an install of
   the package needs no download, and upgrades every package. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
   to the seed's packages reaches a VM only when it is created again

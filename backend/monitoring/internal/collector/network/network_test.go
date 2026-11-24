@@ -1,6 +1,8 @@
 package network
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -292,6 +294,67 @@ func TestSkipNetworkInterface(t *testing.T) {
 			assert.Equal(t, tt.expectSkip, skipNetworkInterface(tt.nic, tt.nicCfg))
 		})
 	}
+}
+
+// The bandwidth total counts the cards only: a bridge, a VM's tap and a
+// WireGuard interface carry traffic that also crosses the card, so counting
+// them counted it twice. Their own rates are still reported.
+func TestBandwidthTotalCountsCardsOnly(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"enp1s0", "wlan0"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, name, "device"), 0o755))
+	}
+	for _, name := range []string{"br0", "vnet0", "wg0"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, name), 0o755))
+	}
+	oldSys := sysClassNet
+	sysClassNet = dir
+	t.Cleanup(func() { sysClassNet = oldSys })
+	t.Setenv("NICS", "")
+	require.NoError(t, os.Unsetenv("NICS"))
+
+	m := NewManager()
+	counters := func(scale uint64) []psutilNet.IOCountersStat {
+		var out []psutilNet.IOCountersStat
+		for _, name := range []string{"enp1s0", "wlan0", "br0", "vnet0", "wg0", "lo"} {
+			out = append(out, psutilNet.IOCountersStat{Name: name, BytesSent: 1000 * scale, BytesRecv: 2000 * scale})
+		}
+		return out
+	}
+	m.refreshNetInterfaces(counters(1))
+	assert.Equal(t, map[string]struct{}{"enp1s0": {}, "wlan0": {}}, m.totalInterfaces)
+
+	cache := uint16(7)
+	stats := &systemmodel.Stats{}
+	m.ensureNetworkInterfacesMap(stats)
+	m.sumAndTrackPerNicDeltas(cache, 0, counters(1), stats)
+	stats = &systemmodel.Stats{}
+	m.ensureNetworkInterfacesMap(stats)
+	up, down := m.sumAndTrackPerNicDeltas(cache, 1000, counters(2), stats)
+	assert.Equal(t, uint64(2*1000), up, "two cards at 1000 B/s each")
+	assert.Equal(t, uint64(2*2000), down)
+	assert.Contains(t, stats.NetworkInterfaces, "br0")
+	assert.Contains(t, stats.NetworkInterfaces, "wg0")
+	assert.NotContains(t, stats.NetworkInterfaces, "lo")
+}
+
+// With no card behind any interface (LinuxIO in a container), the total counts
+// the interfaces it reports; NICS in whitelist mode counts what it names.
+func TestBandwidthTotalWithoutCardsOrWithWhitelist(t *testing.T) {
+	oldSys := sysClassNet
+	sysClassNet = t.TempDir()
+	t.Cleanup(func() { sysClassNet = oldSys })
+	netIO := []psutilNet.IOCountersStat{{Name: "eth0"}, {Name: "wg0"}}
+
+	t.Setenv("NICS", "")
+	require.NoError(t, os.Unsetenv("NICS"))
+	m := NewManager()
+	m.refreshNetInterfaces(netIO)
+	assert.Equal(t, map[string]struct{}{"eth0": {}, "wg0": {}}, m.totalInterfaces)
+
+	t.Setenv("NICS", "wg0")
+	m.refreshNetInterfaces(netIO)
+	assert.Equal(t, map[string]struct{}{"wg0": {}}, m.totalInterfaces)
 }
 
 func TestEnsureNetworkInterfacesMap(t *testing.T) {

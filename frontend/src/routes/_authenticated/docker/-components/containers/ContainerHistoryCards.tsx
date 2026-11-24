@@ -41,7 +41,9 @@ const useContainerHistory = (rangeId: HistoryRangeId) => {
   const { privileged } = useAccessContext();
   const accessEnabled = isEnabled && privileged;
   const { data, isLoading, error } = useQuery({
-    ...linuxio.monitoring.get_container_history(historyRequest(range)),
+    ...linuxio.monitoring.get_container_history(
+      historyRequest(range, { rollup: true }),
+    ),
     enabled: accessEnabled,
     refetchInterval: range.refetchMs,
     placeholderData: (previous) => previous,

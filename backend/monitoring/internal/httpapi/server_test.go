@@ -247,7 +247,7 @@ func TestMetaReportsActiveStoreRetention(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	var status monitoringapi.Status
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &status))
-	assert.Equal(t, map[string]string{"1m": "1h0m0s", "10m": "12h0m0s", "20m": "24h0m0s", "60m": "336h0m0s"}, status.Retention)
+	assert.Equal(t, map[string]string{"1m": "24h0m0s", "10m": "12h0m0s", "20m": "24h0m0s", "60m": "336h0m0s"}, status.Retention)
 	assert.Positive(t, status.DBSizeBytes)
 }
 
@@ -348,7 +348,7 @@ func TestHistoryQueryValidationAndLimit(t *testing.T) {
 		body   string
 	}{
 		{name: "negative limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=-1", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
-		{name: "oversized limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=1001", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
+		{name: "oversized limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=6001", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
 		{name: "from after to", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&from=20&to=10", status: http.StatusBadRequest, body: `"error":"from must be <= to"`},
 		{name: "unknown plugin", method: http.MethodGet, path: "/api/v1/nope/history?resolution=1m", status: http.StatusNotFound, body: "404 page not found"},
 		{name: "method not allowed", method: http.MethodPost, path: "/api/v1/cpu/history?resolution=1m", status: http.StatusMethodNotAllowed, body: `"error":"method not allowed"`},

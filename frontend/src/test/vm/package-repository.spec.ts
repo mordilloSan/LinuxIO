@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import {
   activeSince,
@@ -110,6 +110,118 @@ const backUp = (target: string) =>
 const restore = (target: string) =>
   vmSsh(`rm -rf ${target} && cp -a ${BACKUP} ${target} && rm -rf ${BACKUP}`);
 
+/**
+ * Publishes the next version with a scrub running, has runUpdate install it,
+ * and checks that the package restarted linuxio.target and nothing else: the
+ * new web server runs the new file, and the root job host runs the job on.
+ */
+async function updateWithAJobRunning(
+  page: Page,
+  runUpdate: () => Promise<void>,
+) {
+  await stopAptRuns();
+  const installed = await installedVersion();
+  expect(installed, "make vm-install installed LinuxIO").not.toBe("");
+
+  const before = await jobIds();
+  // 1 MiB/s per disk: the scrub outlasts the publish and the update.
+  const { uuid, job } = await startScrub(page, before, MiB);
+  const speed = (bytesPerSecond: number) =>
+    vmSsh(
+      `for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo ${bytesPerSecond} | sudo tee $f >/dev/null; done`,
+    );
+  try {
+    const host = await mainPid("linuxio-jobs@0.service");
+    expect(host, "the root job host runs").not.toBe("0");
+    const webserver = await webserverExe();
+    const targetSince = await activeSince("linuxio.target");
+
+    const version = nextVersion(installed);
+    await publish(plainBuild(), version);
+    expect(
+      await scrubRunning(),
+      "the scrub ended before the update: lower its speed",
+    ).toBe(true);
+    await runUpdate();
+
+    // The package restarted linuxio.target once its files were in.
+    expect(await installedVersion()).toBe(version);
+    expect(await isActive("linuxio.target")).toBe("active");
+    expect(
+      await activeSince("linuxio.target"),
+      "the package restarted linuxio.target",
+    ).toBeGreaterThan(targetSince);
+    // The job host was not restarted and runs the job on.
+    expect(await mainPid("linuxio-jobs@0.service")).toBe(host);
+    expect((await jobRecord(job.id))?.state).toBe("running");
+    expect(await scrubRunning()).toBe(true);
+
+    // The web server the sign-in reaches is a new process of the new
+    // package's file.
+    await signIn(page);
+    await ui(page.getByRole("button", { name: "Account" })).toBeVisible();
+    const after = await webserverExe();
+    expect(after.pid).not.toBe(webserver.pid);
+    expect(after.exe).toBe("/usr/libexec/linuxio/linuxio-webserver");
+    expect(after.sha).toBe(
+      await hostSha256(path.join(plainBuild(), "linuxio-webserver")),
+    );
+    await signOut(page);
+
+    await speed(0);
+    await waitForJob(SCRUB, before, "completed", { timeout: 300_000 });
+  } finally {
+    await speed(0);
+  }
+}
+
+/**
+ * The distribution's unattended upgrade, set up to take LinuxIO's repository
+ * and run at once: unattended-upgrades limited to the LinuxIO origin, through
+ * apt-daily.service and apt-daily-upgrade.service with their stamps cleared
+ * and no random sleep; on Fedora dnf5-automatic.service with apply_updates on.
+ */
+const UNATTENDED_CONF =
+  vmDistro === "fedora"
+    ? "/etc/dnf/automatic.conf"
+    : "/etc/apt/apt.conf.d/99linuxio-e2e-unattended";
+const UNATTENDED_SETUP =
+  vmDistro === "fedora"
+    ? `rpm -q dnf5-plugin-automatic >/dev/null || sudo dnf install -y -q dnf5-plugin-automatic
+sudo cp -a ${UNATTENDED_CONF} ${UNATTENDED_CONF}.e2e 2>/dev/null || true
+sudo tee ${UNATTENDED_CONF} >/dev/null <<'EOF'
+[commands]
+apply_updates = yes
+upgrade_type = default
+random_sleep = 0
+reboot = never
+[emitters]
+emit_via = stdio
+EOF`
+    : `command -v unattended-upgrade >/dev/null || sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -q -o DPkg::Lock::Timeout=600 unattended-upgrades
+sudo tee ${UNATTENDED_CONF} >/dev/null <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::RandomSleep "0";
+#clear Unattended-Upgrade::Allowed-Origins;
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Origins-Pattern:: "origin=LinuxIO";
+EOF`;
+// dnf5-automatic imports no key: it declines the prompt for the metadata key
+// and exits 0 with nothing done, and fails a package whose key rpm lacks. The
+// README's dnf install leaves both in place; make vm-install installed LinuxIO
+// from a file, which left neither, so the test puts them where that install
+// does: the metadata key in dnf's keyring (repo_gpgcheck), the package key in
+// rpm's.
+const UNATTENDED_RUN =
+  vmDistro === "fedora"
+    ? `set -o pipefail; sudo dnf --repo=linuxio --refresh --assumeyes -q makecache && sudo rpm --import ${PACKAGE_REPO}/RPM-GPG-KEY-linuxio && sudo systemctl start dnf5-automatic.service; sudo journalctl -q -u dnf5-automatic.service -n 20 --no-pager`
+    : "set -o pipefail; sudo rm -f /var/lib/apt/periodic/*-stamp && sudo systemctl start apt-daily.service && sudo systemctl start apt-daily-upgrade.service; sudo tail -n 20 /var/log/unattended-upgrades/unattended-upgrades.log";
+const UNATTENDED_TEARDOWN =
+  vmDistro === "fedora"
+    ? `if [ -e ${UNATTENDED_CONF}.e2e ]; then sudo mv ${UNATTENDED_CONF}.e2e ${UNATTENDED_CONF}; else sudo rm -f ${UNATTENDED_CONF}; fi`
+    : `sudo rm -f ${UNATTENDED_CONF}`;
+
 test.describe
   .serial("LinuxIO updated from its signed repository in a shell", () => {
   test.skip(
@@ -124,61 +236,29 @@ test.describe
     // fresh VM 120 s, the publish 180 s, the update 300 s, the scrub's end
     // 300 s: some 1500 s.
     test.setTimeout(1_800_000);
-    await stopAptRuns();
-    const installed = await installedVersion();
-    expect(installed, "make vm-install installed LinuxIO").not.toBe("");
-
-    const before = await jobIds();
-    // 1 MiB/s per disk: the scrub outlasts the publish and the update.
-    const { uuid, job } = await startScrub(page, before, MiB);
-    const speed = (bytesPerSecond: number) =>
-      vmSsh(
-        `for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo ${bytesPerSecond} | sudo tee $f >/dev/null; done`,
-      );
-    try {
-      const host = await mainPid("linuxio-jobs@0.service");
-      expect(host, "the root job host runs").not.toBe("0");
-      const webserver = await webserverExe();
-      const targetSince = await activeSince("linuxio.target");
-
-      const version = nextVersion(installed);
-      await publish(plainBuild(), version);
-      expect(
-        await scrubRunning(),
-        "the scrub ended before the update: lower its speed",
-      ).toBe(true);
+    await updateWithAJobRunning(page, async () => {
       console.log(
         await vmSsh(`set -o pipefail; ${INSTALL_FROM_REPO} 2>&1 | tail -n 5`),
       );
+    });
+  });
 
-      // The package restarted linuxio.target once its files were in.
-      expect(await installedVersion()).toBe(version);
-      expect(await isActive("linuxio.target")).toBe("active");
-      expect(
-        await activeSince("linuxio.target"),
-        "the package restarted linuxio.target",
-      ).toBeGreaterThan(targetSince);
-      // The job host was not restarted and runs the job on.
-      expect(await mainPid("linuxio-jobs@0.service")).toBe(host);
-      expect((await jobRecord(job.id))?.state).toBe("running");
-      expect(await scrubRunning()).toBe(true);
-
-      // The web server the sign-in reaches is a new process of the new
-      // package's file.
-      await signIn(page);
-      await ui(page.getByRole("button", { name: "Account" })).toBeVisible();
-      const after = await webserverExe();
-      expect(after.pid).not.toBe(webserver.pid);
-      expect(after.exe).toBe("/usr/libexec/linuxio/linuxio-webserver");
-      expect(after.sha).toBe(
-        await hostSha256(path.join(plainBuild(), "linuxio-webserver")),
-      );
-      await signOut(page);
-
-      await speed(0);
-      await waitForJob(SCRUB, before, "completed", { timeout: 300_000 });
+  // The same update, made by the distribution's unattended upgrade through
+  // its own systemd service, as its timer starts it, with LinuxIO's
+  // run-record drop-in on that service (docs/packaging.md, Upgrade).
+  test("an unattended upgrade with a job running restarts LinuxIO and leaves the job running", async ({
+    page,
+  }) => {
+    // As above, with the unattended tool's install, and a dnf5-automatic run
+    // that also takes the distribution's pending updates.
+    test.setTimeout(2_400_000);
+    await vmSsh(UNATTENDED_SETUP);
+    try {
+      await updateWithAJobRunning(page, async () => {
+        console.log(await vmSsh(UNATTENDED_RUN));
+      });
     } finally {
-      await speed(0);
+      await vmSsh(UNATTENDED_TEARDOWN);
     }
   });
 

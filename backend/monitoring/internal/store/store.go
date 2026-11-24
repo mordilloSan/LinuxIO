@@ -45,7 +45,7 @@ type tier struct {
 // multiple of the one before, so every bucket holds whole buckets of the tier
 // below. Their names are the resolutions of the wire contract.
 var tiers = []tier{
-	{resolution: resolution1m, step: time.Minute, keep: time.Hour},
+	{resolution: resolution1m, step: time.Minute, keep: 24 * time.Hour},
 	{resolution: "10m", step: 10 * time.Minute, keep: 12 * time.Hour},
 	{resolution: "20m", step: 20 * time.Minute, keep: 24 * time.Hour},
 	{resolution: "60m", step: time.Hour},
@@ -523,8 +523,10 @@ func rollupTier(ctx context.Context, tx *sql.Tx, plugin string, src, dst tier, c
 		return nil
 	}
 
-	// Read the rows before writing: the source tier keeps a bounded number,
-	// at most a few hundred, so this holds little.
+	// Read the rows before writing: the source tier keeps a bounded number.
+	// Once the tier has a row this is the bucket that just closed; the first
+	// rollup into an empty tier reads all the source keeps, for 1m a day of
+	// rows (1,440 at the default interval, 5,760 at 15 s), once.
 	source, err := readTierRows(ctx, tx, table, src.resolution, from, closedEnd)
 	if err != nil {
 		return err

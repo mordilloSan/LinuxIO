@@ -14,6 +14,11 @@
 # LINUXIO_VM_RELEASE=noble selects a second Ubuntu VM on Ubuntu 24.04 for the
 # root tests on an older kernel: the domain linuxio-e2e-noble, its
 # linuxio-e2e-noble-* volumes and ~/.cache/linuxio-vm-noble, beside the first.
+# With LINUXIO_VM_DISTRO=fedora, LINUXIO_VM_RELEASE=44 selects the previous
+# Fedora release (linuxio-e2e-fedora44); LINUXIO_VM_DISTRO=debian selects
+# Debian 13 (linuxio-e2e-debian). Both are there for the package's install,
+# upgrade and removal on the releases the package names besides the default
+# ones (docs/development.md, "Test VM").
 #
 # LINUXIO_VM_INDEX=2..9 selects one more VM of the same release, so the browser
 # specs run on several at once: the domain linuxio-e2e-2, its volumes and
@@ -37,9 +42,13 @@ ubuntu/ | ubuntu/resolute) readonly RELEASE=resolute VERSION=26.04 FIRST_DOMAIN=
 ubuntu/noble) readonly RELEASE=noble VERSION=24.04 FIRST_DOMAIN=linuxio-e2e-noble SEED_BASE=8408 ;;
 # A Fedora release's Cloud Base images never change once it ships, so the
 # version names the compose too; the first boot upgrades the packages.
-fedora/) readonly RELEASE=45 VERSION=45-1.4 FIRST_DOMAIN=linuxio-e2e-fedora SEED_BASE=8418 ;;
+fedora/ | fedora/45) readonly RELEASE=45 VERSION=45-1.4 FIRST_DOMAIN=linuxio-e2e-fedora SEED_BASE=8418 ;;
+fedora/44) readonly RELEASE=44 VERSION=44-1.7 FIRST_DOMAIN=linuxio-e2e-fedora44 SEED_BASE=8428 ;;
+# Debian's cloud images are rebuilt with each point release under the same
+# name, as Ubuntu's are; the checksum is read again at every create.
+debian/ | debian/trixie) readonly RELEASE=trixie VERSION=13 FIRST_DOMAIN=linuxio-e2e-debian SEED_BASE=8438 ;;
 *)
-	echo "linuxio-vm: unknown distribution '${DISTRO}' release '${LINUXIO_VM_RELEASE:-}' (ubuntu, with resolute or noble, or fedora)" >&2
+	echo "linuxio-vm: unknown distribution '${DISTRO}' release '${LINUXIO_VM_RELEASE:-}' (ubuntu, with resolute or noble; fedora, with 45 or 44; or debian)" >&2
 	exit 1
 	;;
 esac
@@ -51,6 +60,8 @@ esac
 # distribution reads a repository's source file.
 # Neither checksum file's signature is checked: it comes over HTTPS from the
 # distribution's own server, and Fedora's image from one of its mirrors.
+# Only Debian's profile sets a video device; the other images boot without one.
+VIDEO_DEVICE=""
 case $DISTRO in
 ubuntu)
 	readonly IMAGE_NAME="ubuntu-${VERSION}-server-cloudimg-amd64.img"
@@ -60,6 +71,23 @@ ubuntu)
 	# zram-tools is LinuxIO's first choice where it exists.
 	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator
 	readonly COMPOSE_PACKAGE=docker-compose-v2 BUILDX_PACKAGE=docker-buildx
+	readonly PACKAGE_SCRIPT=package-deb.sh PACKAGE_TOOLS="debhelper apt-utils gnupg"
+	readonly REPO_SCRIPT=repo-apt.sh REPO_FAMILY=apt REPO_SOURCE=linuxio.sources
+	readonly REPO_SOURCE_DEST=/etc/apt/sources.list.d/linuxio.sources
+	;;
+debian)
+	# The generic image, with the full kernel a server installs, not the
+	# genericcloud one built for clouds.
+	readonly IMAGE_NAME="debian-${VERSION}-generic-amd64.qcow2"
+	readonly IMAGE_URL="https://cloud.debian.org/images/cloud/${RELEASE}/latest/${IMAGE_NAME}"
+	readonly SUMS_URL="https://cloud.debian.org/images/cloud/${RELEASE}/latest/SHA512SUMS"
+	readonly SEED_TEMPLATE=user-data.yaml.in PKG=apt
+	# Its GRUB draws on gfxterm, and with no video device the VM resets at
+	# every "Booting `Debian GNU/Linux'"; a VGA card with no display is enough.
+	VIDEO_DEVICE="<video><model type='vga'/></video>"
+	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator
+	# Debian's docker-compose is Compose v2, the plugin included.
+	readonly COMPOSE_PACKAGE=docker-compose BUILDX_PACKAGE=docker-buildx
 	readonly PACKAGE_SCRIPT=package-deb.sh PACKAGE_TOOLS="debhelper apt-utils gnupg"
 	readonly REPO_SCRIPT=repo-apt.sh REPO_FAMILY=apt REPO_SOURCE=linuxio.sources
 	readonly REPO_SOURCE_DEST=/etc/apt/sources.list.d/linuxio.sources
@@ -79,6 +107,7 @@ fedora)
 	readonly REPO_SOURCE_DEST=/etc/yum.repos.d/linuxio.repo
 	;;
 esac
+readonly VIDEO_DEVICE
 # The VM's signed package repository (repo-publish), PACKAGE_REPO/apt or
 # PACKAGE_REPO/rpm, and the GnuPG home of its throwaway key in the VM user's
 # home.
@@ -349,13 +378,21 @@ fetch_image() {
 	exec 8>"${IMAGE_DIR}/image.lock"
 	flock 8
 	sum="$(curl -fsSL "$SUMS_URL" | awk -v f="$IMAGE_NAME" '
-		$2 == "*" f { print $1 }
+		$2 == "*" f || $2 == f { print $1 }
 		$1 == "SHA256" && $2 == "(" f ")" && $3 == "=" { print $4 }')"
-	[[ $sum =~ ^[0-9a-f]{64}$ ]] || die "${IMAGE_NAME} is not listed once in ${SUMS_URL}"
-	if echo "${sum}  ${image}" | sha256sum --check --status >/dev/null 2>&1; then return; fi
+	# Debian publishes SHA-512 sums only.
+	local check
+	if [[ $sum =~ ^[0-9a-f]{64}$ ]]; then
+		check=sha256sum
+	elif [[ $sum =~ ^[0-9a-f]{128}$ ]]; then
+		check=sha512sum
+	else
+		die "${IMAGE_NAME} is not listed once in ${SUMS_URL}"
+	fi
+	if echo "${sum}  ${image}" | "$check" --check --status >/dev/null 2>&1; then return; fi
 	say "downloading ${IMAGE_NAME}"
 	curl -fL --progress-bar -o "${image}.part" "$IMAGE_URL"
-	echo "${sum}  ${image}.part" | sha256sum --check --status || die "${IMAGE_NAME} does not match ${SUMS_URL##*/}"
+	echo "${sum}  ${image}.part" | "$check" --check --status || die "${IMAGE_NAME} does not match ${SUMS_URL##*/}"
 	mv "${image}.part" "$image"
 }
 
@@ -367,6 +404,7 @@ write_seed() {
 	mkdir -p "$seed"
 	printf 'instance-id: %s\nlocal-hostname: %s\n' "$DOMAIN" "$DOMAIN" >"${seed}/meta-data"
 	sed -e "s|@PASSWORD_HASH@|${hash}|" -e "s|@SSH_KEY@|${key}|" -e "s|@SEED_URL@|${SEED_URL}|" \
+		-e "s|@COMPOSE_PACKAGE@|${COMPOSE_PACKAGE}|" \
 		"${REPO_ROOT}/packaging/vm/${SEED_TEMPLATE}" >"${seed}/user-data"
 }
 
@@ -429,6 +467,7 @@ define_domain() {
     <serial type='pty'/>
     <console type='pty'/>
     <rng model='virtio'><backend model='random'>/dev/urandom</backend></rng>
+    ${VIDEO_DEVICE}
   </devices>
 </domain>
 EOF

@@ -22,8 +22,11 @@ const (
 	// The 30-day range reads 720 hourly rows, and a containers row holds
 	// about 200 bytes per container, so this fits some 200 containers.
 	maxHistoryPayloadBytes = 32 << 20
-	maxHistoryLimit        = 1000
-	defaultHistoryLimit    = 100
+	// maxHistoryLimit fits a day of minute rows at the shortest collector
+	// interval (15 s: 5,760); the container history reads the rolled-up tiers
+	// for 12 hours and a day, which keeps its larger rows within one frame.
+	maxHistoryLimit     = 6000
+	defaultHistoryLimit = 100
 )
 
 // historyReadTimeout bounds one history read. controlClient stays unbounded so

@@ -479,12 +479,29 @@ func averageGPUs(sum *systemmodel.Stats, seen *keySamples) {
 
 type containerStatsAccumulator struct {
 	value     containerSnapshotRecord
-	samples   uint64
 	cpu       float64
 	memory    float64
 	bandwidth [2]uint64
 }
 
+// containerRollupKey keys a container in a rollup by its name, so a container
+// recreated under a new ID (an image update) stays one series; a record with no
+// name falls back to its ID.
+func containerRollupKey(id, name string) string {
+	if name != "" {
+		return "name:" + name
+	}
+	if id != "" {
+		return "id:" + id
+	}
+	return ""
+}
+
+// averageContainerStatsJSON rolls the container records of a bucket's rows
+// into one row, as Beszel does: a container is keyed by name and carries the
+// newest record's ID and details, and its CPU, memory and network are divided
+// by every row in the bucket, so one that ran for one minute of ten at 100%
+// CPU reads 10%, the share of the bucket it used.
 func averageContainerStatsJSON(items []string) ([]containerSnapshotRecord, error) {
 	sums := make(map[string]*containerStatsAccumulator)
 	for _, raw := range items {
@@ -493,10 +510,7 @@ func averageContainerStatsJSON(items []string) ([]containerSnapshotRecord, error
 			return nil, err
 		}
 		for _, record := range records {
-			key := record.ID
-			if key == "" {
-				key = record.Name
-			}
+			key := containerRollupKey(record.ID, record.Name)
 			if key == "" {
 				continue
 			}
@@ -506,19 +520,19 @@ func averageContainerStatsJSON(items []string) ([]containerSnapshotRecord, error
 				sums[key] = acc
 			}
 			acc.value = record
-			acc.samples++
 			acc.cpu += record.Cpu
 			acc.memory += record.Mem
 			acc.bandwidth[0] += record.Bandwidth[0]
 			acc.bandwidth[1] += record.Bandwidth[1]
 		}
 	}
+	rows := uint64(len(items))
 	result := make([]containerSnapshotRecord, 0, len(sums))
 	for _, acc := range sums {
 		value := acc.value
-		value.Cpu = units.TwoDecimals(acc.cpu / float64(acc.samples))
-		value.Mem = units.TwoDecimals(acc.memory / float64(acc.samples))
-		value.Bandwidth = [2]uint64{acc.bandwidth[0] / acc.samples, acc.bandwidth[1] / acc.samples}
+		value.Cpu = units.TwoDecimals(acc.cpu / float64(rows))
+		value.Mem = units.TwoDecimals(acc.memory / float64(rows))
+		value.Bandwidth = [2]uint64{acc.bandwidth[0] / rows, acc.bandwidth[1] / rows}
 		result = append(result, value)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -553,8 +567,12 @@ type containerGPUAccumulator struct {
 	decodeSamples          uint64
 }
 
-// averageContainerTelemetryJSON aggregates only bounded container data. An
-// entity absent from one source sample is absent, rather than a zero reading.
+// averageContainerTelemetryJSON aggregates only bounded container data. A
+// container is keyed by name, as in the containers rollup, and its CPU and
+// disk rates are divided by every row in the bucket, so the container history
+// that joins the two reads one rule; its process count and GPU readings are
+// averaged over the rows that carry them, since an entity absent from one
+// source sample is absent, rather than a zero reading.
 //
 //nolint:gocognit // Each optional GPU aggregate needs independent presence tracking.
 func averageContainerTelemetryJSON(items []string) ([]containermodel.Telemetry, error) {
@@ -565,10 +583,7 @@ func averageContainerTelemetryJSON(items []string) ([]containermodel.Telemetry, 
 			return nil, err
 		}
 		for _, record := range records {
-			key := record.ID
-			if key == "" {
-				key = record.Name
-			}
+			key := containerRollupKey(record.ID, record.Name)
 			if key == "" {
 				continue
 			}
@@ -585,6 +600,9 @@ func averageContainerTelemetryJSON(items []string) ([]containermodel.Telemetry, 
 			acc.value.CPUPercent += record.CPUPercent
 			acc.diskReadBytesPerSecond += record.DiskReadBytesPerSecond
 			acc.diskWriteBytesPerSecond += record.DiskWriteBytesPerSecond
+			if record.ID != "" {
+				acc.value.ID = record.ID
+			}
 			if record.Name != "" {
 				acc.value.Name = record.Name
 			}
@@ -609,6 +627,7 @@ func averageContainerTelemetryJSON(items []string) ([]containermodel.Telemetry, 
 		}
 	}
 
+	rows := uint64(len(items))
 	result := make([]containermodel.Telemetry, 0, len(sums))
 	for _, acc := range sums {
 		if acc.samples == 0 {
@@ -616,9 +635,9 @@ func averageContainerTelemetryJSON(items []string) ([]containermodel.Telemetry, 
 		}
 		value := acc.value
 		value.ProcessCount = int(math.Round(float64(acc.processCountSum) / float64(acc.samples)))
-		value.CPUPercent = units.TwoDecimals(value.CPUPercent / float64(acc.samples))
-		value.DiskReadBytesPerSecond = acc.diskReadBytesPerSecond / acc.samples
-		value.DiskWriteBytesPerSecond = acc.diskWriteBytesPerSecond / acc.samples
+		value.CPUPercent = units.TwoDecimals(value.CPUPercent / float64(rows))
+		value.DiskReadBytesPerSecond = acc.diskReadBytesPerSecond / rows
+		value.DiskWriteBytesPerSecond = acc.diskWriteBytesPerSecond / rows
 		if len(acc.gpus) > 0 {
 			value.GPUs = make(map[string]containermodel.GPUUsage, len(acc.gpus))
 			for deviceID, gpuAcc := range acc.gpus {

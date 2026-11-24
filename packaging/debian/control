@@ -11,6 +11,7 @@ Package: linuxio
 Architecture: amd64
 Depends: ${shlibs:Depends},
          ${misc:Depends},
+         libnss-systemd,
          libpam0g,
          packagekit,
          polkitd | policykit-1,

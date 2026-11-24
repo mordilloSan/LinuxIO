@@ -59,5 +59,5 @@ const (
 	// APIRequestTimeout bounds a single API request.
 	APIRequestTimeout = 5 * time.Second
 	// MaxHistoryLimit is the largest history page a request may ask for.
-	MaxHistoryLimit = 1000
+	MaxHistoryLimit = 6000
 )

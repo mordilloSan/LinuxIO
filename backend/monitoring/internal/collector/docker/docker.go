@@ -32,9 +32,11 @@ import (
 )
 
 const (
-	dockerTimeoutMs           = 2100
-	maxNetworkSpeedBps uint64 = 5e9
-	maxMemoryUsage     uint64 = 100 * 1024 * 1024 * 1024 * 1024
+	dockerTimeoutMs            = 2100
+	minStatsPassTimeout        = 5 * time.Second
+	maxStatsAttempts           = 5
+	maxNetworkSpeedBps  uint64 = 5e9
+	maxMemoryUsage      uint64 = 100 * 1024 * 1024 * 1024 * 1024
 )
 
 var errDockerClientUnavailable = errors.New("docker client unavailable")
@@ -59,6 +61,13 @@ type Manager struct {
 	networkSentTrackers map[uint16]*deltatracker.DeltaTracker[string, uint64]
 	networkRecvTrackers map[uint16]*deltatracker.DeltaTracker[string, uint64]
 	lastNetworkReadTime map[uint16]map[string]time.Time
+
+	// startReset holds the containers whose baselines were dropped in their
+	// current first minute; see resetBaselinesOnStart.
+	startReset map[string]struct{}
+
+	// passTimeout bounds one stats pass; zero means minStatsPassTimeout.
+	passTimeout time.Duration
 
 	// collectorKey names the cache time the collector owns.
 	collectorKey uint16
@@ -94,9 +103,10 @@ func (dm *Manager) shouldExcludeContainer(name string) bool {
 }
 
 // GetStats returns stats for all running containers with cache-time-aware
-// delta tracking.
-//
-//nolint:gocognit // Container stats collection coordinates API probing, concurrency, and per-container error handling.
+// delta tracking. The pass, the list included, ends at its deadline
+// (statsPassTimeout): a container whose stats fail is asked again, up to
+// maxStatsAttempts times in all, and one that has not answered by then is left
+// out of the sample rather than drawn as zeros.
 func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*containermodel.Stats, error) {
 	if dm == nil || dm.client == nil {
 		return nil, errDockerClientUnavailable
@@ -106,93 +116,46 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 	}
 	dm.initializeTracking()
 
-	list, err := dm.client.ContainerList(ctx, mobyclient.ContainerListOptions{})
+	passTimeout := dm.passTimeout
+	if passTimeout <= 0 {
+		passTimeout = minStatsPassTimeout
+	}
+	passCtx, cancel := context.WithTimeout(ctx, passTimeout)
+	defer cancel()
+
+	list, err := dm.client.ContainerList(passCtx, mobyclient.ContainerListOptions{})
 	if err != nil {
 		return nil, err
 	}
 	dm.syncPodmanDetection()
-	dm.ensureDockerVersionChecked(ctx)
+	dm.ensureDockerVersionChecked(passCtx)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	dm.ReseedFromCollector(cacheTimeMs, dm.collectorKey)
 	containersLength := len(list.Items)
-	dm.validIds = make(map[string]struct{}, containersLength)
-	var failedContainers []*mobycontainer.Summary
+	pending := dm.sampledContainers(list.Items)
 
-	for i := range list.Items {
-		if err := ctx.Err(); err != nil {
-			dm.wg.Wait()
-			return nil, err
+	var lastErr error
+	for attempt := 1; attempt <= maxStatsAttempts && len(pending) > 0 && passCtx.Err() == nil; attempt++ {
+		if attempt > 1 {
+			slog.Debug("retrying failed containers", "count", len(pending), "attempt", attempt)
 		}
-		ctr := list.Items[i]
-		id := shortContainerID(ctr.ID)
-		name := containerName(&ctr)
-		if dm.shouldExcludeContainer(name) {
-			slog.Debug("excluding container", "name", name)
-			continue
-		}
-
-		if !containerHasStats(&ctr) {
-			slog.Debug("skipping container that is not running", "name", name, "state", string(ctr.State))
-			continue
-		}
-
-		dm.validIds[id] = struct{}{}
-		// Created timestamps do not change on restart, so retain status-based
-		// restart detection.
-		if strings.Contains(ctr.Status, "second") {
-			dm.deleteContainerStatsSync(id)
-		}
-		if !dm.queue(ctx) {
-			dm.wg.Wait()
-			return nil, ctx.Err()
-		}
-		go func(ctr mobycontainer.Summary) {
-			defer dm.dequeue()
-			pprof.Do(ctx, pprof.Labels("component", "docker", "container", shortContainerID(ctr.ID)), func(ctx context.Context) {
-				if err := dm.updateContainerStats(ctx, &ctr, cacheTimeMs); err != nil {
-					dm.containerStatsMutex.Lock()
-					delete(dm.containerStatsMap, shortContainerID(ctr.ID))
-					failedContainers = append(failedContainers, &ctr)
-					dm.containerStatsMutex.Unlock()
-				}
-			})
-		}(ctr)
+		pending, lastErr = dm.updateContainers(passCtx, pending, cacheTimeMs, attempt)
 	}
-
-	dm.wg.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
-	// Legacy Docker versions require stats requests to be run in one batch.
-	// Retrying failed containers separately preserves the existing behavior.
-	if len(failedContainers) > 0 {
-		slog.Debug("retrying failed containers", "count", len(failedContainers))
-		for _, ctr := range failedContainers {
-			if err := ctx.Err(); err != nil {
-				dm.wg.Wait()
-				return nil, err
-			}
-			if !dm.queue(ctx) {
-				dm.wg.Wait()
-				return nil, ctx.Err()
-			}
-			go func(ctr mobycontainer.Summary) {
-				defer dm.dequeue()
-				pprof.Do(ctx, pprof.Labels("component", "docker", "container", shortContainerID(ctr.ID), "retry", "true"), func(ctx context.Context) {
-					if err := dm.updateContainerStats(ctx, &ctr, cacheTimeMs); err != nil {
-						slog.Error("container stats lookup failed", "error", err)
-					}
-				})
-			}(*ctr)
+	if len(pending) > 0 {
+		if lastErr == nil {
+			lastErr = passCtx.Err()
 		}
-		dm.wg.Wait()
-		if err := ctx.Err(); err != nil {
-			return nil, err
+		names := make([]string, 0, len(pending))
+		for _, ctr := range pending {
+			names = append(names, containerName(ctr))
 		}
+		slog.Warn("container stats left out of the sample", "containers", names, "error", lastErr)
 	}
 
 	stats := make([]*containermodel.Stats, 0, containersLength)
@@ -209,6 +172,78 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 
 	dm.cycleNetworkDeltasForCacheTime(cacheTimeMs)
 	return stats, nil
+}
+
+// sampledContainers records the containers this pass samples in validIds and
+// returns them: the listed ones that are running or paused and not excluded.
+func (dm *Manager) sampledContainers(items []mobycontainer.Summary) []*mobycontainer.Summary {
+	dm.validIds = make(map[string]struct{}, len(items))
+	sampled := make([]*mobycontainer.Summary, 0, len(items))
+	for i := range items {
+		ctr := &items[i]
+		id := shortContainerID(ctr.ID)
+		name := containerName(ctr)
+		if dm.shouldExcludeContainer(name) {
+			slog.Debug("excluding container", "name", name)
+			continue
+		}
+		if !containerHasStats(ctr) {
+			slog.Debug("skipping container that is not running", "name", name, "state", string(ctr.State))
+			continue
+		}
+		dm.validIds[id] = struct{}{}
+		dm.resetBaselinesOnStart(id, ctr.Status)
+		sampled = append(sampled, ctr)
+	}
+	return sampled
+}
+
+// statsPassTimeout is how long one stats pass may take, the list included:
+// five seconds, or two request timeouts when DOCKER_TIMEOUT sets a longer one.
+// It bounds how long a daemon that stops answering holds the collection lock.
+func statsPassTimeout(requestTimeout time.Duration) time.Duration {
+	return max(minStatsPassTimeout, 2*requestTimeout)
+}
+
+// updateContainers reads the stats of ctrs, five at a time on Docker 25 and
+// newer and Podman and all at once on older Docker, and returns those whose
+// read failed or never started before the deadline, with the last of their
+// errors. Their records are dropped, so the sample carries neither the zeros
+// updateContainerStats wrote before it failed nor the previous pass's figures.
+func (dm *Manager) updateContainers(ctx context.Context, ctrs []*mobycontainer.Summary, cacheTimeMs uint16, attempt int) ([]*mobycontainer.Summary, error) {
+	var (
+		failedMu sync.Mutex
+		failed   []*mobycontainer.Summary
+		lastErr  error
+	)
+	fail := func(ctr *mobycontainer.Summary, err error) {
+		dm.containerStatsMutex.Lock()
+		delete(dm.containerStatsMap, shortContainerID(ctr.ID))
+		dm.containerStatsMutex.Unlock()
+		failedMu.Lock()
+		defer failedMu.Unlock()
+		failed = append(failed, ctr)
+		lastErr = err
+	}
+	for i, ctr := range ctrs {
+		if !dm.queue(ctx) {
+			for _, left := range ctrs[i:] {
+				fail(left, ctx.Err())
+			}
+			break
+		}
+		go func() {
+			defer dm.dequeue()
+			labels := pprof.Labels("component", "docker", "container", shortContainerID(ctr.ID), "attempt", strconv.Itoa(attempt))
+			pprof.Do(ctx, labels, func(ctx context.Context) {
+				if err := dm.updateContainerStats(ctx, ctr, cacheTimeMs); err != nil {
+					fail(ctr, err)
+				}
+			})
+		}()
+	}
+	dm.wg.Wait()
+	return failed, lastErr
 }
 
 // GetContainerIdentities returns the running containers known to the runtime.
@@ -644,6 +679,7 @@ func (dm *Manager) ReseedFromCollector(cacheTimeMs, collectorKey uint16) {
 // are no longer listed, across every cache key. The caller holds
 // containerStatsMutex.
 func (dm *Manager) pruneBaselinesLocked() {
+	maps.DeleteFunc(dm.startReset, func(id string, _ struct{}) bool { _, ok := dm.validIds[id]; return !ok })
 	for _, byID := range dm.lastCpuContainer {
 		maps.DeleteFunc(byID, func(id string, _ uint64) bool { _, ok := dm.validIds[id]; return !ok })
 	}
@@ -655,9 +691,30 @@ func (dm *Manager) pruneBaselinesLocked() {
 	}
 }
 
-func (dm *Manager) deleteContainerStatsSync(id string) {
+// resetBaselinesOnStart drops a container's CPU and network baselines on the
+// first pass that sees it in its first minute ("Up 30 seconds"), so a restart
+// under the same ID starts from the new run's counters, and keeps the baselines
+// the later passes of that minute take. A second restart inside that minute
+// sends the counters backwards, which the CPU and network checks read as zero
+// for one pass.
+func (dm *Manager) resetBaselinesOnStart(id, status string) {
 	dm.containerStatsMutex.Lock()
 	defer dm.containerStatsMutex.Unlock()
+	if !strings.Contains(status, "second") {
+		delete(dm.startReset, id)
+		return
+	}
+	if _, done := dm.startReset[id]; done {
+		return
+	}
+	if dm.startReset == nil {
+		dm.startReset = make(map[string]struct{})
+	}
+	dm.startReset[id] = struct{}{}
+	dm.deleteContainerStatsLocked(id)
+}
+
+func (dm *Manager) deleteContainerStatsLocked(id string) {
 	delete(dm.containerStatsMap, id)
 	for cacheTime := range dm.lastCpuContainer {
 		delete(dm.lastCpuContainer[cacheTime], id)
@@ -716,6 +773,7 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 
 	manager := &Manager{
 		onPodmanDetected:    onPodmanDetected,
+		passTimeout:         statsPassTimeout(timeout),
 		sem:                 make(chan struct{}, 5),
 		containerStatsMap:   make(map[string]*containermodel.Stats),
 		excludeContainers:   excludeContainers,
@@ -748,8 +806,15 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 	return manager
 }
 
+// dockerSockets lists where the daemon looks for an engine when DOCKER_HOST is
+// unset, in order: Docker's socket, the Podman service root runs
+// (podman.socket), and the Podman of the user the daemon runs as.
+func dockerSockets() []string {
+	return []string{"/var/run/docker.sock", "/run/podman/podman.sock", fmt.Sprintf("/run/user/%v/podman/podman.sock", os.Getuid())}
+}
+
 func getDockerHost() string {
-	socks := []string{"/var/run/docker.sock", fmt.Sprintf("/run/user/%v/podman/podman.sock", os.Getuid())}
+	socks := dockerSockets()
 	for _, socket := range socks {
 		if _, err := os.Stat(socket); err == nil {
 			return "unix://" + socket

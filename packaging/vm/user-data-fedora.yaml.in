@@ -27,6 +27,9 @@ packages:
   # tests (TestBtrfsArrayMemberIntegration, the md leg of
   # TestBtrfsUnreadyIntegration) skip without it.
   - mdadm
+  # The specs read LinuxIO's job records with it; Fedora 44's image does not
+  # have it.
+  - jq
   # What the RPM requires besides systemd, so installing it in the VM needs
   # no download (packaging/rpm/linuxio.spec).
   - pam

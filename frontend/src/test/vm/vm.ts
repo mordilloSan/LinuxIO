@@ -65,7 +65,7 @@ export const vmSsh = (command: string, input?: string | Buffer) =>
  */
 export async function stopAptRuns() {
   // Fedora has no unattended runs: its seed switches dnf-makecache.timer off.
-  if (vmDistro !== "ubuntu") return;
+  if (vmDistro === "fedora") return;
   await vmSsh("sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer");
   await expect
     .poll(

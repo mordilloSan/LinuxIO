@@ -184,9 +184,33 @@ Sleeping disks stay asleep: filesystem usage is served from the disk-usage cache
 when `collector.disk_usage_cache` is non-zero, and SMART records are read on
 their own refresh interval with `smartctl -n standby` (see SMART refresh below);
 the one exception is a drive in standby that was never read, which is woken once
-per daemon run so it appears. Drive power readings have a 15-second cache. Each host collection also reads counters, CPU frequencies,
+per daemon run so it appears. A tracked filesystem's `statfs` (the root and
+`EXTRA_FILESYSTEMS`) runs on its own goroutine through the same
+`disk.StatfsCalls` the live filesystem list uses: a collection waits a second
+for the call it started and not at all for one still running, so a filesystem
+that does not answer (a dead NFS server) keeps its last figures and their
+`UsageAt`, logs one warning per stuck call, and does not hold the collection
+lock. A call that returns after the wait is taken by a later collection while
+it is at most an hour old (the live list's limit is 30 seconds), with the time
+it returned as `UsageAt`, so a share that always takes a few seconds still
+updates, every other collection. The root's disk is found from the mount table by device name or, for an
+LVM or LUKS volume, by its device-mapper name; a filesystem label matches only
+a name given in `FILESYSTEM` or an extra-filesystems folder, so another disk's
+label cannot be taken for the root. Drive power readings have a 15-second cache. Each host collection also reads counters, CPU frequencies,
 hwmon temperatures, GPU measurements and the adapter readings from `sensors -j`.
 Missing sensor or SMART tools leave their optional sections empty.
+
+The network collection reports the rates of every interface except `lo`,
+`docker*`, `br-*`, `veth*`, `bond*` and `cali*` (or the ones `NICS` selects),
+so the network page and the dashboard card have a history for a bridge, a
+VLAN or a WireGuard interface. The stored total (`bandwidth`) adds only the
+cards among them, the interfaces a device stands behind
+(`/sys/class/net/<name>/device`: PCI, USB, virtio, platform): traffic through
+a bridge, a VM's tap or a tunnel also crosses a card, and counting both
+counted it twice (`isPhysicalNic` in `backend/monitoring/internal/collector/network`).
+`NICS` in whitelist mode counts what it names, and a host with no card behind
+any interface (LinuxIO in a container) counts every interface it reports.
+Rows stored before this rule hold the old total until they age out.
 
 The memory collection splits Docker and VM memory out of "used" by reading
 cgroup v2 `memory.stat` files: every `system.slice/docker-*.scope` and
@@ -258,7 +282,22 @@ retain the batch behavior required by their one-shot stats endpoint. The
 stats pass samples the listed containers that are running or paused and skips
 the rest with a debug line: the list also returns a container Docker is
 restarting, which has no process between two runs, and asking for its stats
-logged an error on every cycle of a restart loop.
+logged an error on every cycle of a restart loop. One pass, the list included,
+has a deadline of five seconds, or twice `DOCKER_TIMEOUT` when that is longer,
+so a daemon that stops answering holds the collection lock that long and no
+longer. A container whose stats read fails is asked again, up to five tries in
+all within that deadline; one that has not answered is left out of the sample
+with one warning naming it, rather than drawn as zeros (a container that stops
+between the list and its stats read answers with empty memory figures). A
+container's CPU and network baselines are dropped once in its first minute,
+on the first pass that sees "Up ... seconds", so a restart under the same ID
+starts from the new run's counters and the later passes of that minute have a
+figure; a second restart inside that minute sends the counters backwards,
+which reads as zero for one pass. With `DOCKER_HOST` unset the daemon looks
+for `/var/run/docker.sock`, then root's Podman service at
+`/run/podman/podman.sock`, then `/run/user/0/podman/podman.sock`. Podman is
+monitored only: the Containers pages, Compose and image updates speak to
+Docker.
 
 ## History store
 
@@ -269,7 +308,7 @@ tiers (`backend/monitoring/internal/store/store.go`):
 
 | Resolution | Kept for | Rows per table |
 |------------|----------|----------------|
-| `1m` | 1 hour | 60 at the default interval |
+| `1m` | 1 day | 1,440 at the default interval |
 | `10m` | 12 hours | 72 |
 | `20m` | 1 day | 72 |
 | `60m` | `history.retention` (default 30 days) | 720 |
@@ -284,17 +323,30 @@ newest row its tier holds, so a restart neither repeats a bucket nor skips one
 whose rows are still kept. A read returns the stored rows of the tier it asks
 for, newest `limit` first and then in time order; nothing is averaged at read
 time, so a coarse tier's newest row can be up to one step old. The UI's ranges
-read `1m` for an hour, `10m` for 12 hours, `20m` for a day and `60m` for 7 and
-30 days.
+read `1m` for an hour, 12 hours and a day, and `60m` for 7 and 30 days. The
+container history reads the `10m` and `20m` tiers for 12 hours and a day
+(`rollupResolution` in `frontend/src/components/charts/historyRanges.ts`): a
+day of minute rows of some 60 containers would pass the 16 MiB frame a bridge
+response travels in. A request asks for at most 6,000 rows
+(`config.MaxHistoryLimit`, and the bridge's `maxHistoryLimit`), which fits a
+day of minute rows at the shortest collector interval (15 s: 5,760). A day of
+`1m` rows is about 11 MB over all tables at today's row sizes (estimated, not
+measured).
 
 `history.retention` is the hourly tier's length and bounds every tier: a tier
 keeps the shorter of its own length and the retention. The delete runs once an
-hour on the collector goroutine, so the `1m` table holds up to two hours of
+hour on the collector goroutine, so the `1m` tier holds up to 25 hours of
 rows, and `db.maintain` runs it at once.
 
-Containers in a rollup are averaged over the samples in which each container
-appeared and keyed by container ID: one minute at 100% CPU in a bucket reads
-as 100%, and a container recreated by an image update is two series.
+Containers in a rollup follow Beszel: a container is keyed by name and keeps
+the newest record's ID, so one recreated by an image update stays one series,
+and its CPU, memory and network are divided by every row in the bucket, so one
+minute at 100% CPU in a ten-minute bucket reads 10%, the share of the bucket it
+used. The `container_telemetry` rollup keys by name too and divides its CPU and
+disk rates the same way, since the container history joins its disk rates to
+the containers rollup; its process count and GPU readings average over the
+rows that carry them. Rows rolled up before this rule keep the old one (by ID,
+over the samples a container appeared in) until they age out.
 
 The store's layout has a version (`storeSchemaVersion`, now 8). A database of
 any other version, older or newer, is deleted with its sidecars at start and

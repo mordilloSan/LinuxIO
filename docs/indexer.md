@@ -849,6 +849,12 @@ old cache remains available for inspection.
 
 ## Known limits
 
+- Every start of the index timer brings a full scan 15 minutes later,
+  whatever the age of the index: the timer is monotonic
+  (`packaging/systemd/linuxio-indexer-index.timer`), so a boot, a restart of
+  `linuxio.target`, a package upgrade and a saved interval each start one. A
+  scan that finds little changed is cheap (9 seconds and 19 rows on 963,000
+  entries), and a calendar timer would turn the interval into a time of day.
 - A request for an index in the instant a scan has failed can itself fail,
   after 30 seconds, with "the scanner did not start": the failed scan has
   left the daemon's queue while its unit has not ended yet, and systemd does

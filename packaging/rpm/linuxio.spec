@@ -110,6 +110,16 @@ if command -v restorecon >/dev/null 2>&1; then
 	restorecon %{_libexecdir}/linuxio/linuxio-auth || :
 fi
 %tmpfiles_create linuxio.conf
+# Scheduled scripts: earlier releases wrote NoNewPrivileges=yes into each
+# schedule's unit, which kept a script from sudo, setuid programs and a tool
+# AppArmor confines. The line is deleted from the saved units, so they match
+# what a save writes and Run now accepts them (docs/scheduled-scripts.md).
+# The DEB's postinst does the same.
+for unit in %{_sysconfdir}/systemd/system/linuxio-schedule-*.service; do
+	if [ -f "$unit" ] && [ ! -L "$unit" ]; then
+		sed -i '/^NoNewPrivileges=yes$/d' "$unit" || :
+	fi
+done
 if [ "$1" -eq 1 ]; then
 	systemctl --no-reload enable %{enabled_units} >/dev/null 2>&1 || :
 	# LinuxIO enables these itself for a pool made later.

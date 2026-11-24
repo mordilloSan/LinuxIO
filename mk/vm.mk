@@ -3,13 +3,16 @@
 # ~/.cache/linuxio-vm, never in git. docs/development.md, "Test VM".
 
 vm_script := $(repo_root)/packaging/vm/linuxio-vm.sh
-# DISTRO=fedora selects the distribution, a profile in the script: Fedora's
-# VMs are linuxio-e2e-fedora and ~/.cache/linuxio-vm-fedora, beside Ubuntu's.
-# Without it, Ubuntu and the names it always had.
+# DISTRO=fedora or debian selects the distribution, a profile in the script:
+# Fedora's VMs are linuxio-e2e-fedora and ~/.cache/linuxio-vm-fedora, Debian
+# 13's linuxio-e2e-debian, beside Ubuntu's. Without it, Ubuntu and the names
+# it always had.
 DISTRO ?=
 export LINUXIO_VM_DISTRO := $(DISTRO)
 # VM_RELEASE=noble selects the second Ubuntu VM (linuxio-e2e-noble, Ubuntu
-# 24.04), kept for the root tests on an older kernel.
+# 24.04), kept for the root tests on an older kernel; with DISTRO=fedora,
+# VM_RELEASE=44 selects the previous Fedora release (linuxio-e2e-fedora44),
+# kept for the package's install, upgrade and removal.
 VM_RELEASE ?=
 export LINUXIO_VM_RELEASE := $(VM_RELEASE)
 # There can be several VMs of a release, numbered from 1, so targets run side
@@ -94,7 +97,7 @@ fi
 endef
 
 ##@ Test VM|yellow
-vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud image (DISTRO=fedora: Fedora 45) and snapshot it as clean
+vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud image (DISTRO=fedora: Fedora 45, DISTRO=debian: Debian 13) and snapshot it as clean
 	@$(call vm_lock,$(vm_one),lock)
 	@"$(vm_script)" create
 
@@ -188,19 +191,24 @@ endif
 # A wrong DISTRO, VM_RELEASE or ZRAM_PROVIDER fails the same way, before the
 # builds of a VM target; the script checks them again.
 ifneq ($(filter vm-% test-vm-%,$(MAKECMDGOALS)),)
-ifneq ($(filter-out ubuntu fedora,$(DISTRO))$(word 2,$(DISTRO)),)
-$(error unknown DISTRO '$(DISTRO)' (ubuntu, the default, or fedora))
+ifneq ($(filter-out ubuntu fedora debian,$(DISTRO))$(word 2,$(DISTRO)),)
+$(error unknown DISTRO '$(DISTRO)' (ubuntu, the default, fedora or debian))
 endif
-ifneq ($(filter-out resolute noble,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
+ifeq ($(strip $(DISTRO)),fedora)
+ifneq ($(filter-out 45 44,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
+$(error unknown VM_RELEASE '$(VM_RELEASE)' for Fedora (45, the default, or 44))
+endif
+else ifeq ($(strip $(DISTRO)),debian)
+ifneq ($(filter-out trixie,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
+$(error unknown VM_RELEASE '$(VM_RELEASE)' for Debian (trixie, the default))
+endif
+else ifneq ($(filter-out resolute noble,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
 $(error unknown VM_RELEASE '$(VM_RELEASE)' (resolute, the default, or noble))
 endif
 ifneq ($(filter-out zram-tools zram-generator,$(ZRAM_PROVIDER))$(word 2,$(ZRAM_PROVIDER)),)
 $(error unknown ZRAM_PROVIDER '$(ZRAM_PROVIDER)' (zram-tools or zram-generator))
 endif
 ifeq ($(strip $(DISTRO)),fedora)
-ifneq ($(strip $(VM_RELEASE)),)
-$(error VM_RELEASE is for Ubuntu; DISTRO=fedora has one release)
-endif
 ifeq ($(strip $(ZRAM_PROVIDER)),zram-tools)
 $(error Fedora has no zram-tools: use ZRAM_PROVIDER=zram-generator, the default there)
 endif

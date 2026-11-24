@@ -29,8 +29,15 @@ rather than the hosting provider's.
 
 The supported systems are Debian stable, Ubuntu LTS from 24.04, and the
 current and previous Fedora releases, on amd64 (`x86_64`) only. The DEB
-depends on `libpam0g`, `packagekit`, `polkitd | policykit-1` and `systemd`,
-with the shared libraries `dh_shlibdeps` finds; the RPM requires `pam`,
+depends on `libnss-systemd`, `libpam0g`, `packagekit`, `polkitd |
+policykit-1` and `systemd`, with the shared libraries `dh_shlibdeps` finds.
+`libnss-systemd` puts systemd in `/etc/nsswitch.conf`, which resolves the
+`linuxio-bridge-socket` group the auth socket is created with (a dynamic
+user's, [Process & Systemd Architecture](./process-systemd-architecture.md)):
+Ubuntu installs it by default and Debian does not, and without it
+`linuxio-auth.socket` fails with `216/GROUP` and nobody can sign in (seen on
+Debian 13 in the test VM). Fedora's systemd carries the module and its
+`nsswitch.conf` names it; the RPM requires `pam`,
 `polkit`, `PackageKit` and `systemd`, the libraries rpm finds, and
 `selinux-policy` at the floor Fedora's `%selinux_requires_min` sets. Neither
 recommends anything: Docker, libvirt and the other optional facilities are
@@ -158,7 +165,14 @@ them the `packages.update` job that installs the upgrade, and an old host
 finishes its jobs before the new build takes over
 ([Jobs](./jobs.md#updates)). An upgrade from a shell, the distribution's
 unattended upgrade and the Updates page end the same way, and no
-`linuxio restart` is needed.
+`linuxio restart` is needed. `package-repository.spec.ts` runs the upgrade
+with a job running both from a shell and through the distribution's own
+unattended service (`apt-daily-upgrade.service` running unattended-upgrades
+allowed the LinuxIO origin, or `dnf5-automatic.service` with
+`apply_updates`). The whole file passed on Debian 13 and Fedora 44, and its
+unattended test on Ubuntu 26.04 and Fedora 45 too (2026-11-24, test VMs);
+the DEB's removal, purge and install again and the RPM's erase and install
+again were checked by hand on Debian 13 and Fedora 44.
 
 An upgrade does not restart libvirt's daemon
 ([The libvirt hook](#the-libvirt-hook)).
@@ -169,7 +183,10 @@ program, because a setting decides what they hold: the verbose drop-ins
 (`backend/common/verbosemode`) and the alert drop-ins on the distribution's
 update services ([Alerts](./alerts.md)). A release that changes a command line
 LinuxIO writes on save rewrites the saved copies in the package's
-post-install step; no release has needed to yet. The snapshot, replication
+post-install step. The one such rewrite so far is in the scheduled scripts'
+units: the post-install step deletes the `NoNewPrivileges=yes` line earlier
+releases wrote into `/etc/systemd/system/linuxio-schedule-*.service`
+([Scheduled scripts](./scheduled-scripts.md#the-units)). The snapshot, replication
 and Docker update services are
 package units, and a save writes only their timers, which hold a schedule and
 no command line.
@@ -590,6 +607,13 @@ to the build's.
   cannot read ([above](#linuxios-own-update)). The Updates page says so only
   after Refresh Sources and only until it is left; the update banner, an
   unattended upgrade and a `dnf` whose output nobody reads do not.
+- `dnf5-automatic` imports no key: on a Fedora host where LinuxIO was not
+  installed by the README's `dnf install` (from a file, say), it declines the
+  prompt for the repository's metadata key, updates nothing and exits 0, and
+  with that key accepted it fails the package on its signature, since rpm
+  lacks the key (both seen on Fedora 45 in the test VM). The metadata key is
+  dnf's own and the package key rpm's; one `dnf upgrade linuxio` that accepts
+  the key puts it in both.
 - The check after Refresh Sources reads LinuxIO's repository even where an
   administrator disabled it, and shows any failure of that dnf command as
   the reason, a renamed section in `linuxio.repo` among them.

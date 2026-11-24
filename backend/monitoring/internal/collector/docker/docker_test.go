@@ -302,7 +302,179 @@ func TestStatsErrorIsRetriedAndDoesNotBreakCollection(t *testing.T) {
 	stats, err := dm.GetStats(context.Background(), defaultCacheTimeMs)
 	require.NoError(t, err)
 	assert.Empty(t, stats)
-	assert.Equal(t, 2, statsCalls)
+	assert.Equal(t, maxStatsAttempts, statsCalls)
+}
+
+// A container that stops between the list and its stats read answers with
+// empty memory figures; it must be left out, not drawn as zeros, while the
+// container that answers stays in the sample.
+func TestStatsLeavesOutContainerWhoseReadsKeepFailing(t *testing.T) {
+	fixtureData := readFixture(t, "container.json")
+	var goneCalls, flakyCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.51/containers/json":
+			fmt.Fprint(w, `[{"Id":"0000000000010001","Names":["/gone"],"State":"running"},{"Id":"0000000000020002","Names":["/flaky"],"State":"running"}]`)
+		case "/v1.51/containers/0000000000010001/stats":
+			goneCalls.Add(1)
+			fmt.Fprint(w, `{"memory_stats":{}}`)
+		case "/v1.51/containers/0000000000020002/stats":
+			if flakyCalls.Add(1) < 3 {
+				fmt.Fprint(w, `{"memory_stats":{}}`)
+				return
+			}
+			_, _ = w.Write(fixtureData)
+		default:
+			unexpectedRequest(t, w, r)
+		}
+	}))
+	defer server.Close()
+	dm := testManager(t, server, false)
+	dm.goodDockerVersion, dm.dockerVersionChecked = true, true
+
+	stats, err := dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	require.Len(t, stats, 1)
+	assert.Equal(t, "flaky", stats[0].Name)
+	assert.Positive(t, stats[0].Mem)
+	assert.EqualValues(t, maxStatsAttempts, goneCalls.Load())
+	assert.EqualValues(t, 3, flakyCalls.Load())
+}
+
+// A daemon that lists its containers and then stops answering ends the pass at
+// its deadline with the containers that answered, instead of holding the
+// collection lock for a request timeout per container and try.
+func TestStatsPassEndsAtItsDeadline(t *testing.T) {
+	fixtureData := readFixture(t, "container.json")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.51/containers/json":
+			fmt.Fprint(w, `[{"Id":"0000000000010001","Names":["/answers"],"State":"running"},{"Id":"0000000000020002","Names":["/hangs"],"State":"running"}]`)
+		case "/v1.51/containers/0000000000010001/stats":
+			_, _ = w.Write(fixtureData)
+		case "/v1.51/containers/0000000000020002/stats":
+			<-r.Context().Done()
+		default:
+			unexpectedRequest(t, w, r)
+		}
+	}))
+	defer server.Close()
+	dm := testManager(t, server, false)
+	dm.goodDockerVersion, dm.dockerVersionChecked = true, true
+	dm.passTimeout = 200 * time.Millisecond
+
+	start := time.Now()
+	stats, err := dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	assert.Less(t, time.Since(start), time.Second)
+	require.Len(t, stats, 1)
+	assert.Equal(t, "answers", stats[0].Name)
+}
+
+// Podman run by root listens at /run/podman/podman.sock (podman.socket), which
+// the daemon, running as root, must find after Docker's socket.
+func TestDockerSocketsIncludeRootPodman(t *testing.T) {
+	socks := dockerSockets()
+	require.GreaterOrEqual(t, len(socks), 2)
+	assert.Equal(t, []string{"/var/run/docker.sock", "/run/podman/podman.sock"}, socks[:2])
+}
+
+// A container still waiting for one of the five request slots when the pass
+// ends is left out too, not reported with the previous pass's figures.
+func TestStatsPassLeavesOutContainersNeverAsked(t *testing.T) {
+	fixtureData := readFixture(t, "container.json")
+	var hang atomic.Bool
+	var list strings.Builder
+	list.WriteString("[")
+	for i := 1; i <= 7; i++ {
+		if i > 1 {
+			list.WriteString(",")
+		}
+		fmt.Fprintf(&list, `{"Id":"00000000000%d000%d","Names":["/c%d"],"State":"running"}`, i, i, i)
+	}
+	list.WriteString("]")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1.51/containers/json":
+			fmt.Fprint(w, list.String())
+		case strings.HasSuffix(r.URL.Path, "/stats"):
+			if hang.Load() {
+				<-r.Context().Done()
+				return
+			}
+			_, _ = w.Write(fixtureData)
+		default:
+			unexpectedRequest(t, w, r)
+		}
+	}))
+	defer server.Close()
+	dm := testManager(t, server, false)
+	dm.goodDockerVersion, dm.dockerVersionChecked = true, true
+	dm.passTimeout = 200 * time.Millisecond
+
+	stats, err := dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	require.Len(t, stats, 7)
+
+	hang.Store(true)
+	stats, err = dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	assert.Empty(t, stats, "no container answered this pass")
+}
+
+func TestStatsPassTimeoutFollowsDockerTimeout(t *testing.T) {
+	assert.Equal(t, 5*time.Second, statsPassTimeout(2100*time.Millisecond))
+	assert.Equal(t, 20*time.Second, statsPassTimeout(10*time.Second))
+}
+
+// During a container's first minute its baselines are dropped once, on the
+// first pass that sees "Up ... seconds", so the second pass of that minute
+// already has a CPU figure; a later restart drops them again.
+func TestStatsResetsBaselinesOnceAfterStart(t *testing.T) {
+	firstFixture := readFixture(t, "container.json")
+	secondFixture := readFixture(t, "container2.json")
+	var status atomic.Value
+	status.Store("Up 5 seconds")
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.51/containers/json":
+			fmt.Fprintf(w, `[{"Id":"0123456789abcdef","Names":["/demo"],"State":"running","Status":%q}]`, status.Load())
+		case "/v1.51/containers/0123456789abcdef/stats":
+			if calls.Add(1)%2 == 1 {
+				_, _ = w.Write(firstFixture)
+			} else {
+				_, _ = w.Write(secondFixture)
+			}
+		default:
+			unexpectedRequest(t, w, r)
+		}
+	}))
+	defer server.Close()
+	dm := testManager(t, server, false)
+	dm.goodDockerVersion, dm.dockerVersionChecked = true, true
+
+	got, err := dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Zero(t, got[0].Cpu)
+	status.Store("Up 35 seconds")
+	got, err = dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.InDelta(t, 0.14, got[0].Cpu, 0.001)
+
+	status.Store("Up 2 minutes")
+	_, err = dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	assert.NotContains(t, dm.startReset, "0123456789ab")
+
+	status.Store("Up 1 second")
+	got, err = dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Zero(t, got[0].Cpu)
+	assert.Contains(t, dm.startReset, "0123456789ab")
 }
 
 func TestPodmanEmptyHealthUsesInspectFallback(t *testing.T) {

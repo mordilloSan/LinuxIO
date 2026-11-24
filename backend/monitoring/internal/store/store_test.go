@@ -285,7 +285,7 @@ func TestStoreMaintenanceAppliesEachTiersRetentionToAllHistoryTables(t *testing.
 	defer store.Close()
 
 	now := time.Now().UTC().Truncate(time.Minute)
-	keep := map[string]time.Duration{"1m": time.Hour, "10m": 12 * time.Hour, "20m": 24 * time.Hour, "60m": retention}
+	keep := map[string]time.Duration{"1m": 24 * time.Hour, "10m": 12 * time.Hour, "20m": 24 * time.Hour, "60m": retention}
 	for _, plugin := range plugins.HistoryCapable() {
 		for resolution, kept := range keep {
 			_, err = store.db.Exec(fmt.Sprintf(`
@@ -309,8 +309,8 @@ func TestStoreMaintenanceAppliesEachTiersRetentionToAllHistoryTables(t *testing.
 
 // history.retention is the hourly tier's length and bounds every tier.
 func TestTierRetentionIsBoundedByHistoryRetention(t *testing.T) {
-	assert.Equal(t, map[string]string{"1m": "1h0m0s", "10m": "12h0m0s", "20m": "24h0m0s", "60m": "720h0m0s"}, RetentionStrings())
-	assert.Equal(t, map[string]string{"1m": "1h0m0s", "10m": "6h0m0s", "20m": "6h0m0s", "60m": "6h0m0s"}, retentionStrings(6*time.Hour))
+	assert.Equal(t, map[string]string{"1m": "24h0m0s", "10m": "12h0m0s", "20m": "24h0m0s", "60m": "720h0m0s"}, RetentionStrings())
+	assert.Equal(t, map[string]string{"1m": "6h0m0s", "10m": "6h0m0s", "20m": "6h0m0s", "60m": "6h0m0s"}, retentionStrings(6*time.Hour))
 }
 
 func TestStoreMaintenanceCullsDisabledPluginTables(t *testing.T) {
@@ -463,28 +463,33 @@ func TestRollupAfterARestartNeitherRepeatsNorSkipsABucket(t *testing.T) {
 	assert.Equal(t, []int64{rollupBase, rollupBase + 10*60_000}, []int64{rows[0].CapturedAt, rows[1].CapturedAt})
 }
 
-func TestRollupAveragesContainersByStableIdentityAndPresence(t *testing.T) {
+// A container in a rollup is keyed by name, so one recreated under a new ID
+// stays one series with the newest record's ID and details, and is divided by
+// every row of the bucket, so one absent from a row counts as zero there.
+func TestRollupAveragesContainersByNameOverEveryRow(t *testing.T) {
 	store, err := OpenStore(t.Context(), t.TempDir(), Options{HistoryPlugins: []string{plugins.Containers}})
 	require.NoError(t, err)
 	defer store.Close()
 	insertRow(t, store, plugins.Containers, "1m", rollupBase, `[{"id":"c1","name":"web","image":"v1","cpu_percent":10,"memory_mb":100},{"id":"c2","name":"job","cpu_percent":50,"memory_mb":200}]`)
-	insertRow(t, store, plugins.Containers, "1m", rollupBase+60_000, `[{"id":"c1","name":"web","image":"v2","cpu_percent":30,"memory_mb":300}]`)
+	insertRow(t, store, plugins.Containers, "1m", rollupBase+60_000, `[{"id":"c3","name":"web","image":"v2","cpu_percent":30,"memory_mb":300}]`)
 
 	require.NoError(t, store.Rollup(t.Context(), time.UnixMilli(rollupBase+10*60_000)))
 	rows := tierRows(t, store, plugins.Containers, "10m")
 	require.Len(t, rows, 1)
 	var records []struct {
 		ID    string  `json:"id"`
+		Name  string  `json:"name"`
 		Image string  `json:"image"`
 		Cpu   float64 `json:"cpu_percent"`
 	}
 	require.NoError(t, json.Unmarshal(rows[0].Stats, &records))
 	require.Len(t, records, 2)
-	assert.Equal(t, "c1", records[0].ID)
-	assert.Equal(t, "v2", records[0].Image, "latest metadata should be retained")
-	assert.InDelta(t, 20, records[0].Cpu, 0.001)
-	assert.Equal(t, "c2", records[1].ID)
-	assert.InDelta(t, 50, records[1].Cpu, 0.001, "an absent entity is not a zero sample")
+	assert.Equal(t, "c2", records[0].ID)
+	assert.InDelta(t, 25, records[0].Cpu, 0.001, "a container absent from a row counts as zero there")
+	assert.Equal(t, "c3", records[1].ID, "a recreated container keeps its newest ID")
+	assert.Equal(t, "web", records[1].Name)
+	assert.Equal(t, "v2", records[1].Image, "latest metadata should be retained")
+	assert.InDelta(t, 20, records[1].Cpu, 0.001)
 }
 
 func TestRecoverableStoreOpenErrorMatchesMattnCodes(t *testing.T) {

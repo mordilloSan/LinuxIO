@@ -98,15 +98,23 @@ export const SynchronizedHistoryAreaChart = (
 };
 
 // The selected range is an explicit time window over the stored tier; the
-// limit fits the longest one, 30 days of hourly rows (720), and still bounds
-// the request when the retention is longer.
-const HISTORY_REQUEST_LIMIT = 750;
+// limit fits the most rows one reads, a day of minute rows at the shortest
+// collector interval (15 s: 5,760), and still bounds the 30-day range when the
+// retention is longer.
+const HISTORY_REQUEST_LIMIT = 6000;
 
 export const rangeById = (id: HistoryRangeId): HistoryRange =>
   HISTORY_RANGES.find((range) => range.id === id) ?? HISTORY_RANGES[0];
 
-export const historyRequest = (range: HistoryRange) => ({
-  resolution: range.resolution,
+/**
+ * The request for range's window. `rollup` reads the range's rolled-up tier,
+ * for a card whose rows are too large for a day of minute rows (containers).
+ */
+export const historyRequest = (
+  range: HistoryRange,
+  { rollup = false }: { rollup?: boolean } = {},
+) => ({
+  resolution: rollup ? range.rollupResolution : range.resolution,
   window_ms: range.windowMs,
   limit: HISTORY_REQUEST_LIMIT,
 });

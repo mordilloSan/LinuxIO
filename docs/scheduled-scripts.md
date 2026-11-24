@@ -58,7 +58,6 @@ Group=<account's group>
 TimeoutStartSec=<timeout>s
 TimeoutStopSec=15s
 KillMode=control-group
-NoNewPrivileges=yes
 UMask=0077
 ExecStart=:/usr/bin/bash <script path> <arguments>
 StandardOutput=journal
@@ -78,6 +77,16 @@ What follows from that:
   `AccuracySec=1ms` stops systemd from grouping runs into its default
   one-minute window. Neither is a real-time promise.
 - systemd ends a run that passes its timeout, with every process it started.
+- There is no `NoNewPrivileges=`: a script can use `sudo`, `su`, a setuid
+  program, or a tool its distribution confines with an AppArmor profile change
+  on exec (`wg-quick` on Ubuntu 26.04, which the flag made fail with
+  "Operation not permitted"), as it could from cron. Only a sudo session
+  creates or edits a schedule, and the script has the rights of any process of
+  its account; a script run as a service account (`www-data`) that runs code
+  others control can therefore reach setuid programs too, so pick the account
+  with that in mind. Earlier releases wrote `NoNewPrivileges=yes`; the package's
+  post-install step deletes that line from the saved units, so they match what
+  a save writes and Run now accepts them.
 - The arguments are a fixed list, each written as one unit word. The script is
   the administrator's program; nothing from a request is pasted into a command
   line.
