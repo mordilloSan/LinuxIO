@@ -2534,6 +2534,7 @@ export interface NetworkInterface {
   ipv4_method?: string;
   log_unit?: string;
   mac: string;
+  master?: string;
   mtu: number;
   name: string;
   operstate: string;

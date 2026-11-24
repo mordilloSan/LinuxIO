@@ -76,14 +76,20 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
   const selectDetails = useCallback(
     (interfaces: NetworkInterface[]) => {
       const current = resolveInterface(filterInterfaces(interfaces), selected);
+      if (!current) return null;
 
-      return current
-        ? {
-            ipv4: current.ipv4?.length ? current.ipv4.join(", ") : "None",
-            mac: current.mac,
-            speed: current.speed,
-          }
-        : null;
+      // A bridge port carries no address: the host's are on its bridge,
+      // which the filter above leaves out of the list.
+      const ipv4 = current.ipv4?.length
+        ? current.ipv4
+        : interfaces.find((iface) => iface.name === current.master)?.ipv4;
+
+      return {
+        ipv4: ipv4?.length ? ipv4.join(", ") : "None",
+        mac: current.mac,
+        master: current.master,
+        speed: current.speed,
+      };
     },
     [selected],
   );
@@ -104,6 +110,9 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
     <DashboardStatRows
       rows={[
         { label: "IPv4", value: details.ipv4 },
+        ...(details.master
+          ? [{ label: "Port of", value: details.master }]
+          : []),
         { label: "MAC", value: details.mac },
         { label: "Speed", value: details.speed },
       ]}
