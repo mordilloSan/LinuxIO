@@ -135,7 +135,7 @@ for the hooks. What a schedule reports (`notify`: failures or every run) is in
 
 ## The page
 
-Services, Schedules tab (`frontend/src/routes/_authenticated/services/-components/SchedulesTab.tsx`).
+Services, Scheduled tasks tab (`frontend/src/routes/_authenticated/services/-components/SchedulesTab.tsx`).
 The editor offers daily and weekly times and hourly, minute and second presets,
 and keeps a custom calendar expression when one is edited. A new schedule
 starts as daily at 03:00 UTC.
