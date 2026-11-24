@@ -73,6 +73,10 @@ type Config struct {
 	// Peer reads the peer credentials of a connection; nil means
 	// peercred.Read. Tests replace it.
 	Peer func(*net.UnixConn) (peercred.Cred, error)
+	// Replaced reports whether the program this host runs is no longer the
+	// file at its path, as after a package update; nil means
+	// executableReplaced.
+	Replaced func() bool
 }
 
 // Host serves one uid's bridges. Serve creates it.
@@ -127,6 +131,9 @@ func newHost(cfg Config) *Host {
 	}
 	if cfg.Notifications == nil {
 		cfg.Notifications = alerts.DefaultNotifications
+	}
+	if cfg.Replaced == nil {
+		cfg.Replaced = executableReplaced()
 	}
 	h := &Host{cfg: cfg, sessions: make(map[*relay.YamuxSession]struct{}), owners: make(map[string]ownerClaim)}
 	h.rec = &recorder{h: h, jobs: make(map[string]*job)}
@@ -298,6 +305,15 @@ func (h *Host) hello(ymux *relay.YamuxSession) (*session.Session, *bridgeipc.Rou
 	if err != nil {
 		slog.Warn("job host refused a bridge hello", "error", err)
 		refuseHello(stream, "unsupported jobs protocol", 426)
+		return nil, nil, false
+	}
+	if h.cfg.Replaced() {
+		// An update that kept the protocol: the bridge is of the new build
+		// and its jobs must run the new handlers, so it waits, as for a
+		// protocol change, until this host idles out and the next
+		// connection starts the new binary.
+		slog.Debug("job host refused a bridge hello", "reason", "binary replaced")
+		refuseHello(stream, "job host binary replaced", 426)
 		return nil, nil, false
 	}
 	sess := &session.Session{
@@ -835,4 +851,44 @@ func (h *Host) alertLongJob(ctx context.Context, r jobs.Record) {
 		return
 	}
 	h.alert(ctx, r, alerts.SeverityInfo, "finished", alerts.RanFor(ran))
+}
+
+// executableReplaced returns a check of whether the file this process was
+// started from is still the one at its path. A package update renames a new
+// file over it, so the path then names another file, or none after a
+// removal. When the running file cannot be read or compared at start the
+// check always answers no, and a host keeps serving as it did before the
+// check existed.
+func executableReplaced() func() bool {
+	running, err := os.Stat("/proc/self/exe")
+	if err != nil {
+		slog.Debug("job host cannot read its executable", "error", err)
+		return func() bool { return false }
+	}
+	// os.Executable drops the " (deleted)" the kernel adds to a removed file.
+	path, err := os.Executable()
+	if err != nil {
+		slog.Debug("job host cannot read its executable path", "error", err)
+		return func() bool { return false }
+	}
+	replaced := replacedAt(running, path)
+	if replaced() {
+		// The host was just started from the file at its path, so the two
+		// cannot be told apart here; a check that answered yes from the
+		// start would refuse every bridge until the host is stopped.
+		slog.Debug("job host cannot compare its executable with the file at its path", "path", path)
+		return func() bool { return false }
+	}
+	return replaced
+}
+
+// replacedAt reports whether path no longer names the file running is.
+func replacedAt(running os.FileInfo, path string) func() bool {
+	return func() bool {
+		current, err := os.Stat(path)
+		if err != nil {
+			return errors.Is(err, fs.ErrNotExist)
+		}
+		return !os.SameFile(running, current)
+	}
 }

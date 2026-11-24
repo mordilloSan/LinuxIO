@@ -191,7 +191,8 @@ The first stream of a connection is `jobs.hello`: the protocol number and the
 session facts (username, uid, gid, privileged, `session_ref`). The host has
 already read the peer's uid with `SO_PEERCRED` and closed the connection
 unless it is the host's own uid; a hello of another protocol is refused with
-`426`. The hello's facts name the job's owner for listing, history and
+`426`, and so is every hello once the host's own binary has been replaced
+([Updates](#updates)). The hello's facts name the job's owner for listing, history and
 alerts; they are not authorization. On the root host, whose only peers are
 root, the hello's user also decides who the handlers act for: the host builds
 one router per connection with that user's identity and config store, as
@@ -602,7 +603,16 @@ unattended upgrade ends the same way, and a LinuxIO that was stopped stays
 stopped.
 
 The hello carries `jobs.Protocol`. A host of another protocol refuses it, and
-to the bridge that is an older host an update waits for. A refused hello does
+to the bridge that is an older host an update waits for. A host whose binary
+an update replaced refuses every new hello the same way, whatever its
+protocol: most updates keep the protocol and change handlers, and a host that
+went on serving the new build's bridges would run the old handlers for as
+long as someone stays signed in (an update installed from the Updates page
+ends with the administrator signing in again within the minute). The host
+compares the file it was started from (`/proc/self/exe`) with the file now at
+its path (`executableReplaced` in `backend/bridge/internal/jobshost`); a
+package writes the new file beside the old and renames it over, so the path
+names another file. A refused hello does
 not count as a connected bridge, so the older host exits 60 s after its last
 job and its last bridge of its own build, and the bridge's next attempt, at
 most 30 s later, starts the new host. Until then:

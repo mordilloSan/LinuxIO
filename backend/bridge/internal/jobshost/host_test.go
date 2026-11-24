@@ -404,6 +404,77 @@ func TestHostRejectsProtocolMismatch(t *testing.T) {
 	}
 }
 
+func TestHostRejectsBridgeAfterBinaryReplaced(t *testing.T) {
+	var replaced atomic.Bool
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Replaced = replaced.Load
+	})
+	th.start()
+
+	// Until the update, the host serves bridges of its protocol.
+	th.connect()
+	// The host answers the hello before it counts the bridge in.
+	waitFor(t, "the bridge to be counted", func() bool {
+		bridges, _ := th.host.counts()
+		return bridges == 1
+	})
+
+	replaced.Store(true)
+	sess := th.dial()
+	if result := hello(t, sess, jobs.Protocol); result.Status != "error" || result.Code != 426 || result.Error != "job host binary replaced" {
+		t.Fatalf("hello result = %#v, want 426 job host binary replaced", result)
+	}
+	select {
+	case <-sess.CloseChan():
+	case <-time.After(ioTimeout):
+		t.Fatal("session still open after the binary was replaced")
+	}
+	// The refused bridge does not keep the host up; the first one still does.
+	if bridges, _ := th.host.counts(); bridges != 1 {
+		t.Fatalf("bridges = %d, want 1", bridges)
+	}
+}
+
+func TestReplacedAtFollowsTheFileAtThePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "linuxio-bridge")
+	if err := os.WriteFile(path, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	running, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced := replacedAt(running, path)
+	if replaced() {
+		t.Fatal("replaced before the update")
+	}
+
+	// A package update writes the new file beside the old and renames it over.
+	next := path + ".dpkg-new"
+	if err := os.WriteFile(next, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(next, path); err != nil {
+		t.Fatal(err)
+	}
+	if !replaced() {
+		t.Fatal("not replaced after a new file was renamed over the path")
+	}
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if !replaced() {
+		t.Fatal("not replaced after the file was removed")
+	}
+}
+
+func TestExecutableReplacedIsFalseForTheRunningBinary(t *testing.T) {
+	if executableReplaced()() {
+		t.Fatal("the running test binary reads as replaced")
+	}
+}
+
 func TestHostIdleExitAfterGrace(t *testing.T) {
 	base := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 	var offset atomic.Int64
