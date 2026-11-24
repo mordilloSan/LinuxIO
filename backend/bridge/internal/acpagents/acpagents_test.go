@@ -44,12 +44,19 @@ func TestClaudeUsesTheInstalledClaudeCode(t *testing.T) {
 	require.Contains(t, agent.InstallArgs, "--omit=optional")
 }
 
-func TestClaudeKeepsAProfileOfItsOwn(t *testing.T) {
-	agent, ok := acpagents.Lookup("claude")
-	require.True(t, ok)
+func TestEveryAgentKeepsAProfileOfItsOwn(t *testing.T) {
 	// Without it a chat signs in, and reads its settings and memory, as the
-	// user's Claude Code in a terminal or an editor does.
-	require.Equal(t, "CLAUDE_CONFIG_DIR", agent.ProfileEnv)
+	// same agent in the user's terminal or editor does.
+	for id, env := range map[string]string{
+		"claude": "CLAUDE_CONFIG_DIR",
+		"gemini": "GEMINI_CLI_HOME",
+		"codex":  "CODEX_HOME",
+	} {
+		agent, ok := acpagents.Lookup(id)
+		require.True(t, ok, id)
+		require.Equal(t, env, agent.ProfileEnv, id)
+	}
+	require.ElementsMatch(t, []string{"claude", "codex", "gemini"}, acpagents.IDs(), "a new agent needs its profile variable here")
 }
 
 func currentUser(t *testing.T) session.User {

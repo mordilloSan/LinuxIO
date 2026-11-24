@@ -69,13 +69,14 @@ after a change that issues ioctls).
   remembers its last run and runs at once only when one was missed, but it
   turns the interval setting into a schedule. **checked**
 
-- Whether Gemini CLI and Codex get a LinuxIO profile as Claude Code has
-  (`ProfileEnv` in `backend/bridge/internal/acpagents`): today their sign-in,
-  settings and history are the ones the user's terminal uses. Codex reads
-  `CODEX_HOME`; neither variable has been tried through its ACP adapter, and
-  each needs a sign-in at its vendor to check.
-
 ## Needs a real machine or a measurement
+
+- The Gemini CLI and Codex profiles (`GEMINI_CLI_HOME`, `CODEX_HOME`,
+  [Assistant](../AI-assistant.md#profile)) were read from the pinned packages
+  and not run: a sign-in at each vendor from the Assistant should land in
+  `~/.local/share/linuxio/profiles/<id>` and leave `~/.gemini` and `~/.codex`
+  as they were, and whether a chat in the home folder reads those two as
+  project settings is not known.
 
 - The automatic btrfs rebuild onto a disk that comes back
   ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio

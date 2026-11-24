@@ -71,13 +71,23 @@ An agent with no entry gets LinuxIO's starting point, which exists only for
 
 ## Profile
 
-Claude Code started by LinuxIO keeps its state in a folder of its own,
-`~/.local/share/linuxio/profiles/claude`, which the bridge names in
-`CLAUDE_CONFIG_DIR` (`ProfileEnv`, `ProfileDir` and `Profile` in `acpagents`).
-The same user's `claude` in a terminal or an editor extension uses
-`~/.claude`, and the two would otherwise be one: signing out in the editor
-signed the Assistant out, and the model saved there was the Assistant's. In
-the profile, and so the Assistant's alone, are:
+Every agent started by LinuxIO keeps its state in a folder of its own,
+`~/.local/share/linuxio/profiles/<id>`, which the bridge names in the agent's
+variable (`ProfileEnv`, `ProfileDir` and `Profile` in `acpagents`):
+
+| Id | Variable | State in | The user's own copy uses |
+|----|----------|----------|--------------------------|
+| `claude` | `CLAUDE_CONFIG_DIR` | `profiles/claude` | `~/.claude` |
+| `gemini` | `GEMINI_CLI_HOME` | `profiles/gemini/.gemini` | `~/.gemini` |
+| `codex` | `CODEX_HOME` | `profiles/codex` | `~/.codex` |
+
+Gemini CLI takes its variable as a home and makes `.gemini` inside it; Codex
+runs inside `codex-acp`, which hands its environment on to the Codex
+app-server it starts. Without the profile the agent in the Assistant and the
+same agent in a terminal or an editor would be one: signing out in the editor
+signed the Assistant out, and the model saved there was the Assistant's.
+
+For Claude Code, in the profile, and so the Assistant's alone, are:
 
 - the sign-in (`.credentials.json`), which may be another account than the
   terminal's;
@@ -87,23 +97,28 @@ the profile, and so the Assistant's alone, are:
 - chat history, so `session/list` offers only chats of the Assistant;
 - memory (`projects/*/memory/`) and caches.
 
-Every process LinuxIO starts for the agent gets the variable: the chat and the
+Every process LinuxIO starts for an agent gets its variable: the chat and the
 Settings probe (`assistant.open`), the Terminal sign-in and the
-`claude plugin` commands. A start without it would read and write `~/.claude`.
+`claude plugin` commands. A start without it would read and write the user's
+own folder.
 The pane relay hands its environment on to the CLI. The Terminal sign-in runs
 through the user's login shell, so there the variables are set by
 `/usr/bin/env` after the shell's start-up files: a `~/.bashrc` that exports
-`CLAUDE_CONFIG_DIR` for the user's own Claude Code does not move the sign-in
-away from the profile the chat reads.
+`CLAUDE_CONFIG_DIR`, `GEMINI_CLI_HOME` or `CODEX_HOME` for the user's own
+agent does not move the sign-in away from the profile the chat reads.
 
 `Profile` makes the folder with `install -d -m 0700` run as the session user,
 which also sets that mode again on a folder that exists: it holds a sign-in
 and chats, and the bridge, which may be root, creates nothing in a home the
-user controls. It is beside the install folder (`agents/claude`), which an
+user controls. It is beside the install folder (`agents/<id>`), which an
 install replaces, so reinstalling the agent keeps the profile. LinuxIO copies
-nothing into it from `~/.claude`: the Assistant starts signed out, with no
-history, plugins or memory, and what the user's own Claude Code holds stays
-where it is.
+nothing into it from the user's own folder: the Assistant starts signed out,
+with no history, settings, plugins or memory, and what the user's own agent
+holds stays where it is. Gemini CLI also keeps its list of trusted folders in
+the profile, so the home folder a chat works in starts untrusted there, and
+Gemini CLI leaves out MCP servers and the auto-approval modes until the folder
+is trusted from its own prompt in the Terminal sign-in. `codex-acp` marks the
+folder of every session it starts as trusted itself.
 
 A chat works in the user's home, and Claude Code reads `.claude/` in the
 folder it works in as that folder's project settings: there, `~/.claude`, the
@@ -132,9 +147,13 @@ Known limits:
 - The Terminal sign-in is an interactive `claude` in the home folder, which
   loads project settings as any terminal session does; it signs in and is
   closed.
-
-Gemini CLI and Codex have no profile (`ProfileEnv` is empty): they keep their
-usual folders in the user's home, shared with their use outside LinuxIO.
+- Gemini CLI and Codex have no option like `settingSources`: in a trusted
+  home folder (for Codex, always) they may read `~/.gemini/settings.json` and
+  `~/.codex/config.toml`, the user's own settings, as the settings of the
+  project the chat works in.
+- Gemini CLI 0.67.0 reads one setting, `advanced.autoConfigureMemory`, from
+  `$GEMINI_CLI_HOME/settings.json` rather than from `.gemini` inside it, so
+  that setting in the profile's `settings.json` does not take effect.
 
 ## Installing agents
 

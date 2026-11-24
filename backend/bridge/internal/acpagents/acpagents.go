@@ -37,12 +37,13 @@ type Agent struct {
 	// Both are empty for a self-contained package.
 	CLI    string
 	CLIEnv string
-	// ProfileEnv is the variable that names the folder the agent keeps its
-	// sign-in, settings, memory, chat history and caches in. LinuxIO sets it
-	// to a folder of its own (ProfileDir), so the Assistant shares none of
-	// them with the same agent run from a terminal or an editor. Empty for an
-	// agent LinuxIO gives no profile, which keeps its usual folder in the
-	// user's home.
+	// ProfileEnv is the variable that names where the agent keeps its
+	// sign-in, settings, memory, chat history and caches. LinuxIO sets it to
+	// a folder of its own (ProfileDir), so the Assistant shares none of them
+	// with the same agent run from a terminal or an editor. Gemini CLI takes
+	// the folder as a home and keeps its state in .gemini inside it; the
+	// others keep it in the folder itself. Empty for an agent LinuxIO gives
+	// no profile, which keeps its usual folder in the user's home.
 	ProfileEnv string
 	// Panes marks a CLI that serves plugin panes over stream-JSON control
 	// requests. The assistant then runs linuxio-claude-relay in its place, so
@@ -82,15 +83,18 @@ var (
 			Panes:       true,
 		},
 		"gemini": {
-			Package: "@google/gemini-cli",
-			Version: "0.67.0",
-			Bin:     "gemini",
-			Args:    []string{"--acp"},
+			Package:    "@google/gemini-cli",
+			Version:    "0.67.0",
+			Bin:        "gemini",
+			Args:       []string{"--acp"},
+			ProfileEnv: "GEMINI_CLI_HOME",
 		},
 		"codex": {
 			Package: "@agentclientprotocol/codex-acp",
 			Version: "2.6.0",
 			Bin:     "codex-acp",
+			// The adapter hands its environment on to the Codex it runs.
+			ProfileEnv: "CODEX_HOME",
 		},
 	}
 )
