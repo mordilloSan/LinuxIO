@@ -247,29 +247,23 @@ test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Pi
 	@$(vm_all) test "$(vm_test_dir)"
 
 # The update build the update specs publish as package B (jobs-phase5a.spec.ts,
-# jobs-update.spec.ts): this tree with jobs.Protocol one higher, so a job host
-# of the installed build is an older one to its bridge, and a version of its
-# own (GIT_VERSION with +update), which `linuxio --version` reports, so the
-# specs see which build runs. A Go overlay of record.go raises the protocol
-# without touching the tree; the build is a copy of the plain one with its Go
-# binaries built again (linuxio-auth, in C, is the plain one's). docs/jobs.md,
-# Testing.
+# jobs-update.spec.ts): this tree with a version of its own (GIT_VERSION with
+# +update), which `linuxio --version` reports, so the specs see which build
+# runs. It keeps jobs.Protocol, as most releases do, so a job host of the
+# installed build refuses its bridge only because the update replaced the
+# host's binary. The build is a copy of the plain one with its Go binaries
+# built again (linuxio-auth, in C, is the plain one's). docs/jobs.md, Testing.
 vm_update_dir := $(cache_dir)/vm-update-build
 vm_update_build := $(vm_update_dir)/build
-vm_record_go := $(backend_dir)/common/jobs/record.go
 
 ##@ Test VM|yellow
-vm-update-build: build-nocheck ## Build this tree with jobs.Protocol one higher into .cache/vm-update-build/build, the build the update specs install
+vm-update-build: build-nocheck ## Build this tree again with a version of its own into .cache/vm-update-build/build, the build the update specs install
 	@set -e
 	@mkdir -p "$(vm_update_dir)"
-	@perl -pe 's/^(\tProtocol\s+=\s+)(\d+)$$/$$1 . ($$2 + 1)/e' "$(vm_record_go)" >"$(vm_update_dir)/record.go"
-	@if cmp -s "$(vm_record_go)" "$(vm_update_dir)/record.go"; then echo "vm-update-build: no jobs.Protocol line to raise in $(vm_record_go)" >&2; exit 1; fi
-	@printf '{"Replace":{"%s":"%s"}}\n' "$(vm_record_go)" "$(vm_update_dir)/record.go" >"$(vm_update_dir)/overlay.json"
 	@rm -rf "$(vm_update_build)"
 	@cp -a "$(bin_dir)" "$(vm_update_build)" && rm -rf "$(vm_update_build)/packages" "$(vm_update_build)/repo"
 	@$(MAKE) --no-print-directory build-go-binaries BIN_DIR="$(vm_update_build)" SKIP_ENSURE_GO=1 \
-	  GIT_VERSION="$(GIT_VERSION)+update" \
-	  GO_BUILD_EXTRA_ENV="GOFLAGS='-buildvcs=false -overlay=$(vm_update_dir)/overlay.json'"
+	  GIT_VERSION="$(GIT_VERSION)+update"
 
 # $(call vm_browser_specs,NUMBERS,ARGS[,ENV]) runs Playwright with ARGS on the
 # VMs NUMBERS, one worker for each: a worker takes the next spec file and keeps

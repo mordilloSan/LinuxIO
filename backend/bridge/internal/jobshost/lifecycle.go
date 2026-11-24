@@ -266,18 +266,22 @@ func (h *Host) leave() {
 }
 
 // idle reports whether the host has had no bridge and no running job for
-// IdleExit, sampled once a tick. Deciding to exit closes the host to new
-// bridges under the same lock, so none can join and start a job meanwhile.
+// IdleExit, or has neither once an update replaced its binary, sampled once a
+// tick. The jobs are counted under the lock (the recorder's lock inside the
+// host's, never the other way round): a bridge leaves only after its streams
+// end, so every job it started counts by then. Deciding to exit
+// closes the host to new bridges under the same lock, so none can join and
+// start a job meanwhile.
 func (h *Host) idle() bool {
-	running := h.rec.running()
 	now := h.cfg.Now()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.bridges > 0 || running > 0 {
+	if h.bridges > 0 || h.rec.running() > 0 {
 		h.lastBusy = now
 		return false
 	}
-	if now.Sub(h.lastBusy) < h.cfg.IdleExit {
+	// A replaced host refuses every new bridge, so waiting serves no one.
+	if now.Sub(h.lastBusy) < h.cfg.IdleExit && !h.cfg.Replaced() {
 		return false
 	}
 	h.closing = true

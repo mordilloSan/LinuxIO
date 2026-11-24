@@ -310,9 +310,10 @@ func (h *Host) hello(ymux *relay.YamuxSession) (*session.Session, *bridgeipc.Rou
 	if h.cfg.Replaced() {
 		// An update that kept the protocol: the bridge is of the new build
 		// and its jobs must run the new handlers, so it waits, as for a
-		// protocol change, until this host idles out and the next
+		// protocol change, until this host idles out, which it does as soon
+		// as it has no job and no bridge of its own build, and the next
 		// connection starts the new binary.
-		slog.Debug("job host refused a bridge hello", "reason", "binary replaced")
+		slog.Warn("job host refused a bridge hello", "error", "binary replaced")
 		refuseHello(stream, "job host binary replaced", 426)
 		return nil, nil, false
 	}

@@ -446,7 +446,7 @@ make vm-test-btrfs-integration
 make vm-stop                # shut the VMs down; what is installed stays
 make vm-reset               # revert every disk to "clean" and stop the VMs
 make vm-update              # upgrade the packages in "clean" and take the snapshot again
-make vm-update-build        # this tree with jobs.Protocol one higher and a version of its own, for the update checks
+make vm-update-build        # this tree again with a version of its own, for the update checks
 make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 

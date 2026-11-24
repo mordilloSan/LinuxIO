@@ -335,31 +335,30 @@ test("a user who is not an admin sees only their own jobs", async ({
   }
 });
 
-// The build in LINUXIO_VM_UPDATE_BUILD differs from the installed one in
-// jobs.Protocol, one higher, and its version: the update to it makes the
-// running root job host an older one to every new bridge, without stopping it
-// (docs/jobs.md, Updates). The test publishes it in the VM's signed repository
-// as the next version (linuxio-vm.sh repo-publish) and updates the package
-// from there with apt or dnf, as an administrator does from a shell; the
-// package restarts linuxio.target and leaves the job hosts alone.
-// `make vm-update-build` builds it from this tree with a Go overlay of
-// backend/common/jobs/record.go, and `make test-vm-browser` passes it. It
-// stays installed for the files after this one on the VM: a build that differs
-// only in the protocol and the version, with a host of its own once the older
-// one has exited.
+// The build in LINUXIO_VM_UPDATE_BUILD differs from the installed one in its
+// version only, as most releases do: the update to it replaces the binary of
+// the running root job host, which then refuses every new bridge, without
+// stopping it (docs/jobs.md, Updates). The test publishes it in the VM's
+// signed repository as the next version (linuxio-vm.sh repo-publish) and
+// updates the package from there with apt or dnf, as an administrator does
+// from a shell; the package restarts linuxio.target and leaves the job hosts
+// alone. `make vm-update-build` builds it from this tree, and
+// `make test-vm-browser` passes it. It stays installed for the files after
+// this one on the VM: a build that differs only in the version, with a host of
+// its own once the older one has exited.
 test("the update banner counts the jobs an update waits for", async ({
   page,
 }) => {
   const build = updateBuild();
   test.skip(
     build === "",
-    "needs LINUXIO_VM_UPDATE_BUILD: make vm-update-build builds this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
+    "needs LINUXIO_VM_UPDATE_BUILD: make vm-update-build builds this tree with a version of its own (docs/jobs.md, Testing)",
   );
   // The bounds of the waits below: an apt run 600 s, the scrub's start (with
   // the pool on a fresh VM) about 120 s, the sessions 30 s, the publish and
   // the update about 300 s, the banner and the first refused job about 60 s,
-  // the reads 10 s, the scrub's end 300 s, the second refused job 15 s, the
-  // two banner texts 30 s and 150 s: some 1615 s.
+  // the reads 10 s, the scrub's end 300 s, the older host's exit 30 s, the
+  // banner's end 90 s, the accepted job 30 s: some 1570 s.
   test.setTimeout(1_800_000);
   // After a dpkg run, apt runs needrestart, which restarted the job hosts
   // running a replaced binary and so interrupted their jobs (seen once in
@@ -410,13 +409,15 @@ test("the update banner counts the jobs an update waits for", async ({
       "LinuxIO was updated. New jobs wait for 1 running job to finish.",
       { timeout: 30_000 },
     );
-    // The older host refused the new bridge's hello on the protocol number.
+    // The older host refused the new bridge's hello because the update
+    // replaced its binary, not on the protocol, which the update kept.
     const refused = await vmSsh(
       "sudo journalctl -b -u linuxio-jobs@0.service -o cat --no-pager | grep -F 'job host refused a bridge hello' || true",
     );
-    expect(refused).toMatch(/protocol \d+, want \d+/);
-    const [, theirs, ours] = refused.match(/protocol (\d+), want (\d+)/) ?? [];
-    expect(Number(theirs), refused).toBe(Number(ours) + 1);
+    expect(refused).toContain(
+      "job host refused a bridge hello: binary replaced",
+    );
+    expect(refused).not.toMatch(/protocol \d+, want \d+/);
 
     await banner.getByRole("button", { name: "Show running jobs" }).click();
     const listed = banner.getByRole("listitem");
@@ -478,18 +479,19 @@ test("the update banner counts the jobs an update waits for", async ({
     ).toBe(true);
     await speed(0);
     await waitForJob(SCRUB, before, "completed", { timeout: 300_000 });
-    await expect(banner).toContainText(
-      "LinuxIO was updated. New jobs can start shortly.",
-      { timeout: 30_000 },
-    );
-    // Within the older host's idle minute, a new job is refused without a
-    // count.
-    await refuse("LinuxIO was updated; new jobs can start shortly");
-    expect(await hostPid(), "the older host refused it").toBe(olderHost);
-    // The older host exits a minute after its last job and bridge (a refused
-    // hello is no bridge); the relay tries again within 30 s (its backoff
-    // ends at 30 s), and the banner asks every 15 s: about 110 s at most.
-    await expect(banner).toBeHidden({ timeout: 150_000 });
+    // With its last job recorded and no bridge of its own build (a refused
+    // hello is no bridge), the older host exits within a second, without
+    // waiting out its idle minute.
+    await expect
+      .poll(hostPid, {
+        intervals: [1_000],
+        message: "the older host exits after its last job",
+        timeout: 30_000,
+      })
+      .not.toBe(olderHost);
+    // The relay tries again within 30 s (its backoff ends at 30 s), which
+    // starts a host of the new build, and the banner asks every 15 s.
+    await expect(banner).toBeHidden({ timeout: 90_000 });
     const newerHost = await hostPid();
     expect(newerHost, "a host of the new build runs").not.toBe("0");
     expect(newerHost).not.toBe(olderHost);
@@ -503,6 +505,10 @@ test("the update banner counts the jobs an update waits for", async ({
         "History is unavailable until the LinuxIO update finishes.",
       ),
     ).toHaveCount(0);
+    // The next job is accepted, and the new host runs it: a save is a
+    // mutation only a job host runs, and one this quick leaves no record.
+    await createSchedule(page, uniqueName("accepted"), "true");
+    expect(await hostPid(), "the new host ran it").toBe(newerHost);
   } finally {
     await speed(0);
   }
