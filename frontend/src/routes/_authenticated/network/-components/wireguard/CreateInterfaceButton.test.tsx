@@ -41,6 +41,7 @@ const firstPeer: Peer = {
 const wg0: WireGuardInterface = {
   address: "10.10.20.0/24",
   dns: [],
+  egressNic: "eth0",
   forwardingOff: false,
   hooks: { PreUp: [], PostUp: [], PreDown: [], PostDown: [] },
   host: "",

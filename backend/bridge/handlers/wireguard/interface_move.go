@@ -18,43 +18,65 @@ import (
 // follow both: their card is the new card and their source the new address.
 func applyTunnelMove(ctx context.Context, cfg *WireGuardConfig, req apischema.WireGuardUpdateInterfaceRequest) ([]peerFile, error) {
 	egress, source, hasNAT := natRules(*cfg)
-	newEgress, newSource := egress, source
-	if req.EgressNic != nil && strings.TrimSpace(*req.EgressNic) != egress {
-		nic := strings.TrimSpace(*req.EgressNic)
-		if err := validateInterfaceName(nic); err != nil {
-			return nil, fmt.Errorf("%w: invalid network card: %w", bridgeipc.ErrInvalidArgs, err)
-		}
-		if !hasNAT {
-			return nil, fmt.Errorf("%w: %s has no NAT lines written by LinuxIO to move to %s: edit its PostUp and PostDown lines", bridgeipc.ErrConflict, req.Name, nic)
-		}
-		newEgress = nic
+	newEgress, err := movedEgress(req, egress, hasNAT)
+	if err != nil {
+		return nil, err
 	}
-
-	var files []peerFile
-	if req.Address != nil {
-		address, to, err := parseServerAddress(*req.Address)
-		if err != nil {
-			return nil, err
-		}
-		if len(cfg.Address) == 0 || address != cfg.Address[0] {
-			if other := interfaceUsingSubnet(req.Name, address); other != "" {
-				return nil, fmt.Errorf("%w: %s overlaps the subnet of %s", bridgeipc.ErrConflict, address, other)
-			}
-			peers, err := loadExportedPeers(ctx, req.Name)
-			if err != nil {
-				return nil, err
-			}
-			if files, err = renumber(cfg, peers, address, to); err != nil {
-				return nil, err
-			}
-			newSource = address
-		}
+	files, newSource, err := moveAddress(ctx, cfg, req, source)
+	if err != nil {
+		return nil, err
 	}
-
 	if hasNAT && (newEgress != egress || newSource != source) {
 		replaceNATHooks(cfg, egress, source, newEgress, newSource)
 	}
 	return files, nil
+}
+
+// movedEgress returns the card the request moves the NAT lines to, or
+// egress when it moves none.
+func movedEgress(req apischema.WireGuardUpdateInterfaceRequest, egress string, hasNAT bool) (string, error) {
+	if req.EgressNic == nil {
+		return egress, nil
+	}
+	nic := strings.TrimSpace(*req.EgressNic)
+	if nic == egress {
+		return egress, nil
+	}
+	if err := validateNICName(nic); err != nil {
+		return "", fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	if !hasNAT {
+		return "", fmt.Errorf("%w: %s has no NAT lines written by LinuxIO to move to %s: edit its PostUp and PostDown lines", bridgeipc.ErrConflict, req.Name, nic)
+	}
+	return nic, nil
+}
+
+// moveAddress renumbers cfg into the request's address and returns the peer
+// files to write and the NAT source for the address, or source when the
+// address stays.
+func moveAddress(ctx context.Context, cfg *WireGuardConfig, req apischema.WireGuardUpdateInterfaceRequest, source string) ([]peerFile, string, error) {
+	if req.Address == nil {
+		return nil, source, nil
+	}
+	address, to, err := parseServerAddress(*req.Address)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(cfg.Address) > 0 && address == cfg.Address[0] {
+		return nil, source, nil
+	}
+	if other := interfaceUsingSubnet(req.Name, address); other != "" {
+		return nil, "", fmt.Errorf("%w: %s overlaps the subnet of %s", bridgeipc.ErrConflict, address, other)
+	}
+	peers, err := loadExportedPeers(ctx, req.Name)
+	if err != nil {
+		return nil, "", err
+	}
+	files, err := renumber(cfg, peers, address, to)
+	if err != nil {
+		return nil, "", err
+	}
+	return files, address, nil
 }
 
 // parseServerAddress reads a new tunnel address: an IPv4 subnet LinuxIO
@@ -134,25 +156,9 @@ func renumber(cfg *WireGuardConfig, peers []PeerInfo, server string, to *ipManag
 		used = append(used, sections[i])
 	}
 
-	files := make([]peerFile, len(peers))
-	var homeless []int
-	for i, peer := range peers {
-		files[i] = peer.peerFile
-		moved, ok := move.host(peer.Address)
-		if !ok || to.buildUsedIPMap(used)[to.extractHostOffset(moved)] {
-			homeless = append(homeless, i)
-			continue
-		}
-		files[i].Address = moved
-		used = append(used, PeerConfig{AllowedIPs: []string{moved}})
-	}
-	for _, i := range homeless {
-		address, _, err := to.findNextAvailable(used)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %s has no room for the %d peers of the interface", bridgeipc.ErrConflict, to.network(), len(peers))
-		}
-		files[i].Address = address
-		used = append(used, PeerConfig{AllowedIPs: []string{address}})
+	files, err := movePeerAddresses(peers, move, used)
+	if err != nil {
+		return nil, err
 	}
 
 	cfg.Peers = sections
@@ -170,6 +176,45 @@ func renumber(cfg *WireGuardConfig, peers []PeerInfo, server string, to *ipManag
 	}
 	cfg.DNS = move.hosts(cfg.DNS)
 	cfg.Address = append([]string{server}, cfg.Address[1:]...)
+	return files, nil
+}
+
+// movePeerAddresses gives each exported peer its address in the new subnet,
+// beside the host numbers used already holds. A peer file a move that failed
+// part-way already rewrote keeps its address first, as its device may have
+// it; then each peer keeps its host number where it is free, and the rest
+// take the first free ones.
+func movePeerAddresses(peers []PeerInfo, move subnetMove, used []PeerConfig) ([]peerFile, error) {
+	files := make([]peerFile, len(peers))
+	claim := func(i int, address string) bool {
+		if move.to.buildUsedIPMap(used)[move.to.extractHostOffset(address)] {
+			return false
+		}
+		files[i].Address = address
+		used = append(used, PeerConfig{AllowedIPs: []string{address}})
+		return true
+	}
+	var pending, homeless []int
+	for i, peer := range peers {
+		files[i] = peer.peerFile
+		_, inOld := move.host(peer.Address)
+		if inOld || !move.moved(peer.Address) || !claim(i, peer.Address) {
+			pending = append(pending, i)
+		}
+	}
+	for _, i := range pending {
+		moved, ok := move.host(peers[i].Address)
+		if !ok || !claim(i, moved) {
+			homeless = append(homeless, i)
+		}
+	}
+	for _, i := range homeless {
+		address, _, err := move.to.findNextAvailable(used)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s has no room for the %d peers of the interface", bridgeipc.ErrConflict, move.to.network(), len(peers))
+		}
+		claim(i, address)
+	}
 	return files, nil
 }
 
@@ -194,6 +239,13 @@ func (m subnetMove) host(value string) (string, bool) {
 		moved = strings.TrimSuffix(moved, "/32")
 	}
 	return moved, true
+}
+
+// moved reports whether value is already a peer address of the new subnet.
+func (m subnetMove) moved(value string) bool {
+	_, suffix, _ := strings.Cut(strings.TrimSpace(value), "/")
+	offset := m.to.extractHostOffset(value)
+	return suffix == "32" && offset >= minHostOffset && offset <= m.to.maxHost
 }
 
 // hosts moves each address of values that host can, and keeps the rest.

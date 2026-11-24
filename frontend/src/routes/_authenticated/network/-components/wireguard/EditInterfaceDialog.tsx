@@ -114,7 +114,10 @@ const EditInterfaceDialog = ({
     enabled: open && iface.egressNic !== "",
   });
   const nicOptions = getEgressNICOptions(networkData);
-  if (!nicOptions.some((option) => option.name === iface.egressNic)) {
+  if (
+    iface.egressNic &&
+    !nicOptions.some((option) => option.name === iface.egressNic)
+  ) {
     nicOptions.unshift({
       name: iface.egressNic,
       label: `${iface.egressNic} (current)`,
@@ -142,7 +145,8 @@ const EditInterfaceDialog = ({
   const portValue = parsePort(port);
   const portError =
     portValue === null || portValue < MIN_PORT || portValue > MAX_PORT;
-  const invalid = addressError || hostError || dnsError || mtuError || portError;
+  const invalid =
+    addressError || hostError || dnsError || mtuError || portError;
 
   // Only fields that differ from the interface are sent; absent fields are
   // unchanged on the backend.
@@ -205,8 +209,8 @@ const EditInterfaceDialog = ({
           />
           {addressChanged && !addressError && (
             <AppAlert severity="warning">
-              Every device gets a new address: after saving, import each
-              device's configuration again (scan its QR code).
+              Every device gets a new address: after saving, import the
+              configuration of each device again (scan its QR code).
             </AppAlert>
           )}
           {iface.egressNic && (

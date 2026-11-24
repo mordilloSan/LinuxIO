@@ -295,6 +295,34 @@ func TestUpdateInterfaceEgressNicMovesTheNATLines(t *testing.T) {
 	}
 }
 
+func TestUpdateInterfaceEgressNicTakesAVLANCard(t *testing.T) {
+	setupTwoPeers(t)
+
+	updateInterface(t, apischema.WireGuardUpdateInterfaceRequest{EgressNic: new("eth0.100")})
+
+	cfg, _ := ParseWireGuardConfig(configPath("wgtest"))
+	if egress, _, _ := natRules(cfg); egress != "eth0.100" {
+		t.Fatalf("egress = %q, want eth0.100", egress)
+	}
+}
+
+func TestUpdateInterfaceAddressRunAgainKeepsTheAddressesAlreadyWritten(t *testing.T) {
+	_, first, second := setupTwoPeers(t)
+	// A move that failed after rewriting the second peer's file: it holds an
+	// address of the new subnet the first peer would otherwise not get.
+	b := readTestPeer(t, second)
+	b.Address = "10.9.0.2/32"
+	if err := writePeerFile(peerConfigPath("wgtest", second), b); err != nil {
+		t.Fatal(err)
+	}
+
+	updateInterface(t, apischema.WireGuardUpdateInterfaceRequest{Address: new("10.9.0.1/29")})
+
+	if a, b := readTestPeer(t, first), readTestPeer(t, second); b.Address != "10.9.0.2/32" || a.Address != "10.9.0.3/32" {
+		t.Fatalf("addresses = %s, %s: the rewritten peer keeps its address and the other takes a free one", a.Address, b.Address)
+	}
+}
+
 func TestUpdateInterfaceEgressNicNeedsLinuxIOsNATLines(t *testing.T) {
 	setupTwoPeers(t)
 	updateInterface(t, apischema.WireGuardUpdateInterfaceRequest{Hooks: apischema.WireGuardHooks{
@@ -324,6 +352,7 @@ func TestUpdateInterfaceRejectsInvalidMoves(t *testing.T) {
 		"address not first host":   {Address: new("10.10.0.5/29")},
 		"address overlaps another": {Address: new("10.9.0.0/30")},
 		"card with a quote":        {EgressNic: new("eth0'")},
+		"card with a line break":   {EgressNic: new("eth0\nPostUp = x")},
 		"card too long":            {EgressNic: new("a-very-long-card-name")},
 	}
 	for name, req := range cases {

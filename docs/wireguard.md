@@ -1,9 +1,11 @@
 # WireGuard Interfaces
 
-How LinuxIO brings a WireGuard interface up and down, starts it at boot,
-checks that it works and removes it. Code: `backend/bridge/handlers/wireguard`
-(`interface_power.go`, `interface_boot.go`, `remove_interface.go`,
-`forwarding.go`, `check.go`, `check_probe.go`, `check_packet.go`). An
+How LinuxIO creates and edits a WireGuard interface, brings it up and down,
+starts it at boot, checks that it works and removes it. Code:
+`backend/bridge/handlers/wireguard` (`add_interface.go`,
+`update_interface.go`, `interface_move.go`, `interface_power.go`,
+`interface_boot.go`, `remove_interface.go`, `forwarding.go`, `check.go`,
+`check_probe.go`, `check_packet.go`). An
 interface's config is `/etc/wireguard/<name>.conf` and its exported peer files
 are in `/etc/wireguard/<name>/`; both are wg-quick's own layout, so `wg-quick`
 and `systemctl` work on an interface LinuxIO made, and LinuxIO lists one made
@@ -55,6 +57,44 @@ opens: the QR button of a peer's card also sets `?qr=`, and closing it
 clears it. `qr` is kept only beside `iface`, selecting another interface or
 none clears it, and a `qr` that names no peer of the interface opens
 nothing.
+
+## Editing an interface
+
+The card's edit dialog (`EditInterfaceDialog.tsx`) changes the tunnel
+address, the NIC, the endpoint host, DNS, MTU, port and hooks
+(`wireguard.update_interface`, a partial update: only the fields that
+changed are sent). The address, NIC, port, MTU and hooks are the server's:
+an interface that is up is brought down while the old config is still on
+disk, so its old PostDown undoes its old PostUp, the new config is written,
+and it is brought up again. The endpoint host and DNS only change the
+exported client configs.
+
+**NIC.** The NIC is not stored on its own: it is the card in the NAT lines
+LinuxIO wrote into PostUp and PostDown at create (`natRules` recognises
+them as written), and the list reports it as `egressNic`. Choosing another
+rewrites those six lines in place for the new card, and the devices are not
+touched. A card's name is checked as a kernel interface name (`eth0.100`, a
+VLAN, is one), at create too, since it goes into lines root runs. An
+interface whose hooks hold no such lines, made by hand or with its NAT lines
+edited, has no NIC field; its hooks are edited as text, and an address change
+leaves the subnet they name as it is.
+
+**Address.** The new address is the first host of an IPv4 subnet from /24
+to /30 (the subnet's own address stands for it, as at create), and a subnet
+that overlaps another interface's is refused. The peers move with it
+(`renumber`): each keeps its host number where the new subnet has it free
+and takes the first free one otherwise, and a subnet without room for them
+all is refused before anything is written. An address of the old subnet
+moves to the same host number wherever LinuxIO finds it: a device's client
+routes (the old subnet itself becomes the new one) and DNS servers, the
+interface's DNS, and the `[Peer]` sections written by hand. The NAT lines'
+source follows. The peer files are written first, before the interface is
+brought down: `wg-quick` does not read them, and the server's `[Peer]`
+sections are derived from them. A move that fails part-way leaves the
+interface up, and saving again keeps the addresses already written, so a
+device that was given one keeps it. Every device then
+needs its new configuration, which the dialog says before the save: the QR
+code and the download serve the rewritten file.
 
 ## One control: the interface's unit
 
@@ -355,6 +395,11 @@ they were.
   LinuxIO, not at the upgrade.
 - NAT is IPv4 only: the rules are `iptables` rules and only
   `net.ipv4.ip_forward` is set.
+- An edit changes only the first address of an interface with several; the
+  others, an IPv6 address among them, stay as they are.
+- A new address is refused only when it overlaps another WireGuard
+  interface, at create and in an edit; one on a network the host is already
+  on (its LAN) is accepted, and its routes collide.
 - The connection check runs on the server: it cannot tell whether a router
   forwards the UDP port to it, or whether a firewall outside it lets the
   port through.

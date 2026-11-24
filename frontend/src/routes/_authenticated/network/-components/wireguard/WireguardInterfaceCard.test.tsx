@@ -8,6 +8,7 @@ import WireguardInterfaceCard from "./WireguardInterfaceCard";
 const wg0: WireGuardInterface = {
   address: "10.0.0.1/24",
   dns: [],
+  egressNic: "eth0",
   forwardingOff: false,
   hooks: { PreUp: [], PostUp: [], PreDown: [], PostDown: [] },
   host: "",
