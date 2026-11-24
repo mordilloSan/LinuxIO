@@ -22,8 +22,14 @@ defaults:
 
 - **Port**: the first free one from 51820.
 - **CIDR**: the first free `10.10.N.0/24`, N from 20 in steps of 10.
-- **NIC**, the network card the peers' traffic leaves by: the first ethernet
-  or wireless card with an IPv4 address, else the first one listed.
+- **NIC**, the network card the peers' traffic leaves by: the card that
+  holds an IPv4 gateway, else the first with an IPv4 address, else the first
+  listed; the list is in that order. Docker's bridges and veth pairs and
+  libvirt's NAT bridge and VM taps (`br-`, `docker`, `veth`, `virbr`,
+  `vnet`) are left out unless one holds the gateway: a host bridge such as
+  `br-enp2s0` is the way out, and the card that is its port has no address
+  of its own, so it is listed last as `(no IPv4 address)`; the NAT rule
+  names the bridge, since a rule on the port would match nothing.
 - **DNS**, **Endpoint host** and **MTU**: empty, so the peers' DNS server
   is the NIC's gateway, their endpoint is the detected public IP and the
   interface's MTU is the one wg-quick picks.
