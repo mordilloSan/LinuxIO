@@ -22,11 +22,13 @@ const (
 	maxListenPort = 65535
 )
 
-// UpdateInterface applies a partial update to an interface. Port, MTU and
-// hooks are server-side: when the interface is up it is brought down while
-// the old config is still on disk (so the old PostDown hooks undo the old
-// PostUp), the new config is written, and it is brought back up. Host and DNS
-// only affect exported client configs, which are rewritten without a restart.
+// UpdateInterface applies a partial update to an interface. Address, network
+// card, port, MTU and hooks are server-side: when the interface is up it is
+// brought down while the old config is still on disk (so the old PostDown
+// hooks undo the old PostUp), the new config is written, and it is brought
+// back up. A new address also renumbers the exported client configs. Host
+// and DNS only affect exported client configs, which are rewritten without a
+// restart.
 func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterfaceRequest) error {
 	configMu.Lock()
 	defer configMu.Unlock()
@@ -48,13 +50,24 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 	if err := applyInterfaceUpdate(&cfg, req); err != nil {
 		return err
 	}
+	renumbered, err := applyTunnelMove(ctx, &cfg, req)
+	if err != nil {
+		return err
+	}
 
-	serverChanged := cfg.ListenPort != old.ListenPort || cfg.MTU != old.MTU || hooksChanged(cfg.Hooks, old.Hooks)
+	serverChanged := !slices.Equal(cfg.Address, old.Address) || cfg.ListenPort != old.ListenPort || cfg.MTU != old.MTU || hooksChanged(cfg.Hooks, old.Hooks)
 	restart := serverChanged && isInterfaceUpFunc(req.Name)
 
 	if restart {
 		if _, err := runWGQuickCommand(ctx, "down", req.Name); err != nil {
 			return fmt.Errorf("bring down interface: %w", err)
+		}
+	}
+	// The peer files first: they are the peers' truth, which the server
+	// config's [Peer] sections are derived from.
+	for _, file := range renumbered {
+		if err := writePeerFile(peerConfigPath(req.Name, file.ID), file); err != nil {
+			return fmt.Errorf("rewrite peer %s: %w", file.ID, err)
 		}
 	}
 	if err := WriteWireGuardConfig(configPath(req.Name), cfg); err != nil {
@@ -76,7 +89,7 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 			return err
 		}
 	}
-	slog.Info("WireGuard interface updated", "interface", req.Name, "restarted", restart)
+	slog.Info("WireGuard interface updated", "interface", req.Name, "restarted", restart, "peers_renumbered", len(renumbered))
 	return nil
 }
 

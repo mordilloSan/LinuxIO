@@ -3959,6 +3959,7 @@ export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
 export interface WireGuardInterface {
   address: string;
   dns: string[];
+  egressNic: string;
   forwardingOff: boolean;
   hooks: WireGuardHooks;
   host: string;
@@ -3982,6 +3983,8 @@ export interface WireGuardUpdateInterfaceRequest {
   mtu?: number;
   listenPort?: number;
   hooks?: WireGuardHooks;
+  address?: string;
+  egressNic?: string;
 }
 
 export interface WireGuardUpdatePeerRequest {

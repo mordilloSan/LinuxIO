@@ -65,6 +65,9 @@ type WireGuardCheckResult struct {
 type WireGuardInterface struct {
 	Address string   `json:"address"`
 	DNS     []string `json:"dns"`
+	// EgressNic is the network card the NAT lines LinuxIO wrote into the
+	// hooks send the peers' traffic out by; "" when the hooks hold none.
+	EgressNic string `json:"egressNic"`
 	// ForwardingOff is true for an interface that is up, whose hooks need
 	// IPv4 forwarding, while the host or the interface has it off: its peers
 	// connect and reach nothing behind the server.
@@ -146,7 +149,10 @@ type WireGuardUpdatePeerRequest struct {
 // to the gateway, MTU 0 removes the line. Hooks holds only the kinds to
 // change: an absent or null kind is unchanged, an empty list removes that
 // kind, blank lines are dropped, and a kind outside WireGuardHookKinds is
-// refused.
+// refused. Address is the server's new tunnel address, the first of its
+// subnet (10.10.30.1/24, or 10.10.30.0/24 for it): the peers are renumbered
+// into it and must import their configs again. EgressNic moves the NAT lines
+// LinuxIO wrote to another network card.
 type WireGuardUpdateInterfaceRequest struct {
 	Name       string         `json:"name"`
 	Host       *string        `json:"host,omitzero"`
@@ -154,6 +160,8 @@ type WireGuardUpdateInterfaceRequest struct {
 	MTU        *int           `json:"mtu,omitzero"`
 	ListenPort *int           `json:"listenPort,omitzero"`
 	Hooks      WireGuardHooks `json:"hooks,omitempty"`
+	Address    *string        `json:"address,omitzero"`
+	EgressNic  *string        `json:"egressNic,omitzero"`
 }
 
 type WireGuardAddInterfaceRequest struct {

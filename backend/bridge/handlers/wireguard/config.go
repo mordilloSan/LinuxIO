@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -243,6 +245,49 @@ func natPostDownHooks(egressNic, subnet string) []string {
 		fmt.Sprintf("iptables -D FORWARD -o %s -i %s -m state --state RELATED,ESTABLISHED -j ACCEPT || true", iface, egress),
 		fmt.Sprintf("iptables -t nat -D POSTROUTING -o %s -s %s -j MASQUERADE || true", egress, source),
 	}
+}
+
+// natMasquerade matches the start of the masquerade line natPostUpHooks
+// writes and captures its network card and source.
+var natMasquerade = regexp.MustCompile(`^iptables -t nat -C POSTROUTING -o '([^']*)' -s '([^']*)' -j MASQUERADE \|\| `)
+
+// natRules returns the network card and source of the NAT lines LinuxIO
+// wrote into cfg's PostUp, and false when it holds none as written.
+func natRules(cfg WireGuardConfig) (egress, source string, ok bool) {
+	postUp := cfg.Hooks[apischema.WireGuardPostUp]
+	for _, hook := range postUp {
+		m := natMasquerade.FindStringSubmatch(hook)
+		if m == nil || hook != natPostUpHooks(m[1], m[2])[2] {
+			continue
+		}
+		return m[1], m[2], true
+	}
+	return "", "", false
+}
+
+// replaceNATHooks rewrites in place each NAT line LinuxIO wrote for egress
+// and source into the same line for newEgress and newSource. A line an
+// administrator changed or removed is left as it is. cfg gets new hook lists,
+// so a cfg copied from another never changes the other's hooks.
+func replaceNATHooks(cfg *WireGuardConfig, egress, source, newEgress, newSource string) {
+	hooks := maps.Clone(cfg.Hooks)
+	if hooks == nil {
+		hooks = apischema.WireGuardHooks{}
+	}
+	for kind, build := range map[apischema.WireGuardHookKind]func(string, string) []string{
+		apischema.WireGuardPostUp:   natPostUpHooks,
+		apischema.WireGuardPostDown: natPostDownHooks,
+	} {
+		from, to := build(egress, source), build(newEgress, newSource)
+		lines := slices.Clone(hooks[kind])
+		for i, line := range lines {
+			if j := slices.Index(from, line); j >= 0 {
+				lines[i] = to[j]
+			}
+		}
+		hooks[kind] = lines
+	}
+	cfg.Hooks = hooks
 }
 
 // replacePeerSection drops the [Peer] section whose public key is oldPublicKey
