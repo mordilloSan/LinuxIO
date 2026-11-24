@@ -18,7 +18,10 @@ import (
 )
 
 const (
-	maxHistoryPayloadBytes = 8 << 20
+	// maxHistoryPayloadBytes bounds one history response from the daemon.
+	// The 30-day range reads 720 hourly rows, and a containers row holds
+	// about 200 bytes per container, so this fits some 200 containers.
+	maxHistoryPayloadBytes = 32 << 20
 	maxHistoryLimit        = 1000
 	defaultHistoryLimit    = 100
 )

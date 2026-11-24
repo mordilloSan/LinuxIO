@@ -97,9 +97,10 @@ export const SynchronizedHistoryAreaChart = (
   );
 };
 
-// Query-time downsampling uses the selected range as an explicit time window.
-// Keep the request bounded independently of the agent's retention policy.
-const HISTORY_REQUEST_LIMIT = 400;
+// The selected range is an explicit time window over the stored tier; the
+// limit fits the longest one, 30 days of hourly rows (720), and still bounds
+// the request when the retention is longer.
+const HISTORY_REQUEST_LIMIT = 750;
 
 export const rangeById = (id: HistoryRangeId): HistoryRange =>
   HISTORY_RANGES.find((range) => range.id === id) ?? HISTORY_RANGES[0];

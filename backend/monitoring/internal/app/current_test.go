@@ -123,6 +123,41 @@ func TestCurrentPluginsReuseFinishedCollectorProcessSample(t *testing.T) {
 	assert.JSONEq(t, string(sample.payloads[plugins.Processes]), string(payloads[plugins.Processes]))
 }
 
+// A tick that did not run the process scan hands over no process payload; a
+// request waiting on it collects that payload live and takes the rest from
+// the tick.
+func TestCurrentPluginsCollectWhatTheCollectorSampleLacks(t *testing.T) {
+	const capturedAt = int64(1_700_000_000_123)
+	sample := &collectorAPISample{
+		capturedAt: capturedAt,
+		payloads:   map[string]jsontext.Value{plugins.CPU: []byte(`{"cpu_percent":17}`)},
+	}
+	live := map[string]jsontext.Value{
+		plugins.Processes:          []byte(`{"count":{"total":3},"items":[]}`),
+		plugins.Programs:           []byte(`[]`),
+		plugins.ContainerTelemetry: []byte(`[]`),
+	}
+	collected := 0
+	agent := &App{liveProcessCollect: func(context.Context) (map[string]jsontext.Value, error) {
+		collected++
+		return live, nil
+	}}
+	run := agent.beginCollectorRun()
+	run.Value = sample
+	run.Finish()
+
+	_, raw, err := agent.CurrentPlugin(context.Background(), plugins.Processes)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(live[plugins.Processes]), string(raw))
+
+	gotAt, payloads, errs := agent.CurrentPlugins(context.Background(), []string{plugins.CPU, plugins.Processes})
+	assert.Equal(t, capturedAt, gotAt)
+	assert.Empty(t, errs)
+	assert.JSONEq(t, `{"cpu_percent":17}`, string(payloads[plugins.CPU]))
+	assert.JSONEq(t, string(live[plugins.Processes]), string(payloads[plugins.Processes]))
+	assert.Positive(t, collected)
+}
+
 func TestLiveProcessPluginsReuseOneCompletedSample(t *testing.T) {
 	at := time.Now()
 	agent := &App{}

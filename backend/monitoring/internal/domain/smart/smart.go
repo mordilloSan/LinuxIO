@@ -4,20 +4,53 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
 
-// Common types
-type VersionInfo [2]int
+// SmartctlOutput holds the fields read from `smartctl -a --json` for any
+// protocol. Sections that do not apply to a device are left nil or empty.
+//
+// A value that overflows its Go type makes json.Unmarshal fail and drops the
+// whole device, so numbers use a wide type, or NVMeCounter for the 128-bit
+// NVMe fields, rather than a narrow one.
+type SmartctlOutput struct {
+	Device          DeviceInfo   `json:"device"`
+	ModelName       string       `json:"model_name"`
+	SerialNumber    string       `json:"serial_number"`
+	FirmwareVersion string       `json:"firmware_version"`
+	UserCapacity    UserCapacity `json:"user_capacity"`
+	SmartStatus     struct {
+		Passed *bool `json:"passed"` // nil when smartctl could not read the health status
+	} `json:"smart_status"`
+	Temperature struct {
+		Current int64 `json:"current"`
+	} `json:"temperature"`
+	PowerOnTime     *SmartPowerOnTime `json:"power_on_time"`
+	PowerCycleCount *uint64           `json:"power_cycle_count"`
 
-type SmartctlInfo struct {
-	Version      VersionInfo `json:"version"`
-	SvnRevision  string      `json:"svn_revision"`
-	PlatformInfo string      `json:"platform_info"`
-	BuildInfo    string      `json:"build_info"`
-	Argv         []string    `json:"argv"`
-	ExitStatus   int         `json:"exit_status"`
+	// ATA
+	AtaSmartAttributes  *AtaSmartAttributes `json:"ata_smart_attributes"`
+	AtaSmartSelfTestLog *SmartSelfTestLog   `json:"ata_smart_self_test_log"`
+	AtaDeviceStatistics jsontext.Value      `json:"ata_device_statistics"` // decoded only when needed
+
+	// NVMe
+	NVMeTotalCapacity             NVMeCounter            `json:"nvme_total_capacity"`
+	NVMeVersion                   NVMeVersionInfo        `json:"nvme_version"`
+	NVMeNumberOfNamespaces        uint64                 `json:"nvme_number_of_namespaces"`
+	NVMeSmartHealthInformationLog *SmartctlNVMeHealthLog `json:"nvme_smart_health_information_log"`
+	NVMeSelfTestLog               *NVMeSelfTestLog       `json:"nvme_self_test_log"`
+
+	// SCSI (scsi_vendor and scsi_product are also reported for SATA disks behind SAT)
+	ScsiVendor                string                    `json:"scsi_vendor"`
+	ScsiProduct               string                    `json:"scsi_product"`
+	ScsiModelName             string                    `json:"scsi_model_name"`
+	ScsiRevision              string                    `json:"scsi_revision"`
+	ScsiStartStopCycleCounter ScsiStartStopCycleCounter `json:"scsi_start_stop_cycle_counter"`
+	ScsiGrownDefectList       uint64                    `json:"scsi_grown_defect_list"`
+	ScsiErrorCounterLog       *ScsiErrorCounterLog      `json:"scsi_error_counter_log"`
 }
 
 type DeviceInfo struct {
@@ -30,39 +63,6 @@ type DeviceInfo struct {
 type UserCapacity struct {
 	Blocks uint64 `json:"blocks"`
 	Bytes  uint64 `json:"bytes"`
-}
-
-type SmartStatusInfo struct {
-	Passed bool `json:"passed"`
-}
-
-type StatusInfo struct {
-	Value  int    `json:"value"`
-	String string `json:"string"`
-	Passed bool   `json:"passed"`
-}
-
-type PollingMinutes struct {
-	Short    int `json:"short"`
-	Extended int `json:"extended"`
-}
-
-type CapabilitiesInfo struct {
-	Values                        []int `json:"values"`
-	ExecOfflineImmediateSupported bool  `json:"exec_offline_immediate_supported"`
-	OfflineIsAbortedUponNewCmd    bool  `json:"offline_is_aborted_upon_new_cmd"`
-	OfflineSurfaceScanSupported   bool  `json:"offline_surface_scan_supported"`
-	SelfTestsSupported            bool  `json:"self_tests_supported"`
-	ConveyanceSelfTestSupported   bool  `json:"conveyance_self_test_supported"`
-	SelectiveSelfTestSupported    bool  `json:"selective_self_test_supported"`
-	AttributeAutosaveEnabled      bool  `json:"attribute_autosave_enabled"`
-	ErrorLoggingSupported         bool  `json:"error_logging_supported"`
-	GpLoggingSupported            bool  `json:"gp_logging_supported"`
-}
-
-type SummaryInfo struct {
-	Revision int `json:"revision"`
-	Count    int `json:"count"`
 }
 
 type AtaSmartAttributes struct {
@@ -288,41 +288,11 @@ func ParseSmartRawValueString(value string) (uint64, bool) {
 	return 0, false
 }
 
-type TemperatureInfo struct {
-	Current uint8 `json:"current"`
-}
-
-type TemperatureInfoScsi struct {
-	Current   uint8 `json:"current"`
-	DriveTrip uint8 `json:"drive_trip"`
-}
-
-type SmartInfoForSata struct {
-	Smartctl            SmartctlInfo       `json:"smartctl"`
-	Device              DeviceInfo         `json:"device"`
-	ModelName           string             `json:"model_name"`
-	SerialNumber        string             `json:"serial_number"`
-	FirmwareVersion     string             `json:"firmware_version"`
-	UserCapacity        UserCapacity       `json:"user_capacity"`
-	ScsiVendor          string             `json:"scsi_vendor"`
-	ScsiProduct         string             `json:"scsi_product"`
-	SmartStatus         SmartStatusInfo    `json:"smart_status"`
-	AtaSmartAttributes  AtaSmartAttributes `json:"ata_smart_attributes"`
-	AtaSmartSelfTestLog *SmartSelfTestLog  `json:"ata_smart_self_test_log,omitzero"`
-	AtaDeviceStatistics jsontext.Value     `json:"ata_device_statistics"`
-	Temperature         TemperatureInfo    `json:"temperature"`
-	PowerOnTime         *SmartPowerOnTime  `json:"power_on_time,omitzero"`
-	PowerCycleCount     *uint64            `json:"power_cycle_count,omitzero"`
-}
-
 type ScsiErrorCounter struct {
-	ErrorsCorrectedByECCFast         uint64 `json:"errors_corrected_by_eccfast"`
-	ErrorsCorrectedByECCDelayed      uint64 `json:"errors_corrected_by_eccdelayed"`
-	ErrorsCorrectedByRereadsRewrites uint64 `json:"errors_corrected_by_rereads_rewrites"`
-	TotalErrorsCorrected             uint64 `json:"total_errors_corrected"`
-	CorrectionAlgorithmInvocations   uint64 `json:"correction_algorithm_invocations"`
-	GigabytesProcessed               string `json:"gigabytes_processed"`
-	TotalUncorrectedErrors           uint64 `json:"total_uncorrected_errors"`
+	TotalErrorsCorrected           uint64 `json:"total_errors_corrected"`
+	CorrectionAlgorithmInvocations uint64 `json:"correction_algorithm_invocations"`
+	GigabytesProcessed             string `json:"gigabytes_processed"`
+	TotalUncorrectedErrors         uint64 `json:"total_uncorrected_errors"`
 }
 
 type ScsiErrorCounterLog struct {
@@ -332,101 +302,90 @@ type ScsiErrorCounterLog struct {
 }
 
 type ScsiStartStopCycleCounter struct {
-	YearOfManufacture                          string `json:"year_of_manufacture"`
-	WeekOfManufacture                          string `json:"week_of_manufacture"`
 	SpecifiedCycleCountOverDeviceLifetime      uint64 `json:"specified_cycle_count_over_device_lifetime"`
 	AccumulatedStartStopCycles                 uint64 `json:"accumulated_start_stop_cycles"`
 	SpecifiedLoadUnloadCountOverDeviceLifetime uint64 `json:"specified_load_unload_count_over_device_lifetime"`
 	AccumulatedLoadUnloadCycles                uint64 `json:"accumulated_load_unload_cycles"`
 }
 
-type PowerOnTimeScsi struct {
-	Hours   uint64 `json:"hours"`
-	Minutes uint64 `json:"minutes"`
+// SmartctlNVMeHealthLog is the NVMe health log as smartctl prints it. Its
+// counters are 128-bit in the NVMe specification, so they decode into
+// NVMeCounter; the record keeps NVMeSmartHealthInformationLog.
+type SmartctlNVMeHealthLog struct {
+	NSID                    int64       `json:"nsid"`
+	CriticalWarning         uint64      `json:"critical_warning"`
+	Temperature             int64       `json:"temperature"`
+	AvailableSpare          uint64      `json:"available_spare"`
+	AvailableSpareThreshold uint64      `json:"available_spare_threshold"`
+	PercentageUsed          uint64      `json:"percentage_used"`
+	DataUnitsRead           NVMeCounter `json:"data_units_read"`
+	DataUnitsWritten        NVMeCounter `json:"data_units_written"`
+	HostReads               NVMeCounter `json:"host_reads"`
+	HostWrites              NVMeCounter `json:"host_writes"`
+	ControllerBusyTime      NVMeCounter `json:"controller_busy_time"`
+	PowerCycles             NVMeCounter `json:"power_cycles"`
+	PowerOnHours            NVMeCounter `json:"power_on_hours"`
+	UnsafeShutdowns         NVMeCounter `json:"unsafe_shutdowns"`
+	MediaErrors             NVMeCounter `json:"media_errors"`
+	NumErrLogEntries        NVMeCounter `json:"num_err_log_entries"`
+	WarningTempTime         uint64      `json:"warning_temp_time"`
+	CriticalCompTime        uint64      `json:"critical_comp_time"`
+	TemperatureSensors      []int64     `json:"temperature_sensors"`
 }
 
-type SmartInfoForScsi struct {
-	Smartctl                  SmartctlInfo              `json:"smartctl"`
-	Device                    DeviceInfo                `json:"device"`
-	ScsiVendor                string                    `json:"scsi_vendor"`
-	ScsiProduct               string                    `json:"scsi_product"`
-	ScsiModelName             string                    `json:"scsi_model_name"`
-	ScsiRevision              string                    `json:"scsi_revision"`
-	ScsiVersion               string                    `json:"scsi_version"`
-	SerialNumber              string                    `json:"serial_number"`
-	UserCapacity              UserCapacity              `json:"user_capacity"`
-	Temperature               TemperatureInfoScsi       `json:"temperature"`
-	SmartStatus               SmartStatusInfo           `json:"smart_status"`
-	PowerOnTime               PowerOnTimeScsi           `json:"power_on_time"`
-	ScsiStartStopCycleCounter ScsiStartStopCycleCounter `json:"scsi_start_stop_cycle_counter"`
-	ScsiGrownDefectList       uint64                    `json:"scsi_grown_defect_list"`
-	ScsiErrorCounterLog       ScsiErrorCounterLog       `json:"scsi_error_counter_log"`
-}
-
-type SmartctlInfoNvme struct {
-	Version      VersionInfo `json:"version"`
-	SVNRevision  string      `json:"svn_revision"`
-	PlatformInfo string      `json:"platform_info"`
-	BuildInfo    string      `json:"build_info"`
-	Argv         []string    `json:"argv"`
-	ExitStatus   int         `json:"exit_status"`
-}
-
-type SmartStatusInfoNvme struct {
-	Passed bool            `json:"passed"`
-	NVMe   SmartStatusNVMe `json:"nvme"`
-}
-
-type SmartStatusNVMe struct {
-	Value int `json:"value"`
-}
-
+// NVMeSmartHealthInformationLog is the NVMe health log of a SMART record,
+// which the storage page shows as it is.
 type NVMeSmartHealthInformationLog struct {
-	NSID                    int64  `json:"nsid,omitzero"`
-	CriticalWarning         uint   `json:"critical_warning"`
-	Temperature             uint8  `json:"temperature"`
-	AvailableSpare          uint   `json:"available_spare"`
-	AvailableSpareThreshold uint   `json:"available_spare_threshold"`
-	PercentageUsed          uint8  `json:"percentage_used"`
-	DataUnitsRead           uint64 `json:"data_units_read"`
-	DataUnitsWritten        uint64 `json:"data_units_written"`
-	HostReads               uint   `json:"host_reads"`
-	HostWrites              uint   `json:"host_writes"`
-	ControllerBusyTime      uint   `json:"controller_busy_time"`
-	PowerCycles             uint16 `json:"power_cycles"`
-	PowerOnHours            uint32 `json:"power_on_hours"`
-	UnsafeShutdowns         uint16 `json:"unsafe_shutdowns"`
-	MediaErrors             uint   `json:"media_errors"`
-	NumErrLogEntries        uint   `json:"num_err_log_entries"`
-	WarningTempTime         uint   `json:"warning_temp_time"`
-	CriticalCompTime        uint   `json:"critical_comp_time"`
-	TemperatureSensors      []int  `json:"temperature_sensors"`
+	NSID                    int64   `json:"nsid,omitzero"`
+	CriticalWarning         uint64  `json:"critical_warning"`
+	Temperature             int64   `json:"temperature"`
+	AvailableSpare          uint64  `json:"available_spare"`
+	AvailableSpareThreshold uint64  `json:"available_spare_threshold"`
+	PercentageUsed          uint64  `json:"percentage_used"`
+	DataUnitsRead           uint64  `json:"data_units_read"`
+	DataUnitsWritten        uint64  `json:"data_units_written"`
+	HostReads               uint64  `json:"host_reads"`
+	HostWrites              uint64  `json:"host_writes"`
+	ControllerBusyTime      uint64  `json:"controller_busy_time"`
+	PowerCycles             uint64  `json:"power_cycles"`
+	PowerOnHours            uint64  `json:"power_on_hours"`
+	UnsafeShutdowns         uint64  `json:"unsafe_shutdowns"`
+	MediaErrors             uint64  `json:"media_errors"`
+	NumErrLogEntries        uint64  `json:"num_err_log_entries"`
+	WarningTempTime         uint64  `json:"warning_temp_time"`
+	CriticalCompTime        uint64  `json:"critical_comp_time"`
+	TemperatureSensors      []int64 `json:"temperature_sensors"`
 }
 
-type SmartInfoForNvme struct {
-	Smartctl                      SmartctlInfoNvme               `json:"smartctl"`
-	Device                        DeviceInfo                     `json:"device"`
-	ModelName                     string                         `json:"model_name"`
-	SerialNumber                  string                         `json:"serial_number"`
-	FirmwareVersion               string                         `json:"firmware_version"`
-	NVMeTotalCapacity             uint64                         `json:"nvme_total_capacity"`
-	UserCapacity                  UserCapacity                   `json:"user_capacity"`
-	SmartStatus                   SmartStatusInfoNvme            `json:"smart_status"`
-	NVMeVersion                   NVMeVersionInfo                `json:"nvme_version"`
-	NVMeNumberOfNamespaces        uint64                         `json:"nvme_number_of_namespaces"`
-	NVMeSmartHealthInformationLog *NVMeSmartHealthInformationLog `json:"nvme_smart_health_information_log,omitzero"`
-	Temperature                   TemperatureInfoNvme            `json:"temperature"`
-	PowerCycleCount               *uint64                        `json:"power_cycle_count,omitzero"`
-	PowerOnTime                   *PowerOnTimeInfoNvme           `json:"power_on_time,omitzero"`
-	NVMeSelfTestLog               *NVMeSelfTestLog               `json:"nvme_self_test_log,omitzero"`
+// NVMeCounter holds one of the 128-bit fields smartctl reports for NVMe
+// drives (health log counters, total capacity). smartctl prints the full
+// value, so faulty firmware can report a number past uint64. Such a value
+// decodes as Overflow with Value 0 instead of failing json.Unmarshal and
+// dropping the device, so it is never shown as a real reading.
+type NVMeCounter struct {
+	Value    uint64
+	Overflow bool
 }
 
-type TemperatureInfoNvme struct {
-	Current int `json:"current"`
-}
+// NVMeCounterInvalid is the RawString of an attribute whose counter overflowed.
+const NVMeCounterInvalid = "invalid (out of range)"
 
-type PowerOnTimeInfoNvme struct {
-	Hours int `json:"hours"`
+func (c *NVMeCounter) UnmarshalJSON(data []byte) error {
+	*c = NVMeCounter{}
+	s := string(bytes.TrimSpace(data))
+	if s == "null" {
+		return nil
+	}
+	v, err := strconv.ParseUint(s, 10, 64)
+	if errors.Is(err, strconv.ErrRange) {
+		c.Overflow = true
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("invalid NVMe counter %q: %w", s, err)
+	}
+	c.Value = v
+	return nil
 }
 
 type SmartData struct {

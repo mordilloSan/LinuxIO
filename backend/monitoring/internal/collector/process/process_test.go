@@ -29,14 +29,17 @@ func TestGroupProgramStats(t *testing.T) {
 	assert.Equal(t, []int32{1, 2}, programs[0].PIDs)
 }
 
+const fullContainerID = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+
 func TestProcessAttributionResolverCgroupForms(t *testing.T) {
-	identity := containermodel.Identity{ID: "abcdef123456", FullID: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", Name: "web"}
+	identity := containermodel.Identity{ID: "abcdef123456", FullID: fullContainerID, Name: "web"}
 	resolver := newProcessAttributionResolver([]containermodel.Identity{identity})
 	for _, content := range []string{
-		"0::/docker/abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890\n",
-		"1:name=systemd:/system.slice/docker-abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890.scope\n",
-		"0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-abcdef123456.scope\n",
-		"0::/docker/abcdef123456\n",
+		"0::/docker/" + fullContainerID + "\n",
+		"1:name=systemd:/system.slice/docker-" + fullContainerID + ".scope\n",
+		"0::/system.slice/docker-" + fullContainerID + ".scope/init.scope\n",
+		"0::/machine.slice/libpod-" + fullContainerID + ".scope/container\n",
+		"0::/libpod_parent/libpod-" + fullContainerID + "\n",
 	} {
 		got, ok := resolver.resolveCgroup(content)
 		require.True(t, ok, content)
@@ -44,26 +47,34 @@ func TestProcessAttributionResolverCgroupForms(t *testing.T) {
 	}
 }
 
-func TestProcessAttributionResolverRejectsAmbiguousAndSubstring(t *testing.T) {
-	ids := []containermodel.Identity{
-		{ID: "abcdef123456", FullID: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", Name: "one"},
-		{ID: "abcdef123456", FullID: "abcdef1234560000abcdef1234560000abcdef1234560000abcdef1234560000", Name: "two"},
+// A local user can name a cgroup of their own after a container; only the
+// place a root runtime creates it counts, with the full ID.
+func TestProcessAttributionResolverIgnoresCgroupsOutsideTheRuntimesPlace(t *testing.T) {
+	resolver := newProcessAttributionResolver([]containermodel.Identity{{ID: "abcdef123456", FullID: fullContainerID, Name: "web"}})
+	for _, content := range []string{
+		"0::/user.slice/user-1000.slice/user@1000.service/app.slice/docker-" + fullContainerID + ".scope\n",
+		"0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-" + fullContainerID + ".scope\n",
+		"0::/user.slice/docker/" + fullContainerID + "\n",
+		"0::/docker/abcdef123456\n",
+		"0::/machine.slice/libpod-conmon-" + fullContainerID + ".scope\n",
+		"0::/system.slice/docker-" + fullContainerID + "\n",
+		"0::/system.slice/" + fullContainerID + ".scope\n",
+	} {
+		_, ok := resolver.resolveCgroup(content)
+		assert.False(t, ok, content)
 	}
-	resolver := newProcessAttributionResolver(ids)
-	_, ok := resolver.resolveCgroup("0::/docker/abcdef123456\n")
-	assert.False(t, ok)
-	_, ok = newProcessAttributionResolver([]containermodel.Identity{{ID: "abcdef123456", Name: "one"}}).resolveCgroup("0::/docker/0abcdef1234567\n")
-	assert.False(t, ok)
 }
 
-func TestProcessAttributionResolverPrefersNestedContainer(t *testing.T) {
-	parent := containermodel.Identity{ID: "aaaaaaaaaaaa", Name: "parent"}
-	child := containermodel.Identity{ID: "bbbbbbbbbbbb", Name: "child"}
-	resolver := newProcessAttributionResolver([]containermodel.Identity{parent, child})
-
-	got, ok := resolver.resolveCgroup("0::/docker/aaaaaaaaaaaa/docker/bbbbbbbbbbbb\n")
-	require.True(t, ok)
-	assert.Equal(t, child, got)
+func TestProcessAttributionResolverRejectsTwoContainers(t *testing.T) {
+	other := "0000000000000000000000000000000000000000000000000000000000000000"
+	resolver := newProcessAttributionResolver([]containermodel.Identity{
+		{FullID: fullContainerID, Name: "one"},
+		{FullID: other, Name: "two"},
+	})
+	_, ok := resolver.resolveCgroup("2:cpu:/docker/" + fullContainerID + "\n1:name=systemd:/docker/" + other + "\n")
+	assert.False(t, ok)
+	_, ok = newProcessAttributionResolver([]containermodel.Identity{{ID: "abcdef123456", Name: "short only"}}).resolveCgroup("0::/docker/" + fullContainerID + "\n")
+	assert.False(t, ok, "an identity without its full ID is never attributed")
 }
 
 func TestProcessIOPerSecond(t *testing.T) {
@@ -89,10 +100,11 @@ func TestProcessIOPerSecond(t *testing.T) {
 func TestUpdateProcessCount(t *testing.T) {
 	var count processmodel.Count
 
-	updateProcessCount(&count, []string{"running"})
-	updateProcessCount(&count, []string{"sleep"})
-	updateProcessCount(&count, []string{"zombie"})
-	updateProcessCount(&count, []string{"blocked"})
+	updateProcessCount(&count, "running")
+	updateProcessCount(&count, "sleep")
+	updateProcessCount(&count, "zombie")
+	updateProcessCount(&count, "blocked")
+	updateProcessCount(&count, "")
 
 	assert.Equal(t, 1, count.Running)
 	assert.Equal(t, 1, count.Sleeping)

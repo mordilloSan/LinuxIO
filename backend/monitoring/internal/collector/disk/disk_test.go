@@ -2,6 +2,7 @@ package disk
 
 import (
 	"context"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -1120,6 +1121,62 @@ func TestApplyDiskIoCountersHandlesCounterReset(t *testing.T) {
 		writeCount: 2,
 		at:         start.Add(time.Second),
 	}, manager.diskPrev[1000]["sda"])
+}
+
+func TestIoTimeDelta(t *testing.T) {
+	assert.Equal(t, uint64(300), ioTimeDelta(1200, 900))
+	// A lower value after one that fits in 32 bits is the counter wrapping.
+	assert.Equal(t, uint64(1200), ioTimeDelta(200, math.MaxUint32+1-1000))
+	// A lower value after one past 32 bits cannot be a wrap, so it is a reset.
+	assert.Equal(t, uint64(0), ioTimeDelta(200, math.MaxUint32+1000))
+}
+
+// A millisecond counter that wraps at 32 bits keeps the sample: only the byte
+// and operation counters going down mean the device's counters started again.
+func TestApplyDiskIoCountersHandlesTimeCounterWrap(t *testing.T) {
+	start := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	nearWrap := uint64(math.MaxUint32 + 1 - 500)
+	manager := &Manager{
+		fsStats: map[string]*systemmodel.FsStats{
+			"sda": {FsTracking: systemmodel.FsTracking{Root: true, Time: start, TotalRead: 10_000, TotalWrite: 20_000}},
+		},
+		diskPrev: map[uint16]map[string]prevDisk{
+			1000: {
+				"sda": {
+					readBytes:  10_000,
+					writeBytes: 20_000,
+					readTime:   1000,
+					writeTime:  2000,
+					ioTime:     nearWrap,
+					weightedIO: nearWrap,
+					readCount:  100,
+					writeCount: 200,
+					at:         start,
+				},
+			},
+		},
+	}
+	var stats systemmodel.Stats
+
+	manager.applyDiskIoCounters(1000, &stats, map[string]psutilDisk.IOCountersStat{
+		"sda": {
+			Name:       "sda",
+			ReadBytes:  11_000,
+			WriteBytes: 22_000,
+			ReadTime:   1100,
+			WriteTime:  2200,
+			IoTime:     500, // 500 ms before the wrap plus 500 ms after it
+			WeightedIO: 1500,
+			ReadCount:  110,
+			WriteCount: 220,
+		},
+	}, start.Add(10*time.Second))
+
+	assert.Equal(t, [2]uint64{100, 200}, stats.DiskIO)
+	assert.InDelta(t, 10.0, stats.DiskIoStats[2], 1e-9, "1000 ms of I/O in 10 s")
+	assert.InDelta(t, 20.0, stats.DiskIoStats[5], 1e-9, "2000 weighted ms in 10 s")
+	assert.InDelta(t, 10.0, stats.DiskIoStats[3], 1e-9, "100 ms over 10 reads")
+	assert.Equal(t, uint64(11_000), manager.fsStats["sda"].TotalRead)
 }
 
 func TestDiskReseedsStaleLiveKey(t *testing.T) {

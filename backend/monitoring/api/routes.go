@@ -36,3 +36,7 @@ const (
 	QueryFrom       = "from"
 	QueryTo         = "to"
 )
+
+// QueryInclude names, comma-separated, the plugins /api/v1/all leaves out
+// unless asked; container_telemetry is the only one.
+const QueryInclude = "include"

@@ -70,11 +70,10 @@ func (a *App) CurrentPlugin(ctx context.Context, plugin string) (int64, jsontext
 		if sample, reused, err := a.awaitCollectorSample(ctx); err != nil {
 			return 0, nil, err
 		} else if reused {
-			raw, ok := sample.pluginPayload(plugin)
-			if !ok {
-				return 0, nil, fmt.Errorf("collector sample missing plugin %q", plugin)
+			// A payload the tick did not collect is collected below.
+			if raw, ok := sample.pluginPayload(plugin); ok {
+				return sample.capturedAt, raw, nil
 			}
-			return sample.capturedAt, raw, nil
 		}
 	}
 	switch plugin {
@@ -101,12 +100,17 @@ func (a *App) CurrentPlugins(ctx context.Context, names []string) (int64, map[st
 		batch.failRequested(err)
 		return 0, batch.raw, batch.errs
 	}
+	var reusedAt int64
 	if sample, reused, err := a.awaitCollectorSample(ctx); err != nil {
 		batch.failRequested(err)
 		return 0, batch.raw, batch.errs
 	} else if reused {
 		a.fillBatchFromCollectorSample(sample, batch)
-		return sample.capturedAt, batch.raw, batch.errs
+		if len(batch.requested) == 0 {
+			return sample.capturedAt, batch.raw, batch.errs
+		}
+		// The tick did not collect the rest; collect only those below.
+		reusedAt = sample.capturedAt
 	}
 
 	collectProcessBatch := batch.wantsAny(processPluginNames)
@@ -122,6 +126,9 @@ func (a *App) CurrentPlugins(ctx context.Context, names []string) (int64, map[st
 		groups = append(groups, func() { processCapturedAt = a.collectCurrentProcessBatch(ctx, batch) })
 	}
 	runCurrentCollectionGroups(groups...)
+	if reusedAt != 0 {
+		return reusedAt, batch.raw, batch.errs
+	}
 	capturedAt := systemCapturedAt
 	if capturedAt.IsZero() {
 		capturedAt = processCapturedAt
@@ -132,9 +139,10 @@ func (a *App) CurrentPlugins(ctx context.Context, names []string) (int64, map[st
 	return capturedAt.UTC().UnixMilli(), batch.raw, batch.errs
 }
 
-// fillBatchFromCollectorSample answers every requested plugin from a reused
-// collector sample. SMART records are held by the app rather than the sample,
-// so they are marshalled on the spot.
+// fillBatchFromCollectorSample answers the requested plugins a reused
+// collector sample holds and takes them off the batch's request; what the tick
+// did not collect stays requested. SMART records are held by the app rather
+// than the sample, so they are marshalled on the spot.
 func (a *App) fillBatchFromCollectorSample(sample *collectorAPISample, batch *currentPluginBatch) {
 	for plugin := range batch.requested {
 		if plugin == plugins.Smart {
@@ -144,14 +152,13 @@ func (a *App) fillBatchFromCollectorSample(sample *collectorAPISample, batch *cu
 			} else {
 				batch.setRaw(plugin, raw)
 			}
+			delete(batch.requested, plugin)
 			continue
 		}
-		raw, ok := sample.pluginPayload(plugin)
-		if !ok {
-			batch.setError(plugin, fmt.Errorf("collector sample missing plugin %q", plugin))
-			continue
+		if raw, ok := sample.pluginPayload(plugin); ok {
+			batch.setRaw(plugin, raw)
+			delete(batch.requested, plugin)
 		}
-		batch.setRaw(plugin, raw)
 	}
 }
 

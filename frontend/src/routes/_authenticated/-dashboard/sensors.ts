@@ -1,7 +1,8 @@
-/** "coretemp3" → "Coretemp 3", "package" → "Package". */
-export const formatSensorLabel = (key: string): string => {
-  const match = key.match(/^([a-zA-Z]+)(\d+)$/);
-  if (match)
-    return `${match[1].charAt(0).toUpperCase() + match[1].slice(1)} ${match[2]}`;
-  return key.charAt(0).toUpperCase() + key.slice(1);
-};
+/**
+ * "coretemp3" → "Coretemp 3", "package" → "Package", and on a host with
+ * several CPU sockets "package1core3" → "Package 1 Core 3".
+ */
+export const formatSensorLabel = (key: string): string =>
+  key
+    .replace(/([a-zA-Z])(?=\d)|(\d)(?=[a-zA-Z])/g, "$1$2 ")
+    .replace(/(^|\s)[a-z]/g, (start) => start.toUpperCase());

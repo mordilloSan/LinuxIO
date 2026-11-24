@@ -29,6 +29,7 @@ import (
 	systemmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/httpapi"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/live"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/store"
 )
 
@@ -61,6 +62,7 @@ type App struct {
 	historyIntervals   map[string]time.Duration // per-plugin history sampling interval; absent means collectorInterval
 	historyRetention   time.Duration
 	lastCollectedMs    atomic.Int64 // Unix milliseconds of the last persisted collector sample; 0 before the first tick
+	lastRetention      time.Time    // when the collector last ran the retention delete; collector goroutine only
 
 	telemetryMu sync.RWMutex               // Protects the container telemetry memo
 	telemetry   []containermodel.Telemetry // Container telemetry from the last collector tick
@@ -137,24 +139,21 @@ func New(ctx context.Context, dataDir string) (*App, error) {
 	return app, nil
 }
 
-// DataRequestOptions controls how a stats collection request is scoped.
-type DataRequestOptions struct {
-	CacheTimeMs    uint16
-	IncludeDetails bool
-}
-
-func (a *App) gatherStats(ctx context.Context, options DataRequestOptions) (*systemmodel.CombinedData, error) {
-	data, identities, err := a.gatherBaseStats(ctx, options)
+// gatherTickStats collects the collector tick's sample. The host plugins are
+// collected on every tick; the process scan, connections and IRQs only when
+// a history row that needs them is due (see collectedOnTick).
+func (a *App) gatherTickStats(ctx context.Context, tick store.Tick) (*systemmodel.CombinedData, error) {
+	data, identities, err := a.gatherBaseStats(ctx, collector.TickKey)
 	if err != nil {
 		return nil, err
 	}
-	if err := a.attachDefaultIntervalStats(ctx, options.CacheTimeMs, data, identities); err != nil {
+	if err := a.attachTickDetailStats(ctx, data, identities, tick); err != nil {
 		return nil, err
 	}
 	return data, nil
 }
 
-func (a *App) gatherBaseStats(ctx context.Context, options DataRequestOptions) (*systemmodel.CombinedData, []containermodel.Identity, error) {
+func (a *App) gatherBaseStats(ctx context.Context, cacheTimeMs uint16) (*systemmodel.CombinedData, []containermodel.Identity, error) {
 	a.Lock()
 	defer a.Unlock()
 
@@ -162,18 +161,14 @@ func (a *App) gatherBaseStats(ctx context.Context, options DataRequestOptions) (
 		return nil, nil, err
 	}
 
-	cacheTimeMs := options.CacheTimeMs
-	data := &systemmodel.CombinedData{}
 	stats, err := a.getSystemStats(ctx, cacheTimeMs)
 	if err != nil {
 		return nil, nil, err
 	}
-	*data = systemmodel.CombinedData{
+	data := &systemmodel.CombinedData{
 		Stats: stats,
 		Info:  a.host.Info,
 	}
-
-	// slog.Info("System data", "data", data, "cacheTimeMs", cacheTimeMs)
 
 	if err := a.attachContainerStats(ctx, cacheTimeMs, data); err != nil {
 		return nil, nil, err
@@ -182,7 +177,12 @@ func (a *App) gatherBaseStats(ctx context.Context, options DataRequestOptions) (
 	a.attachFilesystemStats(data)
 	slog.Debug("extra filesystems collected", "count", len(data.Stats.ExtraFs))
 
-	return a.host.AttachDetails(data, cacheTimeMs, options.IncludeDetails), identities, nil
+	data = a.host.AttachDetails(data, cacheTimeMs, true)
+	// The docker and filesystem managers rewrite these records in place on
+	// the next collection of any key; a live request may run as soon as the
+	// lock is released, and the stored row must keep this tick's values.
+	a.detachLiveSampleLocked(data)
+	return data, identities, nil
 }
 
 func (a *App) attachContainerStats(ctx context.Context, cacheTimeMs uint16, data *systemmodel.CombinedData) error {
@@ -202,26 +202,55 @@ func (a *App) attachContainerStats(ctx context.Context, cacheTimeMs uint16, data
 	return nil
 }
 
-func (a *App) attachDefaultIntervalStats(ctx context.Context, cacheTimeMs uint16, data *systemmodel.CombinedData, identities []containermodel.Identity) error {
-	if cacheTimeMs != collector.TickKey {
-		return nil
+// attachTickDetailStats adds what the tick collects only for a due history
+// row. A failed connection or IRQ read is skipped from the tick, so it costs
+// its own row and not the others, and no zero is stored in its place.
+func (a *App) attachTickDetailStats(ctx context.Context, data *systemmodel.CombinedData, identities []containermodel.Identity, tick store.Tick) error {
+	if tick.Due(plugins.ContainerTelemetry) {
+		var err error
+		data.ProcessCount, data.Processes, data.Programs, err = a.processManager.CollectStats(ctx, identities)
+		if err != nil {
+			return err
+		}
+		data.ContainerTelemetry = containertelemetry.Aggregate(identities, data.Processes, a.gpuProcessSamples())
 	}
-	return a.attachCurrentDetailStats(ctx, data, identities)
+	if tick.Due(plugins.Connections) {
+		connections, err := network.CollectConnectionStats(ctx)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if err != nil {
+			slog.Warn("connection collection failed", "error", err)
+			tick.Skip(plugins.Connections)
+		}
+		data.Connections = connections
+	}
+	if tick.Due(plugins.IRQ) {
+		irqs, err := network.CollectIRQStats(ctx)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if err != nil {
+			slog.Warn("irq collection failed", "error", err)
+			tick.Skip(plugins.IRQ)
+		}
+		data.IRQs = irqs
+	}
+	return nil
 }
 
-func (a *App) attachCurrentDetailStats(ctx context.Context, data *systemmodel.CombinedData, identities []containermodel.Identity) error {
-	var err error
-	data.ProcessCount, data.Processes, data.Programs, err = a.processManager.CollectStats(ctx, identities)
-	if err != nil {
-		return err
+// collectedOnTick reports whether the tick that had due collected plugin's
+// current payload: processes, programs and container telemetry come from the
+// process scan, which runs only when container telemetry history is due, and
+// connections and IRQs only when their own history is.
+func collectedOnTick(plugin string, due func(string) bool) bool {
+	switch plugin {
+	case plugins.Processes, plugins.Programs, plugins.ContainerTelemetry:
+		return due(plugins.ContainerTelemetry)
+	case plugins.Connections, plugins.IRQ:
+		return due(plugin)
 	}
-	data.ContainerTelemetry = containertelemetry.Aggregate(identities, data.Processes, a.gpuProcessSamples())
-	data.Connections, err = network.CollectConnectionStats(ctx)
-	if err != nil {
-		return err
-	}
-	data.IRQs, err = network.CollectIRQStats(ctx)
-	return err
+	return true
 }
 
 func containerIdentitiesFromStats(items []*containermodel.Stats) []containermodel.Identity {

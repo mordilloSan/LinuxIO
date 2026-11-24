@@ -3,6 +3,7 @@ package live
 import (
 	"cmp"
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -30,11 +31,32 @@ type Tracker interface {
 
 // Filesystems lists the mounts for the live payload. The mountpoint is the
 // cache key: several mounts can share a device and mounts can appear or
-// disappear. The zero value is ready to use; mu guards the cache.
+// disappear. The zero value is ready to use; mu guards the cache and the
+// statfs calls in flight.
 type Filesystems struct {
-	mu    sync.Mutex
-	cache map[string]cachedFilesystem
+	mu      sync.Mutex
+	cache   map[string]cachedFilesystem
+	statfss map[string]*statfsCall
 }
+
+// statfsCall is one statfs of a mount. statfs takes no deadline, and on a dead
+// hard-mounted share it blocks until the server answers, so it runs on its own
+// goroutine, which exits when the call returns; at most one runs per mount.
+type statfsCall struct {
+	done  chan struct{} // closed once usage, err and at are set
+	usage *psutilDisk.UsageStat
+	err   error
+	at    time.Time
+}
+
+// statfsWait is how long a live collection waits for the statfs it started.
+// A mount whose call is still running from an earlier collection is not
+// waited for at all, so a dead mount costs its own row and nothing else.
+var statfsWait = time.Second
+
+// lateStatfsMaxAge is how old the answer of a call that outlived its wait may
+// be and still be served by a later collection.
+const lateStatfsMaxAge = 30 * time.Second
 
 var (
 	livePartitions = psutilDisk.PartitionsWithContext
@@ -80,10 +102,11 @@ func (f *Filesystems) Info(ctx context.Context, appMu sync.Locker, tracker Track
 			continue
 		}
 
-		usage, err := liveDiskUsage(ctx, mountpoint)
+		usage, err := f.usage(ctx, mountpoint)
 		if err != nil {
-			// A mount may disappear between partition discovery and usage. Keep
-			// serving the other mounts in this optional live section.
+			// A mount may disappear between partition discovery and usage, or
+			// not answer in time. Keep serving the other mounts in this
+			// optional live section.
 			if found {
 				cache[mountpoint] = cached
 			}
@@ -95,11 +118,87 @@ func (f *Filesystems) Info(ctx context.Context, appMu sync.Locker, tracker Track
 	}
 	f.mu.Lock()
 	f.cache = cache
+	f.forgetUnmountedStatfs(partitions)
 	f.mu.Unlock()
 	slices.SortFunc(items, func(a, b monitoringapi.FilesystemInfo) int {
 		return cmp.Or(strings.Compare(a.Mountpoint, b.Mountpoint), strings.Compare(a.Device, b.Device))
 	})
 	return items
+}
+
+// errStatfsPending is a mount whose statfs has not returned yet.
+var errStatfsPending = errors.New("statfs still running")
+
+// usage returns the mount's usage from a statfs this collection starts and
+// waits up to statfsWait for, or from one an earlier collection started that
+// has returned since. A call still running is not waited for again.
+func (f *Filesystems) usage(ctx context.Context, mountpoint string) (*psutilDisk.UsageStat, error) {
+	f.mu.Lock()
+	call := f.statfss[mountpoint]
+	started := false
+	if call != nil {
+		select {
+		case <-call.done:
+			delete(f.statfss, mountpoint)
+			if time.Since(call.at) > lateStatfsMaxAge {
+				call = nil
+			}
+		default:
+			f.mu.Unlock()
+			return nil, errStatfsPending
+		}
+	}
+	if call == nil {
+		call = &statfsCall{done: make(chan struct{})}
+		if f.statfss == nil {
+			f.statfss = make(map[string]*statfsCall)
+		}
+		f.statfss[mountpoint] = call
+		started = true
+		// The call outlives this request when the mount does not answer, so
+		// it does not take the request's cancellation; statfs ignores it.
+		go func(ctx context.Context) {
+			call.usage, call.err = liveDiskUsage(ctx, mountpoint)
+			call.at = time.Now()
+			close(call.done)
+		}(context.WithoutCancel(ctx))
+	}
+	f.mu.Unlock()
+	if !started {
+		return call.usage, call.err
+	}
+
+	timer := time.NewTimer(statfsWait)
+	defer timer.Stop()
+	select {
+	case <-call.done:
+	case <-timer.C:
+		return nil, errStatfsPending
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	f.mu.Lock()
+	if f.statfss[mountpoint] == call {
+		delete(f.statfss, mountpoint)
+	}
+	f.mu.Unlock()
+	return call.usage, call.err
+}
+
+// forgetUnmountedStatfs drops the finished calls of mounts that are gone; a
+// call still running stays until it returns and a later listing drops it.
+// The caller holds f.mu.
+func (f *Filesystems) forgetUnmountedStatfs(partitions []psutilDisk.PartitionStat) {
+	for mountpoint, call := range f.statfss {
+		if slices.ContainsFunc(partitions, func(p psutilDisk.PartitionStat) bool { return p.Mountpoint == mountpoint }) {
+			continue
+		}
+		select {
+		case <-call.done:
+			delete(f.statfss, mountpoint)
+		default:
+		}
+	}
 }
 
 // freshTrackedFilesystems copies the collector's recent usage figures out from
@@ -157,7 +256,8 @@ func isPseudoFS(partition psutilDisk.PartitionStat) bool {
 	switch partition.Fstype {
 	case "proc", "sysfs", "devtmpfs", "devpts", "tmpfs", "cgroup", "cgroup2", "pstore",
 		"securityfs", "debugfs", "tracefs", "configfs", "overlay", "squashfs", "ramfs",
-		"bpf", "nsfs", "autofs", "fusectl":
+		"bpf", "nsfs", "autofs", "fusectl", "binfmt_misc", "efivarfs", "hugetlbfs",
+		"mqueue", "rpc_pipefs":
 		return true
 	case "ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "f2fs", "reiserfs", "jfs", "ntfs", "vfat", "exfat":
 		return false

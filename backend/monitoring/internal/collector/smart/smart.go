@@ -3,14 +3,15 @@
 package smart
 
 import (
+	"bytes"
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,48 +21,96 @@ import (
 	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
 )
 
-// Manager manages data collection for SMART devices
+// Manager collects SMART data. Every refresh builds the list of targets
+// (smartctl scan, SMART_DEVICES, eMMC and md arrays), queries each one and
+// replaces the collected records, so a drive that is removed or stops
+// answering leaves the list and no per-device state has to be kept in sync.
 type Manager struct {
-	sync.Mutex
-	SmartDataMap     map[string]*smartmodel.SmartData
-	SmartDevices     []*DeviceInfo
-	refreshMutex     sync.Mutex
-	lastScanTime     time.Time
-	smartctlPath     string
-	excludedDevices  map[string]struct{}
-	refreshInterval  time.Duration // Interval between automatic SMART refreshes
-	lastRefresh      time.Time     // Last successful SMART refresh
-	lastRefreshError string        // Last SMART refresh error to avoid repeating identical warnings
+	sync.Mutex                                        // guards data and the refresh schedule below
+	data             map[string]*smartmodel.SmartData // collected records keyed by serial (or sysfs key)
+	refreshInterval  time.Duration                    // interval between automatic refreshes
+	lastRefresh      time.Time                        // last refresh attempt
+	lastRefreshError string                           // last refresh error, so callers log only changes
+
+	refreshMutex    sync.Mutex             // serializes refreshes; guards the fields below
+	last            map[string]smartResult // last success per target key
+	woken           map[string]struct{}    // target keys already queried once without -n standby; never cleared
+	failing         map[string]string      // target key → error text last logged for it
+	scanned         []smartDevice          // cached smartctl --scan result
+	scanErr         error                  // error of the cached scan
+	lastScan        time.Time
+	smartctlPath    string
+	excludedDevices map[string]struct{}
+	// run executes smartctl; nil means exec smartctlPath. Overridable for testing.
+	run smartctlRunner
 }
 
-type scanOutput struct {
-	Devices []struct {
-		Name     string `json:"name"`
-		Type     string `json:"type"`
-		InfoName string `json:"info_name"`
-		Protocol string `json:"protocol"`
-	} `json:"devices"`
+// smartctlRunner runs smartctl and returns its stdout and exit status. err is
+// set only when smartctl could not be run, timed out or ctx ended.
+type smartctlRunner func(ctx context.Context, timeout time.Duration, args ...string) (output []byte, exitCode int, err error)
+
+// smartDevice is a device from the smartctl scan, SMART_DEVICES or sysfs.
+type smartDevice struct {
+	name  string
+	dtype string
+	// explicit marks a type set in SMART_DEVICES. It is a deliberate override,
+	// so it is always passed to smartctl and never second-guessed.
+	explicit bool
 }
 
-type DeviceInfo struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	InfoName string `json:"info_name"`
-	Protocol string `json:"protocol"`
-	// typeVerified reports whether we have already parsed SMART data for this device
-	// with the stored parserType. When true we can skip re-running the detection logic.
-	typeVerified bool
-	// parserType holds the parser type (nvme, sat, scsi) that last succeeded.
-	parserType string
+// smartAttempt is one way to query a device: a path and a -d type. An empty
+// type lets smartctl detect it.
+type smartAttempt struct {
+	path  string
+	dtype string
 }
 
-// deviceKey is a composite key for a device, used to identify a device uniquely.
-type deviceKey struct {
-	name       string
-	deviceType string
+type smartTarget struct {
+	key      string // name and type; stable across refreshes
+	dtype    string // emmc and mdraid are read from sysfs instead of smartctl
+	name     string
+	attempts []smartAttempt
 }
 
-var errNoValidSmartData = fmt.Errorf("no valid SMART data found") // Error for missing data
+type smartResult struct {
+	key     string // data map key
+	data    *smartmodel.SmartData
+	attempt int    // index of the attempt that succeeded, tried first next time
+	ata     bool   // device speaks ATA, so -l devstat is requested
+	path    string // the path that was read
+	diskSeq uint64 // that path's diskseq when it was read; 0 when it has none
+}
+
+var (
+	errNoValidSmartData = errors.New("no valid SMART data found")
+	errStandby          = errors.New("device is in standby")
+	errVirtualDevice    = errors.New("virtual device")
+)
+
+// diskSeq returns the kernel's sequence number of the block device at path
+// (/sys/class/block/<name>/diskseq), which every newly attached disk gets
+// anew, or 0 when the path is no block device or the kernel has none. Tests
+// replace it.
+var diskSeq = func(path string) uint64 {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	raw, err := os.ReadFile(filepath.Join("/sys/class/block", filepath.Base(path), "diskseq"))
+	if err != nil {
+		return 0
+	}
+	seq, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return seq
+}
+
+const (
+	smartScanInterval  = 30 * time.Minute
+	smartScanTimeout   = 10 * time.Second
+	smartDeviceTimeout = 15 * time.Second
+)
 
 // RefreshInterval returns the interval between automatic SMART refreshes.
 func (sm *Manager) RefreshInterval() time.Duration {
@@ -101,7 +150,16 @@ func (sm *Manager) SwapRefreshError(current string) (previous string) {
 	return previous
 }
 
-// Refresh updates SMART data for all known devices
+// driveFailure is a target whose read failed in one refresh.
+type driveFailure struct {
+	target smartTarget
+	err    error
+}
+
+// Refresh reads every target and replaces the SMART records with what it read.
+// A drive that fails or passes its time limit is left out and the refresh
+// moves on to the next one; only the end of ctx stops it, and then the
+// previous records stay. It returns an error only when nothing was collected.
 func (sm *Manager) Refresh(ctx context.Context, forceScan bool) error {
 	sm.refreshMutex.Lock()
 	defer sm.refreshMutex.Unlock()
@@ -109,75 +167,97 @@ func (sm *Manager) Refresh(ctx context.Context, forceScan bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-
-	scanErr := sm.ScanDevices(ctx, forceScan)
-	if scanErr != nil {
-		slog.Debug("smartctl scan failed", "error", scanErr)
+	targets, scanErr := sm.buildTargets(ctx, forceScan)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	devices := sm.devicesSnapshot()
-	var collectErr error
-	for _, deviceInfo := range devices {
-		if deviceInfo == nil {
+	data := make(map[string]*smartmodel.SmartData, len(targets))
+	last := make(map[string]smartResult, len(targets))
+	collected := make(map[string]struct{}, len(targets))
+	var failed []driveFailure
+	for _, target := range targets {
+		result, err := sm.collectTarget(ctx, target)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if err != nil {
+			// Keep the last successful reading for later standby reuse. Only
+			// targets still present are kept, so removed drives are forgotten.
+			if prev, ok := sm.last[target.key]; ok {
+				last[target.key] = prev
+			}
+			switch {
+			case errors.Is(err, errVirtualDevice):
+				slog.Debug("skipping virtual SMART device", "device", target.name, "error", err)
+			case !errors.Is(err, errStandby):
+				failed = append(failed, driveFailure{target: target, err: err})
+			}
 			continue
 		}
-		if err := ctx.Err(); err != nil {
-			return err
+		collected[target.key] = struct{}{}
+		// A second path to one disk keeps its own reading too, so a later
+		// standby on that path reuses it instead of waking the disk.
+		last[target.key] = result
+		if existing, ok := data[result.key]; ok {
+			slog.Debug("skipping duplicate SMART device", "device", target.name, "serial", result.key, "first", existing.DiskName)
+			continue
 		}
-		if err := sm.CollectSmart(ctx, deviceInfo); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return err
-			}
-			collectErr = fmt.Errorf("%s: %w", deviceInfo.Name, err)
-		}
+		data[result.key] = result.data
 	}
+	sm.last = last
 
-	return sm.resolveRefreshError(scanErr, collectErr)
-}
-
-// devicesSnapshot returns a copy of the current device slice to avoid iterating
-// while holding the primary mutex for longer than necessary.
-func (sm *Manager) devicesSnapshot() []*DeviceInfo {
 	sm.Lock()
-	defer sm.Unlock()
-
-	devices := make([]*DeviceInfo, len(sm.SmartDevices))
-	copy(devices, sm.SmartDevices)
-	return devices
-}
-
-// resolveRefreshError determines the proper error to return after a refresh.
-func (sm *Manager) resolveRefreshError(scanErr, collectErr error) error {
-	sm.Lock()
-	noDevices := len(sm.SmartDevices) == 0
-	noData := len(sm.SmartDataMap) == 0
+	sm.data = data
 	sm.Unlock()
 
-	if noDevices {
-		if scanErr != nil {
-			return scanErr
-		}
-	}
-
-	if !noData {
-		return nil
-	}
-
-	if collectErr != nil {
-		return collectErr
-	}
-	if scanErr != nil {
+	sm.logDriveFailures(failed, collected)
+	if len(targets) == 0 && scanErr != nil {
 		return scanErr
 	}
-	return errNoValidSmartData
+	if scanErr != nil {
+		slog.Debug("smartctl scan failed", "error", scanErr, "previous_devices", len(sm.scanned))
+	}
+	switch {
+	case len(data) > 0:
+		return nil
+	case len(failed) > 0:
+		// Each drive's own error is in its log line.
+		return fmt.Errorf("%w: %d drives unreadable", errNoValidSmartData, len(failed))
+	default:
+		return errNoValidSmartData
+	}
 }
 
-// GetCurrentData returns the current SMART data
+// logDriveFailures logs the drives that failed: a warning when a drive starts
+// failing or fails differently, a debug line while it keeps failing the same
+// way, and an info line when one answers again. Called with refreshMutex held.
+func (sm *Manager) logDriveFailures(failed []driveFailure, collected map[string]struct{}) {
+	failing := make(map[string]string, len(failed))
+	for _, failure := range failed {
+		text := failure.err.Error()
+		failing[failure.target.key] = text
+		if previous, ok := sm.failing[failure.target.key]; ok && previous == text {
+			slog.Debug("SMART drive still unreadable", "device", failure.target.name, "error", failure.err)
+			continue
+		}
+		slog.Warn("SMART drive unreadable, left out of the list", "device", failure.target.name, "error", failure.err)
+	}
+	for key := range sm.failing {
+		if _, ok := collected[key]; ok {
+			name, _, _ := strings.Cut(key, "|")
+			slog.Info("SMART drive readable again", "device", name)
+		}
+	}
+	sm.failing = failing
+}
+
+// GetCurrentData returns the current SMART records.
 func (sm *Manager) GetCurrentData() map[string]smartmodel.SmartData {
 	sm.Lock()
 	defer sm.Unlock()
-	result := make(map[string]smartmodel.SmartData, len(sm.SmartDataMap))
-	for key, value := range sm.SmartDataMap {
+	result := make(map[string]smartmodel.SmartData, len(sm.data))
+	for key, value := range sm.data {
 		if value != nil {
 			result[key] = *value
 		}
@@ -185,155 +265,393 @@ func (sm *Manager) GetCurrentData() map[string]smartmodel.SmartData {
 	return result
 }
 
-// ScanDevices scans for SMART devices
-// Scan devices using `smartctl --scan -j`
-// If scan fails, return error
-// If scan succeeds, parse the output and update the SmartDevices slice
-func (sm *Manager) ScanDevices(ctx context.Context, force bool) error {
-	if !force && time.Since(sm.lastScanTime) < 30*time.Minute {
-		return nil
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	currentDevices := sm.devicesSnapshot()
-
-	var configuredDevices []*DeviceInfo
-	if configuredRaw, ok := config.LookupEnv(config.EnvSmartDevices); ok {
-		list := strings.TrimSpace(configuredRaw)
-		if list == "" {
-			slog.Debug("no SMART device candidates discovered", "source", "configured", "reason", "SMART_DEVICES is empty")
-			return errNoValidSmartData
+// buildTargets merges the smartctl scan, SMART_DEVICES and sysfs devices into
+// the list of targets to query.
+func (sm *Manager) buildTargets(ctx context.Context, forceScan bool) ([]smartTarget, error) {
+	var configured []smartDevice
+	if raw, ok := config.LookupEnv(config.EnvSmartDevices); ok {
+		// An empty SMART_DEVICES turns SMART off.
+		if strings.TrimSpace(raw) == "" {
+			return nil, errNoValidSmartData
 		}
-
-		parsedDevices, err := sm.parseConfiguredDevices(list)
-		if err != nil {
-			return err
+		var err error
+		if configured, err = parseConfiguredDevices(raw); err != nil {
+			return nil, err
 		}
-		configuredDevices = parsedDevices
 	}
 
-	var (
-		scanErr        error
-		scannedDevices []*DeviceInfo
-		hasValidScan   bool
-	)
+	scanned, scanErr := sm.scanSmartctl(ctx, forceScan)
+	scanned = append(slices.Clone(scanned), scanSysfsDevices()...)
 
-	if sm.smartctlPath != "" {
-		cmdCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(cmdCtx, sm.smartctlPath, "--scan", "-j")
-		output, err := cmd.Output()
-		switch {
-		case cmdCtx.Err() != nil:
-			scanErr = cmdCtx.Err()
-		case err != nil:
-			scanErr = err
-		default:
-			scannedDevices, hasValidScan = sm.parseScan(output)
-			if !hasValidScan {
-				scanErr = errNoValidSmartData
+	devices := mergeDevices(scanned, configured)
+	targets := make([]smartTarget, 0, len(devices))
+	for _, device := range devices {
+		if sm.isExcludedDevice(device.name) {
+			continue
+		}
+		targets = append(targets, smartTarget{
+			key:      device.name + "|" + device.dtype,
+			dtype:    device.dtype,
+			name:     device.name,
+			attempts: sm.attemptsFor(device),
+		})
+	}
+	return targets, scanErr
+}
+
+// scanSysfsDevices returns the eMMC and md devices read from sysfs instead of
+// smartctl. It is a variable so tests can isolate themselves from the host.
+var scanSysfsDevices = func() []smartDevice {
+	var devices []smartDevice
+	for _, path := range scanEmmcDevices() {
+		devices = append(devices, smartDevice{name: path, dtype: "emmc"})
+	}
+	for _, path := range scanMdraidDevices() {
+		devices = append(devices, smartDevice{name: path, dtype: "mdraid"})
+	}
+	return devices
+}
+
+// mergeDevices adds SMART_DEVICES entries to the scanned devices. A configured
+// entry with a type replaces the scanned entry for the same path when that
+// path was scanned exactly once; otherwise it is added (extra RAID members
+// that share a controller path). Duplicates are dropped.
+func mergeDevices(scanned, configured []smartDevice) []smartDevice {
+	devices := slices.Clone(scanned)
+	nameCounts := make(map[string]int, len(scanned))
+	for _, device := range scanned {
+		nameCounts[device.name]++
+	}
+	for _, device := range configured {
+		if i := slices.IndexFunc(devices, func(d smartDevice) bool { return d.name == device.name && d.dtype == device.dtype }); i >= 0 {
+			devices[i].explicit = devices[i].explicit || device.explicit
+			continue
+		}
+		if nameCounts[device.name] == 1 {
+			if device.dtype != "" {
+				i := slices.IndexFunc(devices, func(d smartDevice) bool { return d.name == device.name })
+				devices[i] = device
+				nameCounts[device.name] = 0 // further types for this path are added
+			}
+			continue
+		}
+		devices = append(devices, device)
+	}
+
+	seen := make(map[smartDevice]struct{}, len(devices))
+	return slices.DeleteFunc(devices, func(d smartDevice) bool {
+		d.explicit = false
+		if _, ok := seen[d]; ok || d.name == "" {
+			return true
+		}
+		seen[d] = struct{}{}
+		return false
+	})
+}
+
+// attemptsFor returns the smartctl queries to try for a device, in order. All
+// fallbacks live here:
+//   - an explicit SMART_DEVICES type is used as it is;
+//   - the scan types ata and scsi are often wrong (SATA disks behind a SAS HBA
+//     or a USB bridge), so smartctl detects the type first; scsi then falls
+//     back to sat for SATA disks the detection misses;
+//   - an NVMe controller path falls back to its first namespace.
+func (sm *Manager) attemptsFor(device smartDevice) []smartAttempt {
+	dtype := strings.ToLower(device.dtype)
+	var attempts []smartAttempt
+	switch {
+	case device.explicit:
+		attempts = []smartAttempt{{device.name, device.dtype}}
+	case dtype == "scsi":
+		attempts = []smartAttempt{{device.name, ""}, {device.name, "sat"}}
+	case dtype == "ata":
+		attempts = []smartAttempt{{device.name, ""}}
+	default:
+		attempts = []smartAttempt{{device.name, device.dtype}}
+	}
+	if IsNvmeControllerPath(device.name) && (dtype == "" || dtype == "nvme") {
+		if namespace := device.name + "n1"; !sm.isExcludedDevice(namespace) {
+			attempts = append(attempts, smartAttempt{namespace, device.dtype})
+		}
+	}
+	return attempts
+}
+
+// scanSmartctl returns the devices found by `smartctl --scan -j`. The result,
+// a failure included, is cached for smartScanInterval, and a failed scan
+// keeps the previous device list so drives do not disappear.
+func (sm *Manager) scanSmartctl(ctx context.Context, force bool) ([]smartDevice, error) {
+	if sm.smartctlPath == "" && sm.run == nil {
+		return nil, nil
+	}
+	if !force && !sm.lastScan.IsZero() && time.Since(sm.lastScan) < smartScanInterval {
+		return sm.scanned, sm.scanErr
+	}
+
+	output, exitCode, err := sm.runSmartctl(ctx, smartScanTimeout, "--scan", "-j")
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		// The caller ended, which says nothing about the scan.
+		return sm.scanned, ctxErr
+	}
+	if err == nil && exitCode != 0 {
+		err = fmt.Errorf("smartctl scan failed (exit status %d)%s", exitCode, smartctlMessages(output))
+	}
+	// A failure is cached only when there is a list to keep meanwhile; with
+	// none, the next refresh scans again.
+	if err == nil || len(sm.scanned) > 0 {
+		sm.lastScan = time.Now()
+	}
+	if err == nil {
+		var devices []smartDevice
+		if devices, err = parseScan(output); err == nil {
+			// An empty scan after devices were found is more likely a
+			// passing failure than every disk being removed.
+			if len(devices) == 0 && len(sm.scanned) > 0 {
+				err = errors.New("smartctl scan found no devices")
+			} else {
+				sm.scanned = devices
 			}
 		}
 	}
-
-	// Add eMMC devices (Linux only) by reading sysfs health fields. This does not
-	// require smartctl and does not scan the whole device.
-	if emmcDevices := scanEmmcDevices(); len(emmcDevices) > 0 {
-		scannedDevices = append(scannedDevices, emmcDevices...)
-	}
-
-	// Add Linux mdraid arrays by reading sysfs health fields. This does not
-	// require smartctl and does not scan the whole device.
-	if raidDevices := scanMdraidDevices(); len(raidDevices) > 0 {
-		scannedDevices = append(scannedDevices, raidDevices...)
-	}
-
-	finalDevices := mergeDeviceLists(currentDevices, scannedDevices, configuredDevices)
-	finalDevices = sm.filterExcludedDevices(finalDevices)
-	sm.updateSmartDevices(finalDevices)
-
-	if len(finalDevices) == 0 {
-		args := []any{"source", smartDeviceSource(scannedDevices, configuredDevices)}
-		if scanErr != nil {
-			args = append(args, "error", scanErr)
-			slog.Debug("no SMART device candidates discovered", args...)
-			slog.Debug("smartctl scan failed", "error", scanErr)
-			return scanErr
-		}
-		slog.Debug("no SMART device candidates discovered", args...)
-		return errNoValidSmartData
-	}
-
-	sm.lastScanTime = time.Now()
-	slog.Debug("SMART device candidates discovered", "devices", smartDeviceLabels(finalDevices), "source", smartDeviceSource(scannedDevices, configuredDevices))
-	return nil
+	sm.scanErr = err
+	return sm.scanned, err
 }
 
-func smartDeviceLabels(devices []*DeviceInfo) []string {
-	labels := make([]string, 0, len(devices))
-	for _, device := range devices {
-		if device == nil || device.Name == "" {
-			continue
-		}
-		label := device.Name
-		if device.Type != "" {
-			label += ":" + device.Type
-		}
-		labels = append(labels, label)
+// parseScan parses the output of smartctl --scan -j.
+func parseScan(output []byte) ([]smartDevice, error) {
+	var scan struct {
+		Devices []struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			Protocol string `json:"protocol"`
+		} `json:"devices"`
 	}
-	return labels
+	if err := unmarshalSmartctl(output, &scan); err != nil {
+		return nil, fmt.Errorf("invalid smartctl scan output: %w", err)
+	}
+	devices := make([]smartDevice, 0, len(scan.Devices))
+	for _, device := range scan.Devices {
+		devices = append(devices, smartDevice{name: device.Name, dtype: device.Type})
+	}
+	return devices, nil
 }
 
-func smartDeviceSource(scanned, configured []*DeviceInfo) string {
-	switch {
-	case len(scanned) > 0 && len(configured) > 0:
-		return "scan+configured"
-	case len(configured) > 0:
-		return "configured"
-	case len(scanned) > 0:
-		return "scan"
-	default:
-		return "scan"
-	}
-}
-
-func (sm *Manager) parseConfiguredDevices(list string) ([]*DeviceInfo, error) {
+// parseConfiguredDevices parses SMART_DEVICES entries of the form path[:type].
+func parseConfiguredDevices(list string) ([]smartDevice, error) {
 	splitChar, _ := config.LookupEnv(config.EnvSmartDevicesSeparator)
 	if splitChar == "" {
 		splitChar = ","
 	}
-	entries := strings.Split(list, splitChar)
-	devices := make([]*DeviceInfo, 0, len(entries))
-	for _, entry := range entries {
+	var devices []smartDevice
+	for entry := range strings.SplitSeq(list, splitChar) {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
 		}
-
-		parts := strings.SplitN(entry, ":", 2)
-
-		name := strings.TrimSpace(parts[0])
+		name, dtype, _ := strings.Cut(entry, ":")
+		name = strings.TrimSpace(name)
 		if name == "" {
 			return nil, fmt.Errorf("invalid SMART_DEVICES entry %q", entry)
 		}
-
-		devType := ""
-		if len(parts) == 2 {
-			devType = strings.ToLower(strings.TrimSpace(parts[1]))
-		}
-
-		devices = append(devices, &DeviceInfo{
-			Name: name,
-			Type: devType,
-		})
+		dtype = strings.ToLower(strings.TrimSpace(dtype))
+		devices = append(devices, smartDevice{name: name, dtype: dtype, explicit: dtype != ""})
 	}
-
 	if len(devices) == 0 {
 		return nil, errNoValidSmartData
 	}
-
 	return devices, nil
+}
+
+// collectTarget reads one target. smartctl targets try each attempt in turn,
+// starting with the one that worked last time. A drive that fails, or passes
+// its time limit, returns an error and the caller moves on to the next one.
+//
+//nolint:gocognit // One loop holds the attempt order, the standby rules and the single wake.
+func (sm *Manager) collectTarget(ctx context.Context, target smartTarget) (smartResult, error) {
+	switch target.dtype {
+	case "emmc", "mmc":
+		if key, data, ok := readEmmcSmartData(target.name); ok {
+			return smartResult{key: key, data: data}, nil
+		}
+		return smartResult{}, errNoValidSmartData
+	case "mdraid":
+		if key, data, ok := readMdraidSmartData(target.name); ok {
+			return smartResult{key: key, data: data}, nil
+		}
+		return smartResult{}, errNoValidSmartData
+	}
+	if sm.smartctlPath == "" && sm.run == nil {
+		return smartResult{}, errNoValidSmartData
+	}
+
+	prev, hasPrev := sm.last[target.key]
+	order := make([]int, 0, len(target.attempts))
+	if hasPrev && prev.attempt < len(target.attempts) {
+		order = append(order, prev.attempt)
+	}
+	for i := range target.attempts {
+		if !hasPrev || i != prev.attempt {
+			order = append(order, i)
+		}
+	}
+
+	// The last attempt's error is returned; one a later attempt replaces, or
+	// that a standby answer ends, is logged here.
+	var (
+		err        error
+		errAttempt smartAttempt
+	)
+	logPending := func() {
+		if err != nil {
+			slog.Debug("smartctl attempt failed", "device", errAttempt.path, "type", errAttempt.dtype, "error", err)
+		}
+	}
+	fail := func(attempt smartAttempt, attemptErr error) {
+		logPending()
+		err, errAttempt = attemptErr, attempt
+	}
+	// After a wake the disk is spinning, or the wake did not reach it, so the
+	// remaining attempts read it as it is rather than asking about standby.
+	standby := true
+	for _, i := range order {
+		attempt := target.attempts[i]
+		// A scanned ata type requests devstat until a reading confirms the protocol.
+		ata := prev.ata || !hasPrev && strings.EqualFold(target.dtype, "ata")
+		args := smartctlArgs(attempt, ata, standby)
+		output, exitCode, runErr := sm.runSmartctl(ctx, smartDeviceTimeout, args...)
+		if runErr != nil {
+			if ctx.Err() != nil {
+				return smartResult{}, runErr
+			}
+			fail(attempt, runErr)
+			continue
+		}
+		data, protocol, parseErr := parseSmartctl(output, attempt.dtype)
+		if parseErr == nil {
+			return readResult(data, attempt, i, protocol), nil
+		}
+		if errors.Is(parseErr, errVirtualDevice) {
+			logPending()
+			return smartResult{}, parseErr
+		}
+		if !standby || !isStandby(output, exitCode) {
+			fail(attempt, fmt.Errorf("%w (exit status %d)", parseErr, exitCode))
+			continue
+		}
+		// Do not wake a sleeping disk that was read before: reuse its last
+		// record, unless the kernel numbers the disk at that path anew, which
+		// means another disk took its place.
+		if hasPrev && (prev.diskSeq == 0 || diskSeq(prev.path) == prev.diskSeq) {
+			logPending()
+			slog.Debug("smartctl device in standby, kept its last record", "device", attempt.path)
+			return prev, nil
+		}
+		// Wake a disk once per daemon run so it is read at least once. This is
+		// kept apart from last, so a disk that fails after waking is not woken
+		// again on every refresh.
+		if _, ok := sm.woken[target.key]; !ok {
+			if sm.woken == nil {
+				sm.woken = make(map[string]struct{})
+			}
+			sm.woken[target.key] = struct{}{}
+			slog.Debug("smartctl waking device in standby for its first reading", "device", attempt.path)
+			result, wakeErr := sm.wakeTarget(ctx, attempt, i, ata)
+			if wakeErr == nil {
+				return result, nil
+			}
+			if ctx.Err() != nil {
+				// The wake was cut short, not tried: keep it for a later refresh.
+				delete(sm.woken, target.key)
+				return smartResult{}, wakeErr
+			}
+			standby = false
+			fail(attempt, wakeErr)
+			continue
+		}
+		// Already woken once: skip it until it wakes. smartctl also reports
+		// SLEEP when it lacks permission to check the power mode.
+		logPending()
+		slog.Debug("smartctl device in standby, skipped", "device", attempt.path, "sleep_or_no_permission", bytes.Contains(bytes.ToUpper(output), []byte("SLEEP MODE")))
+		return smartResult{}, errStandby
+	}
+	return smartResult{}, err
+}
+
+// wakeTarget queries an attempt without -n standby, spinning up the disk.
+// A failure is returned as a real error rather than errStandby, which also
+// brings out the permission problem smartctl otherwise reports as SLEEP.
+func (sm *Manager) wakeTarget(ctx context.Context, attempt smartAttempt, i int, ata bool) (smartResult, error) {
+	args := smartctlArgs(attempt, ata, false)
+	output, exitCode, err := sm.runSmartctl(ctx, smartDeviceTimeout, args...)
+	if err != nil {
+		return smartResult{}, err
+	}
+	data, protocol, err := parseSmartctl(output, attempt.dtype)
+	if err != nil {
+		return smartResult{}, fmt.Errorf("%w (exit status %d)", err, exitCode)
+	}
+	return readResult(data, attempt, i, protocol), nil
+}
+
+// readResult is a reading of one attempt, with the disk's diskseq so a later
+// standby can tell it is still the same disk.
+func readResult(data *smartmodel.SmartData, attempt smartAttempt, i int, protocol string) smartResult {
+	return smartResult{
+		key: data.SerialNumber, data: data, attempt: i, ata: protocol == "ata",
+		path: attempt.path, diskSeq: diskSeq(attempt.path),
+	}
+}
+
+// smartctlArgs returns the smartctl arguments for one attempt. standby adds
+// -n standby so smartctl skips a sleeping disk instead of waking it.
+func smartctlArgs(attempt smartAttempt, ata, standby bool) []string {
+	args := make([]string, 0, 9)
+	if attempt.dtype != "" {
+		args = append(args, "-d", attempt.dtype)
+	}
+	args = append(args, "-a", "--json=c")
+	if dtype := strings.ToLower(attempt.dtype); ata || dtype == "sat" || dtype == "ata" {
+		args = append(args, "-l", "devstat")
+	}
+	if standby {
+		args = append(args, "-n", "standby")
+	}
+	return append(args, attempt.path)
+}
+
+// isStandby reports whether smartctl skipped the device because -n standby
+// found it in a low-power mode: exit bit 1 together with its "Device is in X
+// mode" message. Exit bit 1 alone also means the device could not be opened.
+func isStandby(output []byte, exitCode int) bool {
+	if exitCode&2 == 0 {
+		return false
+	}
+	upper := bytes.ToUpper(output)
+	return bytes.Contains(upper, []byte("DEVICE IS IN ")) && bytes.Contains(upper, []byte(" MODE"))
+}
+
+// runSmartctl runs smartctl with a time limit under ctx. smartctl reports
+// device problems through its exit status bitmask while still printing JSON,
+// so a non-zero exit is returned as the status and not as an error. Passing
+// the time limit is an error of its own that does not wrap ctx's, so the
+// caller can tell it from the end of ctx.
+func (sm *Manager) runSmartctl(ctx context.Context, timeout time.Duration, args ...string) ([]byte, int, error) {
+	if sm.run != nil {
+		return sm.run(ctx, timeout, args...)
+	}
+	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	output, err := exec.CommandContext(cmdCtx, sm.smartctlPath, args...).Output()
+	if cmdCtx.Err() != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, 0, ctxErr
+		}
+		return nil, 0, fmt.Errorf("smartctl timed out after %s", timeout)
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		return output, exitErr.ExitCode(), nil
+	}
+	return output, 0, err
 }
 
 func (sm *Manager) refreshExcludedDevices() {
@@ -352,894 +670,6 @@ func (sm *Manager) refreshExcludedDevices() {
 func (sm *Manager) isExcludedDevice(deviceName string) bool {
 	_, exists := sm.excludedDevices[deviceName]
 	return exists
-}
-
-func (sm *Manager) filterExcludedDevices(devices []*DeviceInfo) []*DeviceInfo {
-	if devices == nil {
-		return []*DeviceInfo{}
-	}
-
-	excluded := sm.excludedDevices
-	if len(excluded) == 0 {
-		return devices
-	}
-
-	filtered := make([]*DeviceInfo, 0, len(devices))
-	for _, device := range devices {
-		if device == nil || device.Name == "" {
-			continue
-		}
-		if _, skip := excluded[device.Name]; skip {
-			continue
-		}
-		filtered = append(filtered, device)
-	}
-	return filtered
-}
-
-// detectSmartOutputType inspects sections that are unique to each smartctl
-// JSON schema (NVMe, ATA/SATA, SCSI) to determine which parser should be used
-// when the reported device type is ambiguous or missing.
-func detectSmartOutputType(output []byte) string {
-	var hints struct {
-		AtaSmartAttributes            jsontext.Value `json:"ata_smart_attributes"`
-		NVMeSmartHealthInformationLog jsontext.Value `json:"nvme_smart_health_information_log"`
-		ScsiErrorCounterLog           jsontext.Value `json:"scsi_error_counter_log"`
-	}
-
-	if err := json.Unmarshal(output, &hints, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
-		return ""
-	}
-
-	switch {
-	case hasJSONValue(hints.NVMeSmartHealthInformationLog):
-		return "nvme"
-	case hasJSONValue(hints.AtaSmartAttributes):
-		return "sat"
-	case hasJSONValue(hints.ScsiErrorCounterLog):
-		return "scsi"
-	default:
-		return "sat"
-	}
-}
-
-// hasJSONValue reports whether a JSON payload contains a concrete value. The
-// smartctl output often emits "null" for sections that do not apply, so we
-// only treat non-null content as a hint.
-func hasJSONValue(raw jsontext.Value) bool {
-	if len(raw) == 0 {
-		return false
-	}
-	trimmed := strings.TrimSpace(string(raw))
-	return trimmed != "" && trimmed != "null"
-}
-
-func normalizeParserType(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "nvme", "sntasmedia", "sntrealtek":
-		return "nvme"
-	case "sat", "ata":
-		return "sat"
-	case "scsi":
-		return "scsi"
-	default:
-		return strings.ToLower(strings.TrimSpace(value))
-	}
-}
-
-// makeDeviceKey creates a composite key from device name and type.
-// This allows multiple drives under the same device path (e.g., RAID controllers)
-// to be tracked separately.
-func makeDeviceKey(name, deviceType string) deviceKey {
-	return deviceKey{name: name, deviceType: deviceType}
-}
-
-// parseSmartOutput attempts each SMART parser, optionally detecting the type when
-// it is not provided, and updates the device info when a parser succeeds.
-//
-//nolint:gocognit // SMART parsing supports multiple device formats and vendor-specific data layouts.
-func (sm *Manager) parseSmartOutput(deviceInfo *DeviceInfo, output []byte) bool {
-	parsers := []struct {
-		Type  string
-		Parse func([]byte) (bool, int)
-	}{
-		{Type: "nvme", Parse: sm.parseSmartForNvme},
-		{Type: "sat", Parse: sm.parseSmartForSata},
-		{Type: "scsi", Parse: sm.parseSmartForScsi},
-	}
-
-	deviceType := normalizeParserType(deviceInfo.parserType)
-	if deviceType == "" {
-		deviceType = normalizeParserType(deviceInfo.Type)
-	}
-	if deviceInfo.parserType == "" {
-		switch deviceType {
-		case "nvme", "sat", "scsi":
-			deviceInfo.parserType = deviceType
-		}
-	}
-
-	// Only run the type detection when we do not yet know which parser works
-	// or the previous attempt failed.
-	needsDetection := deviceType == "" || !deviceInfo.typeVerified
-	if needsDetection {
-		structureType := detectSmartOutputType(output)
-		if deviceType != structureType {
-			deviceType = structureType
-			deviceInfo.parserType = structureType
-			deviceInfo.typeVerified = false
-		}
-		if deviceInfo.Type == "" || strings.EqualFold(deviceInfo.Type, structureType) {
-			deviceInfo.Type = structureType
-		}
-	}
-
-	// Try the most likely parser first, but keep the remaining parsers in reserve
-	// so an incorrect hint never leaves the device unparsed.
-	selectedParsers := make([]struct {
-		Type  string
-		Parse func([]byte) (bool, int)
-	}, 0, len(parsers))
-	if deviceType != "" {
-		for _, parser := range parsers {
-			if parser.Type == deviceType {
-				selectedParsers = append(selectedParsers, parser)
-				break
-			}
-		}
-	}
-	for _, parser := range parsers {
-		alreadySelected := false
-		for _, selected := range selectedParsers {
-			if selected.Type == parser.Type {
-				alreadySelected = true
-				break
-			}
-		}
-		if alreadySelected {
-			continue
-		}
-		selectedParsers = append(selectedParsers, parser)
-	}
-
-	// Try the selected parsers in order until we find one that succeeds.
-	for _, parser := range selectedParsers {
-		hasData, _ := parser.Parse(output)
-		if hasData {
-			deviceInfo.parserType = parser.Type
-			if deviceInfo.Type == "" || strings.EqualFold(deviceInfo.Type, parser.Type) {
-				deviceInfo.Type = parser.Type
-			}
-			// Remember that this parser is valid so future refreshes can bypass
-			// detection entirely.
-			deviceInfo.typeVerified = true
-			return true
-		}
-	}
-
-	// Leave verification false so the next pass will attempt detection again.
-	deviceInfo.typeVerified = false
-	return false
-}
-
-// CollectSmart collects SMART data for a device
-// Collect data using `smartctl -d <type> -aj /dev/<device>` when device type is known
-// Always attempts to parse output even if command fails, as some data may still be available
-// If collect fails, return error
-// If collect succeeds, parse the output and update the SmartDataMap
-// Uses -n standby to avoid waking up sleeping disks, but bypasses standby mode
-// for initial data collection when no cached data exists
-//
-//nolint:gocognit // SMART collection coordinates command execution, fallback parsing, and device-specific refresh logic.
-func (sm *Manager) CollectSmart(ctx context.Context, deviceInfo *DeviceInfo) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if deviceInfo != nil && sm.isExcludedDevice(deviceInfo.Name) {
-		return errNoValidSmartData
-	}
-
-	// mdraid health is not exposed via SMART; Linux exposes array state in sysfs.
-	if deviceInfo != nil {
-		if ok, err := sm.collectMdraidHealth(deviceInfo); ok {
-			return err
-		}
-	}
-	// eMMC health is not exposed via SMART on Linux, but the kernel provides
-	// wear / EOL indicators via sysfs. Prefer that path when available.
-	if deviceInfo != nil {
-		if ok, err := sm.collectEmmcHealth(deviceInfo); ok {
-			return err
-		}
-	}
-
-	if sm.smartctlPath == "" {
-		return errNoValidSmartData
-	}
-
-	// slog.Info("collecting SMART data", "device", deviceInfo.Name, "type", deviceInfo.Type, "has_existing_data", sm.hasDataForDevice(deviceInfo.Name))
-
-	// Check if we have any existing data for this device
-	hasExistingData := sm.hasDataForDevice(deviceInfo.Name)
-
-	// Try with -n standby first if we have existing data
-	args := sm.smartctlArgs(deviceInfo, hasExistingData)
-	output, err := sm.runSmartctl(ctx, 15*time.Second, args...)
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
-	}
-
-	// Check if device is in standby (exit status 2)
-	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok && exitErr.ExitCode() == 2 {
-		if hasExistingData {
-			// Device is in standby and we have cached data, keep using cache
-			return nil
-		}
-		// No cached data, need to collect initial data by bypassing standby
-		args = sm.smartctlArgs(deviceInfo, false)
-		output, err = sm.runSmartctl(ctx, 15*time.Second, args...)
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
-		}
-	}
-
-	hasValidData := sm.parseSmartOutput(deviceInfo, output)
-
-	// If NVMe controller path failed, try namespace path as fallback.
-	// NVMe controllers (/dev/nvme0) don't always support SMART queries. See github.com/mordilloSan/go-monitoring/issues/1504
-	if !hasValidData && err != nil && IsNvmeControllerPath(deviceInfo.Name) {
-		controllerPath := deviceInfo.Name
-		namespacePath := controllerPath + "n1"
-		if !sm.isExcludedDevice(namespacePath) {
-			deviceInfo.Name = namespacePath
-
-			args = sm.smartctlArgs(deviceInfo, false)
-			output, err = sm.runSmartctl(ctx, 15*time.Second, args...)
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return err
-			}
-			hasValidData = sm.parseSmartOutput(deviceInfo, output)
-
-			// Auto-exclude the controller path so future scans don't re-add it
-			if hasValidData {
-				sm.Lock()
-				if sm.excludedDevices == nil {
-					sm.excludedDevices = make(map[string]struct{})
-				}
-				sm.excludedDevices[controllerPath] = struct{}{}
-				sm.Unlock()
-				slog.Debug("auto-excluded NVMe controller path", "path", controllerPath)
-			}
-		}
-	}
-
-	if !hasValidData {
-		if err != nil {
-			return err
-		}
-		return errNoValidSmartData
-	}
-
-	return nil
-}
-
-func (sm *Manager) runSmartctl(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
-	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := exec.CommandContext(cmdCtx, sm.smartctlPath, args...)
-	output, err := cmd.CombinedOutput()
-	if cmdCtx.Err() != nil {
-		return output, cmdCtx.Err()
-	}
-	return output, err
-}
-
-// smartctlArgs returns the arguments for the smartctl command
-// based on the device type and whether to include standby mode
-func (sm *Manager) smartctlArgs(deviceInfo *DeviceInfo, includeStandby bool) []string {
-	args := make([]string, 0, 9)
-	var deviceType, parserType string
-
-	if deviceInfo != nil {
-		deviceType = strings.ToLower(deviceInfo.Type)
-		parserType = strings.ToLower(deviceInfo.parserType)
-		// types sometimes misidentified in scan; see github.com/mordilloSan/go-monitoring/issues/1345
-		if deviceType != "" && deviceType != "scsi" && deviceType != "ata" {
-			args = append(args, "-d", deviceInfo.Type)
-		}
-	}
-
-	args = append(args, "-a", "--json=c")
-	effectiveType := parserType
-	if effectiveType == "" {
-		effectiveType = deviceType
-	}
-	if effectiveType == "sat" || effectiveType == "ata" {
-		args = append(args, "-l", "devstat")
-	}
-
-	if includeStandby {
-		args = append(args, "-n", "standby")
-	}
-
-	if deviceInfo != nil {
-		args = append(args, deviceInfo.Name)
-	}
-
-	return args
-}
-
-// hasDataForDevice checks if we have cached SMART data for a specific device
-func (sm *Manager) hasDataForDevice(deviceName string) bool {
-	sm.Lock()
-	defer sm.Unlock()
-
-	// Check if any cached data has this device name
-	for _, data := range sm.SmartDataMap {
-		if data != nil && data.DiskName == deviceName {
-			return true
-		}
-	}
-	return false
-}
-
-// parseScan parses the output of smartctl --scan -j and returns the discovered devices.
-func (sm *Manager) parseScan(output []byte) ([]*DeviceInfo, bool) {
-	scan := &scanOutput{}
-
-	if err := json.Unmarshal(output, scan, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
-		return nil, false
-	}
-
-	if len(scan.Devices) == 0 {
-		slog.Debug("no devices found in smartctl scan")
-		return nil, false
-	}
-
-	devices := make([]*DeviceInfo, 0, len(scan.Devices))
-	for _, device := range scan.Devices {
-		devices = append(devices, &DeviceInfo{
-			Name:     device.Name,
-			Type:     device.Type,
-			InfoName: device.InfoName,
-			Protocol: device.Protocol,
-		})
-	}
-
-	return devices, true
-}
-
-// mergeDeviceLists combines scanned and configured SMART devices, preferring
-// configured SMART_DEVICES when both sources reference the same device.
-//
-//nolint:gocognit,cyclop // Device merge logic reconciles configured, scanned, and existing devices with several matching strategies.
-func mergeDeviceLists(existing, scanned, configured []*DeviceInfo) []*DeviceInfo {
-	if len(scanned) == 0 && len(configured) == 0 {
-		return existing
-	}
-
-	// buildUniqueNameIndex returns devices that appear exactly once by name.
-	// It is used to safely apply name-only fallbacks without RAID ambiguity.
-	buildUniqueNameIndex := func(devices []*DeviceInfo) map[string]*DeviceInfo {
-		counts := make(map[string]int, len(devices))
-		for _, dev := range devices {
-			if dev == nil || dev.Name == "" {
-				continue
-			}
-			counts[dev.Name]++
-		}
-		unique := make(map[string]*DeviceInfo, len(counts))
-		for _, dev := range devices {
-			if dev == nil || dev.Name == "" {
-				continue
-			}
-			if counts[dev.Name] == 1 {
-				unique[dev.Name] = dev
-			}
-		}
-		return unique
-	}
-
-	// preserveVerifiedType copies the verified type/parser metadata from an existing
-	// device record so that subsequent scans/config updates never downgrade a
-	// previously verified device.
-	preserveVerifiedType := func(target, prev *DeviceInfo) {
-		if prev == nil || !prev.typeVerified {
-			return
-		}
-		target.Type = prev.Type
-		target.typeVerified = true
-		target.parserType = prev.parserType
-	}
-
-	// applyConfiguredMetadata updates a matched device with any configured
-	// overrides, preserving verified type data when present.
-	applyConfiguredMetadata := func(existingDev, configuredDev *DeviceInfo) {
-		// Only update the type if it has not been verified yet; otherwise we
-		// keep the existing verified metadata intact.
-		if configuredDev.Type != "" && !existingDev.typeVerified {
-			newType := strings.TrimSpace(configuredDev.Type)
-			existingDev.Type = newType
-			existingDev.typeVerified = false
-			existingDev.parserType = normalizeParserType(newType)
-		}
-		if configuredDev.InfoName != "" {
-			existingDev.InfoName = configuredDev.InfoName
-		}
-		if configuredDev.Protocol != "" {
-			existingDev.Protocol = configuredDev.Protocol
-		}
-	}
-
-	existingIndex := make(map[deviceKey]*DeviceInfo, len(existing))
-	for _, dev := range existing {
-		if dev == nil || dev.Name == "" {
-			continue
-		}
-		existingIndex[makeDeviceKey(dev.Name, dev.Type)] = dev
-	}
-	existingByName := buildUniqueNameIndex(existing)
-
-	finalDevices := make([]*DeviceInfo, 0, len(scanned)+len(configured))
-	deviceIndex := make(map[deviceKey]*DeviceInfo, len(scanned)+len(configured))
-
-	// Start with the newly scanned devices so we always surface fresh metadata,
-	// but ensure we retain any previously verified parser assignment.
-	for _, scannedDevice := range scanned {
-		if scannedDevice == nil || scannedDevice.Name == "" {
-			continue
-		}
-
-		// Work on a copy so we can safely adjust metadata without mutating the
-		// input slices that may be reused elsewhere.
-		copyDev := *scannedDevice
-		key := makeDeviceKey(copyDev.Name, copyDev.Type)
-		if prev := existingIndex[key]; prev != nil {
-			preserveVerifiedType(&copyDev, prev)
-		} else if prev := existingByName[copyDev.Name]; prev != nil {
-			preserveVerifiedType(&copyDev, prev)
-		}
-
-		finalDevices = append(finalDevices, &copyDev)
-		copyKey := makeDeviceKey(copyDev.Name, copyDev.Type)
-		deviceIndex[copyKey] = finalDevices[len(finalDevices)-1]
-	}
-	deviceIndexByName := buildUniqueNameIndex(finalDevices)
-
-	// Merge configured devices on top so users can override scan results (except
-	// for verified type information).
-	for _, configuredDevice := range configured {
-		if configuredDevice == nil || configuredDevice.Name == "" {
-			continue
-		}
-
-		key := makeDeviceKey(configuredDevice.Name, configuredDevice.Type)
-		if existingDev, ok := deviceIndex[key]; ok {
-			applyConfiguredMetadata(existingDev, configuredDevice)
-			continue
-		}
-		if existingDev := deviceIndexByName[configuredDevice.Name]; existingDev != nil {
-			applyConfiguredMetadata(existingDev, configuredDevice)
-			continue
-		}
-
-		copyDev := *configuredDevice
-		key = makeDeviceKey(copyDev.Name, copyDev.Type)
-		if prev := existingIndex[key]; prev != nil {
-			preserveVerifiedType(&copyDev, prev)
-		} else if prev := existingByName[copyDev.Name]; prev != nil {
-			preserveVerifiedType(&copyDev, prev)
-		} else if copyDev.Type != "" {
-			copyDev.parserType = normalizeParserType(copyDev.Type)
-		}
-
-		finalDevices = append(finalDevices, &copyDev)
-		copyKey := makeDeviceKey(copyDev.Name, copyDev.Type)
-		deviceIndex[copyKey] = finalDevices[len(finalDevices)-1]
-	}
-
-	return finalDevices
-}
-
-// updateSmartDevices replaces the cached device list and prunes SMART data
-// entries whose backing device no longer exists.
-func (sm *Manager) updateSmartDevices(devices []*DeviceInfo) {
-	sm.Lock()
-	defer sm.Unlock()
-
-	sm.SmartDevices = devices
-
-	if len(sm.SmartDataMap) == 0 {
-		return
-	}
-
-	validKeys := make(map[deviceKey]struct{}, len(devices))
-	nameCounts := make(map[string]int, len(devices))
-	for _, device := range devices {
-		if device == nil || device.Name == "" {
-			continue
-		}
-		validKeys[makeDeviceKey(device.Name, device.Type)] = struct{}{}
-		nameCounts[device.Name]++
-	}
-
-	for key, data := range sm.SmartDataMap {
-		if data == nil {
-			delete(sm.SmartDataMap, key)
-			continue
-		}
-
-		if data.DiskType == "" {
-			if nameCounts[data.DiskName] == 1 {
-				continue
-			}
-		} else if _, ok := validKeys[makeDeviceKey(data.DiskName, data.DiskType)]; ok {
-			continue
-		}
-
-		delete(sm.SmartDataMap, key)
-	}
-}
-
-// isVirtualDevice checks if a device is a virtual disk that should be filtered out
-func (sm *Manager) isVirtualDevice(data *smartmodel.SmartInfoForSata) bool {
-	vendorUpper := strings.ToUpper(data.ScsiVendor)
-	productUpper := strings.ToUpper(data.ScsiProduct)
-	modelUpper := strings.ToUpper(data.ModelName)
-
-	return sm.isVirtualDeviceFromStrings(vendorUpper, productUpper, modelUpper)
-}
-
-// isVirtualDeviceNvme checks if an NVMe device is a virtual disk that should be filtered out
-func (sm *Manager) isVirtualDeviceNvme(data *smartmodel.SmartInfoForNvme) bool {
-	modelUpper := strings.ToUpper(data.ModelName)
-
-	return sm.isVirtualDeviceFromStrings(modelUpper)
-}
-
-// isVirtualDeviceScsi checks if a SCSI device is a virtual disk that should be filtered out
-func (sm *Manager) isVirtualDeviceScsi(data *smartmodel.SmartInfoForScsi) bool {
-	vendorUpper := strings.ToUpper(data.ScsiVendor)
-	productUpper := strings.ToUpper(data.ScsiProduct)
-	modelUpper := strings.ToUpper(data.ScsiModelName)
-
-	return sm.isVirtualDeviceFromStrings(vendorUpper, productUpper, modelUpper)
-}
-
-// isVirtualDeviceFromStrings checks if any of the provided strings indicate a virtual device
-func (sm *Manager) isVirtualDeviceFromStrings(fields ...string) bool {
-	for _, field := range fields {
-		fieldUpper := strings.ToUpper(field)
-		switch {
-		case strings.Contains(fieldUpper, "IET"), // iSCSI Enterprise Target
-			strings.Contains(fieldUpper, "VIRTUAL"),
-			strings.Contains(fieldUpper, "QEMU"),
-			strings.Contains(fieldUpper, "VBOX"),
-			strings.Contains(fieldUpper, "VMWARE"),
-			strings.Contains(fieldUpper, "MSFT"): // Microsoft Hyper-V
-			return true
-		}
-	}
-	return false
-}
-
-// parseSmartForSata parses the output of smartctl --all -j for SATA/ATA devices and updates the SmartDataMap
-// Returns hasValidData and exitStatus
-func (sm *Manager) parseSmartForSata(output []byte) (bool, int) {
-	var data smartmodel.SmartInfoForSata
-
-	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
-		return false, 0
-	}
-
-	if data.SerialNumber == "" {
-		return false, data.Smartctl.ExitStatus
-	}
-
-	// Skip virtual devices (e.g., Kubernetes PVCs, QEMU, VirtualBox, etc.)
-	if sm.isVirtualDevice(&data) {
-		slog.Debug("skipping smart", "device", data.Device.Name, "model", data.ModelName)
-		return false, data.Smartctl.ExitStatus
-	}
-
-	sm.Lock()
-	defer sm.Unlock()
-
-	keyName := data.SerialNumber
-
-	// if device does not exist in SmartDataMap, initialize it
-	if _, ok := sm.SmartDataMap[keyName]; !ok {
-		sm.SmartDataMap[keyName] = &smartmodel.SmartData{}
-	}
-
-	// update SmartData
-	smartData := sm.SmartDataMap[keyName]
-	// smartData.ModelFamily = data.ModelFamily
-	smartData.ModelName = data.ModelName
-	smartData.SerialNumber = data.SerialNumber
-	smartData.FirmwareVersion = data.FirmwareVersion
-	smartData.Capacity = data.UserCapacity.Bytes
-	smartData.Temperature = data.Temperature.Current
-	smartData.SmartStatus = getSmartStatus(smartData.Temperature, data.SmartStatus.Passed)
-	smartData.DiskName = data.Device.Name
-	smartData.DiskType = data.Device.Type
-	device := data.Device
-	smartData.Device = &device
-	smartData.AtaSmartSelfTestLog = data.AtaSmartSelfTestLog
-	if data.PowerOnTime != nil {
-		powerOnTime := *data.PowerOnTime
-		smartData.PowerOnTime = &powerOnTime
-	}
-	if data.PowerCycleCount != nil {
-		powerCycles := *data.PowerCycleCount
-		smartData.PowerCycleCount = &powerCycles
-	}
-
-	// get values from ata_device_statistics if necessary
-	var ataDeviceStats smartmodel.AtaDeviceStatistics
-	if smartData.Temperature == 0 {
-		if temp := findAtaDeviceStatisticsValue(&data, &ataDeviceStats, 5, "Current Temperature", 0, 255); temp != nil {
-			smartData.Temperature = uint8(*temp)
-		}
-	}
-
-	// update SmartAttributes
-	smartData.Attributes = make([]*smartmodel.SmartAttribute, 0, len(data.AtaSmartAttributes.Table))
-	for _, attr := range data.AtaSmartAttributes.Table {
-		rawValue := uint64(attr.Raw.Value)
-		if parsed, ok := smartmodel.ParseSmartRawValueString(attr.Raw.String); ok {
-			rawValue = parsed
-		}
-		smartAttr := &smartmodel.SmartAttribute{
-			ID:         attr.ID,
-			Name:       attr.Name,
-			Value:      attr.Value,
-			Worst:      attr.Worst,
-			Threshold:  attr.Thresh,
-			RawValue:   rawValue,
-			RawString:  attr.Raw.String,
-			WhenFailed: attr.WhenFailed,
-		}
-		smartData.Attributes = append(smartData.Attributes, smartAttr)
-	}
-	sm.SmartDataMap[keyName] = smartData
-
-	return true, data.Smartctl.ExitStatus
-}
-
-func getSmartStatus(temperature uint8, passed bool) string {
-	switch {
-	case passed:
-		return "PASSED"
-	case temperature > 0:
-		return "FAILED"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-// findAtaDeviceStatisticsEntry centralizes ATA devstat lookups so additional
-// metrics can be pulled from the same structure in the future.
-func findAtaDeviceStatisticsValue(data *smartmodel.SmartInfoForSata, ataDeviceStats *smartmodel.AtaDeviceStatistics, entryNumber uint8, entryName string, minValue, maxValue int64) *int64 {
-	if len(ataDeviceStats.Pages) == 0 {
-		if len(data.AtaDeviceStatistics) == 0 {
-			return nil
-		}
-		if err := json.Unmarshal(data.AtaDeviceStatistics, ataDeviceStats, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
-			return nil
-		}
-	}
-	for pageIdx := range ataDeviceStats.Pages {
-		page := &ataDeviceStats.Pages[pageIdx]
-		if page.Number != entryNumber {
-			continue
-		}
-		for entryIdx := range page.Table {
-			entry := &page.Table[entryIdx]
-			if !strings.EqualFold(entry.Name, entryName) {
-				continue
-			}
-			if entry.Value == nil || *entry.Value < minValue || *entry.Value > maxValue {
-				return nil
-			}
-			return entry.Value
-		}
-	}
-	return nil
-}
-
-func (sm *Manager) parseSmartForScsi(output []byte) (bool, int) {
-	var data smartmodel.SmartInfoForScsi
-
-	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
-		return false, 0
-	}
-
-	if data.SerialNumber == "" {
-		return false, data.Smartctl.ExitStatus
-	}
-
-	// Skip virtual devices (e.g., Kubernetes PVCs, QEMU, VirtualBox, etc.)
-	if sm.isVirtualDeviceScsi(&data) {
-		slog.Debug("skipping smart", "device", data.Device.Name, "model", data.ScsiModelName)
-		return false, data.Smartctl.ExitStatus
-	}
-
-	sm.Lock()
-	defer sm.Unlock()
-
-	keyName := data.SerialNumber
-	if _, ok := sm.SmartDataMap[keyName]; !ok {
-		sm.SmartDataMap[keyName] = &smartmodel.SmartData{}
-	}
-
-	smartData := sm.SmartDataMap[keyName]
-	smartData.ModelName = data.ScsiModelName
-	smartData.SerialNumber = data.SerialNumber
-	smartData.FirmwareVersion = data.ScsiRevision
-	smartData.Capacity = data.UserCapacity.Bytes
-	smartData.Temperature = data.Temperature.Current
-	smartData.SmartStatus = getSmartStatus(smartData.Temperature, data.SmartStatus.Passed)
-	smartData.DiskName = data.Device.Name
-	smartData.DiskType = data.Device.Type
-	device := data.Device
-	smartData.Device = &device
-	if data.PowerOnTime.Hours != 0 || data.PowerOnTime.Minutes != 0 {
-		powerOnTime := smartmodel.SmartPowerOnTime{Hours: data.PowerOnTime.Hours, Minutes: data.PowerOnTime.Minutes}
-		smartData.PowerOnTime = &powerOnTime
-	}
-
-	attributes := make([]*smartmodel.SmartAttribute, 0, 10)
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "PowerOnHours", RawValue: data.PowerOnTime.Hours})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "PowerOnMinutes", RawValue: data.PowerOnTime.Minutes})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "GrownDefectList", RawValue: data.ScsiGrownDefectList})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "StartStopCycles", RawValue: data.ScsiStartStopCycleCounter.AccumulatedStartStopCycles})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "LoadUnloadCycles", RawValue: data.ScsiStartStopCycleCounter.AccumulatedLoadUnloadCycles})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "StartStopSpecified", RawValue: data.ScsiStartStopCycleCounter.SpecifiedCycleCountOverDeviceLifetime})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "LoadUnloadSpecified", RawValue: data.ScsiStartStopCycleCounter.SpecifiedLoadUnloadCountOverDeviceLifetime})
-
-	readStats := data.ScsiErrorCounterLog.Read
-	writeStats := data.ScsiErrorCounterLog.Write
-	verifyStats := data.ScsiErrorCounterLog.Verify
-
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "ReadTotalErrorsCorrected", RawValue: readStats.TotalErrorsCorrected})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "ReadTotalUncorrectedErrors", RawValue: readStats.TotalUncorrectedErrors})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "ReadCorrectionAlgorithmInvocations", RawValue: readStats.CorrectionAlgorithmInvocations})
-	if val := parseScsiGigabytesProcessed(readStats.GigabytesProcessed); val >= 0 {
-		attributes = append(attributes, &smartmodel.SmartAttribute{Name: "ReadGigabytesProcessed", RawValue: uint64(val)})
-	}
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "WriteTotalErrorsCorrected", RawValue: writeStats.TotalErrorsCorrected})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "WriteTotalUncorrectedErrors", RawValue: writeStats.TotalUncorrectedErrors})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "WriteCorrectionAlgorithmInvocations", RawValue: writeStats.CorrectionAlgorithmInvocations})
-	if val := parseScsiGigabytesProcessed(writeStats.GigabytesProcessed); val >= 0 {
-		attributes = append(attributes, &smartmodel.SmartAttribute{Name: "WriteGigabytesProcessed", RawValue: uint64(val)})
-	}
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "VerifyTotalErrorsCorrected", RawValue: verifyStats.TotalErrorsCorrected})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "VerifyTotalUncorrectedErrors", RawValue: verifyStats.TotalUncorrectedErrors})
-	attributes = append(attributes, &smartmodel.SmartAttribute{Name: "VerifyCorrectionAlgorithmInvocations", RawValue: verifyStats.CorrectionAlgorithmInvocations})
-	if val := parseScsiGigabytesProcessed(verifyStats.GigabytesProcessed); val >= 0 {
-		attributes = append(attributes, &smartmodel.SmartAttribute{Name: "VerifyGigabytesProcessed", RawValue: uint64(val)})
-	}
-
-	smartData.Attributes = attributes
-	sm.SmartDataMap[keyName] = smartData
-
-	return true, data.Smartctl.ExitStatus
-}
-
-func parseScsiGigabytesProcessed(value string) int64 {
-	if value == "" {
-		return -1
-	}
-	normalized := strings.ReplaceAll(value, ",", "")
-	parsed, err := strconv.ParseInt(normalized, 10, 64)
-	if err != nil {
-		return -1
-	}
-	return parsed
-}
-
-// parseSmartForNvme parses the output of smartctl --all -j /dev/nvmeX and updates the SmartDataMap
-// Returns hasValidData and exitStatus
-func (sm *Manager) parseSmartForNvme(output []byte) (bool, int) {
-	data := &smartmodel.SmartInfoForNvme{}
-
-	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
-		return false, 0
-	}
-
-	if data.SerialNumber == "" {
-		return false, data.Smartctl.ExitStatus
-	}
-
-	// Skip virtual devices (e.g., Kubernetes PVCs, QEMU, VirtualBox, etc.)
-	if sm.isVirtualDeviceNvme(data) {
-		slog.Debug("skipping smart", "device", data.Device.Name, "model", data.ModelName)
-		return false, data.Smartctl.ExitStatus
-	}
-
-	sm.Lock()
-	defer sm.Unlock()
-
-	keyName := data.SerialNumber
-
-	// if device does not exist in SmartDataMap, initialize it
-	if _, ok := sm.SmartDataMap[keyName]; !ok {
-		sm.SmartDataMap[keyName] = &smartmodel.SmartData{}
-	}
-
-	// update SmartData
-	smartData := sm.SmartDataMap[keyName]
-	smartData.ModelName = data.ModelName
-	smartData.SerialNumber = data.SerialNumber
-	smartData.FirmwareVersion = data.FirmwareVersion
-	smartData.Capacity = data.UserCapacity.Bytes
-	if smartData.Capacity == 0 {
-		smartData.Capacity = data.NVMeTotalCapacity
-	}
-	if data.NVMeSmartHealthInformationLog != nil {
-		smartData.Temperature = data.NVMeSmartHealthInformationLog.Temperature
-	} else {
-		smartData.Temperature = uint8(max(data.Temperature.Current, 0))
-	}
-	smartData.SmartStatus = getSmartStatus(smartData.Temperature, data.SmartStatus.Passed)
-	smartData.DiskName = data.Device.Name
-	smartData.DiskType = data.Device.Type
-	device := data.Device
-	smartData.Device = &device
-	if data.PowerOnTime != nil {
-		powerOnTime := smartmodel.SmartPowerOnTime{Hours: uint64(data.PowerOnTime.Hours)}
-		smartData.PowerOnTime = &powerOnTime
-	}
-	if data.PowerCycleCount != nil {
-		powerCycles := *data.PowerCycleCount
-		smartData.PowerCycleCount = &powerCycles
-	}
-	version := data.NVMeVersion
-	smartData.NVMeVersion = &version
-	namespaces := data.NVMeNumberOfNamespaces
-	if namespaces != 0 {
-		smartData.NVMeNumberOfNamespaces = &namespaces
-	}
-	smartData.NVMeSelfTestLog = data.NVMeSelfTestLog
-	if data.NVMeSmartHealthInformationLog != nil {
-		health := *data.NVMeSmartHealthInformationLog
-		smartData.NVMeSmartHealthInformationLog = &health
-	}
-
-	// nvme attributes does not follow the same format as ata attributes,
-	// so we manually map each field to SmartAttributes
-	if data.NVMeSmartHealthInformationLog != nil {
-		log := data.NVMeSmartHealthInformationLog
-		smartData.Attributes = []*smartmodel.SmartAttribute{
-			{Name: "CriticalWarning", RawValue: uint64(log.CriticalWarning)},
-			{Name: "Temperature", RawValue: uint64(log.Temperature)},
-			{Name: "AvailableSpare", RawValue: uint64(log.AvailableSpare)},
-			{Name: "AvailableSpareThreshold", RawValue: uint64(log.AvailableSpareThreshold)},
-			{Name: "PercentageUsed", RawValue: uint64(log.PercentageUsed)},
-			{Name: "DataUnitsRead", RawValue: log.DataUnitsRead},
-			{Name: "DataUnitsWritten", RawValue: log.DataUnitsWritten},
-			{Name: "HostReads", RawValue: uint64(log.HostReads)},
-			{Name: "HostWrites", RawValue: uint64(log.HostWrites)},
-			{Name: "ControllerBusyTime", RawValue: uint64(log.ControllerBusyTime)},
-			{Name: "PowerCycles", RawValue: uint64(log.PowerCycles)},
-			{Name: "PowerOnHours", RawValue: uint64(log.PowerOnHours)},
-			{Name: "UnsafeShutdowns", RawValue: uint64(log.UnsafeShutdowns)},
-			{Name: "MediaErrors", RawValue: uint64(log.MediaErrors)},
-			{Name: "NumErrLogEntries", RawValue: uint64(log.NumErrLogEntries)},
-			{Name: "WarningTempTime", RawValue: uint64(log.WarningTempTime)},
-			{Name: "CriticalCompTime", RawValue: uint64(log.CriticalCompTime)},
-		}
-	}
-
-	sm.SmartDataMap[keyName] = smartData
-
-	return true, data.Smartctl.ExitStatus
-}
-
-// detectSmartctl checks if smartctl is installed, returns an error if not
-func (sm *Manager) detectSmartctl() (string, error) {
-	return exec.LookPath("smartctl")
 }
 
 // IsNvmeControllerPath checks if the path matches an NVMe controller pattern
@@ -1266,11 +696,11 @@ func IsNvmeControllerPath(path string) bool {
 // NewManager creates and initializes a new Manager.
 func NewManager() (*Manager, error) {
 	sm := &Manager{
-		SmartDataMap:    make(map[string]*smartmodel.SmartData),
+		data:            make(map[string]*smartmodel.SmartData),
 		refreshInterval: config.DefaultSmartRefreshInterval,
 	}
 	sm.refreshExcludedDevices()
-	path, err := sm.detectSmartctl()
+	path, err := exec.LookPath("smartctl")
 	if err != nil {
 		// Fail fast unless this host exposes eMMC or mdraid health via sysfs,
 		// in which case smartctl is optional.

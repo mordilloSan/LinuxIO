@@ -8,8 +8,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 )
 
-// RunMaintenance removes full-resolution history after its retention window.
+// RunMaintenance deletes the rows each tier no longer keeps, in every history
+// table, whether or not its plugin still records history.
 func (s *Store) RunMaintenance(ctx context.Context, now time.Time) error {
+	retention := s.historyRetentionDuration()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -18,16 +20,14 @@ func (s *Store) RunMaintenance(ctx context.Context, now time.Time) error {
 
 	for _, plugin := range plugins.HistoryCapable() {
 		table := pluginHistoryTable(plugin)
-		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`
-			DELETE FROM %s
-			WHERE resolution = ? AND captured_at < ?
-		`, table), resolution1m, now.Add(-s.historyRetentionDuration()).UnixMilli()); err != nil {
-			return err
+		for _, t := range tiers {
+			if _, err = tx.ExecContext(ctx, fmt.Sprintf(`
+				DELETE FROM %s
+				WHERE resolution = ? AND captured_at < ?
+			`, table), t.resolution, now.Add(-t.keepFor(retention)).UnixMilli()); err != nil {
+				return err
+			}
 		}
 	}
-
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	return nil
+	return tx.Commit()
 }

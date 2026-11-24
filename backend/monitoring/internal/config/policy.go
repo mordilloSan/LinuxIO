@@ -21,12 +21,16 @@ const (
 const (
 	// DefaultCollectorInterval is how often the collector samples every plugin.
 	DefaultCollectorInterval = time.Minute
+	// MinCollectorInterval is the shortest collector.interval accepted: every
+	// tick writes a 1m history row per plugin, and the 1m tier keeps an hour.
+	MinCollectorInterval = 15 * time.Second
 	// DefaultSmartRefreshInterval is how often SMART data is re-read.
 	DefaultSmartRefreshInterval = time.Hour
 	// DefaultDiskUsageCache re-reads usage on every collection; a longer value
 	// keeps sleeping disks asleep.
 	DefaultDiskUsageCache time.Duration = 0
-	// DefaultHistoryRetention is how long full-resolution history is kept.
+	// DefaultHistoryRetention is how long hourly history is kept. The finer
+	// tiers keep their own, shorter lengths, never longer than this.
 	DefaultHistoryRetention = 30 * 24 * time.Hour
 	// DefaultListenAddress is what an empty listen value normalises to: local
 	// only, never every interface.

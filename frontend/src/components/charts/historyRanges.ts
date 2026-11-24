@@ -1,7 +1,8 @@
 /**
- * Time windows offered by every history card. `resolution` picks the agent's
- * pre-rolled bucket size, `windowMs` is the x-axis span, and `refetchMs` is
- * the poll cadence a window of that length deserves.
+ * Time windows offered by every history card. `resolution` picks the tier the
+ * monitoring daemon stores (1m rows for an hour, 10m for 12 hours, 20m for a
+ * day, 60m for the configured retention), `windowMs` is the x-axis span, and
+ * `refetchMs` is the poll cadence a window of that length deserves.
  */
 export const HISTORY_RANGES = [
   {
@@ -28,14 +29,14 @@ export const HISTORY_RANGES = [
   {
     id: "7d",
     label: "7 Days",
-    resolution: "120m",
+    resolution: "60m",
     refetchMs: 300_000,
     windowMs: 604_800_000,
   },
   {
     id: "30d",
     label: "30 Days",
-    resolution: "480m",
+    resolution: "60m",
     refetchMs: 300_000,
     windowMs: 2_592_000_000,
   },

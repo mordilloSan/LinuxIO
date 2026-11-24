@@ -143,7 +143,7 @@ func runRetryingCollector(ctx context.Context, interval time.Duration, collect f
 		if handleErr != nil && !handleErr(err) {
 			return
 		}
-		if !sleepUntilDone(ctx, min(retryWaitTime<<min(failures-1, 6), maxRetryWait)) {
+		if !sleepUntilDone(ctx, retryDelay(failures)) {
 			return
 		}
 	}
@@ -236,44 +236,64 @@ type collectorDefinition struct {
 	deprecationWarning string
 }
 
-// starts and manages the ongoing collection of GPU data for the specified GPU management utility
+// start runs the collector's tool until ctx ends, starting it again whenever
+// it exits. A run without valid data counts as a failure, since the tool may
+// have started before the GPU driver was ready (right after boot) or may be
+// broken, and each consecutive failure doubles the wait up to maxRetryWait. A
+// run that produced valid data resets the count whatever its exit status,
+// because tools started with -l or --interval normally exit only when something
+// ends them. Collection never stops for good, so it recovers without a daemon
+// restart.
 func (c *gpuCollector) start(ctx context.Context) {
-	for {
+	failures := 0
+	for ctx.Err() == nil {
+		hasValidData, err := c.collect(ctx)
 		if ctx.Err() != nil {
 			return
 		}
-		err := c.collect(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			if errors.Is(err, errNoValidData) {
-				slog.Warn("no valid GPU data, stopping", "collector", c.name)
-				break
-			}
-			slog.Warn("GPU collector failed, restarting", "collector", c.name, "error", err)
-			if !sleepUntilDone(ctx, retryWaitTime) {
-				return
-			}
-			continue
+		if hasValidData {
+			failures = 0
+		} else {
+			failures++
 		}
-		if !sleepUntilDone(ctx, retryWaitTime) {
+		wait := retryDelay(failures)
+		// The first failure of a run of them is a warning; the repeats are
+		// debug lines, so a broken tool does not warn every few minutes.
+		if failures <= 1 {
+			slog.Warn("GPU collector stopped, restarting", "collector", c.name, "error", err, "failures", failures, "wait", wait.String())
+		} else {
+			slog.Debug("GPU collector stopped, restarting", "collector", c.name, "error", err, "failures", failures, "wait", wait.String())
+		}
+		if !sleepUntilDone(ctx, wait) {
 			return
 		}
 	}
 }
 
-// collect executes the command, parses output with the assigned parser function.
-// Reaps the child and releases the stdout pipe on every return path so early
-// exits (errNoValidData, scanner error) cannot leak processes or FDs.
-func (c *gpuCollector) collect(ctx context.Context) (err error) {
+// retryDelay is the wait before the next run after the given number of
+// consecutive failures: retryWaitTime, doubled for each failure after the
+// first, up to maxRetryWait.
+func retryDelay(failures int) time.Duration {
+	return min(retryWaitTime<<min(max(failures-1, 0), 6), maxRetryWait)
+}
+
+// maxLoggedLineLen limits how much of an unparseable output line is logged.
+const maxLoggedLineLen = 200
+
+// collect runs the command once, parses each line of its output and reports
+// whether any valid data was found. Blank lines are ignored. Lines the parser
+// rejects are skipped; the first one is logged as a warning once valid data
+// came before it or more output after it. When the command printed output but
+// none of it was valid, collect returns errNoValidData with the first rejected
+// line. The child is reaped and the stdout pipe released on every return path.
+func (c *gpuCollector) collect(ctx context.Context) (hasValidData bool, err error) {
 	cmd := exec.CommandContext(ctx, c.name, c.cmdArgs...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if startErr := cmd.Start(); startErr != nil {
-		return startErr
+		return false, startErr
 	}
 	defer cleanupStartedCommand(cmd, stdout, &err)
 
@@ -283,17 +303,55 @@ func (c *gpuCollector) collect(ctx context.Context) (err error) {
 	}
 	scanner.Buffer(c.buf, bufio.MaxScanTokenSize)
 
+	var (
+		invalidLine       string // first line of this run the parser rejected
+		hasInvalidLine    bool
+		warnedInvalidLine bool
+	)
+	// warnInvalidLine logs the run's first rejected line once per run. It runs
+	// only once the run is more than a tool that printed an error and exited,
+	// which start reports when the run ends: valid data came before the
+	// rejected line, or more output followed it. A tool started with -l may
+	// never exit, so this is how a stream that stops producing valid data
+	// shows up above debug level.
+	warnInvalidLine := func() {
+		if hasInvalidLine && !warnedInvalidLine {
+			warnedInvalidLine = true
+			slog.Warn("GPU collector skipping unparseable output", "collector", c.name, "line", invalidLine)
+		}
+	}
 	for scanner.Scan() {
-		hasValidData := c.parse(scanner.Bytes())
-		if !hasValidData {
-			return errNoValidData
+		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
+			// A separator, not output to parse or report: nvidia-smi -l has
+			// been seen printing these between samples.
+			continue
+		}
+		warnInvalidLine() // output kept coming after a rejected line
+		if c.parse(scanner.Bytes()) {
+			hasValidData = true
+			continue
+		}
+		if hasInvalidLine {
+			slog.Debug("GPU collector skipping unparseable output", "collector", c.name, "line", scanner.Text())
+			continue
+		}
+		hasInvalidLine = true
+		invalidLine = scanner.Text()
+		if len(invalidLine) > maxLoggedLineLen {
+			invalidLine = invalidLine[:maxLoggedLineLen] + "..."
+		}
+		if hasValidData {
+			warnInvalidLine() // valid data came before it
 		}
 	}
 
 	if scanErr := scanner.Err(); scanErr != nil {
-		return fmt.Errorf("scanner error: %w", scanErr)
+		return hasValidData, fmt.Errorf("scanner error: %w", scanErr)
 	}
-	return nil
+	if !hasValidData && hasInvalidLine {
+		return false, fmt.Errorf("%w: %q", errNoValidData, invalidLine)
+	}
+	return hasValidData, nil
 }
 
 // getJetsonParser returns a function to parse the output of tegrastats and update the GPUData map
@@ -495,12 +553,16 @@ func (gm *Manager) calculateGPUAverage(id string, gpu *systemmodel.GPUData, cach
 
 	// If no new data arrived
 	if deltaCount == 0 {
-		// If GPU appears suspended (instantaneous values are 0), return zero values
-		// Otherwise return last known average for temporary collection gaps
-		if gpu.Temperature == 0 && gpu.MemoryUsed == 0 {
+		// Only discrete GPUs report temperature and memory, so all-zero means
+		// suspended (return zeros). Engine-based (Intel) GPUs report neither, so
+		// carry the last average forward across the gaps between samples.
+		if gpu.Engines == nil && gpu.Temperature == 0 && gpu.MemoryUsed == 0 {
 			return systemmodel.GPUData{Name: gpu.Name, Address: gpu.Address}
 		}
 		average := gm.lastAvgData[id] // zero value if not found
+		if average.Name == "" {
+			average.Name = gpu.Name
+		}
 		average.Address = gpu.Address
 		return average
 	}
@@ -723,7 +785,8 @@ func (gm *Manager) startRocmSmiCollector(ctx context.Context, pollInterval time.
 	}
 	gm.startCollector(ctx, "rocm-smi", func() {
 		runRetryingCollector(ctx, pollInterval, func() error {
-			return collector.collect(ctx)
+			_, err := collector.collect(ctx)
+			return err
 		}, func(err error) bool {
 			slog.Warn("GPU data collection via rocm-smi failed", "error", err)
 			return true

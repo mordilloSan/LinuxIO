@@ -21,7 +21,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/collector"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/config"
 	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/httpapi"
@@ -45,6 +44,11 @@ type httpRuntime struct {
 // smartDueCheckInterval is how often the SMART goroutine checks whether the
 // configured refresh interval has elapsed.
 const smartDueCheckInterval = time.Minute
+
+// retentionEvery is how often the collector deletes the rows a history tier
+// no longer keeps. The shortest tier keeps an hour, so its table holds at most
+// two hours of rows.
+const retentionEvery = time.Hour
 
 type ListenerOptions struct {
 	Name       string
@@ -381,21 +385,19 @@ func (a *App) runCollector(ctx context.Context, interval time.Duration, interval
 }
 
 func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
+	tick := a.store.BeginTick()
 	run := a.beginCollectorRun()
-	data, err := a.gatherStats(ctx, DataRequestOptions{
-		CacheTimeMs:    collector.TickKey,
-		IncludeDetails: true,
-	})
+	data, err := a.gatherTickStats(ctx, tick)
 	if err != nil {
 		a.finishCollectorRun(run, nil, err)
 		return err
 	}
 	// Live requests read sensors on demand; only history needs them per tick.
-	if a.store.HistoryEnabled(plugins.Sensors) {
+	if tick.Due(plugins.Sensors) {
 		data.Stats.SensorReadings = live.InputReadings(live.Sensors(ctx, a.sensorTimeout()))
 	}
 	capturedAt := time.Now().UTC().UnixMilli()
-	sample, err := newCollectorAPISample(capturedAt, data)
+	sample, err := newCollectorAPISample(capturedAt, data, tick.Due)
 	if err != nil {
 		a.finishCollectorRun(run, nil, err)
 		return err
@@ -405,14 +407,28 @@ func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := a.store.WriteSnapshot(ctx, capturedAt, data); err != nil {
+	if err := a.store.WriteSnapshot(ctx, capturedAt, data, tick); err != nil {
 		return err
 	}
 	a.lastCollectedMs.Store(capturedAt)
-	a.rememberTelemetry(data.ContainerTelemetry, time.UnixMilli(capturedAt))
-
-	if err := a.store.RunMaintenance(ctx, now); err != nil {
-		return fmt.Errorf("maintenance failed: %w", err)
+	if tick.Due(plugins.ContainerTelemetry) {
+		a.rememberTelemetry(data.ContainerTelemetry, time.UnixMilli(capturedAt))
+	}
+	// A failed rollup does not hold back the retention delete, or the 1m
+	// table would grow for as long as it keeps failing.
+	var errs error
+	if err := a.store.Rollup(ctx, time.UnixMilli(capturedAt)); err != nil {
+		errs = fmt.Errorf("roll up history: %w", err)
+	}
+	if a.lastRetention.IsZero() || now.Sub(a.lastRetention) >= retentionEvery {
+		if err := a.store.RunMaintenance(ctx, now); err != nil {
+			errs = errors.Join(errs, fmt.Errorf("maintenance failed: %w", err))
+		} else {
+			a.lastRetention = now
+		}
+	}
+	if errs != nil {
+		return errs
 	}
 	// Collection builds large transient process/network snapshots; release them
 	// after the minute-scale tick so the agent's RSS stays close to baseline.

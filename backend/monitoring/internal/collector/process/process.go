@@ -3,18 +3,16 @@ package process
 
 import (
 	"context"
-	"errors"
 	"log/slog"
+	"os/user"
 	"slices"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	psutilCPU "github.com/shirou/gopsutil/v4/cpu"
+	psutilHost "github.com/shirou/gopsutil/v4/host"
 	psutilMem "github.com/shirou/gopsutil/v4/mem"
-	psutilProcess "github.com/shirou/gopsutil/v4/process"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 	containermodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
@@ -40,6 +38,7 @@ type Manager struct {
 	processCPUPrev map[int32]prevProcessCPU
 	processIOPrev  map[int32]prevProcessIO
 	resolver       *processAttributionResolver
+	bootMs         int64 // boot time in Unix milliseconds; 0 until read
 }
 
 // NewManager returns a Manager with empty CPU and I/O baselines.
@@ -60,11 +59,8 @@ func (m *Manager) CollectStats(ctx context.Context, identities []containermodel.
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	procs, err := psutilProcess.ProcessesWithContext(ctx)
+	pids, err := readPIDs(procRoot)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, nil, nil, ctxErr
-		}
 		slog.Warn("process collection failed", "error", err)
 		return &processmodel.Count{}, nil, nil, nil
 	}
@@ -74,28 +70,24 @@ func (m *Manager) CollectStats(ctx context.Context, identities []containermodel.
 	if vm, memErr := psutilMem.VirtualMemoryWithContext(ctx); memErr == nil {
 		totalMem = vm.Total
 	}
+	bootMs := m.bootTimeMs(ctx)
 
 	now := time.Now()
 	count := &processmodel.Count{PIDMax: readPIDMax()}
-	items := make([]processmodel.Process, 0, len(procs))
-	seen := make(map[int32]struct{}, len(procs))
+	items := make([]processmodel.Process, 0, len(pids))
+	seen := make(map[int32]struct{}, len(pids))
+	users := make(map[uint32]string)
 
-	for _, proc := range procs {
+	for _, pid := range pids {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, nil, err
 		}
-		if proc == nil {
-			continue
-		}
-		item, ok, err := m.collectOneProcess(ctx, proc, now, totalMem, count)
+		sample, err := readProc(procRoot, pid)
 		if err != nil {
-			return nil, nil, nil, err
+			continue // exited between the listing and the read
 		}
-		if !ok {
-			continue
-		}
-		items = append(items, item)
-		seen[item.PID] = struct{}{}
+		items = append(items, m.processItem(sample, bootMs, now, totalMem, users, count))
+		seen[pid] = struct{}{}
 	}
 	m.pruneProcessCPUCache(seen)
 	m.pruneProcessIOCache(seen)
@@ -114,85 +106,78 @@ func (m *Manager) CollectStats(ctx context.Context, identities []containermodel.
 	return count, items, programs, nil
 }
 
-//nolint:gocognit // Process collection is a sequence of independent best-effort procfs fields.
-func (m *Manager) collectOneProcess(ctx context.Context, proc *psutilProcess.Process, now time.Time, totalMem uint64, count *processmodel.Count) (processmodel.Process, bool, error) {
-	item := processmodel.Process{PID: proc.Pid}
-	createTime, err := proc.CreateTimeWithContext(ctx)
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return item, false, ctxErr
-	}
-	if err != nil && errors.Is(err, psutilProcess.ErrorProcessNotRunning) {
-		return item, false, nil
-	}
-	if err == nil {
-		item.CreateTime = createTime
-	}
-
-	if name, err := proc.NameWithContext(ctx); err == nil {
-		item.Name = name
+// processItem turns one /proc sample into the payload record, counting it.
+// users caches the name of each uid for the rest of the scan.
+func (m *Manager) processItem(sample procSample, bootMs int64, now time.Time, totalMem uint64, users map[uint32]string, count *processmodel.Count) processmodel.Process {
+	item := processmodel.Process{
+		PID:        sample.pid,
+		Name:       sample.name,
+		Cmdline:    sample.cmdline,
+		Status:     sample.state,
+		NumThreads: sample.threads,
+		Nice:       sample.nice,
+		MemoryInfo: sample.memory,
 	}
 	if item.Name == "" {
-		item.Name = strconv.Itoa(int(proc.Pid))
+		item.Name = strconv.Itoa(int(sample.pid))
 	}
-	if cmdline, err := proc.CmdlineSliceWithContext(ctx); err == nil {
-		item.Cmdline = cmdline
+	// Without the boot time a start time is unknown, and the first sample
+	// only seeds the CPU baseline.
+	var createTime int64
+	if bootMs > 0 {
+		createTime = bootMs + int64(sample.startTicks*1000/userHZ)
+		item.CreateTime = createTime
 	}
-	if username, err := proc.UsernameWithContext(ctx); err == nil {
-		item.Username = username
+	if sample.hasUID {
+		item.Username = lookupUsername(users, sample.uid)
 	}
-	if statuses, err := proc.StatusWithContext(ctx); err == nil {
-		item.Status = strings.Join(statuses, ",")
-		updateProcessCount(count, statuses)
+	updateProcessCount(count, sample.state)
+	count.Thread += int(sample.threads)
+	if totalMem > 0 {
+		item.MemoryPercent = units.TwoDecimals(float64(memoryPercent(sample.memory.RSS, totalMem)))
 	}
-	if threads, err := proc.NumThreadsWithContext(ctx); err == nil {
-		item.NumThreads = threads
-		count.Thread += int(threads)
-	}
-	if nice, err := proc.NiceWithContext(ctx); err == nil {
-		item.Nice = nice
-	}
-	if memInfo, err := proc.MemoryInfoWithContext(ctx); err == nil && memInfo != nil {
-		item.MemoryInfo = processmodel.MemoryInfo{
-			RSS:    memInfo.RSS,
-			VMS:    memInfo.VMS,
-			HWM:    memInfo.HWM,
-			Data:   memInfo.Data,
-			Stack:  memInfo.Stack,
-			Locked: memInfo.Locked,
-			Swap:   memInfo.Swap,
-		}
-		if totalMem > 0 {
-			item.MemoryPercent = units.TwoDecimals(float64(memoryPercent(memInfo.RSS, totalMem)))
-		}
-	}
-	if ioCounters, err := proc.IOCountersWithContext(ctx); err == nil && ioCounters != nil {
-		item.IOCounters = processmodel.IOCounters{
-			ReadCount:      ioCounters.ReadCount,
-			WriteCount:     ioCounters.WriteCount,
-			ReadBytes:      ioCounters.ReadBytes,
-			WriteBytes:     ioCounters.WriteBytes,
-			DiskReadBytes:  ioCounters.DiskReadBytes,
-			DiskWriteBytes: ioCounters.DiskWriteBytes,
-		}
-		item.IOCounters.DiskReadBytesPerSecond, item.IOCounters.DiskWriteBytesPerSecond = m.processIOPerSecond(proc.Pid, createTime, ioCounters.DiskReadBytes, ioCounters.DiskWriteBytes, now)
+	if sample.hasIO {
+		item.IOCounters = sample.io
+		item.IOCounters.DiskReadBytesPerSecond, item.IOCounters.DiskWriteBytesPerSecond = m.processIOPerSecond(sample.pid, createTime, sample.io.DiskReadBytes, sample.io.DiskWriteBytes, now)
 	}
 	if m.resolver != nil {
-		if identity, ok := m.resolver.resolve(proc.Pid); ok {
+		if identity, ok := m.resolver.resolve(sample.pid); ok {
 			item.ContainerID, item.ContainerName = identity.ID, identity.Name
 			if item.ContainerID == "" {
 				item.ContainerID = identity.FullID
 			}
 		}
 	}
-	if times, err := proc.TimesWithContext(ctx); err == nil && times != nil {
-		item.CPUPercent = units.TwoDecimals(m.processCPUPercent(proc.Pid, createTime, processTimesTotal(times), now))
-	}
-	if err := ctx.Err(); err != nil {
-		return item, false, err
-	}
-
+	item.CPUPercent = units.TwoDecimals(m.processCPUPercent(sample.pid, createTime, sample.cpuSeconds, now))
 	count.Total++
-	return item, true, nil
+	return item
+}
+
+// lookupUsername names a uid once per scan; an unknown uid keeps its number,
+// as ps shows it, and a failed lookup is not retried within the scan.
+func lookupUsername(users map[uint32]string, uid uint32) string {
+	if name, ok := users[uid]; ok {
+		return name
+	}
+	id := strconv.FormatUint(uint64(uid), 10)
+	name := id
+	if u, err := user.LookupId(id); err == nil {
+		name = u.Username
+	}
+	users[uid] = name
+	return name
+}
+
+// bootTimeMs is the boot time in Unix milliseconds, read once for the
+// manager's life so a step of the wall clock cannot move every process's
+// start time and reset its CPU baseline. Zero means it could not be read.
+func (m *Manager) bootTimeMs(ctx context.Context) int64 {
+	if m.bootMs == 0 {
+		if boot, err := psutilHost.BootTimeWithContext(ctx); err == nil && boot > 0 {
+			m.bootMs = int64(boot) * 1000
+		}
+	}
+	return m.bootMs
 }
 
 // memoryPercent mirrors gopsutil's Process.MemoryPercent without re-reading /proc/meminfo per process.
@@ -268,25 +253,20 @@ func (m *Manager) pruneProcessIOCache(seen map[int32]struct{}) {
 	}
 }
 
-func updateProcessCount(count *processmodel.Count, statuses []string) {
-	if len(statuses) == 0 {
-		return
-	}
-	for _, status := range statuses {
-		switch status {
-		case psutilProcess.Running:
-			count.Running++
-		case psutilProcess.Sleep:
-			count.Sleeping++
-		case psutilProcess.Idle:
-			count.Idle++
-		case psutilProcess.Stop:
-			count.Stopped++
-		case psutilProcess.Zombie:
-			count.Zombie++
-		case psutilProcess.Blocked, psutilProcess.Lock, psutilProcess.Wait:
-			count.Blocked++
-		}
+func updateProcessCount(count *processmodel.Count, state string) {
+	switch state {
+	case stateRunning:
+		count.Running++
+	case stateSleep:
+		count.Sleeping++
+	case stateIdle:
+		count.Idle++
+	case stateStop:
+		count.Stopped++
+	case stateZombie:
+		count.Zombie++
+	case stateBlocked, stateWait:
+		count.Blocked++
 	}
 }
 
@@ -326,11 +306,6 @@ func groupProgramStats(processes []processmodel.Process) []processmodel.Program 
 		return items[i].Name < items[j].Name
 	})
 	return items
-}
-
-func processTimesTotal(times *psutilCPU.TimesStat) float64 {
-	return times.User + times.System + times.Idle + times.Nice + times.Iowait + times.Irq +
-		times.Softirq + times.Steal + times.Guest + times.GuestNice
 }
 
 func readPIDMax() int {

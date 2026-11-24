@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
@@ -388,6 +389,25 @@ func estimateBusyPercentFromRC6(ctx context.Context, path string, sample time.Du
 	return round1(busy), true
 }
 
+// nvidiaStaticTTL is how long the part of nvidia-smi's answer that changes
+// only with the driver or an administrator's setting (driver version, memory
+// size, power limit, top clock) is reused before it is asked for again.
+const nvidiaStaticTTL = 10 * time.Minute
+
+// nvidiaStatic caches that part, keyed by PCI address.
+var nvidiaStatic struct {
+	sync.Mutex
+	at    time.Time
+	stats map[string]nvidiaGPUStats
+}
+
+// nvidiaSMIRun runs nvidia-smi; tests replace it.
+var nvidiaSMIRun = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, path, args...).Output()
+}
+
+// readNvidiaSMIStats asks nvidia-smi for the changing figures on every call
+// and for the static ones once per nvidiaStaticTTL.
 func readNvidiaSMIStats(parent context.Context) map[string]nvidiaGPUStats {
 	nvidiaSMIPath, err := exec.LookPath("nvidia-smi")
 	if err != nil {
@@ -396,47 +416,72 @@ func readNvidiaSMIStats(parent context.Context) map[string]nvidiaGPUStats {
 
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
+	return nvidiaSMIStats(ctx, nvidiaSMIPath)
+}
 
-	cmd := exec.CommandContext(
-		ctx,
-		nvidiaSMIPath,
-		"--query-gpu=pci.bus_id,driver_version,temperature.gpu,fan.speed,utilization.gpu,memory.total,memory.used,power.draw,power.limit,clocks.current.graphics,clocks.max.graphics",
-		"--format=csv,noheader,nounits",
-	)
-	output, err := cmd.Output()
+func nvidiaSMIStats(ctx context.Context, nvidiaSMIPath string) map[string]nvidiaGPUStats {
+	static := cachedNvidiaStatic(ctx, nvidiaSMIPath)
+	rows := queryNvidiaSMI(ctx, nvidiaSMIPath, "pci.bus_id,temperature.gpu,fan.speed,utilization.gpu,memory.used,power.draw,clocks.current.graphics")
+	stats := make(map[string]nvidiaGPUStats, len(rows))
+	for _, row := range rows {
+		if len(row) < 7 {
+			continue
+		}
+		pciAddr := hwprobe.NormalizePCIAddress(row[0])
+		item := static[pciAddr]
+		item.TemperatureC = parseOptionalFloat(row[1])
+		item.FanPercent = parseOptionalFloat(row[2])
+		item.UtilizationPercent = parseOptionalFloat(row[3])
+		item.MemoryUsedBytes = parseOptionalMiB(row[4])
+		item.PowerDrawWatts = parseOptionalFloat(row[5])
+		item.CurrentGraphicsMHz = int(parseOptionalFloat(row[6]))
+		stats[pciAddr] = item
+	}
+	return stats
+}
+
+// cachedNvidiaStatic returns the static figures, asking nvidia-smi when the
+// cache is older than nvidiaStaticTTL. A failed query is retried on the next
+// call.
+func cachedNvidiaStatic(ctx context.Context, path string) map[string]nvidiaGPUStats {
+	nvidiaStatic.Lock()
+	defer nvidiaStatic.Unlock()
+	if nvidiaStatic.stats != nil && time.Since(nvidiaStatic.at) < nvidiaStaticTTL {
+		return nvidiaStatic.stats
+	}
+	rows := queryNvidiaSMI(ctx, path, "pci.bus_id,driver_version,memory.total,power.limit,clocks.max.graphics")
+	if rows == nil {
+		return nvidiaStatic.stats
+	}
+	stats := make(map[string]nvidiaGPUStats, len(rows))
+	for _, row := range rows {
+		if len(row) < 5 {
+			continue
+		}
+		stats[hwprobe.NormalizePCIAddress(row[0])] = nvidiaGPUStats{
+			DriverVersion:       hwprobe.SanitizeValue(row[1]),
+			MemoryTotalBytes:    parseOptionalMiB(row[2]),
+			PowerLimitWatts:     parseOptionalFloat(row[3]),
+			MaxGraphicsClockMHz: int(parseOptionalFloat(row[4])),
+		}
+	}
+	nvidiaStatic.stats, nvidiaStatic.at = stats, time.Now()
+	return stats
+}
+
+// queryNvidiaSMI returns nvidia-smi's CSV rows for the fields, or nil.
+func queryNvidiaSMI(ctx context.Context, path, fields string) [][]string {
+	output, err := nvidiaSMIRun(ctx, path, "--query-gpu="+fields, "--format=csv,noheader,nounits")
 	if err != nil {
 		return nil
 	}
-
 	reader := csv.NewReader(strings.NewReader(string(output)))
 	reader.TrimLeadingSpace = true
 	rows, err := reader.ReadAll()
 	if err != nil {
 		return nil
 	}
-
-	stats := make(map[string]nvidiaGPUStats, len(rows))
-	for _, row := range rows {
-		if len(row) < 11 {
-			continue
-		}
-
-		pciAddr := hwprobe.NormalizePCIAddress(row[0])
-		stats[pciAddr] = nvidiaGPUStats{
-			DriverVersion:       hwprobe.SanitizeValue(row[1]),
-			TemperatureC:        parseOptionalFloat(row[2]),
-			FanPercent:          parseOptionalFloat(row[3]),
-			UtilizationPercent:  parseOptionalFloat(row[4]),
-			MemoryTotalBytes:    parseOptionalMiB(row[5]),
-			MemoryUsedBytes:     parseOptionalMiB(row[6]),
-			PowerDrawWatts:      parseOptionalFloat(row[7]),
-			PowerLimitWatts:     parseOptionalFloat(row[8]),
-			CurrentGraphicsMHz:  int(parseOptionalFloat(row[9])),
-			MaxGraphicsClockMHz: int(parseOptionalFloat(row[10])),
-		}
-	}
-
-	return stats
+	return rows
 }
 
 func addMemoryMetric(entry map[string]any, key, path string) {

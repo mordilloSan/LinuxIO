@@ -56,6 +56,27 @@ after a change that issues ioctls).
   choice per schedule that the dialog shows. Units already saved keep the old
   line until they are rewritten. **not verified** with a real script
 
+- A container whose status contains "second" has its CPU and network
+  baselines wiped on every stats pass (`backend/monitoring/internal/collector/docker`),
+  so it shows no CPU and no network for its first minute while a dashboard is
+  open. The counter check a few lines below already covers a restart; whether
+  the status check can go needs a test with a restarting container. Beszel has
+  the same code. **checked**
+- The container stats pass retries every failed container and has no time
+  limit of its own while it holds the monitoring collection lock, so a Docker
+  daemon that stops answering stalls the dashboard's live collection.
+  **checked**
+- The `statfs` of a filesystem the monitoring collector tracks (the root and
+  `EXTRA_FILESYSTEMS`) runs under the collection lock with no time limit, so a
+  dead NFS server among them stalls every collection; and a device's
+  filesystem label can be picked as the root device
+  (`backend/monitoring/internal/collector/disk`). The live filesystem list has
+  its own per-mount limit already ([Monitoring](../monitoring.md)). **checked**
+- "bad memory stats" from the Docker stats pass leaves the container in the
+  sample with zeros, which the charts draw as a drop. The host's journal has it
+  once for one container in 13 hours; a container leaving between the list and
+  the stats call would explain it. **not verified**
+
 ## Tests that are missing
 
 ## Needs the owner
@@ -68,6 +89,26 @@ after a change that issues ioctls).
   entries), which may be enough. A calendar timer with `Persistent=true`
   remembers its last run and runs at once only when one was missed, but it
   turns the interval setting into a schedule. **checked**
+
+- How a container counts in a monitoring history rollup. It is averaged over
+  the samples in which it appeared and keyed by ID
+  ([Monitoring](../monitoring.md#history-store)), so one minute at 100% CPU in
+  a bucket reads as 100% and a container recreated by an image update is two
+  series. Beszel keys by name and divides by every sample in the bucket.
+  **checked**
+- How long the monitoring history keeps one-minute rows. It is one hour, so a
+  look at last night's incident has 20-minute points, and hourly ones after a
+  day. A day of one-minute rows is about 11 MB over all tables at today's row
+  sizes, a week about 77 MB (estimated, not measured). **checked**
+- Which interfaces the monitoring network total counts. Only `lo`, `docker`,
+  `br-`, `veth`, `bond` and `cali` names are skipped, so stacked interfaces
+  count twice: on the owner's host the stored total is the physical NIC plus a
+  VM's tap plus WireGuard. Deciding changes what the stored total means from
+  then on. Beszel has the same rule. **checked**
+- Whether LinuxIO supports Podman. The monitoring daemon looks for its socket
+  only at `/run/user/0/podman/podman.sock`, so Podman run by root, at
+  `/run/podman/podman.sock`, is not found; the Fedora test VM can answer the
+  rest. **checked**
 
 ## Needs a real machine or a measurement
 
@@ -108,6 +149,14 @@ after a change that issues ioctls).
   that LinuxIO then runs the new build with no `linuxio restart`, the job
   goes on and a stopped LinuxIO stays stopped was seen from a shell and from
   the Updates page only ([Upgrade](../packaging.md#upgrade)). **needs a host**
+
+- The monitoring daemon's NVIDIA paths, inherited from Beszel: the library is
+  called under the GPU manager's lock, averages are shared between callers, a
+  caller's first read is the mean since the daemon started, NVML memory is
+  read only above 0% utilisation, nvtop gives up after one failure when it is
+  the only collector, an entry is never removed, and the size of the process
+  list entry is unchecked against the driver's header
+  (`backend/monitoring/internal/collector/gpu`). **needs a host**
 
 ## Later, no plan yet
 

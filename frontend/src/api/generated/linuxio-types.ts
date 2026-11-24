@@ -2248,12 +2248,7 @@ export interface MonitoringHistoryRequest {
   limit?: number;
 }
 
-export type MonitoringHistoryResolution =
-  | "1m"
-  | "10m"
-  | "20m"
-  | "120m"
-  | "480m";
+export type MonitoringHistoryResolution = "1m" | "10m" | "20m" | "60m";
 
 export interface MonitoringListener {
   address: string;

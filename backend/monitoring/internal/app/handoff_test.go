@@ -79,7 +79,7 @@ func TestCollectorAPISampleCoversEveryNonSmartPluginAndIsDetached(t *testing.T) 
 		Programs:  []processmodel.Program{{Name: "worker", Count: 1}},
 	}
 
-	sample, err := newCollectorAPISample(456, data)
+	sample, err := newCollectorAPISample(456, data, allDue)
 	require.NoError(t, err)
 	assert.Equal(t, int64(456), sample.capturedAt)
 	for _, plugin := range plugins.Names() {
@@ -111,9 +111,34 @@ func TestCollectorAPISampleEncodesInvalidUTF8(t *testing.T) {
 		Processes: []processmodel.Process{{PID: 7, Name: "sleep", Cmdline: []string{"sleep", "\xff"}}},
 	}
 
-	sample, err := newCollectorAPISample(1, data)
+	sample, err := newCollectorAPISample(1, data, allDue)
 	require.NoError(t, err)
 	raw, exists := sample.pluginPayload(plugins.Processes)
 	require.True(t, exists)
 	assert.Contains(t, string(raw), "\uFFFD")
+}
+
+func allDue(string) bool { return true }
+
+// A tick that ran no process scan, connections or IRQs hands over no payload
+// for them, so a waiting request collects them instead of reading empty ones.
+func TestCollectorAPISampleLeavesOutWhatTheTickDidNotCollect(t *testing.T) {
+	sample, err := newCollectorAPISample(1, &systemmodel.CombinedData{}, func(string) bool { return false })
+	require.NoError(t, err)
+	for _, plugin := range plugins.Names() {
+		_, exists := sample.pluginPayload(plugin)
+		switch plugin {
+		case plugins.Processes, plugins.Programs, plugins.ContainerTelemetry, plugins.Connections, plugins.IRQ, plugins.Smart:
+			assert.False(t, exists, plugin)
+		default:
+			assert.True(t, exists, plugin)
+		}
+	}
+
+	sample, err = newCollectorAPISample(1, &systemmodel.CombinedData{}, func(plugin string) bool { return plugin == plugins.ContainerTelemetry })
+	require.NoError(t, err)
+	for _, plugin := range []string{plugins.Processes, plugins.Programs, plugins.ContainerTelemetry} {
+		_, exists := sample.pluginPayload(plugin)
+		assert.True(t, exists, "the process scan ran for %s", plugin)
+	}
 }

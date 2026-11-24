@@ -12,146 +12,14 @@ import (
 )
 
 // Average merges stored JSON payloads of one plugin into the payload of a
-// coarser history bucket.
-//
-//nolint:gocognit // Complexity comes from the number of plugin cases, not logical nesting.
+// coarser history row. Each payload is decoded once, into its typed record; a
+// plugin without an average keeps the newest payload.
 func Average(plugin string, items []string) (string, error) {
 	if len(items) == 0 {
 		return "", errors.New("no history items to aggregate")
 	}
 
 	switch plugin {
-	case CPU:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item CPUData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.Cpu = item.Cpu
-			stats.MaxCpu = item.MaxCpu
-			stats.CpuBreakdown = item.CpuBreakdown
-			stats.CpuCoresUsage = item.CpuCoresUsage
-			stats.CpuFrequencies = item.CpuFrequencies
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[CPU]
-		})
-	case Mem:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item MemData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.Mem = item.Mem
-			stats.MaxMem = item.MaxMem
-			stats.MemUsed = item.MemUsed
-			stats.MemPct = item.MemPct
-			stats.MemBuffCache = item.MemBuffCache
-			stats.MemZfsArc = item.MemZfsArc
-			stats.MemDocker = item.MemDocker
-			stats.MemVMs = item.MemVMs
-			stats.Swap = item.MemSwapTotal
-			stats.SwapUsed = item.MemSwapUsed
-			stats.SwapPct = item.MemSwapPct
-			stats.MemAvailable = item.MemAvailable
-			stats.MemCached = item.MemCached
-			stats.MemBuffers = item.MemBuffers
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[Mem]
-		})
-	case Swap:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item SwapData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.Swap = item.Swap
-			stats.SwapUsed = item.SwapUsed
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[Swap]
-		})
-	case Load:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item LoadData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.LoadAvg = item.LoadAvg
-			stats.Battery = item.Battery
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[Load]
-		})
-	case DiskIO:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item DiskIOData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.DiskTotal = item.DiskTotal
-			stats.DiskUsed = item.DiskUsed
-			stats.DiskPct = item.DiskPct
-			stats.DiskReadPs = item.DiskReadPs
-			stats.DiskWritePs = item.DiskWritePs
-			stats.MaxDiskReadPs = item.MaxDiskReadPs
-			stats.MaxDiskWritePs = item.MaxDiskWritePs
-			stats.DiskIO = item.DiskIO
-			stats.MaxDiskIO = item.MaxDiskIO
-			stats.DiskIoStats = item.DiskIoStats
-			stats.MaxDiskIoStats = item.MaxDiskIoStats
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[DiskIO]
-		})
-	case FS:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item FSData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.ExtraFs = item.ExtraFs
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[FS]
-		})
-	case Network:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item NetworkData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.Bandwidth = item.Bandwidth
-			stats.MaxBandwidth = item.MaxBandwidth
-			stats.NetworkInterfaces = item.NetworkInterfaces
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[Network]
-		})
-	case GPU:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item map[string]systemmodel.GPUData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.GPUData = item
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return stats.GPUData
-		})
-	case Sensors:
-		return averagePluginViaSystemStats(items, func(raw []byte, stats *systemmodel.Stats) error {
-			var item SensorsData
-			if err := json.Unmarshal(raw, &item); err != nil {
-				return err
-			}
-			stats.Temperatures = item.Temperatures
-			stats.SensorReadings = item.Readings
-			return nil
-		}, func(stats systemmodel.Stats) any {
-			return Snapshot(&systemmodel.CombinedData{Stats: stats})[Sensors]
-		})
 	case Containers:
 		averaged, err := averageContainerStatsJSON(items)
 		if err != nil {
@@ -164,52 +32,140 @@ func Average(plugin string, items []string) (string, error) {
 			return "", err
 		}
 		return marshalJSON(averaged)
-	default:
+	}
+	fill, ok := statsFillers[plugin]
+	if !ok {
 		return items[len(items)-1], nil
 	}
-}
-
-func averagePluginViaSystemStats(
-	items []string,
-	fill func([]byte, *systemmodel.Stats) error,
-	extract func(systemmodel.Stats) any,
-) (string, error) {
-	systemStatsJSON := make([]string, 0, len(items))
-	for _, raw := range items {
-		stats := systemmodel.Stats{}
-		if err := fill([]byte(raw), &stats); err != nil {
+	samples := make([]systemmodel.Stats, len(items))
+	for i, raw := range items {
+		if err := fill([]byte(raw), &samples[i]); err != nil {
 			return "", err
 		}
-		statsRaw, err := marshalJSON(stats)
-		if err != nil {
-			return "", err
-		}
-		systemStatsJSON = append(systemStatsJSON, statsRaw)
 	}
-	averaged, err := averageSystemStatsJSON(systemStatsJSON)
-	if err != nil {
-		return "", err
-	}
-	return marshalJSON(extract(*averaged))
+	averaged := averageSystemStats(samples)
+	return marshalJSON(Snapshot(&systemmodel.CombinedData{Stats: *averaged})[plugin])
 }
 
+// statsFillers decode one stored payload of a host plugin into the fields of
+// systemmodel.Stats that Snapshot projects it from.
+var statsFillers = map[string]func([]byte, *systemmodel.Stats) error{
+	CPU: func(raw []byte, stats *systemmodel.Stats) error {
+		var item CPUData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.Cpu = item.Cpu
+		stats.MaxCpu = item.MaxCpu
+		stats.CpuBreakdown = item.CpuBreakdown
+		stats.CpuCoresUsage = item.CpuCoresUsage
+		stats.CpuFrequencies = item.CpuFrequencies
+		return nil
+	},
+	Mem: func(raw []byte, stats *systemmodel.Stats) error {
+		var item MemData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.Mem = item.Mem
+		stats.MaxMem = item.MaxMem
+		stats.MemUsed = item.MemUsed
+		stats.MemPct = item.MemPct
+		stats.MemBuffCache = item.MemBuffCache
+		stats.MemZfsArc = item.MemZfsArc
+		stats.MemDocker = item.MemDocker
+		stats.MemVMs = item.MemVMs
+		stats.Swap = item.MemSwapTotal
+		stats.SwapUsed = item.MemSwapUsed
+		stats.SwapPct = item.MemSwapPct
+		stats.MemAvailable = item.MemAvailable
+		stats.MemCached = item.MemCached
+		stats.MemBuffers = item.MemBuffers
+		return nil
+	},
+	Swap: func(raw []byte, stats *systemmodel.Stats) error {
+		var item SwapData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.Swap = item.Swap
+		stats.SwapUsed = item.SwapUsed
+		return nil
+	},
+	Load: func(raw []byte, stats *systemmodel.Stats) error {
+		var item LoadData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.LoadAvg = item.LoadAvg
+		stats.Battery = item.Battery
+		return nil
+	},
+	DiskIO: func(raw []byte, stats *systemmodel.Stats) error {
+		var item DiskIOData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.DiskTotal = item.DiskTotal
+		stats.DiskUsed = item.DiskUsed
+		stats.DiskPct = item.DiskPct
+		stats.DiskReadPs = item.DiskReadPs
+		stats.DiskWritePs = item.DiskWritePs
+		stats.MaxDiskReadPs = item.MaxDiskReadPs
+		stats.MaxDiskWritePs = item.MaxDiskWritePs
+		stats.DiskIO = item.DiskIO
+		stats.MaxDiskIO = item.MaxDiskIO
+		stats.DiskIoStats = item.DiskIoStats
+		stats.MaxDiskIoStats = item.MaxDiskIoStats
+		return nil
+	},
+	FS: func(raw []byte, stats *systemmodel.Stats) error {
+		var item FSData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.ExtraFs = item.ExtraFs
+		return nil
+	},
+	Network: func(raw []byte, stats *systemmodel.Stats) error {
+		var item NetworkData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.Bandwidth = item.Bandwidth
+		stats.MaxBandwidth = item.MaxBandwidth
+		stats.NetworkInterfaces = item.NetworkInterfaces
+		return nil
+	},
+	GPU: func(raw []byte, stats *systemmodel.Stats) error {
+		return json.Unmarshal(raw, &stats.GPUData)
+	},
+	Sensors: func(raw []byte, stats *systemmodel.Stats) error {
+		var item SensorsData
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		stats.Temperatures = item.Temperatures
+		stats.SensorReadings = item.Readings
+		return nil
+	},
+}
+
+// averageSystemStats averages decoded samples. A map entry present in only
+// some samples is averaged over those samples alone.
+//
 //nolint:gocognit // System stats aggregation spans optional nested metric instances and their distinct rules.
-func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
+func averageSystemStats(samples []systemmodel.Stats) *systemmodel.Stats {
 	sum := &systemmodel.Stats{}
-	temp := &systemmodel.Stats{}
-	count := float64(len(items))
+	count := float64(len(samples))
 	seen := keySamples{}
 	batterySum := 0
 	var cpuCoresSums []uint64
 	var cpuBreakdownSums []float64
 	var cpuFreqSums []float64
 
-	for _, raw := range items {
-		*temp = systemmodel.Stats{}
-		if err := json.Unmarshal([]byte(raw), temp); err != nil {
-			return nil, err
-		}
-
+	for i := range samples {
+		temp := &samples[i]
 		sum.Cpu += temp.Cpu
 		sum.Mem += temp.Mem
 		sum.MemUsed += temp.MemUsed
@@ -276,7 +232,7 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 	}
 
 	if count == 0 {
-		return sum, nil
+		return sum
 	}
 	averageScalarStats(sum, count)
 	sum.Battery[0] = uint16(batterySum / int(count))
@@ -303,7 +259,7 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 			sum.CpuFrequencies[i] = units.TwoDecimals(value / count)
 		}
 	}
-	return sum, nil
+	return sum
 }
 
 func averageScalarStats(sum *systemmodel.Stats, count float64) {

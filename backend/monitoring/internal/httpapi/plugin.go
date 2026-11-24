@@ -28,6 +28,7 @@ type RefreshablePlugin interface {
 type Registry struct {
 	metrics MetricsReader
 	current CurrentReader
+	history bool // whether this listener serves the stored history routes
 	plugins []Plugin
 	byName  map[string]Plugin
 }
@@ -68,13 +69,14 @@ type refreshCurrentPlugin struct {
 }
 
 // NewRegistry builds the metrics plugin registry. A nil allowed slice mounts
-// every plugin; otherwise only the named ones are mounted and listed.
-func NewRegistry(current CurrentReader, metrics MetricsReader, refresher SmartRefresher, allowed []string) *Registry {
+// every plugin; otherwise only the named ones are mounted and listed. history
+// mounts the stored history routes of those plugins.
+func NewRegistry(current CurrentReader, metrics MetricsReader, refresher SmartRefresher, allowed []string, history bool) *Registry {
 	allow := map[string]bool{}
 	for _, name := range allowed {
 		allow[strings.ToLower(strings.TrimSpace(name))] = true
 	}
-	registry := &Registry{metrics: metrics, current: current, byName: map[string]Plugin{}}
+	registry := &Registry{metrics: metrics, current: current, history: history, byName: map[string]Plugin{}}
 	for _, name := range plugins.Names() {
 		if allowed != nil && !allow[name] {
 			continue
@@ -102,7 +104,9 @@ func (r *Registry) Mount(mux *http.ServeMux, prefix string) {
 	mux.HandleFunc(prefix+"plugins", r.handlePlugins(prefix))
 	mux.HandleFunc(prefix+"all", r.handleAll)
 	mux.HandleFunc(prefix+"{plugin}", r.handleCurrent)
-	mux.HandleFunc(prefix+"{plugin}/history", r.handleHistory)
+	if r.history {
+		mux.HandleFunc(prefix+"{plugin}/history", r.handleHistory)
+	}
 	mux.HandleFunc(prefix+"{plugin}/refresh", r.handleRefresh)
 }
 
@@ -116,7 +120,7 @@ func (r *Registry) handlePlugins(prefix string) http.HandlerFunc {
 		for _, plugin := range r.plugins {
 			name := plugin.Name()
 			routes := []string{"GET " + prefix + name}
-			hasHistory := r.metrics.HistoryEnabled(name)
+			hasHistory := r.history && r.metrics.HistoryEnabled(name)
 			if hasHistory {
 				routes = append(routes, "GET "+prefix+name+"/history")
 			}
@@ -135,15 +139,34 @@ func (r *Registry) handlePlugins(prefix string) http.HandlerFunc {
 	}
 }
 
+// allOnRequest are the plugins /all leaves out unless the request names them
+// in its include parameter: container telemetry needs a process scan, which
+// costs more than every other plugin together.
+var allOnRequest = map[string]bool{plugins.ContainerTelemetry: true}
+
 func (r *Registry) handleAll(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		writeMethodNotAllowed(w, http.MethodGet)
 		return
 	}
+	include := map[string]bool{}
+	for _, value := range req.URL.Query()[monitoringapi.QueryInclude] {
+		for name := range strings.SplitSeq(value, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if !allOnRequest[name] {
+				writeError(w, http.StatusBadRequest, errors.New("invalid include"))
+				return
+			}
+			include[name] = true
+		}
+	}
 	ctx, cancel := requestContext(req)
 	defer cancel()
 
-	out, pluginErrors, attempted, firstErr := r.readAllCurrent(ctx)
+	out, pluginErrors, attempted, firstErr := r.readAllCurrent(ctx, include)
 	if attempted > 0 && len(pluginErrors) == attempted {
 		writeStoreError(w, firstErr)
 		return
@@ -154,15 +177,22 @@ func (r *Registry) handleAll(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (r *Registry) readAllCurrent(ctx context.Context) (map[string]any, map[string]string, int, error) {
+func (r *Registry) readAllCurrent(ctx context.Context, include map[string]bool) (map[string]any, map[string]string, int, error) {
 	if batchReader, ok := r.current.(CurrentBatchReader); ok {
-		return r.readAllCurrentBatch(ctx, batchReader)
+		return r.readAllCurrentBatch(ctx, batchReader, include)
 	}
-	return r.readAllCurrentSequential(ctx)
+	return r.readAllCurrentSequential(ctx, include)
 }
 
-func (r *Registry) readAllCurrentBatch(ctx context.Context, batchReader CurrentBatchReader) (map[string]any, map[string]string, int, error) {
-	names := r.allCurrentPluginNames()
+// inAll reports whether /all reads the plugin: never the process and program
+// lists, which have their own routes, and an on-request plugin only when the
+// request includes it.
+func inAll(name string, include map[string]bool) bool {
+	return !plugins.IsLiveOnly(name) && (!allOnRequest[name] || include[name])
+}
+
+func (r *Registry) readAllCurrentBatch(ctx context.Context, batchReader CurrentBatchReader, include map[string]bool) (map[string]any, map[string]string, int, error) {
+	names := r.allCurrentPluginNames(include)
 	capturedAt, payloads, batchErrors := batchReader.CurrentPlugins(ctx, names)
 	out := make(map[string]any, len(names))
 	pluginErrors := make(map[string]string)
@@ -170,7 +200,7 @@ func (r *Registry) readAllCurrentBatch(ctx context.Context, batchReader CurrentB
 
 	for _, plugin := range r.plugins {
 		name := plugin.Name()
-		if plugins.IsLiveOnly(name) {
+		if !inAll(name, include) {
 			continue
 		}
 		err := batchErrors[name]
@@ -193,15 +223,13 @@ func (r *Registry) readAllCurrentBatch(ctx context.Context, batchReader CurrentB
 	return out, pluginErrors, len(names), firstErr
 }
 
-func (r *Registry) readAllCurrentSequential(ctx context.Context) (map[string]any, map[string]string, int, error) {
+func (r *Registry) readAllCurrentSequential(ctx context.Context, include map[string]bool) (map[string]any, map[string]string, int, error) {
 	out := make(map[string]any, len(r.plugins))
 	pluginErrors := make(map[string]string)
 	var firstErr error
 	attempted := 0
 	for _, plugin := range r.plugins {
-		// Process and program payloads remain available only from their direct
-		// endpoints; /all intentionally excludes individual-process data.
-		if plugins.IsLiveOnly(plugin.Name()) {
+		if !inAll(plugin.Name(), include) {
 			continue
 		}
 		attempted++
@@ -215,10 +243,10 @@ func (r *Registry) readAllCurrentSequential(ctx context.Context) (map[string]any
 	return out, pluginErrors, attempted, firstErr
 }
 
-func (r *Registry) allCurrentPluginNames() []string {
+func (r *Registry) allCurrentPluginNames(include map[string]bool) []string {
 	names := make([]string, 0, len(r.plugins))
 	for _, plugin := range r.plugins {
-		if !plugins.IsLiveOnly(plugin.Name()) {
+		if inAll(plugin.Name(), include) {
 			names = append(names, plugin.Name())
 		}
 	}
