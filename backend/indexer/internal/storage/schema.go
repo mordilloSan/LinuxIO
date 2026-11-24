@@ -18,9 +18,9 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
-	// Every full scan inserts a new generation with last_indexed=0 and publishes it by
-	// setting last_indexed on success, so readers atomically switch from the
-	// previous generation and a failed scan leaves the old one untouched.
+	// One row: the generation every scan updates in place. The first scan
+	// creates it with last_indexed=0 and publishes it by committing, so readers
+	// see no index until then (generation.go).
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS indexes (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,20 +43,14 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 			name TEXT NOT NULL,
 			size INTEGER NOT NULL,
 			mod_time INTEGER NOT NULL,
-			type TEXT NOT NULL,
-			hidden INTEGER NOT NULL DEFAULT 0,
+			type INTEGER NOT NULL,
 			device INTEGER NOT NULL DEFAULT 0,
 			inode INTEGER NOT NULL DEFAULT 0,
+			nlink INTEGER NOT NULL DEFAULT 1,
 			size_contribution INTEGER NOT NULL DEFAULT 0,
 			last_seen INTEGER NOT NULL DEFAULT 0,
 			FOREIGN KEY (index_id) REFERENCES indexes(id) ON DELETE CASCADE
 		);
-	`); err != nil {
-		return err
-	}
-
-	if _, err := db.ExecContext(ctx, `
-		CREATE INDEX IF NOT EXISTS idx_entries_index_id ON entries(index_id);
 	`); err != nil {
 		return err
 	}
@@ -73,6 +67,9 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
+	// Every file, not only those with several links: a file is indexed while
+	// it has one link, and the link added to it later is matched to that row
+	// by these numbers. Without the row both would be counted.
 	if _, err := db.ExecContext(ctx, `
 		CREATE INDEX IF NOT EXISTS idx_entries_hardlinks ON entries(index_id, device, inode);
 	`); err != nil {

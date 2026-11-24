@@ -183,8 +183,8 @@ func TestSetSwappinessJoinsAFailedRestore(t *testing.T) {
 // The progress detail fills the common envelope: the step as its phase and
 // the share of steps done.
 func TestSwapProgressEnvelope(t *testing.T) {
-	got := apischema.SwapProgress{Step: apischema.SwapStepStopSwapFile, Index: 5, Total: 5}.ProgressEnvelope()
-	if got.Phase != "stop_swap_file" || got.Percentage == nil || *got.Percentage != 80 || got.Message == "" {
-		t.Fatalf("envelope = %+v, want phase stop_swap_file at 80%% with a message", got)
+	got := apischema.SwapProgress{Step: apischema.SwapStepRemoveSwapFile, Index: 5, Total: 5}.ProgressEnvelope()
+	if got.Phase != "remove_swap_file" || got.Percentage == nil || *got.Percentage != 80 || got.Message == "" {
+		t.Fatalf("envelope = %+v, want phase remove_swap_file at 80%% with a message", got)
 	}
 }

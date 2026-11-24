@@ -123,23 +123,30 @@ const WRAPPERS = new Map<
   ["chroot", { skip: 1 }],
   ["command", { asks: set("-v, -V") }],
   ["doas", { takes: set("-u, -C") }],
-  ["env", { takes: set("-u, -C") }],
+  ["env", { takes: set("-u, --unset, -C, --chdir, -a, --argv0, -f, --file") }],
   ["exec", { takes: set("-a") }],
-  ["ionice", { takes: set("-c, -n") }],
-  ["nice", { takes: set("-n") }],
+  ["ionice", { takes: set("-c, --class, -n, --classdata") }],
+  ["nice", { takes: set("-n, --adjustment") }],
   ["nohup", {}],
-  ["stdbuf", { takes: set("-i, -o, -e") }],
+  ["stdbuf", { takes: set("-i, --input, -o, --output, -e, --error") }],
   [
     "sudo",
     {
       takes: set(
-        "-u, -g, -p, -h, -C, -D, -R, -T, -U, -r, -t, --user, --group, --host, --chdir",
+        "-u, -g, -p, -h, -C, -D, -R, -T, -U, -r, -t, --user, --group, --host, --chdir, --chroot, --prompt, --other-user, --role, --type, --close-from, --command-timeout",
       ),
     },
   ],
   ["time", {}],
-  ["timeout", { takes: set("-s, -k"), skip: 1 }],
-  ["xargs", { takes: set("-n, -I, -P, -L, -d, -E, -s, -a, -J, -R") }],
+  ["timeout", { takes: set("-s, --signal, -k, --kill-after"), skip: 1 }],
+  [
+    "xargs",
+    {
+      takes: set(
+        "-n, -I, -P, -L, -d, -E, -s, -a, -J, -R, --max-args, --max-procs, --delimiter, --max-chars, --arg-file, --process-slot-var",
+      ),
+    },
+  ],
 ]);
 // watch hands its words to `sh -c`, as one line.
 const WATCH_TAKES = set("-n, --interval");
@@ -158,14 +165,11 @@ const TAKES_OPTION = /^[-+][a-zA-Z]*[oO]$/;
 // of options and redirections reads one way only; read both ways, a long run
 // takes exponential time.
 const SHELL_BEFORE =
-  /(?:^|[\s;&|(/])(?:bash|sh|zsh|dash|ksh)(?:\s+(?:[-+][abd-zA-Z]*[oO]\s+\w[\w-]*|[-+][abd-zA-Z]+|(?:\d*(?:>>?|>[|&]|<&)|&>>?)\s*[^\s<>;&|()]+))*\s*$/;
+  /(?:^|[\s;&|(/`])(?:bash|sh|zsh|dash|ksh)(?:\s+(?:[-+][abd-zA-Z]*[oO]\s+\w[\w-]*|[-+][abd-zA-Z]+|(?:\d*(?:>>?|>[|&]|<&)|&>>?)\s*[^\s<>;&|()]+))*\s*$/;
 const PIPED_TO_SHELL =
   /\|\s*(?:sudo(?:\s+-\S+(?:\s+[\w.][\w.-]*)?)*\s+)?(?:[^\s|]*\/)?(?:bash|sh|zsh|dash|ksh)\b/y;
-// What follows `<<`: `-` to strip tabs, then the word, quoted, after a
-// backslash, or bare. Only a bare word lets the shell run the `$(…)` and
-// backticks in the text.
-const DELIMITER =
-  /(-?)[ \t]*(?:(["'])([A-Za-z_][\w.-]*)\2|(\\?)([A-Za-z_][\w.-]*))/y;
+// What ends a word that stands outside quotes.
+const ENDS_A_WORD = /[\s;&|<>()`]/;
 // Words of a construct that stand before a command: `do curl x` is curl.
 const BEFORE_A_COMMAND = set("do, then, else, elif, if, while, until, !, {");
 // Words that open or close a construct and run nothing: `for u in a b`, `done`.
@@ -224,6 +228,84 @@ interface HereDocument {
   runs: boolean;
   /** Its word was bare: the `$(…)` and backticks in its text run. */
   expands: boolean;
+  /** What closes the `$(…)` or backticks it was opened in, if it was. */
+  inside: "" | ")" | "`";
+}
+
+/**
+ * The mark after `<<`, from `start`: `-` to strip tabs, then a word as the
+ * shell reads one, with its quotes and backslashes taken off, so `E"O"F` is
+ * EOF and `"END MSG"` holds a space. Only a word that had none is bare.
+ * Nothing for no word at all, a quote that does not close on the line or a
+ * backslash inside double quotes, and nothing for a word that starts with
+ * anything but a letter, `_`, a quote or a backslash: `<<2`, `<<$n` and
+ * `<<(x)` are far more often a shift, in arithmetic this reader does not
+ * follow (over lines, in `${…}`, in an index), and a mark seen where there
+ * is none hides every line after it.
+ */
+function markAt(line: string, start: number) {
+  let i = start;
+  const tabs = line[i] === "-";
+  if (tabs) i++;
+  while (line[i] === " " || line[i] === "\t") i++;
+  const from = i;
+  if (!/[A-Za-z_'"\\]/.test(line[i] ?? "")) return undefined;
+  let word = "";
+  let bare = true;
+  for (; i < line.length; i++) {
+    const c = line[i];
+    if (c === "'" || c === '"') {
+      const end = line.indexOf(c, i + 1);
+      if (end < 0) return undefined;
+      if (c === '"' && line.slice(i, end).includes("\\")) return undefined;
+      word += line.slice(i + 1, end);
+      bare = false;
+      i = end;
+    } else if (c === "\\") {
+      word += line[++i] ?? "";
+      bare = false;
+    } else if (ENDS_A_WORD.test(c)) {
+      break;
+    } else {
+      word += c;
+    }
+  }
+  return i > from ? { word, tabs, bare, end: i } : undefined;
+}
+
+/**
+ * What stands in backticks as the shell inside them reads it: without the
+ * backslash before a backtick, a `$` or a backslash, which is how backticks
+ * stand inside backticks.
+ */
+const unticked = (text: string) => text.replace(/\\([\\`$])/g, "$1");
+
+/**
+ * What `$(…)` or backticks hold, from the bracket or backtick at `open` to
+ * `end`.
+ */
+function held(line: string, open: number, end: number) {
+  const text = line.slice(open + 1, end);
+  return line[open] === "`" ? unticked(text) : text;
+}
+
+/**
+ * Where on a line of a here-document's text the `$(…)` or backticks it was
+ * opened in end it, or -1: backticks at the first backtick, wherever it
+ * stands, and `$(…)` at a `)` after the mark at the start of the line.
+ */
+function closedAt(open: HereDocument, text: string) {
+  if (open.inside === "`") {
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === "\\") i++;
+      else if (text[i] === "`") return i;
+    }
+    return -1;
+  }
+  if (open.inside !== ")" || !text.startsWith(open.word)) return -1;
+  let i = open.word.length;
+  while (text[i] === " " || text[i] === "\t") i++;
+  return text[i] === ")" ? i : -1;
 }
 
 /** What the `$(…)` and backticks of a line of text run, one per line. */
@@ -236,7 +318,7 @@ function substitutionsIn(line: string) {
       const open = line[i] === "`" ? i : i + 1;
       const end = closing(line, open);
       if (line[i] === "`" || line[open + 1] !== "(") {
-        found.push(line.slice(open + 1, end));
+        found.push(held(line, open, end));
       }
       i = end;
     }
@@ -245,22 +327,31 @@ function substitutionsIn(line: string) {
 }
 
 /**
- * The here-documents a line opens, read past quotes, `$(…)` and comments.
- * `frames` holds the quotes and `$(…)` open at the end of the line before and
+ * The here-documents a line opens, read past quotes, `$(…)`, backticks and
+ * comments. `frames` holds those open at the end of the line before and
  * is left as they are at the end of this one, so a string over several lines
- * opens nothing. `<<<` is a here-string and `((a << b))` arithmetic. The line
+ * opens nothing. A frame is `ticked` when it is backticks (`tick`) or stands
+ * in them: the next backtick closes those, whatever is open inside. `<<<` is a here-string, and `((a << b))` and `$[a << b]` are
+ * arithmetic. The line
  * is read once, however many marks it holds: a mark is none of a shell's
  * options, so the text that may name the shell before a mark starts where the
  * mark before it ends, and each `|` after a mark is looked at once.
  */
 function opened(
   line: string,
-  frames: { quote: string; brackets: number }[],
+  frames: {
+    quote: string;
+    brackets: number;
+    tick?: boolean;
+    ticked?: boolean;
+  }[],
 ): HereDocument[] {
   const found: HereDocument[] = [];
   // Where the last `((` and `))` stand: after an open `((`, `<<` shifts.
   let shifts = -1;
   let closes = -1;
+  // How many `[` stand open from a `$[` on.
+  let squares = 0;
   // Where the last mark ends.
   let from = 0;
   // The first `|` after the last mark, and whether a shell reads from it.
@@ -277,29 +368,50 @@ function opened(
       i++;
     } else if (c === "$" && line[i + 1] === "(") {
       // Inside `$(…)` quotes start over, also within double quotes.
-      frames.push({ quote: "", brackets: 0 });
+      frames.push({ quote: "", brackets: 0, ticked: top.ticked });
       i++;
+    } else if (c === "`") {
+      // Backticks do the same, and the next one closes them, and with them
+      // every here-document opened in them: none has any text.
+      if (!top.ticked) {
+        frames.push({ quote: "", brackets: 0, tick: true, ticked: true });
+      } else {
+        while (frames.length > 1 && !frames.pop()?.tick) {
+          // A `$(…)` still open in the backticks closes with them.
+        }
+        while (found[found.length - 1]?.inside === "`") found.pop();
+      }
     } else if (top.quote === '"') {
       if (c === '"') top.quote = "";
     } else if (c === "'" || c === '"') {
       top.quote = c;
+    } else if (c === "[" && squares > 0) {
+      squares++;
+    } else if (c === "$" && line[i + 1] === "[") {
+      squares++;
+      i++;
+    } else if (c === "]") {
+      if (squares > 0) squares--;
     } else if (c === "(") {
       top.brackets++;
     } else if (c === ")") {
       if (top.brackets > 0) top.brackets--;
-      else if (frames.length > 1) frames.pop();
+      else if (frames.length > 1 && !top.tick) frames.pop();
     } else if (c === "#" && (i === 0 || /[\s;&|(]/.test(line[i - 1]))) {
-      break;
+      // A comment runs to the end of the line, or to the backtick that
+      // closes the backticks it stands in.
+      const end = top.ticked ? line.indexOf("`", i) : -1;
+      if (end < 0) break;
+      i = end - 1;
     } else if (
       c === "<" &&
       line[i + 1] === "<" &&
       line[i + 2] !== "<" &&
       line[i - 1] !== "<"
     ) {
-      DELIMITER.lastIndex = i + 2;
-      const match = DELIMITER.exec(line);
-      if (match && shifts <= closes) {
-        const end = DELIMITER.lastIndex;
+      const mark = shifts <= closes && squares === 0 && markAt(line, i + 2);
+      if (mark) {
+        const end = mark.end;
         if (pipe < end) {
           pipe = line.indexOf("|", end);
           if (pipe < 0) pipe = line.length;
@@ -307,10 +419,11 @@ function opened(
           piped = PIPED_TO_SHELL.test(line);
         }
         found.push({
-          word: match[3] ?? match[5],
-          tabs: match[1] === "-",
+          word: mark.word,
+          tabs: mark.tabs,
           runs: piped || SHELL_BEFORE.test(line.slice(from, i)),
-          expands: match[2] === undefined && match[4] === "",
+          expands: mark.bare,
+          inside: top.ticked ? "`" : frames.length > 1 ? ")" : "",
         });
         from = end;
         i = end - 1;
@@ -326,18 +439,23 @@ function opened(
  * A line without the text of its here-documents: what stands between `<<WORD`
  * and the line that is `WORD` is written somewhere, not run, unless a shell
  * reads it; then its lines are read as commands, and a here-document one of
- * them opens is read before the rest. One that never ends is text to the end.
- * What is kept is read only to `READ`, and the line no further than that.
+ * them opens is read before the rest. One that never ends is text to the end,
+ * or to where the `$(…)` or backticks it was opened in close (`closedAt`);
+ * what follows on that line is read again. What is kept is read only to
+ * `READ`, and the line no further than that: `whole` says nothing was left.
  */
 function withoutHereDocuments(command: string) {
-  if (!command.includes("<<")) return command;
+  if (!command.includes("<<")) {
+    return { text: command, whole: command.length <= READ };
+  }
   const kept: string[] = [];
   const waiting: HereDocument[] = [];
   const frames = [{ quote: "", brackets: 0 }];
   // How long what is kept is.
   let size = 0;
+  let whole = true;
   for (const line of command.split("\n")) {
-    if (size >= READ) break;
+    let rest = line;
     const open = waiting[0];
     if (open) {
       const text = (open.tabs ? line.replace(/^\t+/, "") : line).replace(
@@ -348,21 +466,46 @@ function withoutHereDocuments(command: string) {
         waiting.shift();
         continue;
       }
-      if (!open.runs) {
-        const runs = open.expands ? substitutionsIn(line) : "";
+      const cut = closedAt(open, text);
+      if (cut >= 0) waiting.shift();
+      // Backticks end every here-document opened in them, `$(…)` this one.
+      if (cut >= 0 && open.inside === "`") {
+        while (waiting[0]?.inside === "`") waiting.shift();
+      }
+      // What of the line is still its text: none of the mark before a `)`.
+      const body =
+        cut < 0 ? line : open.inside === ")" ? "" : text.slice(0, cut);
+      rest = cut < 0 ? "" : text.slice(cut);
+      if (open.runs) {
+        rest = body + rest;
+      } else {
+        const runs = open.expands
+          ? substitutionsIn(open.inside === "`" ? unticked(body) : body)
+          : "";
+        if (runs && size >= READ) {
+          whole = false;
+          break;
+        }
         if (runs) {
           kept.push(runs);
           size += runs.length + 1;
         }
-        continue;
+        if (cut < 0) continue;
       }
     }
-    kept.push(line);
+    // Past what is read only the text of a here-document is passed over,
+    // which is not kept anyway.
+    if (size >= READ) {
+      whole = false;
+      break;
+    }
+    kept.push(rest);
     // A mark past what is read opens nothing that is read.
-    waiting.unshift(...opened(line.slice(0, READ - size), frames));
-    size += line.length + 1;
+    waiting.unshift(...opened(rest.slice(0, READ - size), frames));
+    size += rest.length + 1;
   }
-  return kept.join("\n");
+  const text = kept.join("\n");
+  return { text, whole: whole && text.length <= READ };
 }
 
 /** Where what the backtick or bracket at `start` opens ends. */
@@ -412,7 +555,7 @@ function listAt(line: string, start: number) {
       const open = c === "`" ? i : i + 1;
       const end = closing(line, open);
       if (c === "`" || line[open + 1] !== "(") {
-        runs.push(line.slice(open + 1, end));
+        runs.push(held(line, open, end));
       }
       i = end;
     } else if (quote === '"') {
@@ -516,7 +659,7 @@ function split(line: string, budget: Budget): string[][] {
       const open = c === "`" ? i : i + 1;
       const end = closing(line, open);
       if ((c === "`" || line[open + 1] !== "(") && follows(budget)) {
-        inner.push(...split(line.slice(open + 1, end), budget));
+        inner.push(...split(held(line, open, end), budget));
       }
       word += line.slice(i, end + 1);
       i = end;
@@ -674,7 +817,7 @@ function ran(words: string[], depth: number, budget: Budget): string[][] {
       }
     }
     if (line !== undefined && follows(budget)) {
-      return commandsIn(withoutHereDocuments(line), depth + 1, budget);
+      return commandsIn(withoutHereDocuments(line).text, depth + 1, budget);
     }
   }
   const all = [outer];
@@ -701,14 +844,15 @@ function commandsIn(line: string, depth: number, budget: Budget): string[][] {
 }
 
 /**
- * Every command a line runs, here-documents left out, read to `READ`, and
- * whether it held more commands inside others than `FOLLOWED`.
+ * Every command a line runs, here-documents left out, read to `READ`;
+ * whether all of it was read, and whether it held more commands inside
+ * others than `FOLLOWED`.
  */
 function commandsOf(command: string) {
   const budget = { left: FOLLOWED };
-  const line = withoutHereDocuments(command).slice(0, READ);
-  const commands = commandsIn(line, 0, budget);
-  return { commands, spent: budget.left < 0 };
+  const { text, whole } = withoutHereDocuments(command);
+  const commands = commandsIn(text.slice(0, READ), 0, budget);
+  return { commands, whole, spent: budget.left < 0 };
 }
 
 /** Whether a command reaches the network: by its name, or with its subcommand. */
@@ -753,13 +897,16 @@ function reachesOut(words: string[]) {
 /**
  * A line belongs to the network when any command it runs reaches out, to
  * files when every one only handles files, and to the shell otherwise, or
- * when it holds more commands inside others than are followed.
+ * when it holds more commands inside others than are followed. A line longer
+ * than what is read is never one of files alone: what was not read may be
+ * anything.
  */
 export function shellStation(command: string | null): ShellStation {
   if (command === null) return "shell";
-  const { commands, spent } = commandsOf(command);
+  const { commands, whole, spent } = commandsOf(command);
   if (spent) return "shell";
   if (commands.some(reachesOut)) return "network";
+  if (!whole) return "shell";
   const real = commands.filter((words) => !NEUTRAL_WORDS.has(name(words[0])));
   return real.length > 0 &&
     real.every((words) => FILE_WORDS.has(name(words[0])))

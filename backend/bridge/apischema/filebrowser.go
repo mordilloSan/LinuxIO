@@ -42,6 +42,9 @@ type DirectorySizeData struct {
 	Size        int64 `json:"size"`
 	FileCount   int64 `json:"fileCount"`
 	FolderCount int64 `json:"folderCount"`
+	// Pending is set while the index still has an update to apply that can
+	// change these numbers: the page asks again shortly after.
+	Pending bool `json:"pending,omitempty"`
 }
 
 type SubfolderData struct {
@@ -51,6 +54,8 @@ type SubfolderData struct {
 
 type SubfoldersResponse struct {
 	Subfolders []SubfolderData `json:"subfolders"`
+	// Pending is set as in DirectorySizeData, for the folder asked about.
+	Pending bool `json:"pending,omitempty"`
 }
 
 type SearchResult struct {
@@ -59,12 +64,30 @@ type SearchResult struct {
 	ModTime       string `json:"mod_time"`
 	Name          string `json:"name"`
 	Path          string `json:"path"`
-	Size          int64  `json:"size"`
+	// Size is absent for a folder found on disk that the index holds no size
+	// for.
+	Size          *int64 `json:"size,omitzero"`
 	CanOpenAsText *bool  `json:"canOpenAsText,omitzero"`
 }
 
+// FileSearchWalk says how a search inside a folder read that folder on disk.
+// A search from "/" reads the index alone and carries none.
+type FileSearchWalk string
+
+const (
+	// FileSearchWalkComplete: the folder was read whole, and the results are
+	// what is on the disk now.
+	FileSearchWalkComplete FileSearchWalk = "complete"
+	// FileSearchWalkPartial: the folder was not read whole (out of time, no
+	// free read within a short wait, a part that could not be read, or a
+	// tree deeper than the read goes), and the results are the index's with
+	// what the read found.
+	FileSearchWalkPartial FileSearchWalk = "partial"
+)
+
 type SearchResponse struct {
 	Results []SearchResult `json:"results"`
+	Walk    FileSearchWalk `json:"walk,omitzero"`
 }
 
 type UsersGroupsResponse struct {

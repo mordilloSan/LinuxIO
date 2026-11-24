@@ -17,7 +17,6 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formatters";
 
-import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 import {
   getFileEntryBackground,
   getFileEntryHoverBackground,
@@ -150,50 +149,25 @@ const FileListRow = memo<FileListRowProps>(
       }
     }, [renameValue, name, onConfirmRename, onCancelRename]);
 
-    // For search results (showFullPath=true), fetch individual directory sizes
-    const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
-    const {
-      size: fetchedSize,
-      isLoading: isSizeLoading,
-      error: fetchError,
-      isUnavailable: isSizeUnavailable,
-    } = useFileDirectorySize(path || "", needsIndividualDirSize);
-
-    // Override size props with fetched data when displaying search results
-    const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;
-    const effectiveSizeLoading = needsIndividualDirSize
-      ? isSizeLoading
-      : directorySizeLoading;
-    const effectiveSizeError = needsIndividualDirSize
-      ? fetchError
-      : directorySizeError;
-    const effectiveSizeUnavailable = needsIndividualDirSize
-      ? isSizeUnavailable
-      : directorySizeUnavailable;
-
     const formattedDate = modTime
       ? new Date(modTime).toLocaleDateString("en-GB")
       : "";
 
     const formattedSize = useMemo(() => {
-      if (
-        effectiveSizeLoading &&
-        effectiveSize !== undefined &&
-        effectiveSize !== 0
-      ) {
-        return formatFileSize(effectiveSize, 1, "");
+      if (directorySizeLoading && size !== undefined && size !== 0) {
+        return formatFileSize(size, 1, "");
       }
-      if (effectiveSizeLoading) {
+      if (directorySizeLoading) {
         return ""; // Will render glow effect instead
       }
-      if (effectiveSizeUnavailable) {
+      if (directorySizeUnavailable) {
         return "Unavailable";
       }
-      if (effectiveSize !== undefined) {
-        return formatFileSize(effectiveSize, 1, "");
+      if (size !== undefined) {
+        return formatFileSize(size, 1, "");
       }
       return "—";
-    }, [effectiveSize, effectiveSizeLoading, effectiveSizeUnavailable]);
+    }, [size, directorySizeLoading, directorySizeUnavailable]);
 
     const handleClick = useCallback(
       (e: MouseEvent) => {
@@ -392,10 +366,10 @@ const FileListRow = memo<FileListRowProps>(
             alignItems: "center",
             justifyContent: "flex-start",
           }}
-          title={effectiveSizeError?.message}
+          title={directorySizeError?.message}
           variant="body2"
         >
-          {effectiveSizeLoading ? (
+          {directorySizeLoading ? (
             <span className="file-size-pending">—</span>
           ) : (
             formattedSize

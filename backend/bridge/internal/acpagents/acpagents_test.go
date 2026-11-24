@@ -1,8 +1,11 @@
 package acpagents_test
 
 import (
+	"context"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -12,6 +15,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const noopScript = "#!/bin/sh\n"
@@ -38,6 +42,94 @@ func TestClaudeUsesTheInstalledClaudeCode(t *testing.T) {
 	// Its own copy of Claude Code is an optional dependency; leaving it out is
 	// what keeps the install small.
 	require.Contains(t, agent.InstallArgs, "--omit=optional")
+}
+
+func TestClaudeKeepsAProfileOfItsOwn(t *testing.T) {
+	agent, ok := acpagents.Lookup("claude")
+	require.True(t, ok)
+	// Without it a chat signs in, and reads its settings and memory, as the
+	// user's Claude Code in a terminal or an editor does.
+	require.Equal(t, "CLAUDE_CONFIG_DIR", agent.ProfileEnv)
+}
+
+func currentUser(t *testing.T) session.User {
+	t.Helper()
+	u, err := user.Current()
+	require.NoError(t, err)
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		t.Skipf("non-numeric uid %q", u.Uid)
+	}
+	gid, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
+		t.Skipf("non-numeric gid %q", u.Gid)
+	}
+	return session.User{Username: u.Username, UID: uint32(uid), GID: uint32(gid)}
+}
+
+func TestProfile(t *testing.T) {
+	u := currentUser(t)
+
+	t.Run("makes a folder only the user can open and names it", func(t *testing.T) {
+		t.Cleanup(acpagents.Override("fake", acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent", ProfileEnv: "FAKE_CONFIG_DIR"}))
+		home := t.TempDir()
+		dir := filepath.Join(home, ".local", "share", "linuxio", "profiles", "fake")
+		require.Equal(t, dir, acpagents.ProfileDir(home, "fake"))
+
+		env, err := acpagents.Profile(t.Context(), u, "fake", home)
+		require.NoError(t, err)
+		require.Equal(t, []string{"FAKE_CONFIG_DIR=" + dir}, env)
+		info, err := os.Stat(dir)
+		require.NoError(t, err)
+		require.True(t, info.IsDir())
+		require.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+
+		// A later start finds the folder and what the agent keeps in it, and
+		// closes a folder that was opened to others meanwhile.
+		kept := filepath.Join(dir, "settings.json")
+		require.NoError(t, os.WriteFile(kept, []byte("{}"), 0o600))
+		require.NoError(t, os.Chmod(dir, 0o755))
+		env, err = acpagents.Profile(t.Context(), u, "fake", home)
+		require.NoError(t, err)
+		require.Equal(t, []string{"FAKE_CONFIG_DIR=" + dir}, env)
+		require.FileExists(t, kept)
+		info, err = os.Stat(dir)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+	})
+
+	t.Run("gives an agent without the variable nothing", func(t *testing.T) {
+		t.Cleanup(acpagents.Override("fake", acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent"}))
+		home := t.TempDir()
+
+		env, err := acpagents.Profile(t.Context(), u, "fake", home)
+		require.NoError(t, err)
+		require.Empty(t, env)
+		require.NoDirExists(t, acpagents.ProfileDir(home, "fake"))
+	})
+
+	t.Run("reports a folder it cannot make", func(t *testing.T) {
+		t.Cleanup(acpagents.Override("fake", acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent", ProfileEnv: "FAKE_CONFIG_DIR"}))
+		home := filepath.Join(t.TempDir(), "file")
+		require.NoError(t, os.WriteFile(home, nil, 0o600))
+
+		_, err := acpagents.Profile(t.Context(), u, "fake", home)
+		require.ErrorContains(t, err, "create the fake profile folder")
+	})
+
+	t.Run("reports a caller that gave up as that", func(t *testing.T) {
+		t.Cleanup(acpagents.Override("fake", acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent", ProfileEnv: "FAKE_CONFIG_DIR"}))
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := acpagents.Profile(ctx, u, "fake", t.TempDir())
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("refuses an unknown agent", func(t *testing.T) {
+		_, err := acpagents.Profile(t.Context(), u, "opencode", t.TempDir())
+		require.ErrorContains(t, err, "unknown agent")
+	})
 }
 
 func TestOnlyClaudeServesPanes(t *testing.T) {

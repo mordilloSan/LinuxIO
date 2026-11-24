@@ -200,6 +200,84 @@ describe("shellStation", () => {
       "shell",
     ],
     ['git commit -m "fix parser\nhandles <<EOF now"\ngit push', "network"],
+    // Backticks open a here-document as `$(…)` does, also within a string.
+    [
+      "git commit -m \"`cat <<'EOF'\nfix: retry (curl timeout)\n\ncurl was called twice\nEOF\n`\"",
+      "shell",
+    ],
+    ["git commit -m `cat <<'EOF'\ncurl was called twice\nEOF\n`", "shell"],
+    // Its text still runs what a bare word lets it run.
+    ['git commit -m "`cat <<EOF\nfix: $(curl x)\nEOF\n`"', "network"],
+    // The string goes on after the closing backtick, and what follows is read.
+    [
+      "git commit -m \"`cat <<'EOF'\nfix: x\nEOF\n` and <<EOF in parser\"\ngit push",
+      "network",
+    ],
+    // A `)` inside backticks does not close them.
+    ["echo \"`case a in a) cat <<'EOF'\ncurl x\nEOF\n;; esac`\"", "files"],
+    // A comment inside backticks ends where they close, not with the line.
+    [
+      "x=`hostname # note`\necho \"`date`\"\ncat <<'EOF' > f\ncurl x\nEOF",
+      "shell",
+    ],
+    // The backticks or `$(…)` a here-document was opened in end it where
+    // they close: backticks at a backtick in its text, `$(…)` at a `)` after
+    // its mark. What follows is read.
+    ["x=`cat <<EOF\ntext\nEOF`\ncurl y", "network"],
+    ["git commit -m \"`cat <<'EOF'\nmsg\nEOF`\"\ngit push", "network"],
+    ["git commit -m \"$(cat <<'EOF'\nmsg\nEOF)\"\ngit push", "network"],
+    ["x=$(cat <<EOF\ntext\nEOF )\ncurl y", "network"],
+    ["x=`cat <<EOF\nte`; curl y", "network"],
+    ["x=`bash <<EOF\ncurl y\nEOF`", "network"],
+    // A `)` in the text closes nothing, nor does one after the mark of a
+    // here-document that stands in no `$(…)`.
+    ["x=\"$(cat <<'EOF'\nfix (curl timeout)\nEOF)\"", "files"],
+    ["cat <<EOF > f\nEOF) curl x\nEOF", "files"],
+    // A mark is any word, with its quotes taken off.
+    ['cat <<E"O"F > f\ntext\nEOF\ncurl x', "network"],
+    ['cat <<"END MSG" > f\ncurl x\nEND MSG', "files"],
+    ["cat <<'E O F' > f\n$(curl x)\nE O F", "files"],
+    ["cat <<'1' > f\ncurl x\n1", "files"],
+    // A bare word that starts with neither a letter nor `_` is taken for a
+    // shift, not a mark, so that no line after one is lost.
+    ["cat <<1 > f\ncurl x\n1", "network"],
+    ["cat <<$(x)\ncurl y\n$(x)", "network"],
+    ["x=$((\n1 << 2\n))\ncurl y", "network"],
+    ["echo ${x:1<<2}\ncurl y", "network"],
+    ["a[1<<2]=3\ncurl y", "network"],
+    ["echo $[a[1]<<b]\ncurl x", "network"],
+    // Backticks that close end every here-document opened in them, on the
+    // line of the `<<` too.
+    ["x=`cat <<A <<B\n`; ls\ncurl y", "network"],
+    ["x=`cat <<EOF`\ncurl y\nEOF", "network"],
+    ["x=`echo $(cat <<EOF)`\ncurl y", "network"],
+    ["x=`cat <<A; echo $(cat <<B)`\ncurl y", "network"],
+    ["x=`echo $(cat <<EOF\ntext\nEOF)`\ncurl y", "network"],
+    // In their text too a backslash stands before what the inner shell runs.
+    ["x=`cat <<EOF\n\\$(curl x)\nEOF`", "network"],
+    ["x=`cat <<EOF\n\\`curl x\\`\nEOF`", "network"],
+    // `$(…)` that closes on the line of the `<<` ends none.
+    ["x=$(cat <<EOF)\ncurl y\nEOF", "files"],
+    ["cat <<E\\OF > f\n$(curl x)\nEOF", "files"],
+    // A shift is none.
+    ["echo $[1<<2]\ncurl x", "network"],
+    ["echo $((1<<2))\ncurl x", "network"],
+    ['echo "$((1<<2))"\ncurl x', "network"],
+    // Backticks inside backticks are written with a backslash, as is a `$`.
+    ["echo `echo \\`curl x\\``", "network"],
+    ["echo `echo \\$(curl x)`", "network"],
+    ["hosts=(`echo \\`curl x\\``)", "network"],
+    // A long flag takes a word as its short one does.
+    ["env --unset X curl y", "network"],
+    ["env --chdir /srv curl y", "network"],
+    ["timeout --signal KILL 5 curl x", "network"],
+    ["timeout --kill-after 5 10 curl x", "network"],
+    ["nice --adjustment 5 curl x", "network"],
+    ["ionice --class 3 curl x", "network"],
+    ["stdbuf --output L curl x", "network"],
+    ["sudo --prompt pw --other-user app curl x", "network"],
+    ["sudo --chroot /srv curl x", "network"],
+    ["find . | xargs --max-args 1 --max-procs 4 curl", "network"],
     ["cat <<\\EOF > f\ncurl x\nEOF", "files"],
     // A file a shell's script writes is text there too.
     ["sudo bash <<'EOF'\ncat > /etc/x <<'CONF'\ncurl y\nCONF\nEOF", "shell"],
@@ -297,6 +375,20 @@ describe("shellStation", () => {
     expect(shellStation(script(800))).toBe("shell");
   });
 
+  it("never sorts a line longer than what is read to files", () => {
+    const listing = (names: number) => `ls ${"a ".repeat(names)}`;
+    expect(shellStation(listing(3998))).toBe("files");
+    expect(shellStation(`${listing(4050)}; curl x`)).toBe("shell");
+    expect(shellStation(`ls\n${"# pad\n".repeat(1400)}curl x`)).toBe("shell");
+    // The text of a here-document is not read, so it does not count.
+    expect(shellStation(`cat > f <<'EOF'\n${"x\n".repeat(5000)}EOF`)).toBe(
+      "files",
+    );
+    const filled = `cat <<EOF ${"a".repeat(7999 - "cat <<EOF ".length)}`;
+    expect(shellStation(`${filled}\nx\nEOF`)).toBe("files");
+    expect(shellStation(`${filled}\nx\nEOF\nls`)).toBe("shell");
+  });
+
   it("leaves out a here-document whose text runs past what is read", () => {
     const text = (lines: string) => `cat > f <<'EOF'\n${lines}EOF\n`;
     expect(shellStation(`${text("curl x\n".repeat(1500))}ls`)).toBe("files");
@@ -305,9 +397,9 @@ describe("shellStation", () => {
 
   it("reads many here-documents on one line in one pass", () => {
     const line = (length: number) => `cat ${"<<a ".repeat(length / 4)}`;
-    expect(shellStation(line(8000))).toBe("files");
+    expect(shellStation(line(7996))).toBe("files");
     const start = performance.now();
-    expect(shellStation(line(48000))).toBe("files");
+    expect(shellStation(line(48000))).toBe("shell");
     // Read again from its start at each mark, this took two seconds.
     expect(performance.now() - start).toBeLessThan(250);
   });
@@ -376,6 +468,11 @@ describe("commandName", () => {
     ['[[ $u =~ v=([^"]+) ]] && curl x', "curl"],
     ["lines=($(< hosts.txt)); cat x", "cat"],
     ["declare -a files=(a b); ls", "ls"],
+    // The text of a here-document is never a name, whatever its mark.
+    ['cd /tmp; : <<"END MSG"\nhunter2 is the key\nEND MSG', "cd"],
+    ["cd /tmp; : <<'1'\nhunter2 is the key\n1", "cd"],
+    ["timeout --signal KILL 5 curl x", "curl"],
+    ["env --unset X make", "make"],
   ])("names %j %s", (command, name) => {
     expect(commandName(command)).toBe(name);
   });

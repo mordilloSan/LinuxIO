@@ -33,21 +33,25 @@ func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error)
 		}
 
 		status := "Inactive"
+		forwardingOff := false
 		if isInterfaceUpFunc(name) {
 			status = "Active"
+			forwardingOff = notForwarding(name, cfg)
 		}
 
 		interfaces = append(interfaces, apischema.WireGuardInterface{
 			Name:        name,
 			IsConnected: status,
-			Address:     strings.Join(cfg.Address, ", "),
-			Port:        cfg.ListenPort,
-			PeerCount:   len(cfg.Peers),
-			IsEnabled:   isInterfaceEnabled(ctx, name),
-			Host:        cfg.Host,
-			DNS:         nonNil(cfg.DNS),
-			MTU:         cfg.MTU,
-			Hooks:       hooksToAPI(cfg.Hooks),
+			// Up, and its peers reach nothing behind the server.
+			ForwardingOff: forwardingOff,
+			Address:       strings.Join(cfg.Address, ", "),
+			Port:          cfg.ListenPort,
+			PeerCount:     len(cfg.Peers),
+			IsEnabled:     isInterfaceEnabled(ctx, name),
+			Host:          cfg.Host,
+			DNS:           nonNil(cfg.DNS),
+			MTU:           cfg.MTU,
+			Hooks:         hooksToAPI(cfg.Hooks),
 		})
 	}
 	slog.Debug("listed WireGuard interfaces", "count", len(interfaces))

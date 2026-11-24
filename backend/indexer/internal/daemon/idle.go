@@ -47,7 +47,7 @@ func (d *daemon) stopWhenIdle(ctx context.Context, cancel context.CancelFunc, ma
 				markerHeld = false
 				continue
 			}
-			if d.activeRequests.Load() > 0 || d.running.Load() {
+			if d.activeRequests.Load() > 0 || d.busy() {
 				d.markActivity()
 				continue
 			}

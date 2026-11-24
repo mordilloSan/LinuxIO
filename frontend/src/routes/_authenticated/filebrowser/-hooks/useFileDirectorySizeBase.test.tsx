@@ -23,12 +23,29 @@ describe("directory size query helpers", () => {
     const options = getDirectorySizeQueryOptions();
     expect(options).toMatchObject({
       gcTime: DIRECTORY_SIZE_CONFIG.CACHE_PERSISTENCE,
-      refetchOnMount: false,
       refetchOnWindowFocus: false,
       staleTime: DIRECTORY_SIZE_CONFIG.CACHE_DURATION,
     });
     expect(options.retry(0)).toBe(true);
     expect(options.retry(DIRECTORY_SIZE_CONFIG.MAX_RETRIES)).toBe(false);
+  });
+
+  it("asks again when shown only for a size that was marked stale meanwhile", () => {
+    const { refetchOnMount } = getDirectorySizeQueryOptions();
+    expect(refetchOnMount({ state: { isInvalidated: false } })).toBe(false);
+    expect(refetchOnMount({ state: { isInvalidated: true } })).toBe(true);
+  });
+
+  it("asks again shortly after an answer the index still has an update for", () => {
+    const { refetchInterval } = getDirectorySizeQueryOptions();
+    expect(refetchInterval({ state: { data: { pending: true } } })).toBe(
+      DIRECTORY_SIZE_CONFIG.PENDING_REFETCH_DELAY,
+    );
+    expect(refetchInterval({ state: { data: { pending: false } } })).toBe(
+      false,
+    );
+    expect(refetchInterval({ state: { data: {} } })).toBe(false);
+    expect(refetchInterval({ state: { data: undefined } })).toBe(false);
   });
 
   it("passes service errors through and ignores skipped paths", () => {

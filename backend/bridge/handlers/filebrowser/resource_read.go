@@ -34,25 +34,40 @@ func fsError(op string, err error) error {
 	return fmt.Errorf("%w: %s: %w", sentinel, op, err)
 }
 
-func listDirectory(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
-	if err := ctx.Err(); err != nil {
+// listOpenedDirectory lists a folder for the page that opened it and, for a
+// session that may use the index, asks the indexer to refresh that folder, so
+// that a change made outside LinuxIO shows up in the sizes and the search
+// where someone is looking. The listing does not wait for it.
+func listOpenedDirectory(ctx context.Context, req apischema.PathRequest, owner sessionOwner) (apischema.DirectoryListing, error) {
+	listing, err := readDirectoryListing(ctx, req)
+	if err != nil {
 		return apischema.DirectoryListing{}, err
 	}
+	if owner.sudo {
+		refreshInIndexerDetached(listing.Path)
+	}
+	return directoryListingResponse(listing), nil
+}
+
+func readDirectoryListing(ctx context.Context, req apischema.PathRequest) (iteminfo.DirectoryListing, error) {
+	if err := ctx.Err(); err != nil {
+		return iteminfo.DirectoryListing{}, err
+	}
 	if req.Path == "" {
-		return apischema.DirectoryListing{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
+		return iteminfo.DirectoryListing{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 
 	listing, err := services.ListDirectory(ctx, req.Path)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return apischema.DirectoryListing{}, err
+			return iteminfo.DirectoryListing{}, err
 		}
-		return apischema.DirectoryListing{}, fsError("list directory", err)
+		return iteminfo.DirectoryListing{}, fsError("list directory", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return apischema.DirectoryListing{}, err
+		return iteminfo.DirectoryListing{}, err
 	}
-	return directoryListingResponse(listing), nil
+	return listing, nil
 }
 
 func directoryChildren(ctx context.Context, req apischema.DirectoryChildrenRequest) (apischema.DirectoryChildren, error) {

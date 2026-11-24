@@ -33,12 +33,40 @@ func TestLiveCurrentDataReusesWithinWindow(t *testing.T) {
 		t.Fatalf("expected one shared collection, got %d", collections.Load())
 	}
 
-	a.liveRuns.Current(1010).At = time.Now().Add(-2 * live.ReuseWindow)
+	stale := a.liveRuns.Current(1010)
+	stale.Started = time.Now().Add(-2 * live.ReuseWindow)
+	stale.At = stale.Started
 	if _, _, err := a.liveCurrentData(context.Background(), 1010, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if collections.Load() != 2 {
 		t.Fatalf("stale sample must recollect, got %d collections", collections.Load())
+	}
+}
+
+// The dashboard asks once a second. Its next request arrives a second after
+// the collection began, give or take the jitter of a timer and a connection,
+// and must get a sample of its own.
+func TestLiveCurrentDataCollectsForEachOneSecondPoll(t *testing.T) {
+	a := &App{}
+	var collections atomic.Int32
+	a.collectLive = func(ctx context.Context, key uint16, includeDetails, includeContainers bool) (*systemmodel.CombinedData, error) {
+		collections.Add(1)
+		return &systemmodel.CombinedData{}, nil
+	}
+	if _, _, err := a.liveCurrentData(context.Background(), 1010, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// A poll that arrives 50ms early, after a collection that took 60ms.
+	run := a.liveRuns.Current(1010)
+	run.Started = time.Now().Add(-950 * time.Millisecond)
+	run.At = run.Started.Add(60 * time.Millisecond)
+	if _, _, err := a.liveCurrentData(context.Background(), 1010, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if collections.Load() != 2 {
+		t.Fatalf("a one-second poll must collect again, got %d collections", collections.Load())
 	}
 }
 

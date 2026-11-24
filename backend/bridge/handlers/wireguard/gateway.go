@@ -42,15 +42,26 @@ func getGatewayFromNetlink(linkIndex int) (string, error) {
 		return "", fmt.Errorf("list routes: %w", err)
 	}
 
+	if gateway := defaultGateway(routes); gateway != "" {
+		return gateway, nil
+	}
+	slog.Debug("no default gateway found", "component", "wireguard", "subsystem", "netlink", "interface", linkIndex)
+	return "", fmt.Errorf("default gateway not found")
+}
+
+// defaultGateway is the gateway of the first default route. netlink gives a
+// default route a Dst of 0.0.0.0/0, as iproute2 does, not a nil one.
+func defaultGateway(routes []netlink.Route) string {
 	for _, r := range routes {
 		if r.Dst != nil {
-			continue
+			if ones, _ := r.Dst.Mask.Size(); ones != 0 {
+				continue
+			}
 		}
 		if r.Gw == nil || r.Gw.IsUnspecified() {
 			continue
 		}
-		return r.Gw.String(), nil
+		return r.Gw.String()
 	}
-	slog.Debug("no default gateway found", "component", "wireguard", "subsystem", "netlink", "interface", linkIndex)
-	return "", fmt.Errorf("default gateway not found")
+	return ""
 }

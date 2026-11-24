@@ -8,8 +8,10 @@ import (
 	"strings"
 )
 
-// validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)
-var validInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+// validInterfaceName matches valid WireGuard interface names (alphanumeric,
+// underscore, hyphen). A name does not start with a hyphen: it is an argument
+// of wg-quick, which would read it as an option.
+var validInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_-]*$`)
 
 // validateInterfaceName checks if the interface name is safe to use in file paths
 func validateInterfaceName(name string) error {
@@ -19,8 +21,13 @@ func validateInterfaceName(name string) error {
 	if len(name) > 15 { // Linux interface name limit
 		return fmt.Errorf("interface name too long (max 15 characters)")
 	}
+	// The kernel's own names under /proc/sys/net/ipv4/conf, where an
+	// interface's forwarding switch is: a write for "all" is the host's.
+	if name == "all" || name == "default" {
+		return fmt.Errorf("interface name %q is reserved", name)
+	}
 	if !validInterfaceName.MatchString(name) {
-		return fmt.Errorf("interface name contains invalid characters (allowed: a-z, A-Z, 0-9, _, -)")
+		return fmt.Errorf("interface name contains invalid characters (allowed: a-z, A-Z, 0-9, _, and - after the first character)")
 	}
 	return nil
 }

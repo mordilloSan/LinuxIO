@@ -1018,6 +1018,25 @@ contain `,` or whitespace, which would break `subvol=` mount options and
 `/etc/fstab`. Deleting a leftover
 `.linuxio-rollback-*` subvolume (see [Rollback](#rollback)) is done here.
 
+### For other features
+
+Two functions serve features outside the storage page, which reach their
+folder themselves through folders they checked:
+
+- **`CreateSubvolumeAt(dir, name)`** creates the subvolume `name` in the open
+  folder `dir` and sets it 0755 as **Create subvolume** does, through the
+  handle and on what `isNewSubvolume` accepts, without looking the pool up
+  or reading the subvolume back. `name` is one name, never a path. The
+  memory page makes its swap file's folder with it
+  ([Memory overflow](memory.md)).
+- **`SwapfileLayout(dir)`** says whether the filesystem holding the open
+  folder can hold a swap file: the kernel takes one only on a filesystem of
+  one device whose data block groups are all single
+  (`btrfs_swap_activate`). It reads the device count with
+  `BTRFS_IOC_FS_INFO` and the data profiles with `BTRFS_IOC_SPACE_INFO`,
+  through the handle. Neither ioctl checks a capability, so it answers a
+  session without sudo, which the memory status needs.
+
 ## Snapshots
 
 Layout under the top level:

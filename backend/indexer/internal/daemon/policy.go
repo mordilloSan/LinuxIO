@@ -26,15 +26,8 @@ const (
 	// maxRequestBodyBytes bounds request bodies on /add and /config.
 	maxRequestBodyBytes = 1 << 20
 
-	// retainedGenerations is how many published generations survive a scan.
-	retainedGenerations = 1
-
 	// startupProbeTimeout bounds the journal-mode probe at startup.
 	startupProbeTimeout = 5 * time.Second
-
-	// writerBufferEntries sizes the channel between traversal and the SQL
-	// writer; storage batches the actual writes.
-	writerBufferEntries = 1000
 
 	// scanProgressInterval is how often the full scan samples its counters.
 	scanProgressInterval = 500 * time.Millisecond
@@ -42,10 +35,6 @@ const (
 	// reindexProgressStride emits one reindex progress event per this many
 	// entries written.
 	reindexProgressStride = 100
-
-	// workerKillDelay is how long a worker with malformed output or a cancelled
-	// context gets to exit after SIGTERM before it is killed.
-	workerKillDelay = 5 * time.Second
 
 	// sseWriteDeadline bounds each individual event write. Setting it per write
 	// replaces the server's absolute WriteTimeout for this connection, which

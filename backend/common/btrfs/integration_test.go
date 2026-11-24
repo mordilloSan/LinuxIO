@@ -109,7 +109,8 @@ func (p *itPool) filesystem() BtrfsFilesystem {
 }
 
 // TestBtrfsIntegration drives every native operation against a real kernel
-// on loop devices: pool create, mount, inventory, subvolumes, snapshots,
+// on loop devices: pool create, mount, inventory, the swap file layout and a
+// subvolume made through a handle, subvolumes, snapshots,
 // quotas, scrub, balance, replace, add, remove, grow, relabel, send,
 // unmounted-pool discovery, wipe and partitioning. Run it with
 // `make test-btrfs-integration`.
@@ -144,6 +145,7 @@ func TestBtrfsIntegration(t *testing.T) {
 	}
 	p.must("write", os.WriteFile(filepath.Join(p.mnt, "data.bin"), make([]byte, 4<<20), 0o644))
 
+	p.swapfile()
 	snap := p.subvolumes()
 	p.devices()
 	p.send(snap.Path)

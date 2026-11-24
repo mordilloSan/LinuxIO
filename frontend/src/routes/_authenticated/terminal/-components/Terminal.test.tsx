@@ -17,6 +17,12 @@ const mocks = vi.hoisted(() => {
     existing: fakeStream(),
     location: { state: {} },
     navigate: vi.fn(),
+    // What the terminal does with a command from another tab, and its stop.
+    fromOtherTab: null as ((command: unknown) => void) | null,
+    answersSearch: null as (() => boolean) | null,
+    stopListening: vi.fn(),
+    // The shell turns bracketed paste on (its prompt) or off (a program).
+    pasteMode: (_on: boolean) => {},
     getStream: vi.fn(),
     openTerminalStream: vi.fn(),
     openTerminalLoginStream: vi.fn(),
@@ -31,6 +37,9 @@ const mocks = vi.hoisted(() => {
       },
       input: vi.fn(),
       modes: { bracketedPasteMode: false },
+      parser: {
+        registerCsiHandler: vi.fn(),
+      },
     },
   };
 });
@@ -49,6 +58,16 @@ vi.mock("@/api", async (importOriginal) => ({
   }),
   openTerminalStream: mocks.openTerminalStream,
   openTerminalLoginStream: mocks.openTerminalLoginStream,
+}));
+vi.mock("@/utils/terminalTab", () => ({
+  listenForTypedCommands: (
+    take: (command: unknown) => void,
+    isUp: () => boolean,
+  ) => {
+    mocks.fromOtherTab = take;
+    mocks.answersSearch = isUp;
+    return mocks.stopListening;
+  },
 }));
 // xterm itself needs a real canvas; run onReady with a fake terminal instead.
 vi.mock("@/hooks/useXtermStreamTerminal", async () => {
@@ -72,6 +91,21 @@ vi.mock("@/hooks/useXtermStreamTerminal", async () => {
 beforeEach(() => {
   mocks.location = { state: {} };
   mocks.navigate.mockReset();
+  mocks.fromOtherTab = null;
+  mocks.answersSearch = null;
+  // As xterm does: the mode changes, then the page's own handlers hear of it.
+  const handlers: ((params: number[]) => boolean)[] = [];
+  mocks.terminal.parser.registerCsiHandler
+    .mockReset()
+    .mockImplementation((_id: unknown, handler: (typeof handlers)[0]) => {
+      handlers.push(handler);
+      return { dispose: () => handlers.splice(handlers.indexOf(handler), 1) };
+    });
+  mocks.pasteMode = (on) => {
+    mocks.terminal.modes.bracketedPasteMode = on;
+    for (const handler of [...handlers]) handler([2004]);
+  };
+  mocks.stopListening.mockReset();
   mocks.terminal.modes.bracketedPasteMode = false;
   mocks.terminal.input.mockReset();
   mocks.existing = mocks.fakeStream();
@@ -251,5 +285,99 @@ describe("Terminal command from the Assistant", () => {
 
     expect(mocks.terminal.input).not.toHaveBeenCalled();
     expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("Terminal command from the Assistant in another tab", () => {
+  it("types a command sent while the shell is at its prompt, without running it", () => {
+    render(<Terminal />);
+    act(() => mocks.pasteMode(true));
+    expect(mocks.terminal.input).not.toHaveBeenCalled();
+
+    act(() => mocks.fromOtherTab?.("uptime\n"));
+    expect(mocks.terminal.input).toHaveBeenCalledTimes(1);
+    expect(mocks.terminal.input).toHaveBeenCalledWith("uptime");
+
+    act(() => mocks.fromOtherTab?.("df -h"));
+    expect(mocks.terminal.input).toHaveBeenLastCalledWith("df -h");
+  });
+
+  it("reduces what it is sent to a typed command", () => {
+    render(<Terminal />);
+    act(() => mocks.pasteMode(true));
+    act(() => mocks.fromOtherTab?.("echo hi\u0003\u001b[201~"));
+    expect(mocks.terminal.input).toHaveBeenCalledWith("echo hi[201~");
+
+    mocks.terminal.input.mockReset();
+    act(() => mocks.fromOtherTab?.({ command: "uptime" }));
+    expect(mocks.terminal.input).not.toHaveBeenCalled();
+  });
+
+  it("holds a command while a program has the terminal, until the prompt is back", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Terminal />);
+      // The shell ran a program: bracketed paste goes off for its duration.
+      act(() => mocks.pasteMode(true));
+      act(() => mocks.pasteMode(false));
+
+      act(() => mocks.fromOtherTab?.("systemctl restart nginx"));
+      act(() => void vi.advanceTimersByTime(5000));
+      expect(mocks.terminal.input).not.toHaveBeenCalled();
+
+      act(() => mocks.pasteMode(true));
+      act(() => mocks.existing.onData?.(new Uint8Array([36])));
+      expect(mocks.terminal.input).toHaveBeenCalledWith(
+        "systemctl restart nginx",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("forgets what a reattached shell did last once the shell says otherwise", () => {
+    // Left at a prompt that takes pastes, then found again.
+    const first = render(<Terminal />);
+    act(() => mocks.pasteMode(true));
+    first.unmount();
+    mocks.terminal.modes.bracketedPasteMode = false;
+    render(<Terminal />);
+    // The shell starts a program that takes no paste.
+    act(() => mocks.pasteMode(false));
+
+    act(() => mocks.fromOtherTab?.("one\ntwo"));
+    expect(mocks.terminal.input).not.toHaveBeenCalled();
+  });
+
+  it("types one line into a shell that never shows a paste mode", () => {
+    vi.useFakeTimers();
+    try {
+      mocks.getStream.mockImplementation(() => null);
+      render(<Terminal />);
+      act(() => mocks.fromOtherTab?.("uptime"));
+      expect(mocks.terminal.input).not.toHaveBeenCalled();
+      act(() => void vi.advanceTimersByTime(1500));
+      expect(mocks.terminal.input).toHaveBeenCalledWith("uptime");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("answers the Assistant's search only while its shell is up", () => {
+    render(<Terminal />);
+    expect(mocks.answersSearch?.()).toBe(true);
+  });
+
+  it("does not listen in an agent login, and stops when the page is left", () => {
+    mocks.location = {
+      state: { terminalLogin: { agent: "claude", args: ["--cli"] } },
+    };
+    render(<Terminal />).unmount();
+    expect(mocks.fromOtherTab).toBeNull();
+
+    mocks.location = { state: {} };
+    render(<Terminal />).unmount();
+    expect(mocks.fromOtherTab).not.toBeNull();
+    expect(mocks.stopListening).toHaveBeenCalledTimes(1);
   });
 });

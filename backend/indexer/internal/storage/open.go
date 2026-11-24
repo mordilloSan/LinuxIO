@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,9 +16,17 @@ import (
 )
 
 // Fixed SQLite connection settings. WAL allows concurrent readers while
-// streaming writes happen; auto_vacuum=INCREMENTAL lets pruning reclaim
-// deleted generations. stmtCacheSize is go-sqlite3's per-connection
-// prepared statement cache.
+// streaming writes happen. A transaction takes the write lock when it begins
+// (_txlock=immediate): one that reads first and writes later is refused, not
+// made to wait, when another connection holds the lock at that moment.
+// stmtCacheSize is go-sqlite3's per-connection prepared statement cache.
+//
+// Nothing here may take the write lock, because the driver runs these on
+// every connection it opens: a query that needed a new connection would then
+// wait behind a reindex's transaction and fail when the busy timeout ran out.
+// "PRAGMA auto_vacuum" did take it, and is gone with the generations it
+// served: a scan now updates rows in place, and freed pages are reused. The
+// journal mode is kept in the file and is set once per open.
 const (
 	busyTimeoutMillis = 5000
 	stmtCacheSize     = 16
@@ -39,20 +48,19 @@ func OpenContext(parent context.Context, path string) (*sql.DB, error) {
 	// reserved characters like '?' or '#' in filenames cannot be misparsed as
 	// DSN parameters.
 	escapedPath := strings.ReplaceAll(url.PathEscape(path), "%2F", "/")
-	dsn := fmt.Sprintf("file:%s?_busy_timeout=%d&_foreign_keys=on&_journal_mode=WAL&_synchronous=OFF&_auto_vacuum=INCREMENTAL&_stmt_cache_size=%d",
+	dsn := fmt.Sprintf("file:%s?_busy_timeout=%d&_txlock=immediate&_foreign_keys=on&_synchronous=OFF&_stmt_cache_size=%d",
 		escapedPath, busyTimeoutMillis, stmtCacheSize)
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	// The timeout bounds only the WAL pragma. initSchema may rebuild the FTS
+	// The timeout bounds only the pragmas. initSchema may rebuild the FTS
 	// index of a large database, so it runs on the caller's context.
 	pragmaCtx, cancel := context.WithTimeout(parent, schemaTimeout)
 	defer cancel()
 
-	var journalMode string
-	if err := db.QueryRowContext(pragmaCtx, `PRAGMA journal_mode = WAL;`).Scan(&journalMode); err != nil {
+	if err := prepareDatabase(pragmaCtx, db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			slog.Warn("failed to close DB after journal mode setup error", "error", closeErr)
 		}
@@ -74,6 +82,16 @@ func OpenContext(parent context.Context, path string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// prepareDatabase sets the WAL journal, which SQLite keeps in the database
+// file itself.
+func prepareDatabase(ctx context.Context, db *sql.DB) error {
+	var journalMode string
+	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode = WAL;`).Scan(&journalMode); err != nil {
+		return fmt.Errorf("set journal mode: %w", err)
+	}
+	return nil
 }
 
 // OpenStore opens the cache at path. sameFile is the filesystem check the
@@ -113,9 +131,11 @@ func OpenStoreRecovering(ctx context.Context, path string, sameFile SameFileFunc
 }
 
 // quarantineDatabaseFiles renames a database and its sidecars aside instead of
-// deleting them, so the files stay available for recovery or inspection.
+// deleting them, so the files stay available for recovery or inspection. It
+// keeps one such copy: once the new one is made, those of earlier recoveries
+// are deleted.
 func quarantineDatabaseFiles(dbPath, reason string) error {
-	suffix := "." + reason + "-" + time.Now().UTC().Format("20060102T150405Z")
+	suffix := "." + reason + "-" + time.Now().UTC().Format(quarantineStamp)
 	if err := os.Rename(dbPath, dbPath+suffix); err != nil {
 		return fmt.Errorf("failed to quarantine database: %w", err)
 	}
@@ -125,5 +145,58 @@ func quarantineDatabaseFiles(dbPath, reason string) error {
 		}
 	}
 	slog.Warn("database quarantined", "path", dbPath+suffix, "reason", reason)
+	removeQuarantinedCopies(dbPath, filepath.Base(dbPath)+suffix)
 	return nil
+}
+
+// quarantineStamp is the time in a quarantined copy's name.
+const quarantineStamp = "20060102T150405Z"
+
+// quarantinedCopy reports whether name is one a quarantine of the database
+// named base gave: base, the reason, the time, and for a sidecar its suffix.
+// Any other file beside the database, such as a copy someone renamed to keep,
+// is not LinuxIO's to delete.
+func quarantinedCopy(name, base string) bool {
+	for _, reason := range []string{"corrupt", "incompatible"} {
+		rest, ok := strings.CutPrefix(name, base+"."+reason+"-")
+		if !ok || len(rest) < len(quarantineStamp) {
+			continue
+		}
+		if _, err := time.Parse(quarantineStamp, rest[:len(quarantineStamp)]); err != nil {
+			continue
+		}
+		switch rest[len(quarantineStamp):] {
+		case "", "-wal", "-shm":
+			return true
+		}
+	}
+	return false
+}
+
+// removeQuarantinedCopies deletes the copies earlier recoveries set aside and
+// leaves the files of the one named keep. Each copy is a whole database, and
+// nothing else ever removes them.
+func removeQuarantinedCopies(dbPath, keep string) {
+	dir, base := filepath.Dir(dbPath), filepath.Base(dbPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		slog.Warn("failed to list older quarantined databases", "path", dir, "error", err)
+		return
+	}
+	removed := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, keep) || !quarantinedCopy(name, base) {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if err := os.Remove(path); err != nil {
+			slog.Warn("failed to remove older quarantined database", "path", path, "error", err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		slog.Info("removed older quarantined databases", "path", dir, "files", removed)
+	}
 }

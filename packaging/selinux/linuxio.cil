@@ -84,3 +84,14 @@
 (optional linuxio_banner_kmscon
 	(allow kmscon_t motd_var_run_t (file (getattr open read)))
 )
+
+; The swap file the memory page makes, and the one a resize turns on beside
+; it while it works, keep swapfile_t, the type mkswap gives them, when
+; restorecon or a full relabel goes over /var/lib/linuxio: as var_lib_t, the
+; folder's type, more confined domains could read the memory pages they
+; hold. A file context only; no permission. Optional: a policy without
+; swapfile_t drops this block and loads the rest.
+(optional linuxio_swapfile
+	(filecon "/var/lib/linuxio/swap/swapfile" file (system_u object_r swapfile_t ((s0) (s0))))
+	(filecon "/var/lib/linuxio/swap/swapfile\.linuxio-resize" file (system_u object_r swapfile_t ((s0) (s0))))
+)

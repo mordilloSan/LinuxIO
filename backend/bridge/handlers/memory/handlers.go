@@ -19,6 +19,18 @@ var api = apischema.Bindings(
 	apischema.MutationTask("memory.drain_swap", handleDrainSwap, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(apischema.NoRequest) bridgeipc.TaskMetadata {
 		return bridgeipc.TaskMetadata{Identity: []string{"memory", "drain_swap"}, Label: "Moving swapped data back into memory"}
 	})),
+	apischema.MutationTask("memory.create_swap_file", handleCreateSwapFile, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(apischema.SwapFileCreateRequest) bridgeipc.TaskMetadata {
+		return swapFileTask("Creating a swap file", "create", ownSwapFilePath)
+	})),
+	apischema.MutationTask("memory.resize_swap_file", handleResizeSwapFile, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(req apischema.SwapFileResizeRequest) bridgeipc.TaskMetadata {
+		return swapFileTask("Resizing a swap file", "resize", req.Path)
+	})),
+	apischema.MutationTask("memory.remove_swap_file", handleRemoveSwapFile, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(req apischema.SwapFilePathRequest) bridgeipc.TaskMetadata {
+		return swapFileTask("Removing a swap file", "remove", req.Path)
+	})),
+	apischema.MutationTask("memory.move_swap_file", handleMoveSwapFile, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(req apischema.SwapFilePathRequest) bridgeipc.TaskMetadata {
+		return swapFileTask("Moving a swap file into LinuxIO's folder", "move", req.Path)
+	})),
 )
 
 var Routes = api.Routes()
@@ -41,4 +53,20 @@ func handleSetSwappiness(ctx context.Context, req apischema.SwappinessRequest) (
 
 func handleDrainSwap(ctx context.Context, task *bridgeipc.Task, _ apischema.NoRequest) (apischema.SwapStatus, error) {
 	return DrainSwap(ctx, func(p apischema.SwapProgress) { task.ReportProgress(p) })
+}
+
+func handleCreateSwapFile(ctx context.Context, task *bridgeipc.Task, req apischema.SwapFileCreateRequest) (apischema.SwapStatus, error) {
+	return CreateSwapFile(ctx, req, func(p apischema.SwapProgress) { task.ReportProgress(p) })
+}
+
+func handleResizeSwapFile(ctx context.Context, task *bridgeipc.Task, req apischema.SwapFileResizeRequest) (apischema.SwapStatus, error) {
+	return ResizeSwapFile(ctx, req, func(p apischema.SwapProgress) { task.ReportProgress(p) })
+}
+
+func handleRemoveSwapFile(ctx context.Context, task *bridgeipc.Task, req apischema.SwapFilePathRequest) (apischema.SwapStatus, error) {
+	return RemoveSwapFile(ctx, req, func(p apischema.SwapProgress) { task.ReportProgress(p) })
+}
+
+func handleMoveSwapFile(ctx context.Context, task *bridgeipc.Task, req apischema.SwapFilePathRequest) (apischema.SwapStatus, error) {
+	return MoveSwapFile(ctx, req, func(p apischema.SwapProgress) { task.ReportProgress(p) })
 }

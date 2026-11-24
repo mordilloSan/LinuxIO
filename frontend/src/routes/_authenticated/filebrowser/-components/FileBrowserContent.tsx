@@ -8,6 +8,7 @@ import {
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppTypography from "@/components/ui/AppTypography";
 import { allowContextMenuProps } from "@/utils/contextMenu";
 
 import { useShownCardSize } from "../-hooks/useShownCardSize";
@@ -62,6 +63,8 @@ interface FileBrowserDataProps {
   filteredResource?: FileResource;
   searchError?: Error | null;
   isSearchLoading: boolean;
+  /** The search could not read its folder whole on disk in time. */
+  isSearchPartial?: boolean;
   resource?: FileResource;
 }
 
@@ -196,6 +199,19 @@ const FileBrowserContent = ({
               {data.searchError.message}
             </AppAlert>
           )}
+
+          {!chrome.editingPath &&
+            !data.isSearchLoading &&
+            data.isSearchPartial && (
+              <AppTypography
+                color="text.secondary"
+                style={{ paddingBlock: "var(--app-space-4)" }}
+                variant="body2"
+              >
+                This folder could not be searched on disk completely, so recent
+                changes may be missing.
+              </AppTypography>
+            )}
 
           {!chrome.editingPath &&
             !data.isSearchLoading &&

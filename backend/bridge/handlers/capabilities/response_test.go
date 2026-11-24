@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -248,4 +249,49 @@ func TestBuildCapabilitiesResponsePassesTheSessionUserToDetectAsUser(t *testing.
 	if !response["node"].Available {
 		t.Fatal("node must be reported available when DetectAsUser says so")
 	}
+}
+
+// A daemon that takes the connection and never answers, as libvirtd does
+// while it stops, costs its own capability and not the scan: the others are
+// reported, where the page would otherwise hide every gated section.
+func TestBuildCapabilitiesResponseReportsTheRestWhenOneProbeDoesNotAnswer(t *testing.T) {
+	originalRegistry := capabilityRegistry
+	t.Cleanup(func() {
+		capabilityRegistry = originalRegistry
+	})
+	capabilityRegistry = []CapabilitySpec{
+		{
+			Name:   "docker",
+			Detect: func(context.Context) (bool, string) { return true, "" },
+		},
+		{
+			Name: "libvirt",
+			Detect: func(ctx context.Context) (bool, string) {
+				<-ctx.Done()
+				return false, ctx.Err().Error()
+			},
+		},
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		// The page waits 30 seconds for a route.
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		response, err := buildCapabilitiesResponse(ctx, session.User{})
+		if err != nil {
+			t.Fatalf("buildCapabilitiesResponse error = %v, want the scan to answer", err)
+		}
+		if docker := response["docker"]; !docker.Available || docker.Error != nil {
+			t.Errorf("docker status = %+v, want available without error", docker)
+		}
+		libvirt := response["libvirt"]
+		if libvirt.Available {
+			t.Error("libvirt reported available without an answer")
+		}
+		want := "did not answer within " + probeTimeout.String()
+		if libvirt.Error == nil || *libvirt.Error != want {
+			t.Errorf("libvirt error = %v, want %q", libvirt.Error, want)
+		}
+	})
 }

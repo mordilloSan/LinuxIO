@@ -153,6 +153,17 @@ const newestFirst = (a: acp.SessionInfo, b: acp.SessionInfo) =>
 const defaultOpen: AssistantOpen = (agent, { panes }) =>
   openChannel("assistant.open", panes ? { agent, panes } : { agent });
 
+// Claude Code reads `.claude/` in the folder a chat works in as that folder's
+// project settings. A chat works in the user's home, where that folder is the
+// profile of the user's own Claude Code and not a project's, so a chat loads
+// the user-level settings alone: those of the Assistant's profile
+// (docs/AI-assistant.md, "Profile").
+const SESSION_META: Partial<
+  Record<AssistantAgentId, NonNullable<acp.NewSessionRequest["_meta"]>>
+> = {
+  claude: { claudeCode: { options: { settingSources: ["user"] } } },
+};
+
 export async function connectAssistant(
   agent: AssistantAgentId,
   handlers: AssistantHandlers,
@@ -223,10 +234,11 @@ export async function connectAssistant(
   // rebuilds its instructions each time, so a reopened chat would lose them.
   const sessionSetup: Pick<
     acp.NewSessionRequest,
-    "cwd" | "mcpServers" | "systemPrompt"
+    "cwd" | "mcpServers" | "systemPrompt" | "_meta"
   > = {
     cwd,
     mcpServers: [],
+    ...(SESSION_META[agent] ? { _meta: SESSION_META[agent] } : {}),
     ...(caps.sessionCapabilities?.systemPrompt
       ? { systemPrompt: LINUXIO_SYSTEM_PROMPT }
       : {}),

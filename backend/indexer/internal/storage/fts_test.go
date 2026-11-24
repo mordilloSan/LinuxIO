@@ -27,7 +27,7 @@ func TestFTSMatchQuery(t *testing.T) {
 		{"single term", searchquery.Options{Terms: []string{"report"}}, `"report"`, true},
 		{"multiple terms", searchquery.Options{Terms: []string{"foo", "barbaz"}}, `"foo" OR "barbaz"`, true},
 		{"embedded quote escaped", searchquery.Options{Terms: []string{`my"file`}}, `"my""file"`, true},
-		{"case sensitive falls back", searchquery.Options{CaseSensitive: true, Terms: []string{"Report"}}, "", false},
+		{"case sensitive narrows by the index too", searchquery.Options{CaseSensitive: true, Terms: []string{"Report"}}, `"Report"`, true},
 		{"short term falls back", searchquery.Options{Terms: []string{"ab"}}, "", false},
 		{"short term among long falls back", searchquery.Options{Terms: []string{"report", "ab"}}, "", false},
 		{"empty falls back", searchquery.Options{Terms: []string{}}, "", false},
@@ -205,5 +205,35 @@ func TestFTSInterruptedRebuildRecoversOnReopen(t *testing.T) {
 	}
 	if results, err = store.SearchEntriesUnder(ctx, "needle", "/", 10); err != nil || len(results) != 1 {
 		t.Fatalf("search after second open = %+v, %v; want 1 row", results, err)
+	}
+}
+
+// A case-sensitive search reads the trigram index, which folds case, and then
+// keeps the names that hold the term as it was typed.
+func TestCaseSensitiveSearchThroughTheIndexKeepsExactCaseOnly(t *testing.T) {
+	skipWithoutFTS(t)
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	store := NewStoreWithDB(db, dbPath, nil)
+	for i, name := range []string{"Report.txt", "report.txt", "REPORT.txt", "notes.txt"} {
+		entry := indexing.IndexEntry{RelativePath: "/" + name, Name: name, Size: 1, ModTime: time.Now(), Type: "file", Inode: uint64(i + 1)}
+		if _, err := UpdateEntry(ctx, db, indexID, entry); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+	}
+
+	results, err := store.searchEntriesFTS(ctx, `"Report"`, []string{"Report"}, "/", 100)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != "Report.txt" {
+		t.Fatalf("case-sensitive search for Report found %v, want only Report.txt", results)
+	}
+	results, err = store.searchEntriesFTS(ctx, `"Report"`, nil, "/", 100)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("case-insensitive search for Report found %d names, want 3", len(results))
 	}
 }

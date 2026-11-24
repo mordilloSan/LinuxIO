@@ -5,6 +5,8 @@
 package acpagents
 
 import (
+	"bytes"
+	"context"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Agent is one ACP agent: the npm package that provides it, pinned to the
@@ -34,6 +37,13 @@ type Agent struct {
 	// Both are empty for a self-contained package.
 	CLI    string
 	CLIEnv string
+	// ProfileEnv is the variable that names the folder the agent keeps its
+	// sign-in, settings, memory, chat history and caches in. LinuxIO sets it
+	// to a folder of its own (ProfileDir), so the Assistant shares none of
+	// them with the same agent run from a terminal or an editor. Empty for an
+	// agent LinuxIO gives no profile, which keeps its usual folder in the
+	// user's home.
+	ProfileEnv string
 	// Panes marks a CLI that serves plugin panes over stream-JSON control
 	// requests. The assistant then runs linuxio-claude-relay in its place, so
 	// the browser can reach them.
@@ -68,6 +78,7 @@ var (
 			InstallArgs: []string{"--omit=optional"},
 			CLI:         "claude",
 			CLIEnv:      "CLAUDE_CODE_EXECUTABLE",
+			ProfileEnv:  "CLAUDE_CONFIG_DIR",
 			Panes:       true,
 		},
 		"gemini": {
@@ -127,6 +138,47 @@ func Override(id string, agent Agent) (restore func()) {
 // user has their own copy because Node.js itself is per user.
 func Dir(home, id string) string {
 	return filepath.Join(home, ".local", "share", "linuxio", "agents", id)
+}
+
+// ProfileDir is the folder LinuxIO gives an agent for its own state, for the
+// user whose home is home. It is beside the install folder and not inside it,
+// since an install replaces that one.
+func ProfileDir(home, id string) string {
+	return filepath.Join(home, ".local", "share", "linuxio", "profiles", id)
+}
+
+// Profile returns the variables that point the agent at its LinuxIO profile
+// under home, after making the folder when it is missing. The folder holds
+// the agent's sign-in and chats, so it is the user's alone (0700, set again
+// on a folder that exists), and it is made by a command running as the user:
+// the bridge may be root, and the path is in a home the user controls. An
+// agent without a ProfileEnv gets no variables. Every place that starts the
+// agent or its CLI for the Assistant adds them, or it would read and write
+// the user's other profile.
+func Profile(ctx context.Context, u session.User, id, home string) ([]string, error) {
+	agent, ok := Lookup(id)
+	if !ok {
+		return nil, fmt.Errorf("unknown agent %q", id)
+	}
+	if agent.ProfileEnv == "" {
+		return nil, nil
+	}
+	dir := ProfileDir(home, id)
+	cmd, err := usercmd.Command(ctx, u, "install", "-d", "-m", "0700", "--", dir)
+	if err != nil {
+		return nil, err
+	}
+	if out, runErr := cmd.CombinedOutput(); runErr != nil {
+		// A caller that gave up is why the command was killed.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("create the %s profile folder: %w", id, ctxErr)
+		}
+		if reason := bytes.TrimSpace(out); len(reason) > 0 {
+			return nil, fmt.Errorf("create the %s profile folder: %w: %s", id, runErr, reason)
+		}
+		return nil, fmt.Errorf("create the %s profile folder: %w", id, runErr)
+	}
+	return []string{agent.ProfileEnv + "=" + dir}, nil
 }
 
 // manifestMaxBytes bounds how much of a package manifest is read; real ones

@@ -40,6 +40,7 @@ const wireguardInterface: WireGuardInterface = {
   hooks: { PreUp: [], PostUp: [], PreDown: [], PostDown: [] },
   host: "",
   mtu: 0,
+  forwardingOff: false,
   isConnected: "Active",
   isEnabled: true,
   name: "wg0",
@@ -73,8 +74,10 @@ describe("interactive cards", () => {
     const { user } = render(
       <WireguardInterfaceCard
         handleAddPeer={vi.fn()}
+        handleCheck={vi.fn()}
         handleDelete={vi.fn()}
         handleEdit={vi.fn()}
+        handleRestoreForwarding={vi.fn()}
         handleSelectInterface={onSelect}
         handleToggleBootPersistence={vi.fn()}
         handleToggleInterface={onToggle}

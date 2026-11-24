@@ -90,6 +90,21 @@ describe("generated application router", () => {
     }
   });
 
+  it("keeps a WireGuard QR code only with its interface", () => {
+    const validate =
+      router.routesById["/_authenticated/network/wireguard"].options
+        .validateSearch;
+    if (typeof validate !== "function")
+      throw new Error("Missing WireGuard search validation");
+    expect(validate({ iface: "wg0", qr: "peer1" })).toEqual({
+      iface: "wg0",
+      qr: "peer1",
+    });
+    expect(validate({ iface: "wg0", qr: 7 })).toEqual({ iface: "wg0" });
+    expect(validate({ qr: "peer1" })).toEqual({});
+    expect(validate({ iface: "", qr: "peer1" })).toEqual({});
+  });
+
   it("contains the complete generated route topology", () => {
     expect(
       applicationRoutes

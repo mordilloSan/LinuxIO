@@ -6,8 +6,8 @@ the API, jobs, scheduled scripts, the packages and consistency.
 Plans for things that are not built yet each have their own document:
 
 - [Frontend test coverage](./e2e-testing.md)
-- [Memory overflow: swap files LinuxIO creates, resizes and removes](./memory-own-swap-file.md)
 - [Watched conditions: checks that raise alerts on a schedule](./watched-conditions.md)
+- [Monitoring rework: Beszel's fixes, a smaller history store and cheaper scans](./monitoring-rework.md)
 
 ## Dependency maintenance
 

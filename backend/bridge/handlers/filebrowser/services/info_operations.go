@@ -21,10 +21,18 @@ func ListDirectory(ctx context.Context, path string) (iteminfo.DirectoryListing,
 		Folders: make([]iteminfo.ItemInfo, 0),
 		Files:   make([]iteminfo.ItemInfo, 0),
 	}
-	err := withDirectoryEntries(ctx, path, func(root *fsroot.FSRoot, dirPath string, entry os.FileInfo) error {
-		item, isDir, err := directoryItem(ctx, root, dirPath, entry)
-		if err != nil {
-			return err
+	root, dir, cleanPath, err := openDirectoryForRead(ctx, path)
+	if err != nil {
+		return listing, err
+	}
+	defer root.Close()
+	defer dir.Close()
+	listing.Path = cleanPath
+
+	err = readDirectoryEntries(ctx, root, dir, cleanPath, func(root *fsroot.FSRoot, dirPath string, entry os.FileInfo) error {
+		item, isDir, itemErr := directoryItem(ctx, root, dirPath, entry)
+		if itemErr != nil {
+			return itemErr
 		}
 		if isDir {
 			listing.Folders = append(listing.Folders, item)
@@ -102,6 +110,17 @@ func withDirectoryEntries(ctx context.Context, path string, fn func(*fsroot.FSRo
 	defer dir.Close()
 
 	return readDirectoryEntries(ctx, root, dir, cleanPath, fn)
+}
+
+// OpenDirectory opens the folder at path exactly as ListDirectory opens the
+// folder it lists, and returns it with its real path. The caller closes it.
+func OpenDirectory(ctx context.Context, path string) (*os.File, string, error) {
+	root, dir, cleanPath, err := openDirectoryForRead(ctx, path)
+	if err != nil {
+		return nil, "", err
+	}
+	root.Close()
+	return dir, cleanPath, nil
 }
 
 func openDirectoryForRead(ctx context.Context, path string) (*fsroot.FSRoot, *os.File, string, error) {

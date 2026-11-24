@@ -385,8 +385,10 @@ volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
 kernel before 6.19, where a signal does not abort a scrub or a replace. The
 test program is built without cgo, so it runs on the older glibc. The browser
 specs run there too (`make vm-install VM_RELEASE=noble`, then
-`make test-vm-browser-rerun VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in
-and the scheduled-script specs were run on it.
+`make test-vm-browser-rerun VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in,
+the scheduled-script specs and `package-repository.spec.ts` were run on it,
+and the DEB's removal, purge and install again were checked there by hand
+([Packages](./packaging.md#removal)).
 
 `DISTRO=fedora` on a `vm-*` or `test-vm-*` target selects the Fedora VMs
 instead of Ubuntu's: the domain `linuxio-e2e-fedora` (`linuxio-e2e-fedora-2`
@@ -417,7 +419,8 @@ Only part of the tests is written for Fedora, and `mk/vm.mk` holds the two
 lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `packagekit`,
 `relay`, `userconfig` and `filebrowser`; `docs/TODO/e2e-testing.md`,
 "Distributions", has their results) and `vm_fedora_specs` (`login.spec.ts`,
-`capability-install.spec.ts` and `package-repository.spec.ts`). With
+`capability-install.spec.ts`, `package-repository.spec.ts`,
+`indexer.spec.ts` and `wireguard.spec.ts`). With
 `DISTRO=fedora`, `test-vm-backend` given no `SUITES` runs the first list, and
 `test-vm-browser` given no `PLAYWRIGHT_ARGS` runs the second and then the
 release-update spec, which is written for both distributions. The other
@@ -580,6 +583,35 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   the clean image has them: on Ubuntu no zram tool and no swap, with the apt
   timers stopped until the next boot; on Fedora `zram-generator` with its
   default `zram0` swapping.
+  `swap-files.spec.ts` creates, resizes and removes LinuxIO's swap file
+  from the Memory overflow dialog and then switches to compressed memory; it
+  leaves the VM with no swap and no zram tool, and skips itself on Fedora.
+  `indexer.spec.ts` presses Index filesystem and follows the scan unit
+  (`linuxio-indexer-index.service`) to its result, which is the one path from
+  the page through the bridge and systemd to the scanner and the daemon
+  ([Filesystem Indexer](./indexer.md#full-index)). It then makes a file
+  outside LinuxIO, opens its folder and finds the file by search, and renames
+  it through LinuxIO. It scans the whole VM, and creates and removes
+  `/srv/e2e-indexer`. It also checks that a file made and one deleted in the
+  VM appear and go in an open folder without a reload
+  ([File Browser Live Listing](./filebrowser-live-listing.md)).
+  `wireguard.spec.ts` creates an interface `wge2e` through the page's create
+  dialog, setting its port, CIDR and NIC under Advanced, checks that the
+  first device's QR code opens with `iface` and `qr` in the URL, then calls
+  the WireGuard routes for it and checks the link, `wg-quick@wge2e.service` and the kernel log for
+  AppArmor refusals ([WireGuard Interfaces](./wireguard.md#testing)). It
+  installs `wireguard-tools`, runs `wg-quick` by hand for the cases where the
+  unit and the interface disagree, reboots the VM once, and removes the
+  interface; the package stays installed. It turns IPv4 forwarding off before
+  the create, before one up and under the running interface, and
+  `conf/default`'s for one up, makes a network namespace `wge2e-peer` for
+  the peer that pings through the tunnel, runs the connection check through
+  the route and from the card's dialog, with forwarding on and off, and
+  checks that each check leaves no device peer, link (`linuxio.check`),
+  namespace or listed peer behind, and disables Docker's units for
+  the reboot, enabling them again after it (their names are kept in
+  `/var/tmp/wge2e-docker-disabled` meanwhile, for the clean-up of the next
+  run after one that was cut short); forwarding is on when it ends.
 - The `vm-test-*` targets are the root suites. Each builds its test binaries
   on the host into `.cache/vm`, static so they also run on the older glibc
   of `VM_RELEASE=noble`, and the script's `test` command copies them into
@@ -592,7 +624,7 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   the memory allow, one for each suite at most, creates the ones it needs
   and reverts each to `clean` so the run starts from a known state; it installs no build,
   since the suites bring their own test binaries. The suites wait in one queue, longest first, and each VM takes the
-  next when it is free: memory (about 6 minutes, with two reboots), btrfs (3), indexer (just
+  next when it is free: memory (about 9 minutes, with four reboots), btrfs (3), indexer (just
   under 2, most of it the indexer's idle timeout), docker (1½), packagekit
   (under ½, most of it the first boot), then relay,
   userconfig, filebrowser and network, seconds each. On three VMs
@@ -637,52 +669,71 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   prints the VM's kernel version and runs the same tests as
   `test-btrfs-integration`, as root in the VM.
 - `vm-test-memory-integration` builds the `bridge/handlers/memory` test binary
-  on the host and runs `TestMemoryIntegration` as root in the VM: a switch to
-  zram and back through systemd, the kernel and `/etc` (see
-  [Memory overflow](./memory.md#tests)). With `ZRAM_PROVIDER=zram-generator`
-  it installs `systemd-zram-generator` instead and refuses a VM that has
-  zram-tools, which LinuxIO prefers: run `make vm-reset` first. The test needs
-  a zram tool and a swap file in `/etc/fstab`, so the first run installs
-  `zram-tools` with apt and disables the `zramswap.service` its package
-  starts, and, when `/etc/fstab`
-  has no `/swap.img`, creates a 1 GiB `/swap.img`, adds it to fstab and starts
-  it. On Fedora, which has no zram-tools, `zram-generator` is the default
-  and comes with the image, and so does a `zram0` that swaps from boot
-  (`zram-generator-defaults`). Where such a vendor file
+  on the host and runs the memory suite (`suite_memory` in
+  `packaging/vm/linuxio-vm.sh`) as root in the VM: the swap files LinuxIO
+  creates, resizes, removes and moves, the modes and the drain, through the
+  routes' own functions on the real kernel and systemd (see
+  [Memory overflow](./memory.md#tests) for what each test checks). Each test
+  the suite names must pass: the rig fails a run whose `-test.run` pattern
+  matches no test (go test passes one) and, through `memory_test`, a named
+  test that skipped, so a renamed or deleted test never passes silently. With
+  `ZRAM_PROVIDER=zram-generator` it installs `systemd-zram-generator`
+  instead and refuses a VM that has zram-tools, which LinuxIO prefers: run
+  `make vm-reset` first. The suite needs a zram tool and a swap file in
+  `/etc/fstab`, so the first run installs `zram-tools` with apt and disables
+  the `zramswap.service` its package starts, and, when `/etc/fstab` has no
+  `/swap.img` (the clean Ubuntu image has no swap at all), creates a 1 GiB
+  `/swap.img`, adds it to fstab and starts it (`swap_file`); it makes it
+  again after each step that removes it. On Fedora, which has no zram-tools,
+  `zram-generator` is the default and comes with the image, and so does a
+  `zram0` that swaps from boot (`zram-generator-defaults`); Ubuntu's
+  `systemd-zram-generator` brings such a default too. Where that vendor file
   (`/usr/lib/systemd/zram-generator.conf`) is there, the suite first puts
-  that default back as a fresh image has it, undoing an earlier run: no
-  `/swap.img` (taken away and out of fstab, made again after), no
+  the default back as a fresh image has it: no `/swap.img`, no
   `/etc/systemd/zram-generator.conf`, and `zram0` started again from the
   vendor file. It runs `TestMemoryDefaultZramIntegration` there, and again
-  once `/swap.img` swaps beside it. `TestMemoryIntegration` starts from disk,
-  so the suite then switches the default off the way Fedora documents, which
-  is also where LinuxIO's disk mode leaves it: an empty
+  once `/swap.img` swaps beside it. The other tests start from `/swap.img`
+  alone, so the suite then switches the default off the way Fedora
+  documents, which is also where LinuxIO's disk mode leaves it: an empty
   `/etc/systemd/zram-generator.conf`, a reload, then a stop of
-  `dev-zram0.swap` and its setup service. A stop alone does not hold: while a
-  configuration names the device, systemd starts it again as soon as it is
-  reset. Its root is btrfs, so `/swap.img` is made with
-  `btrfs filesystem mkswapfile` (a file without copy-on-write), which, unlike
-  `mkswap`, leaves the file with its folder's SELinux type: the suite labels
-  it `swapfile_t`, the type `swapon` is allowed to use. After
-  `TestMemoryIntegration` the suite installs TuneD (`tuned`) and starts it,
-  and runs `TestMemoryStatusWithoutRootIntegration` as a system user without
-  sudo it creates, `linuxio-e2e-nosudo`, from a copy of the test binary in
-  `/var/tmp`; TuneD is then stopped and disabled, and the user and the copy
-  removed. It then runs `TestMemoryDrainIntegration` twice on the data disk
-  `vdb`, made a swap device with a `noauto` fstab entry and started only for
-  the test: once with 2 GiB parked on it, and once with 320 MiB and the test's
-  reads from the disk capped at 2 MiB a second, where the drain has to take
-  more than 90 seconds. The test runs in a cgroup of its own,
-  `/sys/fs/cgroup/linuxio-drain-test`, which it removes. fstab then names
-  `vdb` by `UUID=` for `TestMemoryDrainAliasIntegration`, and by its path
-  again after it, also at the next run after a cut one. The device is stopped
-  when its tests end, passed, failed or interrupted. A `vdb` that holds
+  `dev-zram0.swap` and its setup service. A stop alone does not hold: while
+  a configuration names the device, systemd starts it again as soon as it is
+  reset. Fedora's root is btrfs with `/var` a subvolume of its own, so
+  `/swap.img` is made with `btrfs filesystem mkswapfile` (a file without
+  copy-on-write) in the subvolume of `/`, which, unlike `mkswap`, leaves the
+  file with its folder's SELinux type: the suite labels it `swapfile_t`.
+  LinuxIO is not installed in the VM, so the tests make
+  `/var/lib/linuxio` (0755, as its tmpfiles entry does) where they need it
+  and remove it after. In order the suite runs `TestSwapFileBlocksIntegration`
+  (`LINUXIO_RUN_SWAPFILE_BLOCKS_INTEGRATION=1`), `TestMemoryIntegration`,
+  the resize, leftover, missing-file and move tests (the move only on a
+  btrfs root; elsewhere it may skip), then the status read without sudo: it
+  puts a 0600 file of root's without a swap header in fstab, has
+  `TestMemoryStatusAsRootIntegration` write root's status to
+  `/var/tmp/linuxio-memory-root-status.json`, installs TuneD (`tuned`) and
+  starts it, and runs `TestMemoryStatusWithoutRootIntegration` and
+  `TestReadFolderFSWithoutRootIntegration` as a system user without sudo it
+  creates, `linuxio-e2e-nosudo`, from a copy of the test binary in
+  `/var/tmp`; TuneD is then stopped and disabled, and the user, the file, its
+  line and the copies removed. It then makes the data disk `vdb` a swap
+  partition with a `noauto` fstab entry at priority 10, started only for
+  `TestSwapPartitionIntegration` (`LINUXIO_MEMORY_PARTITION=/dev/vdb`) and
+  stopped when it ends, passed, failed or interrupted; a `vdb` that holds
   anything but swap, as after a storage check, is refused: run
-  `make vm-reset` first. Last, `TestMemoryRebootIntegration` runs twice
-  around an orderly reboot of the VM (the script's `reboot`): with fstab
-  naming `/swap.img`, and naming it through the link `/swap-link`, which the
-  suite makes and removes, also at the next run after a cut one. The whole
-  target takes about six minutes. These changes stay in the VM until
+  `make vm-reset` first. `TestMemoryDrainIntegration` then runs twice on
+  `/swap.img`: once with 768 MiB parked on it, and once with 320 MiB and the
+  test's reads from the disk capped at 2 MiB a second, where the drain has to
+  take more than 90 seconds. The drain, resize and partition tests run in a
+  cgroup of their own, `/sys/fs/cgroup/linuxio-drain-test`, which they
+  remove; the read cap goes on the whole disk under the swap file
+  (`io.max` takes no partition). Last come the reboots (the script's
+  `reboot`, orderly): `TestSwapFilesRebootIntegration` in the phases
+  `create`, `resized` and `removed`, and `TestSwapModesRebootIntegration` in
+  `zram`, `zswap` and `disk` (`LINUXIO_MEMORY_REBOOT_PHASE`), with a reboot
+  between two phases. At the start the suite removes what a cut run left
+  (`memory_leftovers`): the tests' files and their fstab lines, LinuxIO's
+  own swap file and `vdb` swapping. The whole target takes about nine
+  minutes on Ubuntu and seven on Fedora. These changes stay in the VM until
   `make vm-reset` reverts its disks.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only
   ownership tests (`test-filebrowser-root`).
@@ -755,7 +806,8 @@ version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GO_TEST_PKGS` | `./...` | Go packages (relative to `backend/`) for `test-go`, for example `./bridge/handlers/filebrowser/...`. |
-| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. `test-go` builds with the `sqlite_fts5` tag `build-indexer` uses and, on amd64, the `glibc` tag `build-monitoring` uses, so the indexer's FTS5 search and the NVML collector are tested; `golint-only` adds `glibc` too. A `-tags` given here replaces both. |
+| `GO_BENCH`, `GO_BENCH_TIME` | `.`, `1x` | The benchmarks `bench-go` runs in `GO_TEST_PKGS` and for how long. It runs without the race detector `test-go` uses, which slows code several times over and says nothing about speed. |
+| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. `test-go` builds with the `sqlite_fts5` and `sqlite_omit_load_extension` tags `build-indexer` uses and, on amd64, the `glibc` tag `build-monitoring` uses, so the indexer's FTS5 search and the NVML collector are tested; `golint-only` adds `glibc` too. A `-tags` given here replaces both. |
 | `PLAYWRIGHT_ARGS` | empty | Extra arguments for the browser suite, such as one spec path. |
 | `VITEST_MAX_WORKERS` | `8` | Maximum Vitest workers; lower this on memory-constrained hosts. |
 | `VITEST_FILE` | empty | Frontend-relative test/spec file for a focused Vitest run. |
@@ -947,10 +999,6 @@ The full index groups the supported targets as follows:
   `test-vm-browser-rerun`, `test-vm-all`
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)
-
-The release notes script (`.github/scripts/changelog-entry.sh`) has a fixture
-test, `.github/scripts/tests/changelog-entry-fixtures.sh`, which
-`make test-packaging-scripts` runs with the packaging fixtures.
 
 `_build-binaries` is an internal implementation target. It remains callable
 for diagnostics but is not part of the normal user workflow.

@@ -69,10 +69,11 @@ func (a *App) rememberTelemetry(items []containermodel.Telemetry, at time.Time) 
 }
 
 // liveCurrentData returns a live sample for key. It reuses a finished sample
-// under live.ReuseWindow old, joins an in-flight collection, and otherwise
-// collects. The returned time is that sample's capture time, which callers
-// report as captured_at. It never consults awaitCollectorSample: only the
-// plugin, all and summary routes take that handoff, App.Live does not.
+// whose collection began under live.ReuseWindow ago, joins an in-flight
+// collection, and otherwise collects. The returned time is that sample's
+// capture time, which callers report as captured_at. It never consults
+// awaitCollectorSample: only the plugin, all and summary routes take that
+// handoff, App.Live does not.
 func (a *App) liveCurrentData(ctx context.Context, key uint16, includeDetails, includeContainers bool) (*systemmodel.CombinedData, time.Time, error) {
 	run, err := a.liveCurrentRun(ctx, key, includeDetails, includeContainers)
 	if err != nil {
@@ -148,8 +149,8 @@ func (a *App) sensorTimeout() time.Duration {
 }
 
 // detachLiveSample replaces the manager-owned pointers in a sample with
-// pointers to value copies. Reuse can serve a sample up to live.ReuseWindow
-// after capture, and both the docker container stats and the filesystem stats
+// pointers to value copies. Reuse can serve a sample until live.ReuseWindow
+// after its collection began, and both the docker container stats and the filesystem stats
 // are rewritten in place by the next collection for any key; without this a
 // reused sample would report another collection's values under its own
 // captured_at. Both structs hold only value fields, so a shallow copy is a

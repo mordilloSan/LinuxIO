@@ -475,6 +475,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "memory.set_swap_mode": MEMORY_STATUS_KEYS,
   "memory.set_swappiness": MEMORY_STATUS_KEYS,
   "memory.drain_swap": MEMORY_STATUS_KEYS,
+  "memory.create_swap_file": MEMORY_STATUS_KEYS,
+  "memory.resize_swap_file": MEMORY_STATUS_KEYS,
+  "memory.remove_swap_file": MEMORY_STATUS_KEYS,
+  "memory.move_swap_file": MEMORY_STATUS_KEYS,
 
   "wireguard.add_interface": [endpointQueryPrefix("wireguard.list_interfaces")],
   "wireguard.update_interface": [
@@ -492,6 +496,9 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("wireguard.list_interfaces"),
   ],
   "wireguard.disable_interface": [
+    endpointQueryPrefix("wireguard.list_interfaces"),
+  ],
+  "wireguard.restore_forwarding": [
     endpointQueryPrefix("wireguard.list_interfaces"),
   ],
   "wireguard.add_peer": [

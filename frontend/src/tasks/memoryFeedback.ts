@@ -1,4 +1,10 @@
-import type { SwapLeft, SwapMode, SwapModeResult } from "@/api";
+import type {
+  SwapLeft,
+  SwapMode,
+  SwapModeResult,
+  SwapProgress,
+  TaskProgress,
+} from "@/api";
 import { MEMORY_OVERFLOW_DIALOG } from "@/api/dashboard-search";
 
 // What a memory overflow change reports when it ends. The dialog that
@@ -16,31 +22,113 @@ export const MEMORY_MODE_FAILED = "Failed to change how memory runs out";
 export const MEMORY_DRAINED = "Parked data brought back to memory";
 export const MEMORY_DRAIN_FAILED = "Failed to bring parked data back to memory";
 
+/** The four swap file jobs, by the action their task metadata carries. */
+export type SwapFileAction = "create" | "resize" | "remove" | "move";
+
+/**
+ * What a swap file job reports when it ends, success then failure. A job
+ * taken up after a reload may not know its path, and then says "the swap
+ * file".
+ */
+export const swapFileDone = (
+  action: SwapFileAction,
+  path: string | undefined,
+): { failed: string; succeeded: string } => {
+  const file = path || "the swap file";
+  switch (action) {
+    case "create":
+      return {
+        failed: "Failed to create the swap file",
+        succeeded: "Swap file created",
+      };
+    case "resize":
+      return {
+        failed: `Failed to resize ${file}`,
+        succeeded: `Resized ${file}`,
+      };
+    case "remove":
+      return {
+        failed: `Failed to remove ${file}`,
+        succeeded: `Removed ${file}`,
+      };
+    case "move":
+      return {
+        failed: `Failed to move ${file}`,
+        succeeded: `Moved ${file} into LinuxIO's folder`,
+      };
+  }
+};
+
+/** What the task tray calls a swap file job before its first step. */
+export const swapFileTaskLabel = (
+  action: SwapFileAction,
+  path: string | undefined,
+): string => {
+  const file = path || "a swap file";
+  switch (action) {
+    case "create":
+      return "Creating a swap file";
+    case "resize":
+      return `Resizing ${file}`;
+    case "remove":
+      return `Removing ${file}`;
+    case "move":
+      return `Moving ${file}`;
+  }
+};
+
+/**
+ * The running step of a memory change, naming the swap file it acts on for
+ * the steps that act on one; otherwise the backend's message. undefined
+ * before the first step.
+ */
+export const swapProgressText = (
+  progress: Pick<TaskProgress, "detail" | "message"> | null | undefined,
+): string | undefined => {
+  const detail = progress?.detail as Partial<SwapProgress> | undefined;
+  const device = detail?.device;
+  if (device) {
+    switch (detail?.step) {
+      case "create_swap_file":
+        return `Creating the swap file ${device}`;
+      case "make_temporary_swap":
+        return `Adding the temporary swap file ${device}`;
+      case "resize_swap_file":
+        return `Resizing ${device}`;
+      case "remove_temporary_swap":
+        return `Removing the temporary swap file ${device}`;
+      case "remove_swap_file":
+        return `Removing ${device}`;
+    }
+  }
+  return progress?.message || undefined;
+};
+
 const LATER = "Apply again when more memory is free.";
 
 /** What a mode change left as it was and why, keyed by `what:reason`. */
-const LEFT_TEXT: Partial<
-  Record<`${SwapLeft["what"]}:${SwapLeft["reason"]}`, string>
-> = {
-  "swap_file:not_enough_memory": `Not enough free memory to bring back the data in the swap file, so it stays on. ${LATER}`,
-  "swap_file:zram_not_swapping":
-    "Compressed memory is not running, so the swap file stays on.",
-  "swap_file:not_identified":
-    "An active swap file could not be matched to the one in /etc/fstab, so LinuxIO left it as it is.",
-  "swap_file:others_can_write":
-    "The swap file is in a folder that users other than root can change, so LinuxIO left it on. Move it to a folder only root can write.",
-  "swap_file:not_managed":
-    "A swap file that LinuxIO does not manage is still on. LinuxIO manages only one swap file in /etc/fstab.",
-  "zram:not_enough_memory": `Not enough free memory to empty compressed memory, so it stays on. ${LATER}`,
-  "zram:not_managed":
-    "Compressed memory is still on: it is not run by a zram tool that LinuxIO manages.",
-  "zram_size:not_enough_memory": `Compressed memory keeps its current size: not enough free memory to restart it. ${LATER}`,
-  "zram_size:not_managed":
-    "Compressed memory keeps its current size: it is not run by a zram tool that LinuxIO manages.",
-  "zram_size:other_size":
-    "Compressed memory came up at another size than planned. Check the zram tool's configuration.",
-  "zram_size:no_other_swap":
-    "Compressed memory keeps its current size until the next restart: restarting it now would leave the host without swap.",
+const leftText = (left: SwapLeft): string | undefined => {
+  const file = left.path || "the swap file";
+  switch (`${left.what}:${left.reason}`) {
+    case "swap_file:not_enough_memory":
+      return `Not enough free memory to bring back the data in ${file}, so it stays on. ${LATER}`;
+    case "swap_file:zram_not_swapping":
+      return `Compressed memory is not running, so ${file} stays on.`;
+    case "zram:not_enough_memory":
+      return `Not enough free memory to empty compressed memory, so it stays on. ${LATER}`;
+    case "zram:not_managed":
+      return "Compressed memory is still on: it is not run by a zram tool that LinuxIO manages.";
+    case "zram_size:not_enough_memory":
+      return `Compressed memory keeps its current size: not enough free memory to restart it. ${LATER}`;
+    case "zram_size:not_managed":
+      return "Compressed memory keeps its current size: it is not run by a zram tool that LinuxIO manages.";
+    case "zram_size:other_size":
+      return "Compressed memory came up at another size than planned. Check the zram tool's configuration.";
+    case "zram_size:no_other_swap":
+      return "Compressed memory keeps its current size until the next restart: restarting it now would leave the host without swap.";
+    default:
+      return undefined;
+  }
 };
 
 /**
@@ -53,11 +141,7 @@ export const modeResultWarning = (
 ): string | null => {
   if (result.left.length > 0) {
     return result.left
-      .map(
-        (left) =>
-          LEFT_TEXT[`${left.what}:${left.reason}`] ??
-          "Part of the change was not applied.",
-      )
+      .map((left) => leftText(left) ?? "Part of the change was not applied.")
       .join(" ");
   }
   return result.mode === requested

@@ -32,7 +32,7 @@ func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string
 	// it answers substring searches from the index instead of scanning every
 	// row. Any FTS failure falls through to the LIKE scan.
 	if match, ok := ftsMatchQuery(opts); ok {
-		results, ftsErr := s.searchEntriesFTS(ctx, match, basePath, limit)
+		results, ftsErr := s.searchEntriesFTS(ctx, match, exactSearchTerms(opts), basePath, limit)
 		if ftsErr == nil {
 			if results == nil && !s.hasCompletedGeneration(ctx) {
 				return nil, ErrNotInitialized
@@ -82,13 +82,69 @@ func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string
 	return results, nil
 }
 
+// FolderSizes returns the size the index holds for each of paths that it
+// holds a folder row with a size for; any other path is not in the map.
+func (s *Store) FolderSizes(ctx context.Context, paths []string) (map[string]int64, error) {
+	sizes := make(map[string]int64, len(paths))
+	if len(paths) == 0 {
+		return sizes, nil
+	}
+	args := make([]any, len(paths))
+	for i, path := range paths {
+		args[i] = path
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT e.relative_path, e.size
+		FROM entries e
+		JOIN `+latestGenerationSubquery+` latest
+		  ON latest.id = e.index_id
+		WHERE e.type = 1 AND e.relative_path IN (?`+strings.Repeat(", ?", len(paths)-1)+`)
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("folder sizes query failed: %w", err)
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			slog.Warn("rows close failed", "query", "folder sizes", "error", cerr)
+		}
+	}()
+	for rows.Next() {
+		var path string
+		var size sql.NullInt64
+		if err := rows.Scan(&path, &size); err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+		if size.Valid {
+			sizes[path] = size.Int64
+		}
+	}
+	return sizes, rows.Err()
+}
+
+// exactSearchTerms are the terms a case-sensitive search must find as typed,
+// and none for a search that ignores case.
+func exactSearchTerms(opts searchquery.Options) []string {
+	if !opts.CaseSensitive {
+		return nil
+	}
+	var terms []string
+	for _, term := range opts.Terms {
+		if term = strings.TrimSpace(term); term != "" {
+			terms = append(terms, term)
+		}
+	}
+	return terms
+}
+
+// appendSearchBaseFilter keeps the rows below basePath, the folder itself
+// left out: the page searches the folder it shows, which is not one of its
+// own results. From "/" every row is kept.
 func appendSearchBaseFilter(where string, args []any, basePath string) (string, []any) {
 	if basePath == "" || basePath == "/" {
 		return where, args
 	}
-	lo, childLo, hi := subtreeBounds(basePath)
-	return where + ` AND relative_path >= ? AND relative_path < ? AND (relative_path = ? OR relative_path >= ?)`,
-		append(args, lo, hi, lo, childLo)
+	_, childLo, hi := subtreeBounds(basePath)
+	return where + ` AND relative_path >= ? AND relative_path < ?`, append(args, childLo, hi)
 }
 
 func buildSearchFilter(opts searchquery.Options) (string, []any) {
@@ -118,7 +174,7 @@ func buildSearchFilter(opts searchquery.Options) (string, []any) {
 func scanSearchEntry(rows *sql.Rows) (api.EntryResult, error) {
 	var entry api.EntryResult
 	var modUnix int64
-	var dbType string
+	var dbType int
 	// Inodes are stored as int64 bit patterns (see the entries writers), so
 	// values >= 2^63 come back negative; scanning straight into uint64 would
 	// fail the whole query.
@@ -127,7 +183,7 @@ func scanSearchEntry(rows *sql.Rows) (api.EntryResult, error) {
 		return api.EntryResult{}, fmt.Errorf("scan failed: %w", err)
 	}
 	entry.Inode = uint64(inode)
-	if dbType == "directory" {
+	if dbType == typeDirectory {
 		entry.Type = "folder"
 	} else {
 		entry.Type = "file"
@@ -136,28 +192,44 @@ func scanSearchEntry(rows *sql.Rows) (api.EntryResult, error) {
 	return entry, nil
 }
 
-// DirDetails returns the pre-calculated size for a directory.
-// The size is calculated during indexing and stored in the directory entry.
+// DirDetails returns the size of a folder and how many files and folders it
+// holds, itself included. The size is the folder's own row, kept by every
+// write. The counts are read from the rows below it, which for a folder with
+// millions of entries takes a moment; for the root they are the totals of the
+// index row instead, which every write keeps too, since counting the root
+// reads every row there is.
 func (s *Store) DirDetails(ctx context.Context, path string) (totalSize, files, dirs int64, err error) {
-	lo, childLo, hi := subtreeBounds(path)
 	var size sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT e.size,
-		       COALESCE((SELECT COUNT(*) FROM entries c
-		                 WHERE c.index_id = e.index_id
-		                   AND c.relative_path >= ? AND c.relative_path < ?
-		                   AND (c.relative_path = ? OR c.relative_path >= ?)
-		                   AND c.type = 'file'), 0),
-		       COALESCE((SELECT COUNT(*) FROM entries c
-		                 WHERE c.index_id = e.index_id
-		                   AND c.relative_path >= ? AND c.relative_path < ?
-		                   AND (c.relative_path = ? OR c.relative_path >= ?)
-		                   AND c.type = 'directory'), 0)
-		FROM entries e
-		JOIN `+latestGenerationSubquery+` latest
-		  ON latest.id = e.index_id
-		WHERE e.relative_path = ? AND e.type = 'directory'
-	`, lo, hi, lo, childLo, lo, hi, lo, childLo, path).Scan(&size, &files, &dirs); err != nil {
+	if path == "/" {
+		err = s.db.QueryRowContext(ctx, `
+			SELECT e.size, latest.num_files, latest.num_dirs
+			FROM entries e
+			JOIN indexes latest
+			  ON latest.id = e.index_id
+			WHERE latest.id = `+latestGenerationSubquery+`
+			  AND e.relative_path = '/' AND e.type = 1
+		`).Scan(&size, &files, &dirs)
+	} else {
+		lo, childLo, hi := subtreeBounds(path)
+		err = s.db.QueryRowContext(ctx, `
+			SELECT e.size,
+			       COALESCE((SELECT COUNT(*) FROM entries c
+			                 WHERE c.index_id = e.index_id
+			                   AND c.relative_path >= ? AND c.relative_path < ?
+			                   AND (c.relative_path = ? OR c.relative_path >= ?)
+			                   AND c.type = 0), 0),
+			       COALESCE((SELECT COUNT(*) FROM entries c
+			                 WHERE c.index_id = e.index_id
+			                   AND c.relative_path >= ? AND c.relative_path < ?
+			                   AND (c.relative_path = ? OR c.relative_path >= ?)
+			                   AND c.type = 1), 0)
+			FROM entries e
+			JOIN `+latestGenerationSubquery+` latest
+			  ON latest.id = e.index_id
+			WHERE e.relative_path = ? AND e.type = 1
+		`, lo, hi, lo, childLo, lo, hi, lo, childLo, path).Scan(&size, &files, &dirs)
+	}
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			if initialized, checkErr := s.completedGeneration(ctx); checkErr == nil && !initialized {
 				return 0, 0, 0, ErrNotInitialized
@@ -198,7 +270,7 @@ func (s *Store) GetDirectSubfolders(ctx context.Context, parentPath string) ([]a
             FROM entries e
 			JOIN ` + latestGenerationSubquery + ` latest
 			  ON latest.id = e.index_id
-			WHERE e.type = 'directory' AND e.path_depth = 1
+			WHERE e.type = 1 AND e.path_depth = 1
             ORDER BY name
         `
 		args = nil
@@ -213,7 +285,7 @@ func (s *Store) GetDirectSubfolders(ctx context.Context, parentPath string) ([]a
             FROM entries e
 			JOIN ` + latestGenerationSubquery + ` latest
 			  ON latest.id = e.index_id
-			WHERE e.type = 'directory' AND e.path_depth = ?
+			WHERE e.type = 1 AND e.path_depth = ?
               AND e.relative_path >= ? AND e.relative_path < ?
             ORDER BY name
         `

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
@@ -91,7 +90,7 @@ func GetSwapStatus(ctx context.Context) (apischema.SwapStatus, error) {
 }
 
 // status is GetSwapStatus for the host under the root, with the fstab swap
-// entries it was derived from (see readSwapStatus).
+// files it was derived from (see readSwapStatus).
 func (h hostRoot) status(ctx context.Context) (apischema.SwapStatus, []fstabSwap, error) {
 	status, fstab, err := h.readSwapStatus(h.zramProvider(ctx, systemd.GetActiveState))
 	if err != nil {
@@ -116,9 +115,9 @@ func tunedState(ctx context.Context) (active bool, profile string) {
 }
 
 // readSwapStatus reads everything the status reports except TuneD, given
-// the installed zram provider. It also returns the fstab swap entries,
-// matched to the active devices, that the status was derived from, so that a
-// change acts on the same reading of /etc/fstab its status decided on.
+// the installed zram provider. It also returns the swap files /etc/fstab
+// names that the status was derived from, so that a change acts on the same
+// reading of /etc/fstab its status decided on.
 func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.SwapStatus, []fstabSwap, error) {
 	zramAvailable := provider != ""
 	devices, err := h.readSwaps()
@@ -141,11 +140,14 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 	if err != nil {
 		return apischema.SwapStatus{}, nil, fmt.Errorf("read mounts: %w", err)
 	}
-	fstab, unusable, err := h.fstabSwaps()
+	fstab, err := h.fstabSwaps()
 	if err != nil {
 		return apischema.SwapStatus{}, nil, fmt.Errorf("read swap entries from fstab: %w", err)
 	}
-	fstab = h.matchFstabSwaps(fstab, devices)
+	resume, err := h.hibernationDevice()
+	if err != nil {
+		return apischema.SwapStatus{}, nil, fmt.Errorf("read the hibernation device: %w", err)
+	}
 	status := apischema.SwapStatus{
 		Devices:              h.describeSwapFiles(devices, mounts),
 		MemTotal:             mem.memTotal,
@@ -158,43 +160,45 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 		ZramProvider:         provider,
 		ForeignZramConfig:    h.foreignZramConfig(provider),
 		ZramGeneratorDevices: h.zramGeneratorDevices(),
-		SwapFile:             h.statusSwapFile(fstab, unusable, devices, mounts),
-		UnmanagedFstabSwaps:  unmanagedFstabSwaps(unusable),
 		Presets:              presetList(),
 	}
 	if err := h.readVMSysctls(&status); err != nil {
 		return apischema.SwapStatus{}, nil, fmt.Errorf("read vm sysctls: %w", err)
 	}
-	partitionActive := slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool {
-		return d.Kind == apischema.SwapDevicePartition
-	})
-	status.Mode = deriveMode(devices, zswap.Enabled)
-	diskSwapStays := partitionActive || (status.SwapFile != nil && status.SwapFile.Active && !status.SwapFile.Managed)
-	status.RecommendedMode = recommendMode(usableSwapFile(status), diskSwapStays, zswap.Available)
+	rows := h.swapFileRows(devices, fstab, mounts, resume)
+	var createMount mountEntry
+	status.Create, createMount = h.swapFileCreate(rows, mounts, resume, mem.memTotal)
+	// The sizes and the move offer depend on the whole status: a resize that
+	// needs a temporary file needs room for it too.
+	status.SwapFiles = make([]apischema.SwapFileRow, 0, len(rows))
+	for _, facts := range rows {
+		row := &facts.row
+		if row.LockedReason == "" && !row.Temporary && row.ResizeBlockedReason == "" && facts.fsOK {
+			row.MaxSize = resizeMaxSize(facts, resizeTemporary(status, facts))
+		}
+		row.CanMove = canMove(facts, status.Create, createMount)
+		status.SwapFiles = append(status.SwapFiles, *row)
+	}
+	status.Mode = deriveMode(devices, removableSwapFiles(status.SwapFiles), zswap.Enabled)
+	status.RecommendedMode = recommendMode(devices, status.SwapFiles, zswap.Available)
 	status.RecommendedSwappiness = recommendedSwappiness(status.Mode, status.RecommendedMode)
-	status.ZramUnavailableReason = zramUnavailableReason(zramAvailable, partitionActive)
+	status.ZramUnavailableReason = zramUnavailableReason(zramAvailable)
 	status.ZramPlannedSize = zramPlannedSize(mem.memTotal)
-	status.DrainBlockedReason = drainBlockedReason(diskSwapUsed(devices), managedDiskUsed(fstab, devices), mem.memAvailable,
-		leftOutHoldsData(fstab, devices),
-		slices.ContainsFunc(holdingData(fstab, devices), func(e fstabSwap) bool { return e.heldOff }))
+	status.DrainBlockedReason = drainBlockedReason(status)
 	status.CanDrain = status.DrainBlockedReason == ""
 	return status, fstab, nil
 }
 
-// usableSwapFile is the swap file the recommendation goes by: the one the
-// status reports, unless it is off and not managed, which nothing here can
-// start; then the first active swap file, or none.
-func usableSwapFile(status apischema.SwapStatus) *apischema.SwapFile {
-	file := status.SwapFile
-	if file == nil || file.Active || file.Managed {
-		return file
+// removableSwapFiles are the paths of the swap files LinuxIO can remove:
+// those that pass the strict check, temporary ones included.
+func removableSwapFiles(rows []apischema.SwapFileRow) []string {
+	var paths []string
+	for _, row := range rows {
+		if row.LockedReason == "" {
+			paths = append(paths, row.Path)
+		}
 	}
-	i := slices.IndexFunc(status.Devices, func(d apischema.SwapDevice) bool { return d.Kind == apischema.SwapDeviceFile })
-	if i < 0 {
-		return nil
-	}
-	device := status.Devices[i]
-	return &apischema.SwapFile{Path: device.Path, Active: true, FSType: device.FSType, DiskHint: device.DiskHint}
+	return paths
 }
 
 // describeSwapFiles fills in the filesystem and disk hint of each swap file.
@@ -207,44 +211,6 @@ func (h hostRoot) describeSwapFiles(devices []apischema.SwapDevice, mounts []mou
 		devices[i].FSType, devices[i].DiskHint = mount.fsType, h.diskHint(mount)
 	}
 	return devices
-}
-
-// statusSwapFile is the swap file the status reports: the one fstab names
-// that LinuxIO manages (see fstabSwapFile), active when /proc/swaps holds it,
-// and managed, since its unit can be stopped, held off and started, unless
-// others can change its path; or else the first active one, which is not
-// managed, since fstab does not name it or names it by a path without a unit
-// LinuxIO can use. It is nil when there is none.
-func (h hostRoot) statusSwapFile(fstab []fstabSwap, unusable []unusableFstabSwap, devices []apischema.SwapDevice, mounts []mountEntry) *apischema.SwapFile {
-	var file apischema.SwapFile
-	if entry, ok := fstabSwapFile(fstab); ok {
-		file.Path, file.Active, file.Managed = entry.path, entry.device != "", !entry.othersCanWrite
-		if entry.othersCanWrite {
-			file.UnmanagedReason = apischema.SwapFileOthersCanWrite
-		}
-	} else {
-		i := slices.IndexFunc(devices, func(d apischema.SwapDevice) bool { return d.Kind == apischema.SwapDeviceFile })
-		if i < 0 {
-			return nil
-		}
-		file.Path, file.Active, file.UnmanagedReason = devices[i].Path, true, apischema.SwapFileNotInFstab
-		if slices.ContainsFunc(unusable, func(e unusableFstabSwap) bool { return e.path != "" && h.sameSwap(e.path, file.Path) }) {
-			file.UnmanagedReason = apischema.SwapFileUnitUnusable
-		}
-	}
-	mount, _ := mountHolding(mounts, file.Path)
-	file.FSType, file.DiskHint = mount.fsType, h.diskHint(mount)
-	return &file
-}
-
-// unmanagedFstabSwaps lists the fstab swap entries without a unit LinuxIO
-// can use, which it leaves alone; an empty list and not null on the wire.
-func unmanagedFstabSwaps(unusable []unusableFstabSwap) []apischema.UnmanagedFstabSwap {
-	list := []apischema.UnmanagedFstabSwap{}
-	for _, entry := range unusable {
-		list = append(list, apischema.UnmanagedFstabSwap{Reason: apischema.SwapFileUnitUnusable, Source: entry.source})
-	}
-	return list
 }
 
 // diskSwapUsed is the data parked on disk swap devices; data in zram is

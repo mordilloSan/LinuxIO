@@ -298,27 +298,43 @@ function renderProvider({
     }
   };
 
-  const provider = (
-    <ConfigProvider>
-      <Probe />
-    </ConfigProvider>
-  );
-
+  const authValue = createAuthContextValue({
+    isAuthenticated: true,
+    sessionExpired,
+    user: { id: "miguel", name: "Miguel" },
+  });
+  // New elements at each call: React skips a rerender given the same ones.
+  const tree = () => {
+    const provider = (
+      <ConfigProvider>
+        <Probe />
+      </ConfigProvider>
+    );
+    return (
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={authValue}>
+          {strictMode ? <StrictMode>{provider}</StrictMode> : provider}
+        </AuthContext.Provider>
+      </QueryClientProvider>
+    );
+  };
   const rendered = render(
-    <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider
-        value={createAuthContextValue({
-          isAuthenticated: true,
-          sessionExpired,
-          user: { id: "miguel", name: "Miguel" },
-        })}
-      >
-        {strictMode ? <StrictMode>{provider}</StrictMode> : provider}
-      </AuthContext.Provider>
-    </QueryClientProvider>,
+    tree(),
     // The provider under test owns its cache: no pre-seeded snapshots.
     { seedConfig: false },
   );
+
+  // The connection to the bridge closing, or opening again.
+  const setMuxOpen = async (open: boolean) => {
+    apiMocks.useStreamMux.mockReturnValue({
+      status: open ? "open" : "closed",
+      isOpen: open,
+      getStream: () => null,
+    });
+    await act(async () => {
+      rendered.rerender(tree());
+    });
+  };
 
   return {
     fireActionSuccess,
@@ -326,8 +342,32 @@ function renderProvider({
     actionConfigs,
     queryClient,
     sessionExpired,
+    setMuxOpen,
     unmount: rendered.unmount,
   };
+}
+
+const SERVER_SETTING_REFUSED =
+  "Setting not saved: the server cannot be reached. Try again in a moment.";
+const APPEARANCE_SAVED_LATER =
+  "The server cannot be reached. Appearance changes are saved when it is back.";
+
+function warningsOf(message: string): number {
+  return toastMocks.warning.mock.calls.filter(([text]) => text === message)
+    .length;
+}
+
+async function clickButton(name: string) {
+  await act(async () => {
+    screen.getByRole("button", { name }).click();
+  });
+}
+
+// Runs fake timers forward, and what they start, inside act.
+async function advance(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 }
 
 describe("ConfigProvider", () => {
@@ -981,6 +1021,237 @@ describe("ConfigProvider", () => {
 
       await waitFor(() => expect(sessionExpired).toHaveBeenCalledTimes(1));
       expect(screen.getByTestId("theme")).toHaveTextContent("LIGHT");
+    });
+  });
+
+  describe("while the bridge cannot be reached", () => {
+    it("refuses a bridge setting each time, and does not show it", async () => {
+      const { setMuxOpen } = renderProvider();
+      await screen.findByTestId("loaded");
+      await setMuxOpen(false);
+
+      await clickButton("set folders");
+      expect(screen.getByTestId("docker-folders")).toHaveTextContent(
+        "/srv/docker",
+      );
+      expect(warningsOf(SERVER_SETTING_REFUSED)).toBe(1);
+
+      await clickButton("set hidden files");
+      expect(screen.getByTestId("show-hidden-files")).toHaveTextContent("true");
+      expect(warningsOf(SERVER_SETTING_REFUSED)).toBe(2);
+
+      await setMuxOpen(true);
+      await waitFor(() =>
+        expect(apiMocks.configGetCall).toHaveBeenCalledTimes(2),
+      );
+      expect(apiMocks.setConfigRemote).not.toHaveBeenCalled();
+      expect(apiMocks.setUIRemote).not.toHaveBeenCalled();
+      expect(warningsOf(APPEARANCE_SAVED_LATER)).toBe(0);
+    });
+
+    it("keeps appearance changes and saves them after the next load", async () => {
+      const { setMuxOpen } = renderProvider();
+      await screen.findByTestId("loaded");
+      await setMuxOpen(false);
+
+      await clickButton("set theme");
+      await clickButton("set primary color");
+      await waitFor(() =>
+        expect(screen.getByTestId("theme")).toHaveTextContent("DARK"),
+      );
+      expect(apiMocks.setUIRemote).not.toHaveBeenCalled();
+      // Said once for the outage, not once a change.
+      expect(warningsOf(APPEARANCE_SAVED_LATER)).toBe(1);
+      expect(warningsOf(SERVER_SETTING_REFUSED)).toBe(0);
+
+      await setMuxOpen(true);
+      await waitFor(() =>
+        expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1),
+      );
+      expect(apiMocks.setUIRemote).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: "DARK", primaryColor: "#abcdef" }),
+      );
+      expect(screen.getByTestId("theme")).toHaveTextContent("DARK");
+      // The appearance settings are not asked for again on the way.
+      expect(apiMocks.uiGetCall).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends an appearance change again whose save the lost connection failed", async () => {
+      apiMocks.setUIRemote.mockRejectedValueOnce(new Error("connection lost"));
+      let uiReads = 0;
+      const { setMuxOpen } = renderProvider({
+        // The read-back of the failed save fails with the connection.
+        uiQueryFn: () =>
+          ++uiReads === 2
+            ? Promise.reject(new LinuxIOError("unavailable", 503))
+            : Promise.resolve(remoteUI()),
+      });
+      await screen.findByTestId("loaded");
+
+      await clickButton("set theme");
+      await waitFor(() => expect(apiMocks.uiGetCall).toHaveBeenCalledTimes(2));
+      expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1);
+
+      await setMuxOpen(false);
+      await setMuxOpen(true);
+      await waitFor(() =>
+        expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(2),
+      );
+      expect(apiMocks.setUIRemote).toHaveBeenLastCalledWith(
+        expect.objectContaining({ theme: "DARK" }),
+      );
+    });
+
+    it("sends nothing after a load when no appearance change waits", async () => {
+      const { setMuxOpen } = renderProvider();
+      await screen.findByTestId("loaded");
+      await setMuxOpen(false);
+      await setMuxOpen(true);
+
+      await waitFor(() =>
+        expect(apiMocks.configGetCall).toHaveBeenCalledTimes(2),
+      );
+      await clickButton("set theme");
+      expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1);
+    });
+
+    it("takes a mixed patch apart: appearance kept, bridge setting refused", async () => {
+      onSavedSpy.mockClear();
+      const { setMuxOpen } = renderProvider();
+      await screen.findByTestId("loaded");
+      await setMuxOpen(false);
+
+      await clickButton("set mixed settings");
+      await waitFor(() =>
+        expect(screen.getByTestId("theme")).toHaveTextContent("DARK"),
+      );
+      expect(screen.getByTestId("show-hidden-files")).toHaveTextContent("true");
+      expect(warningsOf(SERVER_SETTING_REFUSED)).toBe(1);
+
+      await setMuxOpen(true);
+      await waitFor(() =>
+        expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1),
+      );
+      expect(apiMocks.setConfigRemote).not.toHaveBeenCalled();
+      expect(onSavedSpy).not.toHaveBeenCalled();
+    });
+
+    it("reads the appearance settings back when the late save is refused", async () => {
+      apiMocks.setUIRemote.mockRejectedValueOnce(new Error("ui failed"));
+      const { setMuxOpen } = renderProvider();
+      await screen.findByTestId("loaded");
+      await setMuxOpen(false);
+      await clickButton("set theme");
+
+      await setMuxOpen(true);
+      await waitFor(() =>
+        expect(screen.getByTestId("theme")).toHaveTextContent("LIGHT"),
+      );
+      expect(apiMocks.uiGetCall).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("a load of the settings that fails", () => {
+    const unavailable = () =>
+      Promise.reject(new LinuxIOError("unavailable", 503));
+
+    it("is tried again, and the page appears once it succeeds", async () => {
+      vi.useFakeTimers();
+      let failures = 2;
+      const { queryClient } = renderProvider({
+        configQueryFn: () =>
+          failures-- > 0 ? unavailable() : Promise.resolve(remoteConfig()),
+      });
+
+      await advance(0);
+      expect(screen.queryByTestId("loaded")).toBeNull();
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(1);
+
+      const failed = () =>
+        queryClient
+          .getQueryCache()
+          .findAll()
+          .filter((query) => query.state.status === "error");
+      // The first failure is reported like any failed query.
+      expect(failed().map((query) => query.meta?.silent)).toEqual([undefined]);
+
+      await advance(1000);
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId("loaded")).toBeNull();
+      // The retries are quiet, and are not retried a second time underneath.
+      expect(failed().map((query) => query.meta?.silent)).toEqual([true]);
+      expect(failed().map((query) => query.options.retry)).toEqual([false]);
+
+      // The second wait is twice the first.
+      await advance(1000);
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(2);
+      await advance(1000);
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(3);
+      expect(screen.getByTestId("loaded")).toHaveTextContent("true");
+
+      await advance(60_000);
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(3);
+    });
+
+    it("saves a waiting appearance change once the retry succeeds", async () => {
+      vi.useFakeTimers();
+      let fail = false;
+      const { setMuxOpen } = renderProvider({
+        configQueryFn: () => {
+          if (!fail) return Promise.resolve(remoteConfig());
+          fail = false;
+          return unavailable();
+        },
+      });
+      await advance(0);
+      expect(screen.getByTestId("loaded")).toHaveTextContent("true");
+
+      await setMuxOpen(false);
+      fail = true;
+      await setMuxOpen(true);
+      await advance(0);
+
+      // The connection is open and the page works, but nothing can be saved.
+      await clickButton("set theme");
+      await clickButton("set folders");
+      expect(apiMocks.setUIRemote).not.toHaveBeenCalled();
+      expect(warningsOf(SERVER_SETTING_REFUSED)).toBe(1);
+
+      await advance(1000);
+      expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1);
+      expect(apiMocks.setUIRemote).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: "DARK" }),
+      );
+
+      await clickButton("set folders");
+      expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
+        docker: { folders: ["/opt/compose"] },
+      });
+    });
+
+    it("is not tried again after the connection closes", async () => {
+      vi.useFakeTimers();
+      const { setMuxOpen } = renderProvider({ configQueryFn: unavailable });
+      await advance(0);
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(1);
+
+      await setMuxOpen(false);
+      await advance(60_000);
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(1);
+    });
+
+    it("is not tried again once the session is gone", async () => {
+      vi.useFakeTimers();
+      const sessionExpired = vi.fn();
+      renderProvider({
+        configQueryFn: () => Promise.reject(new LinuxIOError("expired", 401)),
+        sessionExpired,
+      });
+      await advance(0);
+      expect(sessionExpired).toHaveBeenCalledTimes(1);
+
+      await advance(60_000);
+      expect(apiMocks.configGetCall).toHaveBeenCalledTimes(1);
     });
   });
 

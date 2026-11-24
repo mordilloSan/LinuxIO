@@ -3,6 +3,7 @@ package memory
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -14,17 +15,10 @@ type swapStep struct {
 	// run is, for stop_zram, whether zram is stopped as well as turned off
 	// at boot.
 	run bool
-	// unit and path are the swap file's unit and path for stop_swap_file and
-	// start_swap_file.
-	unit, path string
-}
-
-// managedSwapFile is the one swap file fstab names that a change stops,
-// holds off at boot or starts (see fstabSwapFile). One others can redirect is returned
-// as not managed.
-func (v swapView) managedSwapFile() (fstabSwap, bool) {
-	file, ok := fstabSwapFile(v.fstab)
-	return file, ok && !file.othersCanWrite
+	// path is the swap file of create_swap_file and remove_swap_file, and
+	// size the size create_swap_file makes it at.
+	path string
+	size uint64
 }
 
 func hasDevice(devices []apischema.SwapDevice, kind apischema.SwapDeviceKind) bool {
@@ -40,60 +34,114 @@ func planSwapMode(v swapView, req apischema.SwapModeRequest) ([]swapStep, error)
 	if _, ok := presetFor(target); !ok {
 		return nil, fmt.Errorf("%w: unknown swap mode %q", bridgeipc.ErrInvalidArgs, target)
 	}
-	zramRunning := hasDevice(v.status.Devices, apischema.SwapDeviceZram)
-	file, managed := v.managedSwapFile()
 	if target == apischema.SwapModeZram {
-		if reason := v.status.ZramUnavailableReason; reason != "" {
-			return nil, fmt.Errorf("%w: %s", bridgeipc.ErrConflict, zramRefusal(reason))
-		}
-		// write_config replaces the provider's configuration file.
-		if err := confirmedReplace(v.status, req.ConfirmReplace); err != nil {
-			return nil, err
-		}
-		steps := []swapStep{
-			{code: apischema.SwapStepWriteConfig},
-			{code: apischema.SwapStepStartZram},
-			{code: apischema.SwapStepApplySysctls},
-			{code: apischema.SwapStepDisableZswap},
-		}
-		if managed {
-			steps = append(steps, swapStep{code: apischema.SwapStepStopSwapFile, unit: file.unit, path: file.path})
-		}
-		return steps, nil
-	}
-
-	// Disk swap the mode can count on: a swap file fstab lets it start, or
-	// an active swap file or partition.
-	if !managed && !hasDevice(v.status.Devices, apischema.SwapDeviceFile) && !hasDevice(v.status.Devices, apischema.SwapDevicePartition) {
-		if file.othersCanWrite {
-			return nil, fmt.Errorf("%w: %s needs the swap file %s, which LinuxIO does not start: %w", bridgeipc.ErrConflict, target, file.path, errOthersCanRedirect)
-		}
-		return nil, fmt.Errorf("%w: %s needs a swap file or an active swap partition", bridgeipc.ErrConflict, target)
+		return planZram(v, req)
 	}
 	if target == apischema.SwapModeZswap && !v.status.Zswap.Available {
 		return nil, fmt.Errorf("%w: the kernel has no zswap", bridgeipc.ErrConflict)
 	}
-	if err := generatorRefusal(v, req.ConfirmReplace); err != nil {
+	steps, err := planDiskSwap(v, req)
+	if err != nil {
 		return nil, err
 	}
-	var steps []swapStep
-	// A file that swaps while held off, as a failed switch away from zram
-	// leaves it, is let go too, or the next boot would hold it off.
-	if managed && (file.device == "" || file.heldOff) {
-		steps = append(steps, swapStep{code: apischema.SwapStepStartSwapFile, unit: file.unit, path: file.path})
+	if err := generatorRefusal(v, req.ConfirmReplace); err != nil {
+		return nil, err
 	}
 	// zram is stopped through its provider's unit, so the step is planned
 	// only with a provider installed; without one nothing here can stop
 	// zram. The executor also leaves zram when systemd does not report that
 	// unit running, as when another tool set zram up.
 	if v.status.ZramAvailable {
-		steps = append(steps, swapStep{code: apischema.SwapStepStopZram, run: zramRunning})
+		steps = append(steps, swapStep{code: apischema.SwapStepStopZram, run: hasDevice(v.status.Devices, apischema.SwapDeviceZram)})
 	}
 	steps = append(steps, swapStep{code: apischema.SwapStepApplySysctls})
 	if target == apischema.SwapModeZswap {
 		return append(steps, swapStep{code: apischema.SwapStepEnableZswap}), nil
 	}
 	return append(steps, swapStep{code: apischema.SwapStepDisableZswap}), nil
+}
+
+// planZram is the plan of a switch to zram: zram first, then the removal of
+// every swap file that passes the strict check, which the request must
+// confirm.
+func planZram(v swapView, req apischema.SwapModeRequest) ([]swapStep, error) {
+	if reason := v.status.ZramUnavailableReason; reason != "" {
+		return nil, fmt.Errorf("%w: %s", bridgeipc.ErrConflict, zramRefusal(reason))
+	}
+	// write_config replaces the provider's configuration file.
+	if err := confirmedReplace(v.status, req.ConfirmReplace); err != nil {
+		return nil, err
+	}
+	removed := zramRemovals(v.status.SwapFiles)
+	if err := confirmedRemove(removed, req.ConfirmRemove); err != nil {
+		return nil, err
+	}
+	steps := []swapStep{
+		{code: apischema.SwapStepWriteConfig},
+		{code: apischema.SwapStepStartZram},
+		{code: apischema.SwapStepApplySysctls},
+		{code: apischema.SwapStepDisableZswap},
+	}
+	for _, path := range removed {
+		steps = append(steps, swapStep{code: apischema.SwapStepRemoveSwapFile, path: path})
+	}
+	return steps, nil
+}
+
+// planDiskSwap is the disk swap a switch to disk or zswap counts on: the
+// active swap files and partitions, or else LinuxIO's swap file, made before
+// zram stops. A swap file in fstab that is off is never turned on, and
+// LinuxIO's is not made beside it.
+func planDiskSwap(v swapView, req apischema.SwapModeRequest) ([]swapStep, error) {
+	if hasDevice(v.status.Devices, apischema.SwapDeviceFile) || hasDevice(v.status.Devices, apischema.SwapDevicePartition) {
+		return nil, nil
+	}
+	if i := slices.IndexFunc(v.status.SwapFiles, func(r apischema.SwapFileRow) bool { return r.InFstab }); i >= 0 {
+		return nil, fmt.Errorf("%w: %s needs disk swap, and %s is in /etc/fstab and does not swap, which LinuxIO does not turn on; remove it, and LinuxIO makes a swap file of its own",
+			bridgeipc.ErrConflict, req.Mode, v.status.SwapFiles[i].Path)
+	}
+	if reason := v.status.Create.BlockedReason; reason != "" {
+		return nil, fmt.Errorf("%w: %s needs disk swap, and LinuxIO cannot make its swap file: %s", bridgeipc.ErrConflict, req.Mode, createRefusal(reason))
+	}
+	size := req.SwapFileSize
+	if size == 0 {
+		size = v.status.Create.DefaultSize
+	}
+	if err := fitsLimit(size, v.status.Create.MaxSize); err != nil {
+		return nil, err
+	}
+	return []swapStep{{code: apischema.SwapStepCreateSwapFile, path: ownSwapFilePath, size: size}}, nil
+}
+
+// zramRemovals are the swap files a switch to zram removes, every one that
+// passes the strict check, in the order of the status, a temporary swap file
+// a resize left before the file it stood in for.
+func zramRemovals(rows []apischema.SwapFileRow) []string {
+	var temporary, files []string
+	for _, row := range rows {
+		switch {
+		case row.LockedReason != "":
+		case row.Temporary:
+			temporary = append(temporary, row.Path)
+		default:
+			files = append(files, row.Path)
+		}
+	}
+	return append(temporary, files...)
+}
+
+// confirmedRemove refuses a switch to zram unless the request names exactly
+// the swap files it removes, in any order, so a file is never removed that
+// the confirm did not show.
+func confirmedRemove(removed, confirmed []string) error {
+	want, got := slices.Sorted(slices.Values(removed)), slices.Compact(slices.Sorted(slices.Values(confirmed)))
+	if slices.Equal(want, got) {
+		return nil
+	}
+	if len(want) == 0 {
+		return fmt.Errorf("%w: the switch removes no swap file, and the request confirms removing %s", bridgeipc.ErrConflict, strings.Join(got, ", "))
+	}
+	return fmt.Errorf("%w: the switch removes the swap files %s; confirm that they may be removed", bridgeipc.ErrConflict, strings.Join(want, ", "))
 }
 
 // generatorRefusal refuses a switch to disk or zswap with zram-generator as
@@ -135,8 +183,6 @@ func zramRefusal(reason apischema.ZramUnavailableReason) string {
 	switch reason {
 	case apischema.ZramPackageMissing:
 		return "zram needs zram-tools or zram-generator, and neither is installed"
-	case apischema.ZramSwapPartitionActive:
-		return "zram cannot be chosen while a swap partition is active"
 	default:
 		return "zram cannot be chosen: " + string(reason)
 	}

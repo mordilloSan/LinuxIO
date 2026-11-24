@@ -2,18 +2,10 @@ package memory
 
 import (
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
-
-// longSwapPath is a swap file whose unit name, 270 bytes, systemd shortens
-// with a hash, though each folder on its path has a short name.
-var longSwapPath = "/srv/" + strings.Repeat("swapfolder/", 23) + "swapfile"
-
-// longSwapsLine is longSwapPath active in /proc/swaps, holding 128 MiB.
-var longSwapsLine = longSwapPath + " file\t\t1048572\t\t131072\t\t-2\n"
 
 // writeVMSysctls writes the four vm sysctls the status reads.
 func (f fixture) writeVMSysctls(swappiness, pageCluster, boost, scale string) {
@@ -50,9 +42,23 @@ func TestReadSwapStatusOfASwapFileOnBtrfs(t *testing.T) {
 	if !slices.Equal(got.Devices, wantDevices) {
 		t.Errorf("devices = %+v, want %+v", got.Devices, wantDevices)
 	}
-	wantFile := apischema.SwapFile{Path: "/swap.img", Active: true, FSType: "btrfs", Managed: true}
-	if got.SwapFile == nil || *got.SwapFile != wantFile {
-		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	f.useFolderFS(folderFS{kind: "btrfs", btrfsLayout: true, total: 100 * gib, free: 40 * gib})
+	f.writeSwapFile("/swap.img", 2*gib)
+	got, _, err = f.host().readSwapStatus("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The only swap device: a resize makes a temporary file of the data
+	// plus a quarter, 1.25 GiB, so the largest size is the file's 2 GiB and
+	// the 40 GiB free less that and the 5 GiB reserve. It is on the
+	// filesystem LinuxIO's folder would be on, outside a subvolume of its
+	// own, so it can move there.
+	wantFiles := []apischema.SwapFileRow{{
+		Path: "/swap.img", Active: true, InFstab: true, FSType: "btrfs", Size: 2097148 * kib, Used: 1 * gib,
+		FreeSpace: 40 * gib, MaxSize: 35*gib + 768*mib, BlocksSnapshots: true, CanMove: true,
+	}}
+	if !slices.Equal(got.SwapFiles, wantFiles) {
+		t.Errorf("swap files = %+v, want %+v", got.SwapFiles, wantFiles)
 	}
 	if got.MemTotal != 16308408*kib || got.MemAvailable != 8154204*kib || got.SwapTotal != 2097148*kib || got.SwapUsed != 1048576*kib {
 		t.Errorf("memory = total %d available %d swap total %d used %d", got.MemTotal, got.MemAvailable, got.SwapTotal, got.SwapUsed)
@@ -100,9 +106,12 @@ func TestReadSwapStatusOfZramWithAnInactiveSwapFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFile := apischema.SwapFile{Path: "/mnt/sd/swapfile", FSType: "ext4", DiskHint: apischema.SwapDiskHintMMC, Managed: true}
-	if got.SwapFile == nil || *got.SwapFile != wantFile {
-		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	wantFiles := []apischema.SwapFileRow{{
+		Path: "/mnt/sd/swapfile", InFstab: true, FSType: "ext4", DiskHint: apischema.SwapDiskHintMMC,
+		FreeSpace: 50 * gib, ResizeBlockedReason: apischema.SwapFileResizeMissing,
+	}}
+	if !slices.Equal(got.SwapFiles, wantFiles) {
+		t.Errorf("swap files = %+v, want %+v", got.SwapFiles, wantFiles)
 	}
 	if got.Devices[0].FSType != "" || got.Devices[0].DiskHint != "" {
 		t.Errorf("zram device = %+v, want no filesystem or disk hint", got.Devices[0])
@@ -122,23 +131,30 @@ func TestReadSwapStatusOfZramWithAnInactiveSwapFile(t *testing.T) {
 	}
 }
 
-// With two swap files in fstab, the one that swaps is reported and managed
-// though one that is off comes first: it is the one a switch to compressed
-// memory takes away.
-func TestReadSwapStatusReportsTheActiveOfTwoSwapFiles(t *testing.T) {
+// Every swap file is a row: the active ones in the order of /proc/swaps,
+// then the ones fstab names that are off, in fstab order.
+func TestReadSwapStatusListsEverySwapFile(t *testing.T) {
 	f := newFixture(t)
-	f.write("/proc/swaps", swapsHeader+swapFileSwapsLine)
+	f.write("/proc/swaps", swapsHeader+swapsLine("/swap2.img", gib, 0)+swapFileSwapsLine)
 	f.write("/proc/meminfo", meminfoText)
-	f.write("/proc/self/mountinfo", mountinfoText)
-	f.write("/etc/fstab", "/old.img none swap sw 0 0\n/swap.img none swap sw 0 0\n")
+	f.write("/etc/fstab", "/old.img none swap sw 0 0\n/swap.img none swap sw 0 0\n/swap2.img none swap sw 0 0\n")
+	f.writeSwapFile("/swap.img", 2*gib)
+	f.writeSwapFile("/swap2.img", gib)
+	f.writeSwapFile("/old.img", gib)
 
 	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFile := apischema.SwapFile{Path: "/swap.img", Active: true, FSType: "btrfs", Managed: true}
-	if got.SwapFile == nil || *got.SwapFile != wantFile {
-		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	var paths []string
+	for _, row := range got.SwapFiles {
+		paths = append(paths, row.Path)
+	}
+	if want := []string{"/swap2.img", "/swap.img", "/old.img"}; !slices.Equal(paths, want) {
+		t.Fatalf("swap files = %v, want %v", paths, want)
+	}
+	if off := got.SwapFiles[2]; off.Active || off.Size != gib || off.ResizeBlockedReason != apischema.SwapFileResizeOff || off.LockedReason != "" {
+		t.Errorf("off file = %+v, want off, 1 GiB, removable", off)
 	}
 }
 
@@ -163,15 +179,15 @@ func TestReadSwapStatusGivesNoDiskHintUnderAFuseMount(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.SwapFile == nil || got.SwapFile.DiskHint != want || got.Devices[0].DiskHint != want {
-				t.Errorf("swap file = %+v, device = %+v; want disk hint %q", got.SwapFile, got.Devices[0], want)
+			if got.SwapFiles[0].DiskHint != want || got.Devices[0].DiskHint != want {
+				t.Errorf("swap file = %+v, device = %+v; want disk hint %q", got.SwapFiles[0], got.Devices[0], want)
 			}
 		})
 	}
 }
 
-// Without an fstab entry the active swap file is the one the status reports; a
-// swap partition beside it keeps zram from being chosen.
+// An active swap file fstab does not name is a row LinuxIO does not change;
+// a swap partition is no row at all, and zram can be chosen beside it.
 func TestReadSwapStatusFallsBackToTheActiveSwapFile(t *testing.T) {
 	f := newFixture(t)
 	f.write("/proc/swaps", swapsHeader+
@@ -188,10 +204,12 @@ func TestReadSwapStatusFallsBackToTheActiveSwapFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// fstab does not name it, so it has no unit LinuxIO could stop.
-	wantFile := apischema.SwapFile{Path: "/home/swapfile", Active: true, FSType: "ext4", UnmanagedReason: apischema.SwapFileNotInFstab}
-	if got.SwapFile == nil || *got.SwapFile != wantFile {
-		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	wantFiles := []apischema.SwapFileRow{{
+		Path: "/home/swapfile", Active: true, FSType: "ext4", Size: 1048572 * kib, FreeSpace: 50 * gib,
+		LockedReason: apischema.SwapFileNotInFstab,
+	}}
+	if !slices.Equal(got.SwapFiles, wantFiles) {
+		t.Errorf("swap files = %+v, want %+v", got.SwapFiles, wantFiles)
 	}
 	if got.Devices[0].FSType != "" || got.Devices[1].FSType != "ext4" {
 		t.Errorf("devices = %+v, want a filesystem on the file only", got.Devices)
@@ -199,8 +217,11 @@ func TestReadSwapStatusFallsBackToTheActiveSwapFile(t *testing.T) {
 	if got.Mode != apischema.SwapModeDisk || got.RecommendedMode != apischema.SwapModeZswap {
 		t.Errorf("mode = %q, recommended = %q; want disk, zswap", got.Mode, got.RecommendedMode)
 	}
-	if got.ZramUnavailableReason != apischema.ZramSwapPartitionActive {
-		t.Errorf("zram unavailable reason = %q, want swap_partition_active", got.ZramUnavailableReason)
+	if got.ZramUnavailableReason != "" {
+		t.Errorf("zram unavailable reason = %q, want none", got.ZramUnavailableReason)
+	}
+	if got.DrainBlockedReason != apischema.SwapDrainNothingParked {
+		t.Errorf("drain reason = %q, want nothing_parked", got.DrainBlockedReason)
 	}
 }
 
@@ -215,7 +236,7 @@ func TestReadSwapStatusOfAMinimalHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Devices) != 0 || got.SwapFile != nil || len(got.ZramDevices) != 0 || got.Zswap != (apischema.ZswapStatus{}) {
+	if len(got.Devices) != 0 || len(got.ZramDevices) != 0 || got.Zswap != (apischema.ZswapStatus{}) {
 		t.Errorf("status = %+v, want no devices, swap file, zram or zswap", got)
 	}
 	if got.Swappiness != 0 || got.PageCluster != 0 {
@@ -228,8 +249,15 @@ func TestReadSwapStatusOfAMinimalHost(t *testing.T) {
 		t.Errorf("zram planned size = %d, drain reason = %q; want 1 GiB, nothing_parked", got.ZramPlannedSize, got.DrainBlockedReason)
 	}
 	// An empty list, not null on the wire.
-	if got.UnmanagedFstabSwaps == nil || len(got.UnmanagedFstabSwaps) != 0 {
-		t.Errorf("unmanaged fstab swaps = %#v, want an empty list", got.UnmanagedFstabSwaps)
+	if got.SwapFiles == nil || len(got.SwapFiles) != 0 {
+		t.Errorf("swap files = %#v, want an empty list", got.SwapFiles)
+	}
+	want := apischema.SwapFileCreate{
+		Path: ownSwapFilePath, FSType: "ext4", MinSize: 256 * mib, DefaultSize: gib,
+		FreeSpace: 50 * gib, Reserve: 5 * gib, MaxSize: 45 * gib,
+	}
+	if got.Create != want {
+		t.Errorf("create = %+v, want %+v", got.Create, want)
 	}
 }
 
@@ -259,229 +287,5 @@ func TestReadSwapStatusRefusesBrokenRequiredFiles(t *testing.T) {
 				t.Fatalf("status = %+v, want an error", got)
 			}
 		})
-	}
-}
-
-// A unit held off at boot, by LinuxIO's drop-in for it in
-// /etc/systemd/system or by a link to /dev/null there or in
-// /run/systemd/system, could not start its device again after a drain, so
-// the status says unit_held_off without asking systemd. A link elsewhere, a
-// drop-in of another name, or a held-off unit whose device holds no data,
-// does not block.
-func TestReadSwapStatusReportsAHeldOffDrainUnit(t *testing.T) {
-	tests := []struct {
-		name   string
-		link   string
-		to     string
-		dropIn string
-		used   string
-		want   apischema.SwapDrainBlockedReason
-	}{
-		{name: "LinuxIO's drop-in", dropIn: "/etc/systemd/system/swap.img.swap.d/90-linuxio-memory.conf", used: "524288", want: apischema.SwapDrainUnitHeldOff},
-		{name: "another drop-in", dropIn: "/etc/systemd/system/swap.img.swap.d/50-admin.conf", used: "524288"},
-		{name: "masked in etc", link: "/etc/systemd/system/swap.img.swap", to: "/dev/null", used: "524288", want: apischema.SwapDrainUnitHeldOff},
-		{name: "masked at runtime", link: "/run/systemd/system/swap.img.swap", to: "/dev/null", used: "524288", want: apischema.SwapDrainUnitHeldOff},
-		{name: "linked to a unit file", link: "/etc/systemd/system/swap.img.swap", to: "/lib/systemd/system/other.swap", used: "524288"},
-		{name: "masked without parked data", link: "/etc/systemd/system/swap.img.swap", to: "/dev/null", used: "0", want: apischema.SwapDrainNothingParked},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			f := newFixture(t)
-			f.write("/proc/swaps", swapsHeader+"/swap.img                               file\t\t2097148\t\t"+test.used+"\t\t-2\n")
-			f.write("/proc/meminfo", meminfoText)
-			f.write("/etc/fstab", "/swap.img none swap sw 0 0\n")
-			f.write("/swap.img", "")
-			if test.link != "" {
-				f.symlink(test.to, test.link)
-			}
-			if test.dropIn != "" {
-				f.write(test.dropIn, "[Unit]\nConditionPathExists=!/\n")
-			}
-
-			got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.DrainBlockedReason != test.want || got.CanDrain != (test.want == "") {
-				t.Fatalf("can drain = %v, reason = %q; want reason %q", got.CanDrain, got.DrainBlockedReason, test.want)
-			}
-		})
-	}
-}
-
-const openSwapsLine = "/home/open/swapfile                      file\t\t1048572\t\t131072\t\t-2\n"
-
-// openSwapFileHost has fstab name a swap file in a folder everyone can
-// write.
-func openSwapFileHost(t *testing.T, swaps string) fixture {
-	t.Helper()
-	f := newFixture(t)
-	f.write("/proc/swaps", swapsHeader+swaps)
-	f.write("/proc/meminfo", meminfoText)
-	f.write("/proc/self/mountinfo", mountinfoText)
-	f.write("/etc/fstab", "/home/open/swapfile none swap sw 0 0\n")
-	f.othersCanWrite("/home/open")
-	f.write("/home/open/swapfile", "")
-	f.write("/sys/module/zswap/parameters/enabled", "N\n")
-	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
-	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
-	return f
-}
-
-// A swap file in a folder users other than root can change is reported, and
-// reported as not managed with the reason, before anything is asked of it.
-func TestReadSwapStatusOfASwapFileOthersCanRedirect(t *testing.T) {
-	f := openSwapFileHost(t, openSwapsLine)
-
-	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantFile := apischema.SwapFile{Path: "/home/open/swapfile", Active: true, FSType: "ext4", UnmanagedReason: apischema.SwapFileOthersCanWrite}
-	if got.SwapFile == nil || *got.SwapFile != wantFile {
-		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
-	}
-	if got.CanDrain || got.DrainBlockedReason != apischema.SwapDrainOthersCanWrite {
-		t.Errorf("can drain = %v, reason = %q; want false, others_can_write", got.CanDrain, got.DrainBlockedReason)
-	}
-}
-
-// Such a file that is off cannot be started from here, so no mode that needs
-// it is recommended.
-func TestReadSwapStatusDoesNotCountASwapFileItWouldNotStart(t *testing.T) {
-	f := openSwapFileHost(t, "")
-
-	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantFile := apischema.SwapFile{Path: "/home/open/swapfile", FSType: "ext4", UnmanagedReason: apischema.SwapFileOthersCanWrite}
-	if got.SwapFile == nil || *got.SwapFile != wantFile {
-		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
-	}
-	if got.RecommendedMode != apischema.SwapModeZram {
-		t.Errorf("recommended = %q, want zram", got.RecommendedMode)
-	}
-}
-
-// Beside such a file that is off, another swap file that is on is the disk
-// swap the recommendation goes by: here ext4, where the fstab file's btrfs
-// would have called for zram.
-func TestReadSwapStatusRecommendsByAnActiveSwapFile(t *testing.T) {
-	f := newFixture(t)
-	f.write("/proc/swaps", swapsHeader+"/home/other                             file\t\t1048572\t\t0\t\t-2\n")
-	f.write("/proc/meminfo", meminfoText)
-	f.write("/proc/self/mountinfo", mountinfoText)
-	f.write("/etc/fstab", "/srv/open/swapfile none swap sw 0 0\n")
-	f.othersCanWrite("/srv/open")
-	f.write("/srv/open/swapfile", "")
-	f.write("/home/other", "")
-	f.write("/sys/module/zswap/parameters/enabled", "N\n")
-	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
-	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
-
-	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.SwapFile == nil || got.SwapFile.Path != "/srv/open/swapfile" || got.SwapFile.Active || got.SwapFile.FSType != "btrfs" {
-		t.Errorf("swap file = %+v, want the fstab file on btrfs, off", got.SwapFile)
-	}
-	if got.RecommendedMode != apischema.SwapModeZswap {
-		t.Errorf("recommended = %q, want zswap", got.RecommendedMode)
-	}
-}
-
-// A swap file that is on and not managed stays on whatever is chosen, so
-// zram alone is not recommended, as beside a swap partition.
-func TestReadSwapStatusDoesNotRecommendZramBesideASwapFileThatStays(t *testing.T) {
-	f := newFixture(t)
-	f.write("/proc/swaps", swapsHeader+"/srv/open/swapfile                      file\t\t1048572\t\t0\t\t-2\n")
-	f.write("/proc/meminfo", meminfoText)
-	f.write("/proc/self/mountinfo", mountinfoText)
-	f.write("/etc/fstab", "/srv/open/swapfile none swap sw 0 0\n")
-	f.othersCanWrite("/srv/open")
-	f.write("/srv/open/swapfile", "")
-	f.write("/sys/module/zswap/parameters/enabled", "N\n")
-	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
-	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
-
-	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.SwapFile == nil || got.SwapFile.FSType != "btrfs" || got.SwapFile.Managed {
-		t.Errorf("swap file = %+v, want one on btrfs that is not managed", got.SwapFile)
-	}
-	if got.RecommendedMode != apischema.SwapModeZswap {
-		t.Errorf("recommended = %q, want zswap", got.RecommendedMode)
-	}
-}
-
-// An fstab swap entry whose unit LinuxIO cannot name the way systemd does is
-// listed with that reason, in fstab order: a tag whose value udev writes
-// otherwise in its /dev/disk/by-* link (punctuation outside #+-.:=@_, a
-// character outside ASCII, a quote left unpaired), a unit name systemd
-// shortens with a hash, and a source that is neither a path nor a known tag.
-// One LinuxIO can name is not listed, up to a unit name of 253 bytes; at 254
-// the unit's drop-in folder would be longer than a file name may be.
-func TestReadSwapStatusListsTheFstabSwapsItCannotName(t *testing.T) {
-	f := newFixture(t)
-	f.write(procSwaps, swapsHeader)
-	f.write(procMeminfo, meminfoText)
-	f.write(etcFstab, "LABEL=swap!1 none swap sw 0 0\n"+
-		"/swap.img none swap sw 0 0\n"+
-		"PARTLABEL=caf\xc3\xa9 none swap sw 0 0\n"+
-		`LABEL="half none swap sw 0 0`+"\n"+
-		`LABEL="whole" none swap sw 0 0`+"\n"+
-		"LABEL=a#+-.:=@_z none swap sw 0 0\n"+
-		`LABEL=my\040swap none swap sw 0 0`+"\n"+
-		longSwapPath+" none swap sw 0 0\n"+
-		"/"+strings.Repeat("c", 248)+" none swap sw 0 0\n"+
-		"/"+strings.Repeat("d", 249)+" none swap sw 0 0\n"+
-		"ID=ata-disk-part3 none swap sw 0 0\n")
-
-	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	unknown := apischema.SwapFileUnitUnusable
-	want := []apischema.UnmanagedFstabSwap{
-		{Reason: unknown, Source: "LABEL=swap!1"},
-		{Reason: unknown, Source: "PARTLABEL=caf\xc3\xa9"},
-		{Reason: unknown, Source: `LABEL="half`},
-		{Reason: unknown, Source: longSwapPath},
-		{Reason: unknown, Source: "/" + strings.Repeat("d", 249)},
-		{Reason: unknown, Source: "ID=ata-disk-part3"},
-	}
-	if !slices.Equal(got.UnmanagedFstabSwaps, want) {
-		t.Fatalf("unmanaged fstab swaps =\n%+v\nwant\n%+v", got.UnmanagedFstabSwaps, want)
-	}
-}
-
-// Such a swap file is not managed, and the status says why rather than that
-// fstab does not name it: here the only one fstab names, active, whose unit
-// systemd names with a hash. Its data is not drained.
-func TestReadSwapStatusOfASwapFileItCannotName(t *testing.T) {
-	f := newFixture(t)
-	f.write(procSwaps, swapsHeader+longSwapsLine)
-	f.write(procMeminfo, meminfoText)
-	f.write(etcFstab, longSwapPath+" none swap sw 0 0\n")
-	f.write(longSwapPath, "")
-
-	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantFile := apischema.SwapFile{Path: longSwapPath, Active: true, UnmanagedReason: apischema.SwapFileUnitUnusable}
-	if got.SwapFile == nil || *got.SwapFile != wantFile {
-		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
-	}
-	if got.CanDrain || got.DrainBlockedReason != apischema.SwapDrainUnmanagedDevice {
-		t.Errorf("can drain = %v, reason = %q; want false, unmanaged_device", got.CanDrain, got.DrainBlockedReason)
-	}
-	want := []apischema.UnmanagedFstabSwap{{Reason: apischema.SwapFileUnitUnusable, Source: longSwapPath}}
-	if !slices.Equal(got.UnmanagedFstabSwaps, want) {
-		t.Errorf("unmanaged fstab swaps = %+v, want %+v", got.UnmanagedFstabSwaps, want)
 	}
 }

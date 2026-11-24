@@ -154,8 +154,9 @@ export function useFileBrowserController(
     hasMultipleDetailTargets,
     listingQueryOptions,
   });
-  const { filteredResource, searchError, isSearchLoading } =
+  const { filteredResource, searchError, isSearchLoading, isSearchPartial } =
     useFileBrowserFilteredResource({
+      basePath: normalizedPath,
       caseSensitive: searchCaseSensitive,
       resource,
       searchQuery,
@@ -645,9 +646,10 @@ export function useFileBrowserController(
       filteredResource,
       searchError,
       isSearchLoading,
+      isSearchPartial,
       resource,
     }),
-    [filteredResource, searchError, isSearchLoading, resource],
+    [filteredResource, searchError, isSearchLoading, isSearchPartial, resource],
   );
 
   const contentListing = useMemo(

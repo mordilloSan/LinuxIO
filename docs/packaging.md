@@ -97,7 +97,9 @@ file in place, and `apt purge` removes them. An RPM erase removes the ones
 nobody edited and keeps an edited one as `.rpmsave`. Files LinuxIO writes
 under `/etc/linuxio` at run time (scheduled scripts, the rsync module's
 configuration and the like) are not package files and stay on both.
-`/var/lib/linuxio`, LinuxIO's data, stays on removal and on a purge.
+`/var/lib/linuxio`, LinuxIO's data, stays on removal and on a purge, the
+memory page's swap file and its `/etc/fstab` line with it
+([Removal](#removal)).
 
 ## First install
 
@@ -158,6 +160,9 @@ finishes its jobs before the new build takes over
 unattended upgrade and the Updates page end the same way, and no
 `linuxio restart` is needed.
 
+An upgrade does not restart libvirt's daemon
+([The libvirt hook](#the-libvirt-hook)).
+
 A command line a unit runs is in a package unit, so it moves with the
 package. Two kinds of file LinuxIO writes on save still name a LinuxIO
 program, because a setting decides what they hold: the verbose drop-ins
@@ -205,14 +210,34 @@ without a word: the scheduled scripts' units (`linuxio-schedule-<id>.service`
 and `.timer`, which run `bash` on a script under `/etc/linuxio/schedules` as
 their user; the run-record drop-in that hooks them goes with the package), the
 rsync service (`linuxio-rsync.service`, `rsync --daemon` on
-`/etc/linuxio/rsyncd.conf`), Docker's drop-ins (`docker.service.d/linuxio-*.conf`:
-the mounts its data needs and the addresses it waits for) and the memory
-page's hold-off drop-ins on swap units (`90-linuxio-memory.conf`), which keep
-a swap device it stopped from coming back at boot. A new install finds them
-with their definitions under `/etc/linuxio`. The settings whose files the
+`/etc/linuxio/rsyncd.conf`) and Docker's drop-ins (`docker.service.d/linuxio-*.conf`:
+the mounts its data needs and the addresses it waits for). A new install finds
+them with their definitions under `/etc/linuxio`. The WireGuard interfaces
+stay too, being wg-quick's own files, and with them
+`/etc/sysctl.d/90-linuxio-wireguard.conf`, which keeps IPv4 forwarding on at
+boot for those with NAT ([Forwarding](./wireguard.md#forwarding)). The memory page writes no
+unit or drop-in under `/etc/systemd/system`; a hold-off drop-in on a swap unit
+(`90-linuxio-memory.conf`) that an older LinuxIO left stays as well
+([Upgrading](./memory.md#upgrading-from-an-older-linuxio)). The settings whose files the
 removal deleted (snapshot rules, replication, Docker updates, verbose
 logging, the indexer's interval, the automatic-update schedule and its
 alerts) are switched on again by hand after a new install.
+
+The swap file the memory page makes, `/var/lib/linuxio/swap/swapfile`, and
+its `/etc/fstab` line stay too, on a removal and on a purge, as the rest of
+`/var/lib/linuxio` does: systemd turns it on at boot from the line, without
+LinuxIO, so the host keeps its swap. Neither package script touches either.
+An administrator who wants them gone turns the file off, removes the line
+and deletes the folder, in that order (the kernel refuses to delete a swap
+file that is on, and a line left without its file fails its swap unit at
+every boot):
+
+```sh
+sudo swapoff /var/lib/linuxio/swap/swapfile
+sudo sed -i '\#^/var/lib/linuxio/swap/swapfile[[:space:]]#d' /etc/fstab
+sudo systemctl daemon-reload
+sudo rm -r /var/lib/linuxio/swap
+```
 
 ## The SELinux module
 
@@ -263,8 +288,14 @@ Docker's `FORWARD DROP` policy drops a bridged VM's traffic; the hook
 ([VM Bridge Networking](./vm-bridge-networking.md)). libvirt reads hooks
 only from `/etc`, so it is installed there in every install, mode 0755, as a
 configuration file of both packages, whether or not libvirt is installed.
-libvirt finds its hooks only when its daemon starts, so the post-install step
-runs `try-restart` on `libvirtd.service` and `virtqemud.service`.
+libvirt uses a hook only when the file was there as its daemon started, so the
+post-install step of a first install runs `try-restart` on `libvirtd.service`
+and `virtqemud.service`. An upgrade does not: the hook was there when the
+daemon started, libvirt runs the file anew for each event, so a changed hook
+needs no restart, and a daemon with work to finish takes up to 30 seconds to
+stop. It answers nobody in that time, the sign-in that follows the upgrade
+among them, and every program using libvirt loses its connection
+(`package-files-fixtures.sh` holds both scripts to it).
 
 Its first line exits when `/usr/bin/linuxio` is missing: `apt remove` leaves
 the file until a purge, and with the line removal stops the hook on both
@@ -344,9 +375,40 @@ banner that names it and opens the Updates page. The administrator installs
 it there like any other package (`packages.update`, a job in the root job
 host); PackageKit runs apt or dnf, which check the repository's and the
 package's signatures, and the package restarts LinuxIO as above. The bridge
-restarts nothing itself, and a failed or cancelled transaction leaves the
-package as it was. The details, and what the browser shows across the
-restart, are in [Jobs](./jobs.md#updates).
+restarts nothing itself, and a transaction that fails or is cancelled before
+the package manager changes the package leaves the old build installed and
+running. The details, among them when a cancel does not stop the update, and
+what the browser shows across the restart, are in [Jobs](./jobs.md#updates).
+
+On Fedora a repository whose metadata cannot be fetched, or whose signature
+fails, is skipped: the distribution sets `skip_if_unavailable` for every
+repository that is not its own, so dnf says why and goes on, exiting 0, and
+PackageKit's refresh succeeds and says nothing. Nothing from such a
+repository is installed, and no LinuxIO update is listed. `linuxio.repo`
+leaves the setting alone: turned off there, it fails every dnf transaction
+on the host, an unattended upgrade among them, for as long as the repository
+is unreachable.
+
+So that the Updates page is not silent, Refresh Sources
+(`updates.refresh_cache`) on a host that has `/etc/yum.repos.d/linuxio.repo`
+ends by asking dnf about that one repository, with the setting off for that
+one command (`checkOwnRepository` in `backend/bridge/handlers/packages`):
+
+```sh
+dnf --repo=linuxio --setopt=linuxio.skip_if_unavailable=False --refresh --assumeyes makecache
+```
+
+When dnf fails, its last line is the route's `own_repository_error`, and
+where dnf has not ended within a minute, that it did not answer is (it waits
+two minutes on a server that accepts no connection). The page shows the
+reason in a warning while it stays open and until the next refresh starts,
+and the refresh's toast warns where it would report success. A dnf that
+cannot be started or is killed is logged and says nothing of the repository.
+`--assumeyes` accepts the repository's key, the one `linuxio.repo` names,
+where dnf has not held it yet: PackageKit keeps its own, so on a host whose
+LinuxIO dnf never installed the check would otherwise report a repository
+that PackageKit reads. PackageKit's apt backend fails the refresh itself on
+an index it cannot fetch or verify, so an apt host has no such check.
 
 ## How the packages are built
 
@@ -461,12 +523,17 @@ to the build's.
   with Docker can lose its network at its next start.
 - On the Debian family a reinstall does not bring back a configuration file
   an administrator deleted; the libvirt hook has its Restore button for that.
+- An RPM upgrade brings back a libvirt hook an administrator deleted and does
+  not restart libvirt, so the hook is used from the daemon's next start.
 - An edited configuration file keeps its edits and misses that upgrade's
   changes to it.
-- dnf given a `repomd.xml` with a bad signature reports it and goes on
-  without the repository, exiting 0 with nothing to upgrade: `linuxio.repo`
-  does not set `skip_if_unavailable=False`, which would stop every dnf
-  transaction on the host while the repository is unreachable.
+- On Fedora, dnf and PackageKit go on without a LinuxIO repository they
+  cannot read ([above](#linuxios-own-update)). The Updates page says so only
+  after Refresh Sources and only until it is left; the update banner, an
+  unattended upgrade and a `dnf` whose output nobody reads do not.
+- The check after Refresh Sources reads LinuxIO's repository even where an
+  administrator disabled it, and shows any failure of that dnf command as
+  the reason, a renamed section in `linuxio.repo` among them.
 - An RPM upgraded from a version without the console link shows the login
   banner at an SSH login only, until the link is made by hand
   ([above](#the-login-banner)).

@@ -111,6 +111,58 @@ describe("useFileSearch", () => {
     });
   });
 
+  it("tells how the folder searched in was read on disk", () => {
+    apiMocks.searchData = { results: [], walk: "partial" };
+
+    const { result } = renderHook(
+      () => useFileSearch({ basePath: "/srv", query: "compose" }),
+      { wrapper: queryWrapper },
+    );
+
+    expect(result.current.walk).toBe("partial");
+  });
+
+  // A partial answer is kept no longer than it is shown: the same query
+  // asked again reads the disk again. A complete one is kept 30 seconds.
+  it.each([
+    ["partial", 2],
+    ["complete", 1],
+  ] as const)(
+    "asks again for a query typed again after a %s answer",
+    async (walk, fetches) => {
+      const asked = vi.fn();
+      apiMocks.searchQueryOptions.mockImplementation((request: unknown) => ({
+        queryKey: ["test", "file-search", request],
+        queryFn: () => {
+          asked(request);
+          return Promise.resolve({ results: [], walk });
+        },
+        retryDelay: 0,
+      }));
+
+      const { result, rerender } = renderHook(
+        ({ query }: { query: string }) =>
+          useFileSearch({ basePath: "/srv", query }),
+        { initialProps: { query: "compose" }, wrapper: queryWrapper },
+      );
+      await waitFor(() => expect(result.current.walk).toBe(walk));
+      // Shown, it is not asked for again on its own.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(asked).toHaveBeenCalledTimes(1);
+
+      rerender({ query: "other" });
+      await waitFor(() => expect(asked).toHaveBeenCalledTimes(2));
+      rerender({ query: "compose" });
+      await waitFor(() => expect(result.current.walk).toBe(walk));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const composeFetches = asked.mock.calls.filter(
+        ([request]) => (request as { query: string }).query === "compose",
+      ).length;
+      expect(composeFetches).toBe(fetches);
+    },
+  );
+
   it("passes through backend query errors when searching is enabled", async () => {
     apiMocks.searchError = new Error("backend failed");
 

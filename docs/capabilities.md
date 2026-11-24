@@ -89,20 +89,32 @@ the error/unavailable shaping stays consistent:
   on `$PATH`. Returns a `"<command> not found (missing <dependencyName> dependency)"`
   error when absent.
 
+The scan runs every detector at once and gives each 6 seconds
+(`probeTimeout`, `response.go`). One that has not answered by then is reported
+unavailable with the error `did not answer within 6s`, and the others'
+answers are returned: a daemon that takes a connection and never answers, as
+libvirtd does while it stops, would otherwise hold back the whole scan, and
+the page hides every gated section until the scan answers. A detector passes
+its context to whatever it waits on, since the scan waits for each to return.
+
 Detection lives next to the feature where possible (e.g.
 `CheckDockerAvailability` in `handlers/docker`, `CheckNFSClientAvailability` in `handlers/storage`; the registry calls them), or is
 inlined for a plain binary check:
 
 ```go
 {
-    Name:    "wireguard",
-    LogName: "WireGuard tools",
+    Name:    "rsync",
+    LogName: "rsync",
     Detect: func(_ context.Context) (bool, string) {
-        return checkedCapability(checkDependencyCommand("wg-quick", "wireguard-tools"))
+        return checkedCapability(checkDependencyCommand("rsync", "rsync"))
     },
-    Install: &InstallSpec{PackageDebian: "wireguard-tools", PackageRHEL: "wireguard-tools"},
+    Install: &InstallSpec{PackageDebian: "rsync", PackageRHEL: "rsync"},
 },
 ```
+
+An install may bring more than the detection asks for: WireGuard is detected
+by `wg-quick` alone and installs `iptables` as well, which the NAT rules of a
+new interface need ([WireGuard Interfaces](./wireguard.md#forwarding)).
 
 ### Tests
 
@@ -112,7 +124,9 @@ detector; `TestCapabilityNamesArePublished` asserts that the `CapabilityName`
 enum is the registry's names. `TestBuildCapabilitiesResponseReportsEveryCapability`
 (`response_test.go`) runs every registry name through a stub detector and
 checks that each one keys its own status, with its error, in the JSON
-response. On the frontend, `capabilities.test.ts` asserts at typecheck that the
+response.
+`TestBuildCapabilitiesResponseReportsTheRestWhenOneProbeDoesNotAnswer` holds
+the scan to its 6 seconds for one detector. On the frontend, `capabilities.test.ts` asserts at typecheck that the
 `CAPABILITIES` names equal the generated `CapabilityName` union, so a
 capability added to the registry without a frontend entry, or the reverse,
 fails `make tsc-only` after `make generate`.
@@ -375,10 +389,7 @@ the package, seen as a reinstall in the test VM (Ubuntu 26.04,
 init-system-helpers 1.69), enabled and started it, with zram swapping. With the drop-in a reinstall leaves the unit `disabled` and
 `inactive`, as it does after any `systemctl disable`. `zramswap.service`
 is wanted by `multi-user.target` only (`RequiredBy` is empty), so holding
-it holds nothing else back; the rule that a swap unit is held off with a
-condition and never a mask, since `swap.target` requires it
-([Memory overflow](./memory.md#holding-a-swap-file-off-at-boot)), is not
-in play, and a condition is what is used anyway. An admin's own
+it holds nothing else back. An admin's own
 `zramswap.service` that is enabled and running, on a host where zram-tools
 was never installed, stays so (seen in the test VM): the hold does not stop
 a running unit, and its start at boot was the admin's before the install,
@@ -635,6 +646,9 @@ test VM does this in a browser:
 
 ## Known limits
 
+- A capability whose detector did not answer within its 6 seconds stays
+  unavailable in the page until the next sign-in, although its daemon may be
+  back a moment later.
 - A package that no enabled repository has costs one cache refresh before the
   install reports it, including an optional package such as `nss-mdns` on a
   RHEL-family host without EPEL, whose warning comes after that refresh.

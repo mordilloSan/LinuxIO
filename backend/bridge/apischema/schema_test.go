@@ -162,6 +162,7 @@ var unprivilegedChanges = map[string]string{
 	"filebrowser.trash_restore":   "the session user's own files, as that user",
 	"filebrowser.upload":          "the session user's own files, as that user",
 	"filebrowser.upload_batch":    "the session user's own files, as that user",
+	"filebrowser.watch":           "a read stream of a folder the session user may list",
 
 	"logs.general.follow": "a read stream of the journal the session user may read",
 	"logs.service.follow": "a read stream of the journal the session user may read",
@@ -362,7 +363,7 @@ func TestEndpointExcludesChannels(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"docker.logs.follow", "docker.logs.follow_all", "logs.general.follow", "logs.service.follow"} {
+	for _, route := range []string{"docker.logs.follow", "docker.logs.follow_all", "logs.general.follow", "logs.service.follow", "filebrowser.watch"} {
 		spec := mustRoute(t, route)
 		if spec.Mode != bridgeipc.ModeDuplex || spec.Kind != apischema.KindDuplex {
 			t.Fatalf("%s should be a direct channel, got mode=%q kind=%q", route, spec.Mode, spec.Kind)
@@ -562,7 +563,8 @@ func TestTaskMetadataBuildersAreAllowlisted(t *testing.T) {
 		"storage.btrfs_snapshot_rollback": true, "storage.btrfs_device_remove": true, "storage.btrfs_device_replace": true,
 		"storage.btrfs_balance": true, "storage.btrfs_scrub_start": true, "storage.btrfs_replication_run": true,
 		"storage.btrfs_pool_create": true, "storage.partition_create": true, "storage.partition_format": true,
-		"memory.set_swap_mode": true, "memory.drain_swap": true,
+		"memory.set_swap_mode": true, "memory.drain_swap": true, "memory.create_swap_file": true,
+		"memory.resize_swap_file": true, "memory.remove_swap_file": true, "memory.move_swap_file": true,
 	}
 	for _, route := range handlers.Routes {
 		if route.Metadata == nil {

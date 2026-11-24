@@ -78,7 +78,18 @@ test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./p
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
 
-test-packaging-scripts: ## Run host-independent fixture tests of the packaging files and scripts, and of the release notes script
+# Go benchmarks, without the race detector test-go runs under, which slows
+# code several times over and so says nothing about speed. For example:
+#   LINUXIO_INDEX_TREE=/usr make bench-go GO_TEST_PKGS=./indexer/internal/storage/ GO_BENCH=RescanOfTree
+GO_BENCH ?= .
+GO_BENCH_TIME ?= 1x
+bench-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go benchmarks without the race detector (GO_TEST_PKGS=./pkg/ GO_BENCH=Name GO_BENCH_TIME=1x)
+	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)⏱  Running Go benchmarks (backend)...$(COLOR_RESET)"
+	@cd "$(backend_dir)" && \
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test $(GO_TEST_PKGS) -run NONE -bench '$(GO_BENCH)' -benchtime $(GO_BENCH_TIME) -tags "$(strip $(indexer_go_tags) $(nvml_go_tags))" -timeout 30m
+
+test-packaging-scripts: ## Run host-independent fixture tests of the packaging files and scripts
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package file fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/package-files-fixtures.sh"
@@ -94,9 +105,6 @@ test-packaging-scripts: ## Run host-independent fixture tests of the packaging f
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running signed repository fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/repo-fixtures.sh"
-	@echo ""
-	@$(PRINTC) "$(COLOR_CYAN)🧪 Running release notes fixture tests...$(COLOR_RESET)"
-	@bash "$(repo_root)/.github/scripts/tests/changelog-entry-fixtures.sh"
 
 test-indexer-systemd-integration: ## Run the opt-in disposable-host indexer smoke test
 	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"

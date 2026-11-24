@@ -30,6 +30,11 @@ var api = apischema.Bindings(
 	apischema.MutationVoid("wireguard.down_interface", handleDownInterface, apischema.Privileged()),
 	apischema.MutationVoid("wireguard.enable_interface", handleEnableInterface, apischema.Privileged()),
 	apischema.MutationVoid("wireguard.disable_interface", handleDisableInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.restore_forwarding", RestoreForwarding, apischema.Privileged()),
+	// A Mutation, so it runs in the root job host with the edits whose
+	// configMu it holds, and a lost answer is never sent again as a second
+	// check: the client attaches to the job by its ID instead.
+	apischema.Mutation("wireguard.check_interface", CheckInterface, apischema.Privileged()),
 )
 
 var Routes = api.Routes()

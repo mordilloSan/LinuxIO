@@ -531,6 +531,25 @@ describe("StreamMultiplexer", () => {
     expect(readMuxFrame(socket.sent[0]).flags).toBe(Flags.DATA);
   });
 
+  it("reports no activity for data a Channel streams", () => {
+    const { mux, socket } = openMux();
+    const watch = requireStream(mux.openStream("filebrowser.watch"));
+    socket.sent = [];
+
+    socket.receive(
+      makeInboundMuxFrame(
+        watch.id,
+        Flags.DATA,
+        makeBridgeFrame(
+          BridgeOpcode.StreamData,
+          watch.id,
+          encodeString('{"type":"changed"}\n'),
+        ),
+      ),
+    );
+    expect(socket.sent).toHaveLength(0);
+  });
+
   it("reports activity, throttled, while a task streams progress", () => {
     const { mux, socket } = openMux();
     const watch = requireStream(mux.openStream("tasks.watch"));

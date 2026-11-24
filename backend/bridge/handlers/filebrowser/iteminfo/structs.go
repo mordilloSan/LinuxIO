@@ -13,6 +13,9 @@ type ItemInfo struct {
 }
 
 type DirectoryListing struct {
+	// Path is the folder that was listed, with the symlinks of the path it
+	// was asked by resolved.
+	Path    string
 	Folders []ItemInfo
 	Files   []ItemInfo
 }

@@ -19,7 +19,12 @@ func EnableInterface(ctx context.Context, req apischema.NameRequest) (any, error
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
-	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
+	// Before the unit is enabled: an interface that starts at boot with
+	// forwarding off has peers that reach nothing, and nobody is told.
+	if err := ensureForwardingAtBoot(name); err != nil {
+		return nil, err
+	}
+	serviceName := unitName(name)
 	if err := systemd.EnableUnit(ctx, serviceName); err != nil {
 		return nil, fmt.Errorf("enable %s: %w", serviceName, err)
 	}
@@ -40,7 +45,7 @@ func DisableInterface(ctx context.Context, req apischema.NameRequest) (any, erro
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
-	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
+	serviceName := unitName(name)
 	if err := systemd.DisableUnit(ctx, serviceName); err != nil {
 		return nil, fmt.Errorf("disable %s: %w", serviceName, err)
 	}
@@ -52,7 +57,7 @@ func DisableInterface(ctx context.Context, req apischema.NameRequest) (any, erro
 }
 
 func isInterfaceEnabled(ctx context.Context, name string) bool {
-	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
+	serviceName := unitName(name)
 	state, err := systemd.GetUnitFileState(ctx, serviceName)
 	if err != nil {
 		slog.Debug("failed to query interface enabled state", "component", "wireguard", "interface", name, "service", serviceName, "error", err)

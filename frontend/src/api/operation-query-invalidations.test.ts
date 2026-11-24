@@ -105,7 +105,15 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     }
   });
   it("refreshes the swap status after every memory change", () => {
-    for (const action of ["set_swap_mode", "set_swappiness", "drain_swap"]) {
+    for (const action of [
+      "set_swap_mode",
+      "set_swappiness",
+      "drain_swap",
+      "create_swap_file",
+      "resize_swap_file",
+      "remove_swap_file",
+      "move_swap_file",
+    ]) {
       expect(OPERATION_QUERY_INVALIDATIONS[`memory.${action}`]).toEqual([
         ["linuxio", "memory", "get_swap_status"],
       ]);

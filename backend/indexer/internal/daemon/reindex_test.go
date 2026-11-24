@@ -57,7 +57,7 @@ func TestPartialReindexSynchronizesMetadata(t *testing.T) {
 	}
 	if _, err := db.Exec(`
 		INSERT INTO entries (index_id, relative_path, name, size, mod_time, type)
-		VALUES (?, '/', '/', 0, 1, 'directory');
+		VALUES (?, '/', '/', 0, 1, 1);
 	`, indexID); err != nil {
 		t.Fatalf("insert root entry: %v", err)
 	}
@@ -94,8 +94,8 @@ func TestPartialReindexSynchronizesMetadata(t *testing.T) {
 	var actualDirs, actualFiles, rootSize int64
 	if err := db.QueryRow(`
 		SELECT
-			COALESCE(SUM(CASE WHEN type = 'directory' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN type = 'directory' THEN 0 ELSE 1 END), 0),
+			COALESCE(SUM(CASE WHEN type = 1 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN type = 1 THEN 0 ELSE 1 END), 0),
 			COALESCE((SELECT size FROM entries WHERE index_id = ? AND relative_path = '/'), 0)
 		FROM entries WHERE index_id = ?;
 	`, indexID, indexID).Scan(&actualDirs, &actualFiles, &rootSize); err != nil {
@@ -104,8 +104,9 @@ func TestPartialReindexSynchronizesMetadata(t *testing.T) {
 	if dirs != actualDirs || files != actualFiles || totalSize != rootSize {
 		t.Fatalf("metadata = dirs %d, files %d, size %d; entries = %d, %d, %d", dirs, files, totalSize, actualDirs, actualFiles, rootSize)
 	}
-	if lastIndexed <= 1 {
-		t.Fatalf("last indexed = %d, want refreshed timestamp", lastIndexed)
+	// Seeded as 1: the reindex of a folder is not a full index.
+	if lastIndexed != 1 {
+		t.Fatalf("last indexed = %d, want the time of the last full index kept", lastIndexed)
 	}
 }
 

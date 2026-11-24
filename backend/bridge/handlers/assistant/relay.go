@@ -98,6 +98,11 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: %w: %w", bridgeipc.ErrConflict, err)
 	}
+	profile, err := acpagents.Profile(ctx, sess.User, req.Agent, agentsHome)
+	if err != nil {
+		streamrelay.WriteClose(stream)
+		return fmt.Errorf("assistant: %w", err)
+	}
 	cmd, err := usercmd.Command(ctx, sess.User, launch.Path, launch.Args...)
 	if err != nil {
 		streamrelay.WriteClose(stream)
@@ -105,6 +110,7 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 	}
 	cmd.Env = append(cmd.Env, "PATH="+userPath)
 	cmd.Env = append(cmd.Env, launch.Env...)
+	cmd.Env = append(cmd.Env, profile...)
 	panes := openPanes(stream, req, agent, sess.User)
 	defer panes.close()
 	if panes != nil {

@@ -17,7 +17,11 @@ const {
   TASK_TYPE_DOCKER_COMPOSE,
   TASK_TYPE_DOCKER_STORAGE,
   TASK_TYPE_FILE_DELETE_BATCH,
+  TASK_TYPE_MEMORY_CREATE_SWAP_FILE,
   TASK_TYPE_MEMORY_DRAIN,
+  TASK_TYPE_MEMORY_MOVE_SWAP_FILE,
+  TASK_TYPE_MEMORY_REMOVE_SWAP_FILE,
+  TASK_TYPE_MEMORY_RESIZE_SWAP_FILE,
   TASK_TYPE_MEMORY_SWAP_MODE,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_STORAGE_BTRFS_BALANCE,
@@ -468,14 +472,20 @@ describe("terminalTaskFeedback", () => {
       {
         kind: "completed",
         result: {
-          left: [{ reason: "not_enough_memory", what: "swap_file" }],
+          left: [
+            {
+              path: "/swap.img",
+              reason: "not_enough_memory",
+              what: "swap_file",
+            },
+          ],
           mode: "mixed",
         },
       },
       deps,
     );
     expect(toastMocks.warning).toHaveBeenCalledWith(
-      "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
+      "Not enough free memory to bring back the data in /swap.img, so it stays on. Apply again when more memory is free.",
       expect.anything(),
     );
 
@@ -535,6 +545,65 @@ describe("terminalTaskFeedback", () => {
       expect.anything(),
     );
   });
+
+  it.each([
+    [
+      TASK_TYPE_MEMORY_CREATE_SWAP_FILE,
+      "Swap file created",
+      "Failed to create the swap file",
+    ],
+    [
+      TASK_TYPE_MEMORY_RESIZE_SWAP_FILE,
+      "Resized /swap.img",
+      "Failed to resize /swap.img",
+    ],
+    [
+      TASK_TYPE_MEMORY_REMOVE_SWAP_FILE,
+      "Removed /swap.img",
+      "Failed to remove /swap.img",
+    ],
+    [
+      TASK_TYPE_MEMORY_MOVE_SWAP_FILE,
+      "Moved /swap.img into LinuxIO's folder",
+      "Failed to move /swap.img",
+    ],
+  ])(
+    "reports a %s job nobody follows, naming its file",
+    (type, succeeded, failedText) => {
+      onPage("/docker");
+      emitTerminalTaskFeedback(
+        task(`${type}-1`, type, { path: "/swap.img" }),
+        { kind: "completed", result: {} },
+        deps,
+      );
+      expect(toastMocks.success).toHaveBeenCalledWith(succeeded, {
+        action: {
+          label: "Open Memory overflow",
+          onClick: expect.any(Function),
+        },
+        duration: 10_000,
+      });
+
+      // A failure with no message of its own says which file.
+      emitTerminalTaskFeedback(
+        task(`${type}-2`, type, { path: "/swap.img" }),
+        { error: {}, kind: "failed" },
+        deps,
+      );
+      expect(toastMocks.error).toHaveBeenCalledWith(
+        failedText,
+        expect.anything(),
+      );
+
+      markTerminalFeedbackEmitted(`${type}-3`);
+      emitTerminalTaskFeedback(
+        task(`${type}-3`, type, { path: "/swap.img" }),
+        { kind: "completed", result: {} },
+        deps,
+      );
+      expect(toastMocks.success).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("reports a Docker storage change nobody follows, and stays silent for one a section follows", () => {
     onPage("/docker");

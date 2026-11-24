@@ -112,7 +112,7 @@ anyone the version, which is that of all nine programs.
 | `linuxio-auth` | root only | `--help`, `-h`, `--version` | The sign-in helper, started by systemd for each connection (`linuxio-auth@.service`) with no arguments |
 | `linuxio-worker` | root only | `--help`, `-h`, `--version`; the help lists its words | The words systemd timers and hooks run (list below) |
 | `linuxio-docker-update` | root only | `--help`, `-h`, `--version` | One Docker update pass, started by its timer with `[--config PATH]` |
-| `linuxio-indexer` | root only | `--help`, `-h`, `--version` | The file index daemon, started by `linuxio-indexer.service` with `[--config PATH] [--verbose]`, plus two private modes: `--trigger-index` for its timer and `--index-mode` for the scanner the daemon starts |
+| `linuxio-indexer` | root only | `--help`, `-h`, `--version` | The file index daemon, started by `linuxio-indexer.service` with `[--config PATH] [--verbose]`, and in a second role, `--index-mode`, the scanner that `linuxio-indexer-index.service` runs |
 | `linuxio-monitoring` | root only | `--help`, `-h`, `--version` | The monitoring daemon, started by `linuxio-monitoring.service` with `[--config PATH] [--verbose]` |
 
 "Open" is mode `0755` and "root only" is `0700`
@@ -133,16 +133,16 @@ Seven programs start with flags only. These are all of them, beside `--help`,
 | `linuxio-auth` | none | | Started with no arguments |
 | `linuxio-claude-relay` | none of its own | | Every argument is Claude Code's |
 | `linuxio-docker-update` | `--config PATH` | `/etc/linuxio/docker-update.json` | `linuxio-docker-update.service`, with the default path |
-| `linuxio-indexer` | `--config PATH` | `/etc/linuxio/indexer/config.yaml` | `linuxio-indexer.service`, with the default path; the daemon passes it on to its scanner |
+| `linuxio-indexer` | `--config PATH` | `/etc/linuxio/indexer/config.yaml` | `linuxio-indexer.service` and `linuxio-indexer-index.service`, with the default path |
 | `linuxio-indexer` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
-| `linuxio-indexer` | `--trigger-index` | | `linuxio-indexer-index.service`, for the timer: it asks the running daemon for a full index and exits |
-| `linuxio-indexer` | `--socket-path PATH` | `/run/linuxio/indexer.sock` | `linuxio-indexer-index.service`, with the default path; only with `--trigger-index` |
-| `linuxio-indexer` | `--index-mode` | | The daemon itself, for the scanner it starts as a child process |
+| `linuxio-indexer` | `--index-mode` | | `linuxio-indexer-index.service`, for the scanner: one full index, which takes its turn with the daemon over `/run/linuxio/indexer.sock` |
 | `linuxio-monitoring` | `--config PATH` | `/etc/linuxio/monitoring/config.yaml` | `linuxio-monitoring.service`, with the default path |
 | `linuxio-monitoring` | `--verbose` | off | The drop-in `linuxio verbose enable` writes |
 
-`--trigger-index` and `--index-mode` must come first on the command line,
-since each chooses what the program does. The flags of the worker's words
+`--index-mode` must come first on the command line, since it chooses what the
+program does. The scanner reaches the daemon at a fixed path and takes no flag
+for it: the daemon gets its listener from systemd and the bridge has the path
+as a constant, so a flag could only point the scanner at nothing. The flags of the worker's words
 are in the list below.
 
 The words of `linuxio-worker` are:
@@ -179,8 +179,10 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 │  └─ linuxio-auth@.service          one instance per connection; root; forks+supervises a bridge
 ├─ linuxio-indexer.socket            unix /run/linuxio/indexer.sock → activates linuxio-indexer.service
 │  └─ linuxio-indexer.service        runs the managed daemon; exits when idle
-├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
-│  └─ linuxio-indexer-index.service asks the daemon for a full index
+├─ linuxio-indexer-index.timer      periodic start of linuxio-indexer-index.service
+│  └─ linuxio-indexer-index.service the scanner (`linuxio-indexer --index-mode`): one full index, oneshot,
+│                                    nice 19 and idle I/O; takes its turn with the daemon over its socket;
+│                                    ends itself when it stops moving, and is stopped after 24 hours
 ├─ linuxio-btrfs-health.timer       every 10 min; enabled only on hosts with btrfs
 │  └─ linuxio-btrfs-health.service  runs `linuxio-worker health`; root
 ├─ linuxio-monitoring.service        runs `linuxio-monitoring`; root; owns
@@ -490,7 +492,7 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 | `make build-bridge` | `linuxio-bridge` | Go; `CGO_ENABLED=1`, so `os/user` finds SSSD and LDAP users |
 | `make build-auth` | `linuxio-auth` | C; hardened flags (RELRO, PIE, FORTIFY, stack-clash, LTO), links `libpam` + `libsystemd` |
 | `make build-docker-update` | `linuxio-docker-update` | Go; scheduled Docker updater |
-| `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled |
+| `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled, extension loading left out |
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
 | `make build-worker` | `linuxio-worker` | Go; the timer jobs and unit hooks systemd starts with a word |
 
@@ -586,6 +588,37 @@ does for `cockpit-session`.
   three permissions are all either program asks for.
   `package-files-fixtures.sh` holds the module's rules for other domains to
   these two lines.
+- **The swap file.** The memory page's swap file,
+  `/var/lib/linuxio/swap/swapfile`, and the file a resize turns on beside
+  it, `swapfile.linuxio-resize`, have the file context `swapfile_t`, in the
+  `optional` block `linuxio_swapfile`. `mkswap` gives a regular file that
+  type itself, so the file has it once it holds a swap header; the context
+  keeps `restorecon`, `fixfiles` or a full relabel from turning it into
+  `var_lib_t`, the type of its folder. Neither type matters for turning the
+  swap on: `fsadm_t`, the domain `swapon` runs in at boot, is in
+  `files_unconfined_type`, and on Fedora 45 the file was turned on from
+  `/etc/fstab` at boot, with no denial, labelled either way. What the type
+  decides is who may read the memory pages the file holds: measured as the
+  module was measured (attributes expanded, booleans as set, unconfined
+  domains left out), 23 confined domains may open and read a `var_lib_t`
+  file and not a `swapfile_t` one (`httpd_t`, `cupsd_t`, `dovecot_t`,
+  `init_t`, `user_t`, `staff_t` among them), and only `systemd_logind_t`
+  and `systemd_sleep_t`, for hibernation, the other way round. The block
+  holds the two file contexts and nothing else: it declares no type and
+  gives no domain, `linuxio_auth_t` included, a permission; the policy
+  `semodule` builds with it has the same rules as without it, and only
+  `file_contexts` gains the two lines. `linuxio_auth_t` already has every
+  permission on every file type, as `unconfined_service_t` has, and another
+  local user's domain gains nothing either, since `swapfile_t` is the
+  narrower type. The resize file is in it because it holds swapped-out
+  pages too, and a resize that fails can leave it behind
+  ([Memory](./memory.md)). The folder, `/var/lib/linuxio/swap`, keeps
+  `var_lib_t`. A btrfs subvolume is made without a label
+  (`unlabeled_t`, shown as `?` by `ls -Z`), so on btrfs LinuxIO gives the
+  subvolume it makes the context of `/var/lib/linuxio` (`labelLikeParent`);
+  where that cannot be set the folder stays `unlabeled_t`, which the boot
+  was the same with, and the file is labelled by `mkswap` either way.
+  `package-files-fixtures.sh` holds the block to these two lines.
 - **Finding a denial.** `agetty`'s refusal was logged
   (`avc: denied { read } ... comm="agetty" ... tcontext=...motd_var_run_t`)
   in `/var/log/audit/audit.log` and the journal. `ausearch` run over a
@@ -602,6 +635,7 @@ install and a reboot:
 | Job hosts, web server, monitoring, indexer | `system_u:system_r:unconfined_service_t:s0`, as without the module |
 | `/usr/libexec/linuxio/linuxio-auth` | `linuxio_auth_exec_t` |
 | `/run/linuxio/issue` | `motd_var_run_t` |
+| `/var/lib/linuxio/swap/swapfile` (and `swapfile.linuxio-resize` while a resize runs) | `swapfile_t` |
 
 Who gets in:
 
@@ -616,11 +650,12 @@ Who gets in:
 time needs `selinux-policy-devel` and what it pulls in (3 MiB to download,
 26 MiB installed). The CIL converted from such a module is 259 lines
 nobody reviews. Neither can carry the constraint: `checkmodule` refuses
-`constrain` in a module, and CIL takes it. The hand-written file is about 90
+`constrain` in a module, and CIL takes it. The hand-written file is about 100
 lines and needs no build step and nothing beyond `semodule` and
 `restorecon`, which a host with an SELinux policy has. Only the banner's file
-context and the console's two reads are in `optional` blocks, so a policy
-that lacks one of the other names it uses refuses the whole module.
+context, the console's two reads and the swap files' contexts are in
+`optional` blocks, so a policy that lacks one of the other names it uses
+refuses the whole module.
 
 **Why confined users are refused, not given a confined session.** A session
 in the user's own domain (`user_t`, `staff_t`) was tried. It needs lines added

@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { CACHE_TTL_MS, linuxio, type SearchResult } from "@/api";
+import {
+  CACHE_TTL_MS,
+  linuxio,
+  type FileSearchWalk,
+  type SearchResult,
+} from "@/api";
 
 interface UseFileSearchOptions {
   basePath?: string;
@@ -16,6 +21,8 @@ interface UseFileSearchResult {
   isLoading: boolean;
   isUnavailable: boolean;
   results: SearchResult[];
+  /** How the folder searched in was read on disk; none for a search from `/`. */
+  walk?: FileSearchWalk;
 }
 
 const MIN_SEARCH_QUERY_LENGTH = 3;
@@ -40,14 +47,17 @@ export const useFileSearch = ({
       limit: String(limit),
       basePath,
     }),
-    ...{
-      enabled: queryEnabled,
-      staleTime: CACHE_TTL_MS.THIRTY_SECONDS, // Search results stay fresh longer
-      gcTime: CACHE_TTL_MS.FIVE_MINUTES,
-      refetchOnWindowFocus: false,
-      refetchOnMount: false,
-      retry: 1,
-    },
+    enabled: queryEnabled,
+    // Search results stay fresh longer, except a partial answer: the folder
+    // could not be read whole (often only because other searches were
+    // reading), and the same query asked again reads it again. It is not
+    // asked for again while it is shown.
+    staleTime: (search) =>
+      search.state.data?.walk === "partial" ? 0 : CACHE_TTL_MS.THIRTY_SECONDS,
+    gcTime: CACHE_TTL_MS.FIVE_MINUTES,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
   });
 
   const derivedError = error instanceof Error ? error : null;
@@ -60,5 +70,6 @@ export const useFileSearch = ({
     isLoading: queryEnabled ? isLoading : false,
     error: derivedError,
     isUnavailable,
+    walk: data?.walk,
   };
 };

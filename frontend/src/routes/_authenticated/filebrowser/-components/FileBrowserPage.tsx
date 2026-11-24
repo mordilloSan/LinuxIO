@@ -8,6 +8,7 @@ import { useFileBrowserController } from "../-hooks/useFileBrowserController";
 import { useFileConflictResolution } from "../-hooks/useFileConflicts";
 import { useFileMutations } from "../-hooks/useFileMutations";
 import { useFileViewState } from "../-hooks/useFileViewState";
+import { useFolderWatch } from "../-hooks/useFolderWatch";
 import { type TrashJobs, useTrashJobs } from "../-hooks/useTrashJobs";
 import type { TrashDragItem } from "../-internalDrag";
 import {
@@ -36,6 +37,13 @@ const FolderView = ({
   const { contentProps, dialogsProps } = useFileBrowserController(
     listingQueryOptions,
     { onRestoreItems },
+  );
+  // The folder shown updates live; a file shown, the Trash, pickers and
+  // dialogs do not.
+  useFolderWatch(
+    contentProps.data.resource?.type === "directory"
+      ? contentProps.chrome.normalizedPath
+      : null,
   );
 
   return (

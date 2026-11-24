@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { type AssistantChatDefaults, useStreamMux } from "@/api";
 import { ASSISTANT_AGENTS, type AssistantAgentId } from "@/api/acp/agents";
@@ -18,6 +19,7 @@ import {
   readPersistedState,
   writePersistedState,
 } from "@/utils/persistedState";
+import { openTerminalTab, typeInTerminalTab } from "@/utils/terminalTab";
 
 import {
   assistantStore,
@@ -61,6 +63,28 @@ export default function AssistantPage({
   const state = useAssistantState();
   const navigate = useNavigate();
   const agentEntry = ASSISTANT_AGENTS.find((entry) => entry.id === agent);
+  // A terminal already open in another tab takes the command, so the chat
+  // stays in view; without one the terminal opens in a new tab when asked
+  // for, and in place of the chat otherwise.
+  const handingOver = useRef(false);
+  const openInTerminal = async (command: string, newTab: boolean) => {
+    // A second click while the first still looks for a tab would open two.
+    if (handingOver.current) return;
+    handingOver.current = true;
+    const went = await typeInTerminalTab(command);
+    handingOver.current = false;
+    if (went === "typed") {
+      // A page cannot bring a tab it did not open to the front: say where the
+      // command went when this one is still the tab in view.
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible")
+          toast.info("Sent to your terminal tab");
+      }, 300);
+    }
+    if (went !== null) return;
+    if (newTab && openTerminalTab(command)) return;
+    void navigate({ to: "/terminal", state: { terminalCommand: command } });
+  };
   const agentLabel = agentEntry?.label ?? agent;
   const dockRef = useRef<AssistantDockHandle>(null);
   const [pluginsOpen, setPluginsOpen] = useState(false);
@@ -355,12 +379,7 @@ export default function AssistantPage({
           {/* A shell command in an answer can be handed to the terminal,
               which types it and leaves running it to the user. */}
           <OpenInTerminalContext
-            value={(command) =>
-              void navigate({
-                to: "/terminal",
-                state: { terminalCommand: command },
-              })
-            }
+            value={(command, newTab) => void openInTerminal(command, newTab)}
           >
             <Transcript
               blocks={state.blocks}

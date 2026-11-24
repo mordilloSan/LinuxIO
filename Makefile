@@ -41,6 +41,7 @@ quiet_targets := \
 	test-frontend-browser \
 	test-backend \
 	test-go \
+	bench-go \
 	test-auth \
 	test-auth-protocol \
 	test-auth-pam \

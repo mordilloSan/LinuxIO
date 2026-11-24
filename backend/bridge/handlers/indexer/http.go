@@ -121,9 +121,34 @@ func Reindex(ctx context.Context, path string) error {
 	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteReindex, q, nil, nil)
 }
 
+// Move tells the daemon that the entry at from is now at to.
+func Move(ctx context.Context, from, to string) error {
+	body, err := json.Marshal(indexerapi.MoveRequest{From: indexerapi.NormalizePath(from), To: indexerapi.NormalizePath(to)})
+	if err != nil {
+		return fmt.Errorf("marshal indexer move: %w", err)
+	}
+	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteMove, nil, bytes.NewReader(body), nil)
+}
+
+// Refresh asks the daemon to compare one folder's own entries with the disk.
+// The daemon answers at once and does the work in its turn.
+func Refresh(ctx context.Context, path string) error {
+	q := url.Values{"path": {indexerapi.NormalizePath(path)}}
+	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteRefresh, q, nil, nil)
+}
+
 func DirSize(ctx context.Context, path string) (indexerapi.DirSizeResponse, error) {
 	var out indexerapi.DirSizeResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteDirSize, url.Values{"path": {indexerapi.NormalizePath(path)}}, nil, &out)
+	return out, err
+}
+
+// Outcome asks the daemon how an operation that is over ended. The daemon
+// answers 404, a ResponseError, for one it does not hold: it keeps them in
+// memory, so a daemon that started since the operation knows nothing of it.
+func Outcome(ctx context.Context, operationID string) (indexerapi.OperationOutcome, error) {
+	var out indexerapi.OperationOutcome
+	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteOperation, url.Values{"operation_id": {operationID}}, nil, &out)
 	return out, err
 }
 
@@ -133,18 +158,21 @@ func fetchDaemonStatus(ctx context.Context) (indexerapi.StatusResponse, error) {
 	return out, err
 }
 
-func Subfolders(ctx context.Context, path string) ([]indexerapi.SubfolderResult, error) {
-	var out []indexerapi.SubfolderResult
+func Subfolders(ctx context.Context, path string) (indexerapi.SubfoldersResponse, error) {
+	var out indexerapi.SubfoldersResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteSubfolders, url.Values{"path": {indexerapi.NormalizePath(path)}}, nil, &out)
 	return out, err
 }
 
-func Search(ctx context.Context, query, limit, basePath string) ([]indexerapi.EntryResult, error) {
+// Search asks the daemon for the entries below basePath whose name matches
+// query. Below a folder other than "/" the daemon also reads the folder on
+// disk, and the answer says how far it got (Walk).
+func Search(ctx context.Context, query, limit, basePath string) (indexerapi.SearchResponse, error) {
 	q := url.Values{"q": {query}, "limit": {limit}}
 	if basePath != "" && basePath != "/" {
 		q.Set("base", indexerapi.NormalizePath(basePath))
 	}
-	var out []indexerapi.EntryResult
+	var out indexerapi.SearchResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteSearch, q, nil, &out)
 	return out, err
 }

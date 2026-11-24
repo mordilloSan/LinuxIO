@@ -256,3 +256,25 @@ func TestHandleAssistantSessionPointsTheAgentAtTheInstalledCLI(t *testing.T) {
 	readData(t, client) // close
 	require.NoError(t, <-done)
 }
+
+func TestHandleAssistantSessionRunsTheAgentInItsOwnProfile(t *testing.T) {
+	rt, _ := testRuntime(t)
+	fakeAgent(t, "#!/bin/sh\nprintf '%s\\n' \"$FAKE_CONFIG_DIR\"\n", func(agent *acpagents.Agent) {
+		agent.ProfileEnv = "FAKE_CONFIG_DIR"
+	})
+	home, err := agentHome("")
+	require.NoError(t, err)
+
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- HandleAssistantSession(context.Background(), rt, server, apischema.AssistantOpenRequest{Agent: "fake"})
+	}()
+	readData(t, client) // ready
+	require.Equal(t, acpagents.ProfileDir(home, "fake"), strings.TrimSpace(string(readData(t, client).Payload)))
+	require.DirExists(t, acpagents.ProfileDir(home, "fake"))
+	readData(t, client) // exit
+	readData(t, client) // close
+	require.NoError(t, <-done)
+}

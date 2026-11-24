@@ -191,6 +191,28 @@ function announceUIConfigSaved(): void {
   }
 }
 
+const SERVER_SETTING_REFUSED =
+  "Setting not saved: the server cannot be reached. Try again in a moment.";
+const APPEARANCE_SAVED_LATER =
+  "The server cannot be reached. Appearance changes are saved when it is back.";
+
+// A failed load of the settings is tried again after 1 s, then 2 s, 4 s and
+// so on up to 30 s, for as long as the connection stays open.
+const LOAD_RETRY_BASE_MS = 1000;
+const LOAD_RETRY_MAX_MS = 30_000;
+
+/**
+ * The part of a patch the page may show now. While nothing can be sent, a
+ * bridge setting is refused with a notice instead of being shown: the next
+ * load would take it back without a word, and it changes what the host does.
+ * The appearance part stays, and is sent after that load.
+ */
+function sendablePart(patch: ConfigPatch, canSave: boolean): ConfigPatch {
+  if (canSave || !hasImportantPatch(patch)) return patch;
+  toast.warning(SERVER_SETTING_REFUSED);
+  return { appSettings: pickUISettings(patch.appSettings) };
+}
+
 interface SaveOperation {
   bridge?: ConfigPatch;
   ui?: ConfigUISetPayload;
@@ -204,6 +226,8 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const loadedOnceRef = useRef(false);
   const canSaveRef = useRef(false);
   const warnedUnsavedRef = useRef(false);
+  // The cache holds an appearance change made while nothing could be sent.
+  const unsentUIRef = useRef(false);
   const { isOpen: isMuxOpen } = useStreamMux();
   const { mutateAsync: setConfigRemote } = linuxio.config.set.useMutation({
     error: "Failed to save settings",
@@ -240,6 +264,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     return () => {
       queryClient.removeQueries({ exact: true, queryKey: bridgeKey });
       queryClient.removeQueries({ exact: true, queryKey: uiKey });
+      unsentUIRef.current = false;
     };
   }, [queryClient, bridgeKey, uiKey]);
 
@@ -336,6 +361,8 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: number | undefined;
+    let failedLoads = 0;
     canSaveRef.current = false;
 
     if (!isMuxOpen) {
@@ -346,11 +373,16 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
     const load = async () => {
       const cachedUI = queryClient.getQueryData<UIConfig>(uiKey);
+      // The first failure is reported and retried once as any query is. The
+      // attempts after it are quiet, and this loop does their waiting.
+      const retrying =
+        failedLoads > 0 ? { retry: false, meta: { silent: true } } : {};
       const results = await Promise.allSettled([
         queryClient.query({
           ...linuxio.config.get,
           queryKey: bridgeKey,
           staleTime: CACHE_TTL_MS.NONE,
+          ...retrying,
         }),
         cachedUI
           ? Promise.resolve(cachedUI)
@@ -358,6 +390,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
               ...linuxio.config.get_ui,
               queryKey: uiKey,
               staleTime: CACHE_TTL_MS.NONE,
+              ...retrying,
             }),
       ]);
       if (cancelled) return;
@@ -385,6 +418,14 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
         if (uiResult.status === "rejected") {
           console.error("Failed to load appearance settings:", uiResult.reason);
         }
+        // Until a load succeeds nothing is saved, so ask again; the cleanup
+        // below ends it when the connection closes or the user changes.
+        const delay = Math.min(
+          LOAD_RETRY_BASE_MS * 2 ** failedLoads,
+          LOAD_RETRY_MAX_MS,
+        );
+        failedLoads += 1;
+        retryTimer = window.setTimeout(() => void load(), delay);
         return;
       }
 
@@ -392,14 +433,23 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       setLoaded(true);
       canSaveRef.current = true;
       warnedUnsavedRef.current = false;
+
+      // A save the lost connection failed is owed as well: its read-back
+      // failed with it, and the page still shows that change.
+      if (unsentUIRef.current || refusedRef.current.ui) {
+        unsentUIRef.current = false;
+        const ui = queryClient.getQueryData<UIConfig>(uiKey);
+        if (ui) enqueueSave({ ui: buildUIPayload(ui) });
+      }
     };
 
     void load();
     return () => {
       cancelled = true;
+      window.clearTimeout(retryTimer);
       canSaveRef.current = false;
     };
-  }, [isMuxOpen, queryClient, bridgeKey, uiKey, sessionExpired]);
+  }, [isMuxOpen, queryClient, bridgeKey, uiKey, sessionExpired, enqueueSave]);
 
   // Another tab of this browser saved UI settings: reload them from the
   // bridge. The reload joins the save queue, so it runs after this tab's own
@@ -434,9 +484,12 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       if (!wantsBridge && !wantsUI) return;
 
       if (!canSaveRef.current) {
+        // sendablePart left only appearance settings in the patch; the cache
+        // keeps them across the reconnect and the next load sends them.
+        unsentUIRef.current = true;
         if (!warnedUnsavedRef.current) {
           warnedUnsavedRef.current = true;
-          toast.warning("Settings are not being saved (backend unreachable).");
+          toast.warning(APPEARANCE_SAVED_LATER);
         }
         return;
       }
@@ -490,7 +543,10 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       const nextValue = typeof value === "function" ? value(current) : value;
       if (Object.is(current, nextValue)) return;
 
-      const patch: ConfigPatch = { appSettings: { [key]: nextValue } };
+      const patch = sendablePart(
+        { appSettings: { [key]: nextValue } },
+        canSaveRef.current,
+      );
       const applied = applyPatch(patch);
       if (!applied) return;
       save(patch, applied.ui);
@@ -503,10 +559,12 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       const bridge = queryClient.getQueryData<AppConfig>(bridgeKey);
       const ui = queryClient.getQueryData<UIConfig>(uiKey);
       if (!bridge || !ui) return;
-      const resolvedPatch =
+      const resolvedPatch = sendablePart(
         typeof patch === "function"
           ? patch(composeEffectiveConfig(bridge, ui))
-          : patch;
+          : patch,
+        canSaveRef.current,
+      );
       const applied = applyPatch(resolvedPatch);
       if (!applied) return;
       save(resolvedPatch, applied.ui, onSaved);

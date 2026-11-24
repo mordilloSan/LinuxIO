@@ -111,7 +111,7 @@ func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, index
 		if _, err := db.ExecContext(ctx, `
 			UPDATE entries
 			SET size = size + ?
-			WHERE index_id = ? AND relative_path = ? AND type = 'directory';
+			WHERE index_id = ? AND relative_path = ? AND type = 1;
 		`, sizeDelta, indexID, currentPath); err != nil {
 			return err
 		}
@@ -277,7 +277,7 @@ func (fs *fakeFS) scan(root string) []indexing.IndexEntry {
 		entries = append(entries, indexing.IndexEntry{
 			RelativePath: path, Name: path[strings.LastIndex(path, "/")+1:], Size: size,
 			ModTime: time.Unix(1, 0), Type: "file",
-			Device: uint64(identity.device), Inode: uint64(identity.inode), SizeContribution: contribution,
+			Device: uint64(identity.device), Inode: uint64(identity.inode), Nlink: 2, SizeContribution: contribution,
 		})
 		for dir := parentDirKey(path); pathInSubtree(dir, root); dir = parentDirKey(dir) {
 			folderSizes[dir] += contribution
@@ -448,4 +448,29 @@ func TestReconcileHardlinksAfterReindexMatchesPerFile(t *testing.T) {
 		t.Fatalf("coverage too thin: %d folder sizes changed (want at least %d), %d stops at the reindexed folder, %d changes reaching /, %d trees with files in / (want at least 1 each)",
 			foldersMoved, seeds, stoppedAtRoot, reachedSlash, filesInSlash)
 	}
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+// cleanupDeletedEntriesUnderPath removes the rows below a path that the scan
+// stamped scanTime did not write. These tests write every row of a rescan, so
+// it stands in for the reconciler's removal of what was not seen.
+func cleanupDeletedEntriesUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string, scanTime int64) (int64, error) {
+	lo, childLo, hi := subtreeBounds(relativePath)
+	result, err := db.ExecContext(ctx, `
+		DELETE FROM entries
+		WHERE index_id = ?
+		  AND last_seen < ?
+		  AND relative_path >= ? AND relative_path < ?
+		  AND (relative_path = ? OR relative_path >= ?);
+	`, indexID, scanTime, lo, hi, lo, childLo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

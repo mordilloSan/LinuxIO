@@ -51,6 +51,18 @@ export const TASK_TYPE_STORAGE_PARTITION_FORMAT = taskType(
 );
 export const TASK_TYPE_MEMORY_SWAP_MODE = taskType("memory.set_swap_mode");
 export const TASK_TYPE_MEMORY_DRAIN = taskType("memory.drain_swap");
+export const TASK_TYPE_MEMORY_CREATE_SWAP_FILE = taskType(
+  "memory.create_swap_file",
+);
+export const TASK_TYPE_MEMORY_RESIZE_SWAP_FILE = taskType(
+  "memory.resize_swap_file",
+);
+export const TASK_TYPE_MEMORY_REMOVE_SWAP_FILE = taskType(
+  "memory.remove_swap_file",
+);
+export const TASK_TYPE_MEMORY_MOVE_SWAP_FILE = taskType(
+  "memory.move_swap_file",
+);
 export const TASK_TYPE_SYSTEM_INSTALL_CAPABILITY = taskType(
   "system.install_capability",
 );

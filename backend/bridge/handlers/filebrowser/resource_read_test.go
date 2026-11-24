@@ -38,7 +38,7 @@ func TestDirectoryListingResponseHasOnlyListingFields(t *testing.T) {
 func TestReadCallsPreserveCancellationIdentity(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, listErr := listDirectory(ctx, apischema.PathRequest{Path: "/"})
+	_, listErr := listOpenedDirectory(ctx, apischema.PathRequest{Path: "/"}, sessionOwner{})
 	_, childrenErr := directoryChildren(ctx, apischema.DirectoryChildrenRequest{Path: "/"})
 	_, textErr := readText(ctx, apischema.PathRequest{Path: "/missing"}, services.Owner{})
 	require.ErrorIs(t, listErr, context.Canceled)
@@ -125,9 +125,9 @@ func TestFilesystemFailuresMapToStatusSentinels(t *testing.T) {
 	file := filepath.Join(dir, "file.txt")
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
 
-	_, missingErr := listDirectory(context.Background(), apischema.PathRequest{Path: filepath.Join(dir, "missing")})
-	_, notDirErr := listDirectory(context.Background(), apischema.PathRequest{Path: file})
-	_, noPathErr := listDirectory(context.Background(), apischema.PathRequest{})
+	_, missingErr := listOpenedDirectory(context.Background(), apischema.PathRequest{Path: filepath.Join(dir, "missing")}, sessionOwner{})
+	_, notDirErr := listOpenedDirectory(context.Background(), apischema.PathRequest{Path: file}, sessionOwner{})
+	_, noPathErr := listOpenedDirectory(context.Background(), apischema.PathRequest{}, sessionOwner{})
 	require.Equal(t, 404, bridgeipc.StatusCode(missingErr), "%v", missingErr)
 	require.Equal(t, 400, bridgeipc.StatusCode(notDirErr), "%v", notDirErr)
 	require.Equal(t, 400, bridgeipc.StatusCode(noPathErr), "%v", noPathErr)

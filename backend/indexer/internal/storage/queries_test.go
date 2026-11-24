@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -50,7 +51,6 @@ func TestSearchEntriesWithType(t *testing.T) {
 		Size:         100,
 		ModTime:      time.Now(),
 		Type:         "directory",
-		Hidden:       false,
 		Inode:        1,
 	}
 	file := indexing.IndexEntry{
@@ -59,7 +59,6 @@ func TestSearchEntriesWithType(t *testing.T) {
 		Size:         50,
 		ModTime:      time.Now(),
 		Type:         "file",
-		Hidden:       false,
 		Inode:        2,
 	}
 
@@ -241,6 +240,43 @@ func TestDirDetailsIsCaseSensitive(t *testing.T) {
 	}
 }
 
+// Counting the rows below "/" reads the whole index. The index row already
+// holds the totals, kept by every write.
+func TestDirDetailsOfTheRootReadsTheTotalsOfTheIndex(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	seedDirectories(t, ctx, db, indexID, []directorySeed{
+		{path: "/", size: 30},
+		{path: "/a", size: 30},
+		{path: "/a/data", size: 20},
+	})
+	// Unlike the rows, to show where the answer comes from.
+	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 41, num_files = 7 WHERE id = ?`, indexID); err != nil {
+		t.Fatalf("seed totals: %v", err)
+	}
+	store := NewStoreWithDB(db, dbPath, nil)
+
+	size, files, dirs, err := store.DirDetails(ctx, "/")
+	if err != nil {
+		t.Fatalf("DirDetails: %v", err)
+	}
+	if size != 30 || files != 7 || dirs != 41 {
+		t.Fatalf("/ = %d bytes, %d files, %d dirs; want 30, 7 and 41 from the index row", size, files, dirs)
+	}
+
+	// Any other folder is counted from its rows.
+	if _, files, dirs, err = store.DirDetails(ctx, "/a"); err != nil || files != 0 || dirs != 2 {
+		t.Fatalf("/a = %d files, %d dirs (%v), want 0 and 2", files, dirs, err)
+	}
+}
+
+func TestDirDetailsOfTheRootBeforeTheFirstIndexIsNotInitialized(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	if _, _, _, err := NewStoreWithDB(db, dbPath, nil).DirDetails(ctx, "/"); !errors.Is(err, ErrNotInitialized) {
+		t.Fatalf("DirDetails of / with no index = %v, want ErrNotInitialized", err)
+	}
+}
+
 func TestSearchEntriesUnderBlankTermsReturnNothing(t *testing.T) {
 	ctx, db, dbPath := setupTestDB(t)
 	indexID := insertTestIndex(t, db)
@@ -308,7 +344,6 @@ func seedDirectories(t *testing.T, ctx context.Context, db *sql.DB, indexID int6
 			Size:         dir.size,
 			ModTime:      time.Now(),
 			Type:         "directory",
-			Hidden:       false,
 			Inode:        0,
 		}
 		if dir.path == "/" {
@@ -348,5 +383,48 @@ func assertResultNames(t *testing.T, results []api.EntryResult, expected map[str
 		if !expected[result.Name] {
 			t.Fatalf("unexpected name %s in results %+v", result.Name, results)
 		}
+	}
+}
+
+func TestFolderSizesAreTheIndexsForTheFoldersItHolds(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	seedDirectories(t, ctx, db, indexID, []directorySeed{{path: "/", size: 0}, {path: "/data", size: 300}, {path: "/data/sub", size: 100}})
+	if _, err := UpdateEntry(ctx, db, indexID, indexing.IndexEntry{RelativePath: "/data/file", Name: "file", Size: 7, ModTime: time.Now(), Type: "file"}); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	store := NewStoreWithDB(db, dbPath, nil)
+
+	sizes, err := store.FolderSizes(ctx, []string{"/data", "/data/sub", "/data/file", "/data/unknown"})
+	if err != nil {
+		t.Fatalf("FolderSizes: %v", err)
+	}
+	if len(sizes) != 2 || sizes["/data"] != 300 || sizes["/data/sub"] != 100 {
+		t.Fatalf("sizes = %v, want /data 300 and /data/sub 100 only", sizes)
+	}
+	if sizes, err := store.FolderSizes(ctx, nil); err != nil || len(sizes) != 0 {
+		t.Fatalf("FolderSizes of nothing = %v, %v", sizes, err)
+	}
+}
+
+// The folder searched in is not one of its own results; from / every row is.
+func TestASearchUnderAFolderLeavesTheFolderOut(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	seedDirectories(t, ctx, db, indexID, []directorySeed{{path: "/", size: 0}, {path: "/Documents", size: 10}, {path: "/Documents/old-docs", size: 5}})
+	store := NewStoreWithDB(db, dbPath, nil)
+
+	for _, query := range []string{"doc", "do|xyz"} {
+		results, err := store.SearchEntriesUnder(ctx, query, "/Documents", 100)
+		if err != nil {
+			t.Fatalf("search %q: %v", query, err)
+		}
+		if len(results) != 1 || results[0].Path != "/Documents/old-docs" {
+			t.Fatalf("search %q under /Documents = %+v, want /Documents/old-docs only", query, results)
+		}
+	}
+	results, err := store.SearchEntriesUnder(ctx, "doc", "/", 100)
+	if err != nil || len(results) != 2 {
+		t.Fatalf("search from / = %+v, %v, want both folders", results, err)
 	}
 }

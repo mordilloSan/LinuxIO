@@ -9,6 +9,11 @@ import {
   textBlock,
 } from "./connection";
 
+// What every session request to Claude Code carries (SESSION_META).
+const claudeMeta = {
+  claudeCode: { options: { settingSources: ["user"] } },
+};
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -269,6 +274,51 @@ describe("connectAssistant", () => {
     expect(agent.sent.find((m) => m.method === "session/new")?.params).toEqual({
       cwd: "/home/alice",
       mcpServers: [],
+      _meta: claudeMeta,
+    });
+  });
+
+  it("has Claude Code load the settings of its profile only, on every session request", async () => {
+    const agent = fakeAgent({
+      initialize: () => ({
+        protocolVersion: 1,
+        agentCapabilities: { sessionCapabilities: { fork: {}, resume: {} } },
+      }),
+      "session/new": () => ({ sessionId: "s1" }),
+      "session/load": () => ({}),
+      "session/fork": () => ({ sessionId: "s2" }),
+      "session/resume": () => ({}),
+    });
+    const conn = await connectAssistant("claude", handlers(), agent.open);
+    await conn.newSession();
+    await conn.loadSession("s1");
+    await conn.forkSession("s1");
+    // A chat works in the home folder, whose `.claude` is the profile of the
+    // user's own Claude Code: read as project settings, its model and hooks
+    // would be the chat's.
+    for (const method of [
+      "session/new",
+      "session/load",
+      "session/fork",
+      "session/resume",
+    ]) {
+      const params = agent.sent.find((m) => m.method === method)?.params as {
+        _meta?: unknown;
+      };
+      expect(params._meta, method).toEqual(claudeMeta);
+    }
+  });
+
+  it("sends the other agents no setting sources", async () => {
+    const agent = fakeAgent({
+      initialize: () => ({ protocolVersion: 1 }),
+      "session/new": () => ({ sessionId: "s1" }),
+    });
+    const conn = await connectAssistant("gemini", handlers(), agent.open);
+    await conn.newSession();
+    expect(agent.sent.find((m) => m.method === "session/new")?.params).toEqual({
+      cwd: "/home/alice",
+      mcpServers: [],
     });
   });
 
@@ -357,7 +407,12 @@ describe("connectAssistant", () => {
     const params = (method: string) =>
       agent.sent.filter((m) => m.method === method).map((m) => m.params);
     expect(params("session/fork")).toEqual([
-      { sessionId: "s1", cwd: "/home/alice", mcpServers: [] },
+      {
+        sessionId: "s1",
+        cwd: "/home/alice",
+        mcpServers: [],
+        _meta: claudeMeta,
+      },
     ]);
     expect(params("session/close")).toEqual([{ sessionId: "s2" }]);
   });
@@ -390,7 +445,12 @@ describe("connectAssistant", () => {
     expect(methods).toEqual(["session/fork", "session/resume"]);
     expect(
       agent.sent.find((m) => m.method === "session/resume")?.params,
-    ).toEqual({ sessionId: "s2", cwd: "/home/alice", mcpServers: [] });
+    ).toEqual({
+      sessionId: "s2",
+      cwd: "/home/alice",
+      mcpServers: [],
+      _meta: claudeMeta,
+    });
   });
 
   it("only forks when the agent cannot resume", async () => {

@@ -47,23 +47,6 @@ func WALCheckpointTruncate(ctx context.Context, db *sql.DB) (WALCheckpointStats,
 	return stats, nil
 }
 
-// incrementalVacuum reclaims the whole freelist and truncates the file.
-// The pragma must be drained: Exec only steps once and frees one page.
-func incrementalVacuum(ctx context.Context, db *sql.DB) error {
-	rows, err := db.QueryContext(ctx, `PRAGMA incremental_vacuum;`)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			slog.Warn("incremental_vacuum rows close failed", "error", closeErr)
-		}
-	}()
-	for rows.Next() {
-	}
-	return rows.Err()
-}
-
 // ReleaseSQLiteMemory forces SQLite to release cached memory.
 // Call this after heavy write operations to return memory to the OS.
 func ReleaseSQLiteMemory(ctx context.Context, db *sql.DB) error {

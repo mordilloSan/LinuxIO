@@ -97,6 +97,9 @@ func TestAddAndRemoveInterfaceLifecycle(t *testing.T) {
 	if !slices.Equal(env.wgQuick, wantWGQuick) {
 		t.Fatalf("wg-quick calls = %v, want %v", env.wgQuick, wantWGQuick)
 	}
+	if !slices.Equal(env.disabled, []string{"wg-quick@wgtest.service"}) {
+		t.Fatalf("disabled units = %v, want the interface's unit", env.disabled)
+	}
 }
 
 func TestGeneratePeersAllocatesSequentialHostOffsets(t *testing.T) {

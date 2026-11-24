@@ -14,13 +14,14 @@ import (
 )
 
 // hostSystem is every side effect the memory writes have, so tests drive
-// them with a fake: systemd unit jobs and unit files, swapoff, files under
-// /etc, kernel parameters under /proc/sys and /sys, and a fresh status
-// read. Unit starts and stops queue a job and return; callers verify the
-// result in /proc/swaps.
+// them with a fake: systemd unit jobs and unit files, swapon and swapoff,
+// swap files and their /etc/fstab lines, files under /etc, kernel
+// parameters under /proc/sys and /sys, and a fresh status read. Unit starts
+// and stops queue a job and return; callers verify the result in
+// /proc/swaps.
 type hostSystem interface {
-	// status reads the status fresh, with the fstab swap entries it was
-	// derived from, matched to its active devices.
+	// status reads the status fresh, with the fstab swap files it was
+	// derived from.
 	status(ctx context.Context) (apischema.SwapStatus, []fstabSwap, error)
 	startUnit(ctx context.Context, name string) error
 	stopUnit(ctx context.Context, name string) error
@@ -35,11 +36,19 @@ type hostSystem interface {
 	// /proc/swaps, away with swapoff and returns when it has left. It ends
 	// early only when ctx does, and the device then swaps on.
 	swapOff(ctx context.Context, device string) error
+	// swapOn turns the swap file at path on; see liveSystem.swapOn.
+	swapOn(ctx context.Context, path, options string) error
+	// makeSwapFile, resizeSwapFile and deleteSwapFile make, resize and
+	// delete one swap file; see liveSystem's.
+	makeSwapFile(ctx context.Context, path string, size uint64) (fileID, error)
+	resizeSwapFile(ctx context.Context, path string, id fileID, size uint64) error
+	deleteSwapFile(ctx context.Context, path string, id fileID) error
+	// addFstabSwap and removeFstabSwap add and remove the /etc/fstab swap
+	// lines of one path; a reload makes systemd follow.
+	addFstabSwap(ctx context.Context, path string) error
+	removeFstabSwap(ctx context.Context, path string) error
 	enableUnit(ctx context.Context, name string) error
 	disableUnit(ctx context.Context, name string) error
-	// unmaskUnit removes a mask, as an admin or a LinuxIO that held swap
-	// files off with masks leaves it, and reloads the manager.
-	unmaskUnit(ctx context.Context, name string) error
 	unitFileState(ctx context.Context, name string) (string, error)
 	// reload makes systemd run its generators again and returns when it has.
 	reload(ctx context.Context) error
@@ -96,12 +105,6 @@ func (liveSystem) enableUnit(ctx context.Context, name string) error {
 
 func (liveSystem) disableUnit(ctx context.Context, name string) error {
 	return systemd.DisableUnit(ctx, name)
-}
-
-// unmaskUnit also reloads the manager, which brings back the unit
-// systemd-fstab-generator makes for a swap entry.
-func (liveSystem) unmaskUnit(ctx context.Context, name string) error {
-	return systemd.UnmaskUnit(ctx, name)
 }
 
 func (liveSystem) unitFileState(ctx context.Context, name string) (string, error) {

@@ -11,8 +11,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/storage"
 )
 
-// The full scan, run by the private index-mode worker process. The daemon
-// supervises it (supervisor.go); the worker reports back over wire.go.
+// The full scan, which the scanner runs once the daemon has given it its
+// turn (scanlink.go; the daemon's side is scan.go).
 
 // IndexRunStats summarizes a completed index run and its API progress events.
 type IndexRunStats struct {
@@ -25,12 +25,18 @@ type IndexRunStats struct {
 }
 
 // IndexProgress receives user-facing updates during RunIndexMode; nil
-// disables reporting (the daemon-spawned subprocess only logs). Step marks
-// the start of a phase. ScanProgress fires from a sampling goroutine while
+// disables reporting. Step marks the start of a phase. ScanProgress fires from a sampling goroutine while
 // traversal runs, never concurrently with Step.
 type IndexProgress interface {
 	Step(message string)
 	ScanProgress(dirs, files, size uint64)
+}
+
+// walkWatcher is an IndexProgress that also takes the number of entries the
+// walk has looked at, indexed or not: the scanner's watch for a scan that
+// hangs (stall.go). It is not part of what the daemon is told.
+type walkWatcher interface {
+	Looked(entries uint64)
 }
 
 // startScanProgress samples the traversal counters twice a second and
@@ -39,6 +45,13 @@ type IndexProgress interface {
 func startScanProgress(progress IndexProgress, index *indexing.Index) (stop func()) {
 	if progress == nil {
 		return func() {}
+	}
+	walk, _ := progress.(walkWatcher)
+	sample := func() {
+		progress.ScanProgress(index.Counts())
+		if walk != nil {
+			walk.Looked(index.Looked())
+		}
 	}
 	done := make(chan struct{})
 	finished := make(chan struct{})
@@ -51,18 +64,19 @@ func startScanProgress(progress IndexProgress, index *indexing.Index) (stop func
 			case <-done:
 				return
 			case <-ticker.C:
-				progress.ScanProgress(index.Counts())
+				sample()
 			}
 		}
 	}()
 	return func() {
 		close(done)
 		<-finished
-		progress.ScanProgress(index.Counts())
+		sample()
 	}
 }
 
-// RunIndexMode performs one full atomic-generation scan.
+// RunIndexMode performs one full scan: it brings the index up to date with the
+// whole filesystem, writing only what changed since the last scan.
 func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, progress IndexProgress) (IndexRunStats, error) {
 	start := time.Now()
 	cfg, err := configfile.Normalize(cfg)
@@ -93,15 +107,6 @@ func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, pro
 	}
 
 	if progress != nil {
-		progress.Step("Pruning old index generation")
-	}
-	stats, err := store.PruneOldIndexes(ctx, retainedGenerations)
-	if err != nil {
-		return IndexRunStats{}, fmt.Errorf("prune old indexes: %w", err)
-	}
-	runStats.DeletedEntries = stats.DeletedEntries
-
-	if progress != nil {
 		progress.Step("Checkpointing database")
 	}
 	store.CheckpointAndRelease(ctx, "index")
@@ -111,19 +116,28 @@ func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, pro
 	return runStats, nil
 }
 
-// runIndex scans the filesystem into a new generation and publishes it.
+// runIndex scans the filesystem and reconciles the index with it. The first
+// scan fills a generation readers do not see until it commits; later scans
+// update that generation in place.
 func runIndex(ctx context.Context, store *storage.Store, cfg configfile.Config, progress IndexProgress) (IndexRunStats, error) {
-	index := indexing.Initialize("/", indexing.WithNetworkMounts(cfg.IncludeNetworkMounts), indexing.WithExcludePaths(configfile.EffectiveExcludePaths(cfg)))
-
 	start := time.Now()
 
-	generationID, err := store.BeginGeneration(ctx)
+	generationID, err := store.EnsureGeneration(ctx)
 	if err != nil {
 		return IndexRunStats{}, fmt.Errorf("prepare index record: %w", err)
 	}
+	reindex, err := store.BeginReindex(ctx, generationID, "/")
+	if err != nil {
+		return IndexRunStats{}, fmt.Errorf("begin index: %w", err)
+	}
+	defer reindex.Rollback()
 
-	// The channel buffer is bounded; storage batches the SQL writes separately.
-	writer := store.NewStreamingWriter(ctx, generationID, writerBufferEntries, nil)
+	index := indexing.Initialize("/",
+		indexing.WithNetworkMounts(cfg.IncludeNetworkMounts),
+		indexing.WithExcludePaths(configfile.EffectiveExcludePaths(cfg)),
+		indexing.WithHardlinkContributors(reindex.HardlinkContributors()),
+	)
+	writer := reindex.NewReconciler(ctx, nil)
 	index.EnableStreaming(writer)
 
 	// Start filesystem traversal
@@ -135,18 +149,16 @@ func runIndex(ctx context.Context, store *storage.Store, cfg configfile.Config, 
 	indexErr := index.StartIndexing(ctx)
 	stopScanProgress()
 	if indexErr != nil {
-		if closeErr := writer.Close(); closeErr != nil {
-			slog.Warn("failed to close streaming writer after index error", "error", closeErr)
-		}
 		return IndexRunStats{}, fmt.Errorf("indexing failed: %w", indexErr)
 	}
-
-	// Flush remaining batches.
 	if closeErr := writer.Close(); closeErr != nil {
-		return IndexRunStats{}, fmt.Errorf("streaming writer close: %w", closeErr)
+		return IndexRunStats{}, fmt.Errorf("write index: %w", closeErr)
 	}
-
-	if err := store.PublishGeneration(ctx, generationID, int64(index.NumDirs), int64(index.NumFiles), int64(index.GetTotalSize())); err != nil {
+	if progress != nil {
+		progress.Step("Updating folder sizes")
+	}
+	totalSize, err := reindex.Commit(ctx, writer.ScanTime())
+	if err != nil {
 		return IndexRunStats{}, fmt.Errorf("update index metadata: %w", err)
 	}
 
@@ -154,15 +166,18 @@ func runIndex(ctx context.Context, store *storage.Store, cfg configfile.Config, 
 		"duration", time.Since(start).Truncate(time.Millisecond),
 		"dirs", index.NumDirs,
 		"files", index.NumFiles,
-		"size", index.GetTotalSize(),
+		"size", totalSize,
+		"rows_changed", writer.Changed(),
+		"rows_deleted", writer.Deleted(),
 		"skipped_dirs", index.SkippedDirCount(),
 	)
 
 	return IndexRunStats{
-		Files:       int64(index.NumFiles),
-		Dirs:        int64(index.NumDirs),
-		TotalSize:   int64(index.GetTotalSize()),
-		SkippedDirs: index.SkippedDirCount(),
-		Duration:    time.Since(start),
+		Files:          int64(index.NumFiles),
+		Dirs:           int64(index.NumDirs),
+		TotalSize:      totalSize,
+		DeletedEntries: writer.Deleted(),
+		SkippedDirs:    index.SkippedDirCount(),
+		Duration:       time.Since(start),
 	}, nil
 }

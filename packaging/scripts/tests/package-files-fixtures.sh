@@ -2,7 +2,8 @@
 # shellcheck disable=SC2016 # sed and grep patterns hold a literal $
 # Fixture-only checks of the files both packages ship from packaging/: how the
 # units relate to linuxio.target and to each other, the run-record drop-in,
-# the needrestart override, the two PAM files and the SELinux policy. Nothing
+# the libvirt restart of the post-install steps, the needrestart override,
+# the two PAM files and the SELinux policy. Nothing
 # is installed and nothing on the host is read but the checkout.
 set -euo pipefail
 
@@ -67,8 +68,17 @@ if grep -Eq 'linuxio-webserver.socket|linuxio-indexer-tcp.socket' "$INDEXER_SERV
 fi
 grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --config /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" ||
 	fail "indexer service must start the managed daemon directly"
-grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock' \
-	"${UNITS}/linuxio-indexer-index.service" || fail "index timer must use the private socket trigger"
+INDEXER_SCAN="${UNITS}/linuxio-indexer-index.service"
+grep -Fqx 'ExecStart=/usr/libexec/linuxio/linuxio-indexer --index-mode --config /etc/linuxio/indexer/config.yaml' \
+	"$INDEXER_SCAN" || fail "index timer must run the scanner itself"
+grep -Fqx 'Type=oneshot' "$INDEXER_SCAN" || fail "the scan unit must be a oneshot, so that its result is the scan's"
+grep -Fqx 'Nice=19' "$INDEXER_SCAN" || fail "the scanner must run at the lowest CPU priority"
+grep -Fqx 'IOSchedulingClass=idle' "$INDEXER_SCAN" || fail "the scanner must run in the idle I/O class"
+grep -Fqx 'ReadWritePaths=/var/lib/linuxio/indexer' "$INDEXER_SCAN" || fail "the scanner must write only the index"
+grep -Fqx 'RestrictAddressFamilies=AF_UNIX' "$INDEXER_SCAN" || fail "the scanner must be Unix-only"
+grep -Fqx 'CapabilityBoundingSet=CAP_DAC_READ_SEARCH' "$INDEXER_SCAN" || fail "the scanner must keep only the capability to read the host's files"
+grep -Fqx 'Requisite=linuxio-indexer.socket' "$INDEXER_SCAN" || fail "the scanner must not run without the daemon's socket"
+grep -Fqx 'TimeoutStartSec=24h' "$INDEXER_SCAN" || fail "the scan unit must not stay active for ever: a oneshot has no start timeout of its own"
 if grep -rEq 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' "$UNITS" "${REPO_ROOT}/backend/auth"; then
 	fail "indexer socket access must not modify the auth launcher"
 fi
@@ -78,8 +88,15 @@ if grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$TARGET"; then
 	fail "linuxio.target must not bypass the timer's enabled state"
 fi
 grep -Fqx 'WantedBy=linuxio.target' "$INDEXER_TIMER" || fail "index timer install relationship"
-grep -Fqx 'OnActiveSec=1h' "$INDEXER_TIMER" || fail "index timer initial delay must match its default interval"
-grep -Fqx 'OnUnitActiveSec=1h' "$INDEXER_TIMER" || fail "index timer default recurring interval"
+grep -Fqx 'OnActiveSec=15min' "$INDEXER_TIMER" || fail "index timer must make its first run soon after it starts"
+grep -Fqx 'OnUnitActiveSec=24h' "$INDEXER_TIMER" || fail "index timer default recurring interval"
+# The index folder is no-CoW on btrfs. tmpfiles creates it first: at install the
+# service's StateDirectory has not made it yet, and "h" skips a missing path.
+index_folder_line=$(grep -Fnx 'd /var/lib/linuxio/indexer 0750 root root -' "${UNITS}/linuxio-tmpfiles.conf" | cut -d: -f1)
+index_nocow_line=$(grep -Fnx 'h /var/lib/linuxio/indexer - - - - +C' "${UNITS}/linuxio-tmpfiles.conf" | cut -d: -f1)
+[[ -n "$index_folder_line" ]] || fail "tmpfiles must create the index folder"
+[[ -n "$index_nocow_line" ]] || fail "tmpfiles must mark the index folder no-CoW"
+((index_folder_line < index_nocow_line)) || fail "tmpfiles must create the index folder before marking it"
 if grep -Fqx 'Persistent=true' "$INDEXER_TIMER"; then
 	fail "Persistent has no effect on a monotonic timer"
 fi
@@ -171,6 +188,23 @@ done
 grep -Fqx '[Service]' "${UNITS}/linuxio-run-record.conf" || fail "the run-record drop-in has no [Service] section"
 pass "scheduled units record their runs"
 
+# libvirt's daemon is restarted for the hook on a first install only. At an
+# upgrade a daemon with work to finish takes up to 30 seconds to stop and
+# answers nobody meanwhile, the sign-in that follows the upgrade among them.
+libvirt_restart_on_first_install_only() {
+	awk -v first_start="$2" -v first_end="$3" '
+		index($0, first_start) { first = 1 }
+		$0 ~ first_end { first = 0 }
+		/try-restart libvirtd\.service virtqemud\.service/ { restarts++; if (!first) outside = 1 }
+		END { exit !(restarts == 1 && !outside) }
+	' "$1"
+}
+libvirt_restart_on_first_install_only "${PACKAGING}/debian/postinst" 'deb-systemd-invoke start $started_units' '^[[:space:]]*else$' ||
+	fail "the DEB's postinst must restart libvirt once, beside the start of a first install"
+libvirt_restart_on_first_install_only "${PACKAGING}/rpm/linuxio.spec" 'systemctl start %{started_units}' '^fi$' ||
+	fail "the RPM's %post must restart libvirt once, beside the start of a first install"
+pass "libvirt is restarted on a first install only"
+
 # Loaded the way needrestart.conf loads a conf.d file, the override adds to the
 # distribution's override_rc and leaves its entries; deciding as needrestart
 # does (the first matching expression, in sorted order), it exempts exactly the
@@ -234,9 +268,10 @@ fi
 pass "the RHEL PAM file is the Debian one line for line"
 
 # The SELinux policy: its file contexts name only files LinuxIO puts there (the
-# auth binary, the banner update-issue writes); the banner's sits in an
-# optional block, so a policy without its type still loads the rest; and its
-# parentheses balance outside comments and strings.
+# auth binary, the banner update-issue writes, the memory page's swap files);
+# the banner's and the swap files' sit in optional blocks, so a policy without
+# their types still loads the rest; and its parentheses balance outside
+# comments and strings.
 SELINUX_CIL="${PACKAGING}/selinux/linuxio.cil"
 UPDATE_ISSUE="${PACKAGING}/scripts/update-issue"
 auth_binary=/usr/libexec/linuxio/linuxio-auth
@@ -245,12 +280,30 @@ issue_file=$(sed -n 's/^OUTPUT_FILE="\${OUTPUT_FILE:-\(.*\)}"$/\1/p' "$UPDATE_IS
 [[ -n "$issue_file" ]] || fail "update-issue has no default OUTPUT_FILE"
 filecon_paths=$(sed -n 's/^[[:blank:]]*(filecon "\([^"]*\)".*/\1/p' "$SELINUX_CIL")
 printf '%s\n' "$filecon_paths" | grep -Fqx "$auth_binary" || fail "linuxio.cil gives no file context to ${auth_binary}"
+# The memory page's swap file and the file a resize turns on beside it, as
+# file-context regular expressions (docs/process-systemd-architecture.md,
+# "SELinux").
+swap_file_contexts=$(printf '%s\n' '/var/lib/linuxio/swap/swapfile' '/var/lib/linuxio/swap/swapfile\.linuxio-resize')
 while IFS= read -r path; do
 	case "$path" in
 	"$auth_binary" | "$issue_file") ;;
-	*) fail "linuxio.cil gives a file context to ${path}, which LinuxIO does not install" ;;
+	*) printf '%s\n' "$swap_file_contexts" | grep -Fqx -- "$path" ||
+		fail "linuxio.cil gives a file context to ${path}, which LinuxIO does not install" ;;
 	esac
 done <<<"$filecon_paths"
+# The swap files' contexts sit alone in the optional block linuxio_swapfile,
+# with swapfile_t, the type mkswap gives them, and nothing else is in it.
+swap_block=$(sed -e 's/;.*//' "$SELINUX_CIL" | awk '
+	/^\(optional linuxio_swapfile$/ { inside = 1; next }
+	inside && /^\)$/ { exit }
+	inside && NF { line = $0; sub(/^[[:blank:]]+/, "", line); print line }')
+expected_swap_block=$(while IFS= read -r path; do
+	printf '(filecon "%s" file (system_u object_r swapfile_t ((s0) (s0))))\n' "$path"
+done <<<"$swap_file_contexts")
+if ! swap_diff=$(diff <(printf '%s\n' "$expected_swap_block") <(printf '%s\n' "$swap_block")); then
+	fail "linuxio.cil's optional block linuxio_swapfile changed (expected <, linuxio.cil >):
+${swap_diff}"
+fi
 # A file made at run time has its folder's type until something relabels it.
 if printf '%s\n' "$filecon_paths" | grep -Fqx "$issue_file"; then
 	grep -Fq 'restorecon "${OUTPUT_FILE}"' "$UPDATE_ISSUE" ||

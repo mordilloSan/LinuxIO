@@ -3,8 +3,8 @@ package daemon
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -16,8 +16,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/indexing"
 )
 
-// Index lifecycle. One operation (full index, reindex, or a single-entry
-// add/delete) runs at a time; admission is the running flag.
+// Index lifecycle. One operation (full index, reindex, or the update of one
+// entry) runs at a time; the others wait in the work queue (queue.go).
 
 var operationSequence atomic.Uint64
 
@@ -25,86 +25,8 @@ func newOperationID() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), operationSequence.Add(1))
 }
 
-func (d *daemon) tryLockIndex() bool {
-	return d.running.CompareAndSwap(false, true)
-}
-
-func (d *daemon) unlockIndex() {
-	d.markActivity()
-	d.running.Store(false)
-}
-
-func (d *daemon) handleIndex(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "use POST", http.StatusMethodNotAllowed)
-		return
-	}
-	if !d.tryLockIndex() {
-		http.Error(w, "indexer already running", http.StatusConflict)
-		return
-	}
-
-	operationID := newOperationID()
-	stream := d.beginWorkStream("index", operationID, "/")
-	d.goBackground(func() {
-		defer d.unlockIndex()
-		defer d.endWorkStream(stream)
-
-		start := time.Now()
-		sendSSEEvent(stream, api.EventStarted, api.WorkStartedEvent{
-			Status:      api.StatusRunning,
-			Operation:   "index",
-			OperationID: operationID,
-			Path:        "/",
-		})
-
-		stats, err := d.runIndexSubprocess(ctx, func(evt indexWireEvent) {
-			switch evt.Type {
-			case "step":
-				// CurrentPath mirrors reindex's "Deleting old entries..."
-				// convention so path-displaying clients show phases too.
-				sendSSEEvent(stream, api.EventProgress, api.WorkProgressEvent{
-					Operation:   "index",
-					OperationID: operationID,
-					Path:        "/",
-					Message:     evt.Message,
-					CurrentPath: evt.Message + "...",
-				})
-			case "scan":
-				sendSSEEvent(stream, api.EventProgress, api.WorkProgressEvent{
-					Operation:    "index",
-					OperationID:  operationID,
-					Path:         "/",
-					Phase:        "scan",
-					FilesIndexed: int64(evt.Files),
-					DirsIndexed:  int64(evt.Dirs),
-					BytesIndexed: int64(evt.Size),
-				})
-			}
-		})
-		if err != nil {
-			slog.Error("manual index failed", "error", err)
-			sendSSEError(stream, fmt.Sprintf("index failed: %v", err))
-			return
-		}
-
-		complete := api.WorkCompleteEvent{
-			Status:      api.StatusComplete,
-			Operation:   "index",
-			OperationID: operationID,
-			Path:        "/",
-			DurationMs:  time.Since(start).Milliseconds(),
-		}
-		if stats != nil {
-			complete.FilesIndexed = stats.Files
-			complete.DirsIndexed = stats.Dirs
-			complete.TotalSize = stats.TotalSize
-			complete.DeletedEntries = stats.DeletedEntries
-		}
-		sendSSEEvent(stream, api.EventComplete, complete)
-	})
-	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusRunning, Path: "/", OperationID: operationID})
-}
+// errNoIndex means an update arrived before the first full index completed.
+var errNoIndex = errors.New("no index present")
 
 func (d *daemon) handleReindex(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -127,26 +49,30 @@ func (d *daemon) handleReindex(ctx context.Context, w http.ResponseWriter, r *ht
 	// Normalize the path
 	normalizedPath := api.NormalizePath(path)
 
-	if !d.tryLockIndex() {
-		http.Error(w, "indexer already running", http.StatusConflict)
+	queued := d.enqueueReindex(ctx, normalizedPath)
+	if refused(queued) {
+		http.Error(w, errShuttingDown.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusRunning, Path: normalizedPath, OperationID: queued.stream.OperationID()})
+}
 
+// enqueueReindex queues the reindex of one folder, or returns the one that
+// already waits for it.
+func (d *daemon) enqueueReindex(ctx context.Context, path string) *job {
 	operationID := newOperationID()
-	stream := d.beginWorkStream("reindex", operationID, normalizedPath)
-	d.goBackground(func() {
-		defer d.unlockIndex()
-		defer d.endWorkStream(stream)
+	stream := newWorkStreamBroadcaster("reindex", operationID, path)
+	queued, _ := d.enqueue(&job{key: "tree:" + path, paths: []string{path}, covers: path, ctx: ctx, stream: stream, run: func(ctx context.Context) error {
 		sendSSEEvent(stream, api.EventStarted, api.WorkStartedEvent{
 			Status:      api.StatusRunning,
 			Operation:   "reindex",
 			OperationID: operationID,
-			Path:        normalizedPath,
+			Path:        path,
 		})
-		d.reindexPath(ctx, operationID, normalizedPath, stream)
-	})
-
-	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusRunning, Path: normalizedPath, OperationID: operationID})
+		d.reindexPath(ctx, operationID, path, stream)
+		return nil
+	}})
+	return queued
 }
 
 func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
@@ -168,45 +94,20 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
 	relPath := api.NormalizePath(payload.Path)
 	if relPath == "/" {
 		http.Error(w, "path must not be root; use /reindex", http.StatusBadRequest)
 		return
 	}
-	cfg := d.settings.config()
-	if indexing.IsPathExcludedFromIndex("/", configfile.EffectiveExcludePaths(cfg), cfg.IncludeNetworkMounts, relPath) {
+	if d.excludedFromIndex(relPath) {
 		writeJSON(w, api.OperationResponse{Status: api.StatusOK})
 		return
 	}
-	if !d.tryLockIndex() {
-		http.Error(w, "indexer already running", http.StatusConflict)
-		return
-	}
-	defer d.unlockIndex()
-
-	indexID, err := d.store.LatestIndexID(ctx)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("no index present: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	info, err := os.Lstat(relPath)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("stat path: %v", err), http.StatusNotFound)
-		return
-	}
-	if info.IsDir() {
+	if info, err := indexing.Lstat(relPath); err == nil && info.IsDir() {
 		http.Error(w, "path must not be a directory; use /reindex", http.StatusBadRequest)
 		return
 	}
-	entry := indexing.EntryFromFileInfo(relPath, info)
-
-	if err := d.store.UpsertEntry(ctx, indexID, entry); err != nil {
-		http.Error(w, fmt.Sprintf("upsert failed: %v", err), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, api.OperationResponse{Status: api.StatusOK})
+	d.updateEntry(w, r, relPath)
 }
 
 func (d *daemon) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -226,27 +127,93 @@ func (d *daemon) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	if !d.tryLockIndex() {
-		http.Error(w, "indexer already running", http.StatusConflict)
-		return
-	}
-	defer d.unlockIndex()
-
-	indexID, err := d.store.LatestIndexID(ctx)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("no index present: %v", err), http.StatusBadRequest)
-		return
-	}
-
 	relPath := api.NormalizePath(path)
 	if relPath == "/" {
 		http.Error(w, "path must not be root; use /reindex to reconcile the index", http.StatusBadRequest)
 		return
 	}
-	if err := d.store.DeletePath(ctx, indexID, relPath); err != nil {
-		http.Error(w, fmt.Sprintf("delete failed: %v", err), http.StatusInternalServerError)
+	d.updateEntry(w, r, relPath)
+}
+
+// updateEntry queues the update of one path. On a free daemon it answers when
+// the update has been applied. Behind other work it answers queued at once:
+// its caller is a file operation in the UI, which must not wait for a scan,
+// and the update is applied when its turn comes.
+func (d *daemon) updateEntry(w http.ResponseWriter, r *http.Request, relPath string) {
+	update := &job{key: "entry:" + relPath, paths: []string{relPath}}
+	update.run = func(ctx context.Context) error {
+		applied, err := d.reconcileEntry(ctx, relPath)
+		update.deferred = !applied
+		return err
+	}
+	queued, joined := d.enqueue(update)
+	if joined || queued.behind {
+		writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusQueued})
 		return
 	}
-	writeJSON(w, api.OperationResponse{Status: api.StatusOK})
+	select {
+	case <-queued.done:
+	case <-r.Context().Done():
+		// The daemon is stopping, or the caller went away and reads no
+		// answer; the update runs in its turn either way.
+		if d.workContext().Err() != nil {
+			http.Error(w, errShuttingDown.Error(), http.StatusServiceUnavailable)
+		}
+		return
+	}
+	switch err := queued.err; {
+	case err == nil && queued.deferred:
+		writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusQueued})
+	case err == nil:
+		writeJSON(w, api.OperationResponse{Status: api.StatusOK})
+	case errors.Is(err, errNoIndex):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, errShuttingDown), errors.Is(err, context.Canceled):
+		http.Error(w, errShuttingDown.Error(), http.StatusServiceUnavailable)
+	default:
+		http.Error(w, fmt.Sprintf("update failed: %v", err), http.StatusInternalServerError)
+	}
+}
+
+// reconcileEntry makes the index agree with the disk for one path, whichever
+// way the request named the change: an add and a delete that are waiting can
+// both be overtaken by what happened to the path since. A path that is gone,
+// or that the index leaves out, loses its rows; a file is added or replaced.
+// A folder gets a reindex of its own, which a request for the same folder
+// that follows joins; applied is then false, the index not being up to date
+// for it yet.
+func (d *daemon) reconcileEntry(ctx context.Context, relPath string) (applied bool, err error) {
+	indexID, err := d.store.LatestIndexID(ctx)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", errNoIndex, err)
+	}
+	// Before the disk is touched: a path left out may be on a mount that no
+	// longer answers, and this runs ahead of all other work.
+	excluded := d.excludedFromIndex(relPath)
+	var info os.FileInfo
+	if !excluded {
+		// Never through a symlink: see indexing.Lstat.
+		info, err = indexing.Lstat(relPath)
+	}
+	switch {
+	case excluded, indexing.NotThere(err):
+		if deleteErr := d.store.DeletePath(ctx, indexID, relPath); deleteErr != nil {
+			return false, fmt.Errorf("delete entries: %w", deleteErr)
+		}
+		return true, nil
+	case err != nil:
+		return false, fmt.Errorf("stat path: %w", err)
+	case info.IsDir():
+		d.enqueueReindex(d.workContext(), relPath)
+		return false, nil
+	}
+	if err := d.store.UpsertEntry(ctx, indexID, indexing.EntryFromFileInfo(relPath, info)); err != nil {
+		return false, fmt.Errorf("upsert entry: %w", err)
+	}
+	return true, nil
+}
+
+func (d *daemon) excludedFromIndex(relPath string) bool {
+	cfg := d.settings.config()
+	return indexing.IsPathExcludedFromIndex("/", configfile.EffectiveExcludePaths(cfg), cfg.IncludeNetworkMounts, relPath)
 }

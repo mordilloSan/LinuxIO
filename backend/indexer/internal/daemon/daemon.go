@@ -16,20 +16,28 @@ import (
 )
 
 // daemon is the long-running server. Its roles live in sibling files: server.go
-// (HTTP wiring), idle.go (idle shutdown), operations.go and reindex.go (index
-// lifecycle), supervisor.go (worker subprocess), settings.go and sse.go.
+// (HTTP wiring), idle.go (idle shutdown), queue.go (the order of the work),
+// operations.go and reindex.go (updates of the index), scan.go (the scanner's
+// turn), outcome.go (how operations ended), settings.go and sse.go.
 type daemon struct {
 	settings       settings
 	store          *storage.Store
 	servers        []*http.Server
-	running        atomic.Bool
+	queue          workQueue
+	refreshes      refreshLog
+	outcomes       outcomeLog
+	workCtx        context.Context
 	workStreamMu   sync.RWMutex
 	workStream     *workStreamBroadcaster
 	activeRequests atomic.Int64
-	activityMu     sync.RWMutex
-	lastActivity   time.Time
-	bgCancel       context.CancelFunc
-	bgWG           sync.WaitGroup
+	// liveSearches holds a token for each search that reads the disk
+	// (search.go); made on first use.
+	liveSearches     chan struct{}
+	liveSearchesOnce sync.Once
+	activityMu       sync.RWMutex
+	lastActivity     time.Time
+	bgCancel         context.CancelFunc
+	bgWG             sync.WaitGroup
 }
 
 // New opens the cache, recovering from corruption, and returns a daemon that
@@ -97,6 +105,7 @@ func (d *daemon) Close() {
 	}
 
 	d.shutdownHTTPServers()
+	d.closeQueue()
 
 	// Wait for cancelled maintenance work to unwind before closing the DB it
 	// writes to; closing under a running reindex turns cancellation into

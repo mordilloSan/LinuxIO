@@ -58,7 +58,7 @@ func TestSearchResultFromIndexerPreservesCanonicalFields(t *testing.T) {
 		Size: 42, Inode: 99, ModTime: modified,
 	}
 	got := searchResultFromIndexer(upstream)
-	if got.ModTime != "2026-07-30T12:00:00Z" || got.Path != "/data/report.txt" || got.Name != "report.txt" || got.IsDir || got.Size != 42 || got.CanOpenAsText == nil || !*got.CanOpenAsText {
+	if got.ModTime != "2026-07-30T12:00:00Z" || got.Path != "/data/report.txt" || got.Name != "report.txt" || got.IsDir || got.Size == nil || *got.Size != 42 || got.CanOpenAsText == nil || !*got.CanOpenAsText {
 		t.Fatalf("search result = %#v, want canonical field preservation", got)
 	}
 
@@ -83,7 +83,7 @@ func TestSearchResultFromIndexerRecognizesDirectory(t *testing.T) {
 }
 
 func TestSearchResponseFromIndexerReturnsNonNilEmptyResults(t *testing.T) {
-	got := searchResponseFromIndexer(nil)
+	got := searchResponseFromIndexer(indexerapi.SearchResponse{})
 	if got.Results == nil {
 		t.Fatalf("response = %#v, want non-nil empty results", got)
 	}
@@ -128,4 +128,61 @@ func TestDirSizeFetchesSizeAndCountsTogether(t *testing.T) {
 	require.Equal(t, int64(4096), got.data.Size)
 	require.Equal(t, int64(12), got.data.FileCount)
 	require.Equal(t, int64(3), got.data.FolderCount)
+}
+
+func TestSearchFilesPassesOnHowTheFolderWasReadAndUnknownSizes(t *testing.T) {
+	detachedIndexerUpdates.Wait()
+	folder := t.TempDir()
+	originalClient := indexer.Client
+	indexer.Client = &http.Client{Transport: indexerRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/search" || req.URL.Query().Get("base") != folder {
+			t.Errorf("request = %s, want /search below %s", req.URL, folder)
+		}
+		body := `{"results":[` +
+			`{"path":"` + folder + `/report.txt","name":"report.txt","type":"file","size":42},` +
+			`{"path":"` + folder + `/reports","name":"reports","type":"folder","size":4096},` +
+			`{"path":"` + folder + `/report-new","name":"report-new","type":"folder","size_unknown":true}` +
+			`],"walk":"complete"}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     http.StatusText(http.StatusOK),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+	t.Cleanup(func() { indexer.Client = originalClient })
+
+	got, err := searchFiles(context.Background(), apischema.FileSearchRequest{Query: "report", BasePath: &folder})
+
+	require.NoError(t, err)
+	require.Equal(t, apischema.FileSearchWalkComplete, got.Walk)
+	require.Len(t, got.Results, 3)
+	require.Equal(t, int64(42), *got.Results[0].Size)
+	require.Equal(t, int64(4096), *got.Results[1].Size)
+	require.Nil(t, got.Results[2].Size, "a folder the index holds no size for has none")
+	encoded, err := json.Marshal(got.Results[2])
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), `"size"`)
+}
+
+func TestSearchFilesFromTheRootSaysNothingOfAWalk(t *testing.T) {
+	detachedIndexerUpdates.Wait()
+	originalClient := indexer.Client
+	indexer.Client = &http.Client{Transport: indexerRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     http.StatusText(http.StatusOK),
+			Body:       io.NopCloser(strings.NewReader(`{"results":[]}`)),
+			Request:    req,
+		}, nil
+	})}
+	t.Cleanup(func() { indexer.Client = originalClient })
+
+	got, err := searchFiles(context.Background(), apischema.FileSearchRequest{Query: "report"})
+
+	require.NoError(t, err)
+	require.Empty(t, got.Walk)
+	encoded, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"results":[]}`, string(encoded))
 }

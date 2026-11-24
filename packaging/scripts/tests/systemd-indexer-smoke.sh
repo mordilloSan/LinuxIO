@@ -2,7 +2,8 @@
 # Opt-in smoke test for a disposable systemd host: installs the LinuxIO
 # package LINUXIO_SMOKE_PACKAGE (a DEB or an RPM, made by make package-deb or
 # package-rpm) with apt or dnf, checks the indexer's socket activation, idle
-# exit and index timer under systemd, and removes the package again.
+# exit, index timer and scan unit under systemd, and removes the package
+# again. The scan reads the whole host.
 set -euo pipefail
 
 if [[ "${LINUXIO_SYSTEMD_SMOKE:-}" != 1 ]]; then
@@ -97,6 +98,20 @@ if ! "${install_cmd[@]}" >"${SMOKE_DIR}/install.log" 2>&1; then
 	fail "the package install failed; full log is ${SMOKE_DIR}/install.log"
 fi
 
+# tmpfiles made the index folder at install, before the service ever ran, and
+# marked it no-CoW where the filesystem has that mark. The database is created
+# later and takes the mark from the folder.
+INDEX_DIR=/var/lib/linuxio/indexer
+[[ "$(stat -c '%a %U:%G' "$INDEX_DIR" 2>/dev/null)" == "750 root:root" ]] ||
+	fail "the install did not create ${INDEX_DIR} as 0750 root:root"
+if [[ "$(stat -f -c %T "$INDEX_DIR")" == btrfs ]]; then
+	lsattr -d "$INDEX_DIR" | cut -d' ' -f1 | grep -q C || fail "${INDEX_DIR} is not no-CoW on btrfs"
+fi
+# The packaged schedule: a first run soon after the timer starts, then daily.
+timers=$(systemctl show --value --property=TimersMonotonic linuxio-indexer-index.timer)
+[[ "$timers" == *"OnActiveUSec=15min"* && "$timers" == *"OnUnitActiveUSec=1d"* ]] ||
+	fail "index timer schedule is not 15min then daily: ${timers}"
+
 mkdir -p "$(dirname "$INDEX_DROPIN")" "$(dirname "$TIMER_DROPIN")"
 # Exercise timer wiring without launching a full-root scan.
 printf '%s\n' '[Service]' 'ExecStart=' \
@@ -123,10 +138,11 @@ for _ in {1..150}; do
 done
 systemctl is-active --quiet linuxio-indexer.service && fail "idle indexer did not shut down"
 
-# The timer came up with the socket (linuxio.target wants it) on its hourly
-# schedule. Only now, with the indexer stopped, is it made to fire 1s after a
-# restart: firing earlier would start the indexer before the checks above, and
-# the unit's 1min accuracy would let systemd put the firing off past the wait.
+# The timer came up with the socket (linuxio.target wants it), with its first
+# run 15 minutes away. Only now, with the indexer stopped, is it made to fire
+# 1s after a restart: firing earlier would start the indexer before the checks
+# above, and the unit's 1min accuracy would let systemd put the firing off past
+# the wait.
 printf '%s\n' '[Timer]' 'OnActiveSec=' 'OnActiveSec=1s' 'AccuracySec=1s' >"$TIMER_DROPIN"
 systemctl daemon-reload
 systemctl restart linuxio-indexer-index.timer
@@ -148,6 +164,27 @@ systemctl stop linuxio-indexer-index.timer
 systemctl stop linuxio-indexer.service
 curl_unix /status >/dev/null
 systemctl is-active --quiet linuxio-indexer.service || fail "indexer did not reactivate from its Unix socket"
+
+# The scan unit as packaged: the scanner takes its turn with the daemon, scans
+# the host and reports its result, and the unit's result is the scan's. With
+# the daemon stopped first, the scanner's request is what starts it.
+rm -f "$INDEX_DROPIN"
+systemctl daemon-reload
+[[ "$(systemctl show --value --property=Nice linuxio-indexer-index.service)" == 19 ]] ||
+	fail "the scan unit does not run at the lowest CPU priority"
+systemctl stop linuxio-indexer.service
+if ! systemctl start linuxio-indexer-index.service; then
+	journalctl --no-pager -n 40 -u linuxio-indexer-index.service -u linuxio-indexer.service >&2 || true
+	fail "the scan unit failed"
+fi
+[[ "$(systemctl show --value --property=Result linuxio-indexer-index.service)" == success ]] ||
+	fail "the scan unit did not end with success"
+status=$(curl_unix /status)
+jq -e '.status == "idle" and .num_files > 0 and .num_dirs > 0' >/dev/null <<<"$status" ||
+	fail "the scan left no index: ${status}"
+[[ -s "$DB_PATH" ]] || fail "the scan left no database at ${DB_PATH}"
+# A second scan finds the index of the first and ends the same way.
+systemctl start linuxio-indexer-index.service || fail "a second scan failed"
 
 # Removal stops and removes the units and keeps the indexer's data, as it
 # keeps all of /var/lib/linuxio.

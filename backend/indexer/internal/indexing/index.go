@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
@@ -22,13 +22,6 @@ var (
 	// traversal rather than skipping the current directory.
 	ErrStreamWrite = errors.New("stream writer failed")
 )
-
-// DirMetadata stores minimal per-directory metadata; the map key is the path to avoid duplicating it.
-type DirMetadata struct {
-	Size    int64
-	ModTime time.Time
-	Inode   uint64
-}
 
 // StreamingWriter is an interface for writing entries as they are discovered.
 type StreamingWriter interface {
@@ -43,21 +36,31 @@ type devIno struct {
 	ino uint64
 }
 
+// FileID is devIno for callers outside the package.
+type FileID struct {
+	Dev uint64
+	Ino uint64
+}
+
 type Index struct {
 	Path                 string // filesystem path being indexed
 	NumDirs              uint64
 	NumFiles             uint64
 	includeNetworkMounts bool                // whether to traverse NFS/SMB/CIFS-style mounts
 	excludePaths         []string            // absolute filesystem paths excluded from traversal
-	externalMounts       map[string]string   // external mount point -> fs type, snapshotted at Initialize
+	externalMounts       map[string]string   // network mount point -> fs type, snapshotted at Initialize
+	overlayMounts        map[string]string   // overlay mount point -> fs type, snapshotted at Initialize
 	processedInodes      map[devIno]struct{} // tracks processed (device, inode) pairs for hardlinks
+	contributors         map[FileID]string   // the path that carries each known hard link group's size
 	totalSize            uint64              // total size
 	skippedDirs          uint64              // directories unreadable due to permission/I-O errors
 	mu                   sync.RWMutex        // protects concurrent access
+	// looked counts the entries the walk has looked at, whatever came of
+	// them. It is how a walk that moves is told from one that hangs.
+	looked atomic.Uint64
 
 	// Streaming mode fields
-	streamWriter StreamingWriter        // where to send entries in streaming mode
-	dirMetadata  map[string]DirMetadata // lightweight dir metadata in streaming mode
+	streamWriter StreamingWriter // where to send entries in streaming mode
 }
 
 type Option func(*Index)
@@ -73,6 +76,16 @@ func WithNetworkMounts(include bool) Option {
 func WithExcludePaths(paths []string) Option {
 	return func(idx *Index) {
 		idx.excludePaths = append([]string(nil), paths...)
+	}
+}
+
+// WithHardlinkContributors names the path that carries the size of each hard
+// link group the index already knows. A file in one of those groups counts
+// only at that path; groups it does not name count at the first link the
+// scan meets.
+func WithHardlinkContributors(paths map[FileID]string) Option {
+	return func(idx *Index) {
+		idx.contributors = paths
 	}
 }
 
@@ -94,8 +107,14 @@ func newIndex(path string, opts ...Option) *Index {
 	}
 	// Snapshot per check or index run (not per process) so mount changes are
 	// visible to later direct mutations and partial reindexes.
-	if !idx.includeNetworkMounts {
-		idx.externalMounts = loadExternalMountPointsFn()
+	idx.externalMounts = make(map[string]string)
+	idx.overlayMounts = make(map[string]string)
+	for mountPoint, fsType := range loadMountPointsFn() {
+		if fsType == overlayFSType {
+			idx.overlayMounts[mountPoint] = fsType
+		} else if !idx.includeNetworkMounts {
+			idx.externalMounts[mountPoint] = fsType
+		}
 	}
 	return idx
 }
@@ -107,7 +126,6 @@ func (idx *Index) EnableStreaming(writer StreamingWriter) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 	idx.streamWriter = writer
-	idx.dirMetadata = make(map[string]DirMetadata)
 }
 
 // StartIndexing begins indexing the configured path.
@@ -165,12 +183,6 @@ func (idx *Index) StartIndexingFromPath(ctx context.Context, relativePath string
 	return nil
 }
 
-func (idx *Index) GetTotalSize() uint64 {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-	return idx.totalSize
-}
-
 func (idx *Index) incrementDirCount() {
 	idx.mu.Lock()
 	idx.NumDirs++
@@ -195,6 +207,14 @@ func (idx *Index) Counts() (dirs, files, size uint64) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	return idx.NumDirs, idx.NumFiles, idx.totalSize
+}
+
+// Looked reports how many entries the walk has looked at so far: those it
+// indexed, and those it left out, found gone or could not read. NumDirs and
+// NumFiles stand still while a walk works through a folder of entries that
+// fail one after another; this does not.
+func (idx *Index) Looked() uint64 {
+	return idx.looked.Load()
 }
 
 // SkippedDirCount reports how many directories were skipped because of

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -36,15 +37,18 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 
 	shellPath := usercmd.LoginShell()
 	argv := []string{shellPath, "-i", "-l"}
-	var agentEnv []string
 	if req.Agent != "" {
 		launch, err := resolveLoginAgent(ctx, sess.User, req.Agent)
 		if err != nil {
 			streamrelay.WriteClose(stream)
 			return err
 		}
-		argv = usercmd.LoginShellArgv(launch.Path, launch.Args, req.Args)
-		agentEnv = launch.Env
+		// The agent's variables are set by env, after the shell's start-up
+		// files have run: one that exports CLAUDE_CONFIG_DIR for the user's
+		// own Claude Code would otherwise send the sign-in to a profile the
+		// chat, which starts without a shell, does not read.
+		agentArgv := append(slices.Clone(launch.Env), launch.Path)
+		argv = usercmd.LoginShellArgv("/usr/bin/env", append(agentArgv, launch.Args...), req.Args)
 	}
 	cmd, err := usercmd.Command(ctx, sess.User, argv[0], argv[1:]...)
 	if err != nil {
@@ -61,7 +65,6 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 		// CLI login flows print the URL and prompt for a code instead of
 		// trying to open a browser on the server.
 		cmd.Env = append(cmd.Env, "NO_BROWSER=1")
-		cmd.Env = append(cmd.Env, agentEnv...)
 	}
 	// usercmd already starts a new session and drops privileges when the
 	// bridge runs as root; the PTY must also become the controlling terminal.
@@ -138,6 +141,12 @@ func resolveLoginAgent(ctx context.Context, user session.User, id string) (acpag
 	if err != nil {
 		return acpagents.Command{}, fmt.Errorf("terminal: %w: %w", bridgeipc.ErrConflict, err)
 	}
+	// The sign-in has to land in the profile the chat reads.
+	profile, err := acpagents.Profile(ctx, user, id, home)
+	if err != nil {
+		return acpagents.Command{}, fmt.Errorf("terminal: %w", err)
+	}
+	launch.Env = append(launch.Env, profile...)
 	return launch, nil
 }
 

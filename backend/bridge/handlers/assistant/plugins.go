@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -61,6 +62,10 @@ type pluginRunner struct {
 	user session.User
 	path string
 	bin  string
+	// profile points the CLI at the plugins of the Assistant's own profile,
+	// the ones a chat loads, and dir is that profile's folder.
+	profile []string
+	dir     string
 }
 
 func newPluginRunner(ctx context.Context, user session.User, agent string) (pluginRunner, error) {
@@ -78,7 +83,15 @@ func newPluginRunner(ctx context.Context, user session.User, agent string) (plug
 	if err != nil {
 		return pluginRunner{}, fmt.Errorf("%w: %w", bridgeipc.ErrConflict, err)
 	}
-	return pluginRunner{user: user, path: path, bin: bin}, nil
+	home, err := agentHome(user.Username)
+	if err != nil {
+		return pluginRunner{}, err
+	}
+	profile, err := acpagents.Profile(ctx, user, agent, home)
+	if err != nil {
+		return pluginRunner{}, err
+	}
+	return pluginRunner{user: user, path: path, bin: bin, profile: profile, dir: acpagents.ProfileDir(home, agent)}, nil
 }
 
 // cappedBuffer refuses output past max instead of growing without bound.
@@ -152,9 +165,12 @@ func lastOutcome(stdout []byte) *pluginOutcome {
 	return nil
 }
 
-// run executes `claude plugin <args>` as the user, in their home and on their
-// login-shell PATH, and returns its stdout. Standard input is /dev/null, so
-// the CLI never prompts.
+// run executes `claude plugin <args>` as the user, on their login-shell PATH,
+// and returns its stdout. Standard input is /dev/null, so the CLI never
+// prompts. It runs in the profile's folder and not in the home: the CLI reads
+// `.claude/` of the folder it runs in as project settings, and in the home
+// that is the profile of the user's own Claude Code, whose plugin switches
+// would then be listed and changed in place of the Assistant's.
 func (r pluginRunner) run(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -163,7 +179,9 @@ func (r pluginRunner) run(ctx context.Context, timeout time.Duration, args ...st
 	if err != nil {
 		return nil, err
 	}
+	cmd.Dir = r.dir
 	cmd.Env = append(cmd.Env, "PATH="+r.path)
+	cmd.Env = append(cmd.Env, r.profile...)
 	stdout := &cappedBuffer{max: pluginOutputMax}
 	stderr := &tailBuffer{}
 	cmd.Stdout = stdout

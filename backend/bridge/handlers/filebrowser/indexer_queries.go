@@ -25,25 +25,25 @@ func fetchDirSizeFromIndexer(ctx context.Context, path string) (indexerapi.DirSi
 	return payload, nil
 }
 
-// fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
-func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.SubfolderData, error) {
-	folders, err := indexer.Subfolders(ctx, path)
+// fetchSubfoldersFromIndexer queries the indexer daemon for direct child
+// folders with sizes, and whether an update that can change them still waits.
+func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.SubfolderData, bool, error) {
+	// Read before the indexer is asked: see indexerUpdatesInFlight.
+	pending := indexerUpdatesInFlight()
+	resp, err := indexer.Subfolders(ctx, path)
 	if err != nil {
-		return nil, indexerError("subfolders", err)
+		return nil, false, indexerError("subfolders", err)
 	}
-	return subfoldersFromIndexer(folders), nil
+	return subfoldersFromIndexer(resp.Subfolders), pending || resp.Pending, nil
 }
 
 // searchInIndexer queries the indexer for files matching the search term
-func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]indexerapi.EntryResult, error) {
-	results, err := indexer.Search(ctx, query, limit, basePath)
+func searchInIndexer(ctx context.Context, query, limit, basePath string) (indexerapi.SearchResponse, error) {
+	resp, err := indexer.Search(ctx, query, limit, basePath)
 	if err != nil {
-		return nil, indexerError("search", err)
+		return indexerapi.SearchResponse{}, indexerError("search", err)
 	}
-	if results == nil {
-		return []indexerapi.EntryResult{}, nil
-	}
-	return results, nil
+	return resp, nil
 }
 
 // dirSize returns the indexer's cached recursive size of a directory.
@@ -67,6 +67,8 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 		return apischema.DirectorySizeData{}, fmt.Errorf("%w: path is not a directory", bridgeipc.ErrInvalidArgs)
 	}
 
+	// Read before the indexer is asked: see indexerUpdatesInFlight.
+	pending := indexerUpdatesInFlight()
 	details, err := fetchDirSizeFromIndexer(ctx, path)
 	if err != nil {
 		return apischema.DirectorySizeData{}, fmt.Errorf("error fetching directory details: %w", err)
@@ -76,6 +78,7 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 		Size:        details.Size,
 		FileCount:   details.Files,
 		FolderCount: details.Dirs,
+		Pending:     pending || details.Pending,
 	}, nil
 }
 
@@ -99,7 +102,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 	}
 
 	// Fetch subfolders from indexer (it will handle path validation)
-	folders, err := fetchSubfoldersFromIndexer(ctx, path)
+	folders, pending, err := fetchSubfoldersFromIndexer(ctx, path)
 	if err != nil {
 		return apischema.SubfoldersResponse{}, fmt.Errorf("error fetching subfolders: %w", err)
 	}
@@ -107,7 +110,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 		folders[i].Path = pathAsRequested(requested, path, folders[i].Path)
 	}
 
-	return apischema.SubfoldersResponse{Subfolders: folders}, nil
+	return apischema.SubfoldersResponse{Subfolders: folders, Pending: pending}, nil
 }
 
 // pathAsRequested names p, a path below resolved, below requested instead,
@@ -154,15 +157,15 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischem
 	if err != nil {
 		return apischema.SearchResponse{}, err
 	}
-	results, err := searchInIndexer(ctx, req.Query, limit, resolved)
+	found, err := searchInIndexer(ctx, req.Query, limit, resolved)
 	if err != nil {
 		return apischema.SearchResponse{}, fmt.Errorf("error searching files: %w", err)
 	}
-	for i := range results {
-		results[i].Path = pathAsRequested(basePath, resolved, results[i].Path)
+	for i := range found.Results {
+		found.Results[i].Path = pathAsRequested(basePath, resolved, found.Results[i].Path)
 	}
 
-	return searchResponseFromIndexer(results), nil
+	return searchResponseFromIndexer(found), nil
 }
 
 // indexedPath is the path the indexer knows the folder at path by: its real
@@ -185,9 +188,12 @@ func indexedPath(ctx context.Context, path string) (string, error) {
 	return resolved, nil
 }
 
-func searchResponseFromIndexer(results []indexerapi.EntryResult) apischema.SearchResponse {
-	response := apischema.SearchResponse{Results: make([]apischema.SearchResult, 0, len(results))}
-	for _, result := range results {
+func searchResponseFromIndexer(found indexerapi.SearchResponse) apischema.SearchResponse {
+	response := apischema.SearchResponse{
+		Results: make([]apischema.SearchResult, 0, len(found.Results)),
+		Walk:    apischema.FileSearchWalk(found.Walk),
+	}
+	for _, result := range found.Results {
 		response.Results = append(response.Results, searchResultFromIndexer(result))
 	}
 	return response
@@ -201,9 +207,13 @@ func searchResultFromIndexer(result indexerapi.EntryResult) apischema.SearchResu
 		canOpen := result.Size < services.MaxTextFileBytes
 		canOpenAsText = &canOpen
 	}
+	var size *int64
+	if !result.SizeUnknown {
+		size = &result.Size
+	}
 	return apischema.SearchResult{
 		IsDir: isDir, IsRegularFile: isRegularFile,
-		ModTime: formatResourceModTime(result.ModTime), Name: result.Name, Path: result.Path, Size: result.Size,
+		ModTime: formatResourceModTime(result.ModTime), Name: result.Name, Path: result.Path, Size: size,
 		CanOpenAsText: canOpenAsText,
 	}
 }

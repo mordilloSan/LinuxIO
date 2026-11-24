@@ -29,6 +29,7 @@ type recordedIndexerRequest struct {
 	path   string
 	query  string
 	entry  *indexerapi.EntryRequest
+	move   *indexerapi.MoveRequest
 }
 
 func recordIndexerRequests(t *testing.T) *[]recordedIndexerRequest {
@@ -37,7 +38,13 @@ func recordIndexerRequests(t *testing.T) *[]recordedIndexerRequest {
 	requests := make([]recordedIndexerRequest, 0, 4)
 	indexer.Client = &http.Client{Transport: indexerRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		recorded := recordedIndexerRequest{method: req.Method, path: req.URL.Path, query: req.URL.RawQuery}
-		if req.Body != nil {
+		if req.Body != nil && req.URL.Path == indexerapi.RouteMove {
+			var move indexerapi.MoveRequest
+			if err := json.UnmarshalRead(req.Body, &move); err != nil {
+				t.Fatalf("decode indexer move request: %v", err)
+			}
+			recorded.move = &move
+		} else if req.Body != nil {
 			var entry indexerapi.EntryRequest
 			if err := json.UnmarshalRead(req.Body, &entry); err != nil {
 				t.Fatalf("decode indexer request: %v", err)
@@ -111,18 +118,16 @@ func TestIndexerMutationNotificationsUseCanonicalOperations(t *testing.T) {
 		})
 	})
 
-	t.Run("move over destination", func(t *testing.T) {
+	// One request, whatever the move replaced: the indexer renames the rows
+	// or lets the index follow the disk for both paths.
+	t.Run("move", func(t *testing.T) {
 		requests := recordIndexerRequests(t)
 		destination := filepath.Join(root, "moved.txt")
-		if err := movePathInIndexer(context.Background(), filePath, destination, true, func() (os.FileInfo, error) {
-			return fileInfo, nil
-		}); err != nil {
+		if err := movePathInIndexer(context.Background(), filePath, destination); err != nil {
 			t.Fatalf("movePathInIndexer: %v", err)
 		}
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{
-			{method: http.MethodDelete, path: indexerapi.RouteDelete, query: pathQuery(filePath)},
-			{method: http.MethodDelete, path: indexerapi.RouteDelete, query: pathQuery(destination)},
-			{method: http.MethodPost, path: indexerapi.RouteAdd, entry: &indexerapi.EntryRequest{Path: destination}},
+			{method: http.MethodPost, path: indexerapi.RouteMove, move: &indexerapi.MoveRequest{From: filePath, To: destination}},
 		})
 	})
 
@@ -230,6 +235,9 @@ func assertIndexerRequests(t *testing.T, got, want []recordedIndexerRequest) {
 	for i := range want {
 		if got[i].method != want[i].method || got[i].path != want[i].path || got[i].query != want[i].query {
 			t.Fatalf("request[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+		if (got[i].move == nil) != (want[i].move == nil) || (want[i].move != nil && *got[i].move != *want[i].move) {
+			t.Fatalf("request[%d] move = %#v, want %#v", i, got[i].move, want[i].move)
 		}
 		if want[i].entry == nil {
 			if got[i].entry != nil {

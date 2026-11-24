@@ -3,6 +3,7 @@
 package api
 
 import (
+	"encoding/json/jsontext"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,11 +14,16 @@ const (
 	RouteIndex      = "/index"
 	RouteReindex    = "/reindex"
 	RouteStatus     = "/status"
+	RouteOperation  = "/operation"
 	RouteSearch     = "/search"
 	RouteDirSize    = "/dirsize"
 	RouteSubfolders = "/subfolders"
 	RouteAdd        = "/add"
 	RouteDelete     = "/delete"
+	RouteRefresh    = "/refresh"
+	RouteMove       = "/move"
+	RouteScan       = "/scan"
+	RouteScanEvent  = "/scan/event"
 	RouteConfig     = "/config"
 
 	EventStarted  = "started"
@@ -28,13 +34,15 @@ const (
 	// Words the daemon puts in a "status" field. /status reports
 	// uninitialized (no index yet), running (work in progress) or idle; an
 	// accepted operation answers running, and its work events running,
-	// complete or error; /add and /delete answer ok.
+	// complete or error; /add and /delete answer ok when the update was applied
+	// and queued when it waits behind other work.
 	StatusUninitialized = "uninitialized"
 	StatusIdle          = "idle"
 	StatusRunning       = "running"
 	StatusComplete      = "complete"
 	StatusError         = "error"
 	StatusOK            = "ok"
+	StatusQueued        = "queued"
 
 	MinSearchQueryRunes = 3
 )
@@ -70,6 +78,17 @@ type StatusResponse struct {
 	ActiveOperationID string `json:"active_operation_id,omitempty"`
 	ActivePath        string `json:"active_path,omitempty"`
 	Warning           string `json:"warning,omitempty"`
+	// WaitingOperations are the index and reindex operations queued behind the
+	// one that runs, in the order they will run.
+	WaitingOperations []WaitingOperation `json:"waiting_operations,omitempty"`
+}
+
+// WaitingOperation names an operation that waits for its turn and can be
+// attached to by these three values.
+type WaitingOperation struct {
+	Operation   string `json:"operation"`
+	OperationID string `json:"operation_id"`
+	Path        string `json:"path"`
 }
 
 func (resp *StatusResponse) AddWarning(msg string) {
@@ -84,6 +103,12 @@ type EntryRequest struct {
 	Path string `json:"path"`
 }
 
+// MoveRequest names a path that a file operation moved, and where it is now.
+type MoveRequest struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 type OperationResponse struct {
 	Status      string `json:"status"`
 	Path        string `json:"path,omitempty"`
@@ -95,19 +120,53 @@ type DirSizeResponse struct {
 	Size  int64  `json:"size"`
 	Files int64  `json:"files"`
 	Dirs  int64  `json:"dirs"`
+	// Pending is set while work that can change what is counted below the
+	// folder runs or waits: the numbers are those from before it.
+	Pending bool `json:"pending,omitempty"`
 }
 
-// EntryResult is returned by /search.
+// How a search inside a folder read that folder on disk (SearchResponse.Walk).
+// A search from "/", or of a folder the index leaves out, reads the index
+// alone and says nothing.
+const (
+	// SearchWalkComplete: the whole folder was read in time, and the results
+	// are what is on the disk now: what the read found, and the index's
+	// results that are still there.
+	SearchWalkComplete = "complete"
+	// SearchWalkPartial: the folder was not read whole (out of time, no free
+	// read within a short wait, a part that could not be read, or a tree
+	// deeper than the read goes), and the results are the index's with what
+	// the read found.
+	SearchWalkPartial = "partial"
+)
+
+// SearchResponse is returned by /search.
+type SearchResponse struct {
+	Results []EntryResult `json:"results"`
+	Walk    string        `json:"walk,omitempty"`
+}
+
+// EntryResult is one entry of a search answer.
 type EntryResult struct {
-	Path       string    `json:"path"`
-	Name       string    `json:"name"`
-	Type       string    `json:"type"`
-	Size       int64     `json:"size"`
-	ModTime    time.Time `json:"mod_time"`
-	Inode      uint64    `json:"inode"`
-	TotalSize  int64     `json:"total_size,omitzero"`
-	TotalFiles int64     `json:"total_files,omitzero"`
-	TotalDirs  int64     `json:"total_dirs,omitzero"`
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Size int64  `json:"size"`
+	// SizeUnknown is set for a folder found on disk that the index holds no
+	// row for: nothing has counted what is below it, and Size is not a size.
+	SizeUnknown bool      `json:"size_unknown,omitempty"`
+	ModTime     time.Time `json:"mod_time"`
+	Inode       uint64    `json:"inode"`
+	TotalSize   int64     `json:"total_size,omitzero"`
+	TotalFiles  int64     `json:"total_files,omitzero"`
+	TotalDirs   int64     `json:"total_dirs,omitzero"`
+}
+
+// SubfoldersResponse is returned by /subfolders.
+type SubfoldersResponse struct {
+	Subfolders []SubfolderResult `json:"subfolders"`
+	// Pending is set as in DirSizeResponse, for the folder asked about.
+	Pending bool `json:"pending,omitempty"`
 }
 
 type SubfolderResult struct {
@@ -154,6 +213,15 @@ type WorkErrorEvent struct {
 	OperationID string `json:"operation_id"`
 	Path        string `json:"path"`
 	Message     string `json:"message"`
+}
+
+// OperationOutcome is the last event of an index or reindex operation that is
+// over: EventComplete or EventError, with that event's data. The daemon holds
+// the outcomes of the operations it ended lately, in memory, so one asked of a
+// daemon that started since is not found.
+type OperationOutcome struct {
+	Event string         `json:"event"`
+	Data  jsontext.Value `json:"data"`
 }
 
 // NormalizePath is the canonical index path both the daemon and the bridge

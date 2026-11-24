@@ -33,6 +33,49 @@ func TestShouldReseed(t *testing.T) {
 
 func usableWithinMinute(r *Run[int]) bool { return r.Fresh(time.Minute) }
 
+// The window runs from the start of a collection: a caller that returns one
+// window later must not be handed the same sample because the collection took
+// a while to finish.
+func TestRunFreshCountsFromTheStartOfTheCollection(t *testing.T) {
+	var flight Flight[string, int]
+	run := flight.Begin("k", 0)
+	run.Finish()
+
+	if !run.Fresh(time.Second) {
+		t.Fatal("a run that just started and finished must be fresh")
+	}
+
+	// Took 60ms, so it finished inside the window it started outside of.
+	run.Started = time.Now().Add(-time.Second)
+	run.At = run.Started.Add(60 * time.Millisecond)
+	if run.Fresh(time.Second) {
+		t.Fatal("a run that started a window ago must not be fresh, though it finished inside the window")
+	}
+}
+
+// A collection slower than the window would otherwise be stale the moment it
+// finished, and callers arriving one after another would keep the key
+// collecting without a pause.
+func TestRunFreshRestsAsLongAsASlowCollectionTook(t *testing.T) {
+	var flight Flight[string, int]
+	run := flight.Begin("k", 0)
+	run.Finish()
+
+	// Took 1.5s, finished half a second ago: still resting.
+	run.Started = time.Now().Add(-2 * time.Second)
+	run.At = run.Started.Add(1500 * time.Millisecond)
+	if !run.Fresh(time.Second) {
+		t.Fatal("a slow run must stay fresh until it has rested as long as it took")
+	}
+
+	// Took 1.5s, finished 2.5s ago: rested.
+	run.Started = time.Now().Add(-4 * time.Second)
+	run.At = run.Started.Add(1500 * time.Millisecond)
+	if run.Fresh(time.Second) {
+		t.Fatal("a slow run that has rested as long as it took must not be fresh")
+	}
+}
+
 func TestFlightSharesOneCollection(t *testing.T) {
 	var flight Flight[string, int]
 	var collects atomic.Int32

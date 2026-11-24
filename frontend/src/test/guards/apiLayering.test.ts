@@ -74,6 +74,8 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   "test/browser/fixture/routes/GeneralLogsPage.tsx",
   // Assistant fixture owns transport bootstrap for the fake ACP agent stream.
   "test/browser/fixture/routes/AssistantFixturePage.tsx",
+  // Terminal fixture owns transport bootstrap for the tab the Assistant opens.
+  "test/browser/fixture/routes/TerminalFixturePage.tsx",
   // Container fixture owns transport bootstrap for real terminal keyboard input.
   "test/browser/fixture/routes/ContainerActionsPage.tsx",
   // Handoff browser fixture owns transport bootstrap for refresh recovery.
@@ -192,6 +194,10 @@ describe("API layering guard", () => {
         "logs.general.follow",
       ],
       ["components/cards/UnitLogsCard.tsx", "logs.service.follow"],
+      [
+        "routes/_authenticated/filebrowser/-hooks/useFolderWatch.ts",
+        "filebrowser.watch",
+      ],
     ] as const;
     for (const [path, route] of directConsumers) {
       const source = readSource(path);

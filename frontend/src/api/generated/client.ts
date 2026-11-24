@@ -314,8 +314,23 @@ const linuxio = {
     general_page: defineCallWithRequest("logs.general_page"),
   },
   memory: {
+    create_swap_file: defineMutation("memory", "create_swap_file", {
+      kind: "field",
+      field: "size",
+    }),
     drain_swap: defineMutation("memory", "drain_swap", { kind: "none" }),
     get_swap_status: defineCall("memory.get_swap_status"),
+    move_swap_file: defineMutation("memory", "move_swap_file", {
+      kind: "field",
+      field: "path",
+    }),
+    remove_swap_file: defineMutation("memory", "remove_swap_file", {
+      kind: "field",
+      field: "path",
+    }),
+    resize_swap_file: defineMutation("memory", "resize_swap_file", {
+      kind: "object",
+    }),
     set_swap_mode: defineMutation("memory", "set_swap_mode", {
       kind: "object",
     }),
@@ -795,6 +810,10 @@ const linuxio = {
       kind: "object",
     }),
     add_peer: defineMutation("wireguard", "add_peer", { kind: "object" }),
+    check_interface: defineMutation("wireguard", "check_interface", {
+      kind: "field",
+      field: "name",
+    }),
     disable_interface: defineMutation("wireguard", "disable_interface", {
       kind: "field",
       field: "name",
@@ -818,6 +837,10 @@ const linuxio = {
       field: "name",
     }),
     remove_peer: defineMutation("wireguard", "remove_peer", { kind: "object" }),
+    restore_forwarding: defineMutation("wireguard", "restore_forwarding", {
+      kind: "field",
+      field: "name",
+    }),
     up_interface: defineMutation("wireguard", "up_interface", {
       kind: "field",
       field: "name",

@@ -42,6 +42,7 @@ const CodeEditorPage = lazy(() => import("./routes/CodeEditorPage"));
 const AssistantFixturePage = lazy(
   () => import("./routes/AssistantFixturePage"),
 );
+const TerminalFixturePage = lazy(() => import("./routes/TerminalFixturePage"));
 const ContainerActionsPage = lazy(
   () => import("./routes/ContainerActionsPage"),
 );
@@ -187,6 +188,11 @@ const assistantRoute = createRoute({
   component: AssistantFixturePage,
   getParentRoute: () => rootRoute,
   path: "assistant",
+});
+const terminalRoute = createRoute({
+  component: TerminalFixturePage,
+  getParentRoute: () => rootRoute,
+  path: "terminal",
 });
 const pathPickerLargeFolderRoute = createRoute({
   component: PathPickerLargeFolderPage,
@@ -386,6 +392,7 @@ const routeTree = rootRoute.addChildren([
   iconsRoute,
   codeEditorRoute,
   assistantRoute,
+  terminalRoute,
   containerActionsRoute,
   fileBrowserReadPathsRoute,
   pathPickerLargeFolderRoute,

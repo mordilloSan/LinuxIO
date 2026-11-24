@@ -19,7 +19,6 @@ import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formatters";
 
 import { CARD_BORDER, CardIconSizeContext } from "../-cardSize";
-import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 import {
   getFileEntryBackground,
   getSubtleDividerColor,
@@ -157,27 +156,6 @@ const FileCard = memo<FileCardProps>(
         onCancelRename?.();
       }
     }, [renameValue, name, onConfirmRename, onCancelRename]);
-
-    // For search results (showFullPath=true), fetch individual directory sizes
-    const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
-    const {
-      size: fetchedSize,
-      isLoading: isSizeLoading,
-      error: fetchError,
-      isUnavailable: isSizeUnavailable,
-    } = useFileDirectorySize(path || "", needsIndividualDirSize);
-
-    // Override size props with fetched data when displaying search results
-    const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;
-    const effectiveSizeLoading = needsIndividualDirSize
-      ? isSizeLoading
-      : directorySizeLoading;
-    const effectiveSizeError = needsIndividualDirSize
-      ? fetchError
-      : directorySizeError;
-    const effectiveSizeUnavailable = needsIndividualDirSize
-      ? isSizeUnavailable
-      : directorySizeUnavailable;
 
     const formattedDate = useMemo(() => {
       if (!modTime) return "";
@@ -363,16 +341,15 @@ const FileCard = memo<FileCardProps>(
               alignItems: "center",
               height: "1.2em",
             }}
-            title={effectiveSizeError?.message}
+            title={directorySizeError?.message}
             variant="body2"
           >
-            {effectiveSizeUnavailable ? (
+            {directorySizeUnavailable ? (
               "Unavailable"
-            ) : effectiveSizeLoading &&
-              (effectiveSize === undefined || effectiveSize === 0) ? (
+            ) : directorySizeLoading && (size === undefined || size === 0) ? (
               <span className="file-size-pending">—</span>
-            ) : effectiveSize !== undefined ? (
-              formatFileSize(effectiveSize, 1, "")
+            ) : size !== undefined ? (
+              formatFileSize(size, 1, "")
             ) : (
               "—"
             )}

@@ -51,6 +51,7 @@ type fakePackageKit struct {
 	resolveNotFound bool
 	refreshes       int
 	refreshErr      string
+	listErr         string
 	refreshHangs    bool
 	refreshStarted  chan struct{}
 	offlineTriggers []string
@@ -400,6 +401,13 @@ func (s *fakePackageKit) setRefreshError(message string) {
 	s.refreshErr = message
 }
 
+// setListError makes GetUpdates fail after the packages it has already named.
+func (s *fakePackageKit) setListError(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.listErr = message
+}
+
 func (s *fakePackageKit) setRefreshHang() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -469,9 +477,17 @@ func (tx *fakeTransaction) Resolve(filter uint64, names []string) *godbus.Error 
 
 func (tx *fakeTransaction) GetUpdates(filters uint64) *godbus.Error {
 	updates := tx.service.snapshotUpdates()
+	tx.service.mu.Lock()
+	listErr := tx.service.listErr
+	tx.service.mu.Unlock()
 	tx.emitLater(func() {
 		for _, pkg := range updates {
 			tx.emit("Package", pkg.info, pkg.id, pkg.summary)
+		}
+		if listErr != "" {
+			tx.emit("ErrorCode", uint32(29), listErr) // PK_ERROR_ENUM_CANNOT_GET_LOCK
+			tx.emit("Finished", uint32(2), uint32(0))
+			return
 		}
 		tx.emit("Finished", uint32(0), uint32(0))
 	})
@@ -717,6 +733,46 @@ func TestGetUpdatesBasicSanitizesOutOfRangePackageInfo(t *testing.T) {
 	}
 	if got[1].InfoEnum != 0 || got[2].InfoEnum != 0 {
 		t.Fatalf("out-of-range info enums = %d, %d; want 0, 0", got[1].InfoEnum, got[2].InfoEnum)
+	}
+}
+
+// A GetUpdates that PackageKit ends with ErrorCode is a failed listing, not a
+// short or an empty one: "up to date" is said only of a list that was read.
+func TestGetUpdatesBasicReportsAFailedListing(t *testing.T) {
+	for name, listed := range map[string][]fakePackage{
+		"before any package": nil,
+		"after a package":    {{info: 11, id: "demo;1.2.3;x86_64;repo", summary: "Demo package"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := setupFakePackageKit(t, false)
+			service.setUpdates(listed)
+			service.setListError("could not get the package manager lock")
+
+			got, err := GetUpdatesBasic(context.Background())
+			pkErr, ok := errors.AsType[*pkgkit.Error](err)
+			if !ok {
+				t.Fatalf("GetUpdatesBasic = %#v, %v; want a PackageKit error", got, err)
+			}
+			if pkErr.Code != 29 || pkErr.Details != "could not get the package manager lock" {
+				t.Fatalf("PackageKit error = %d %q; want 29 and the daemon's text", pkErr.Code, pkErr.Details)
+			}
+			if got != nil {
+				t.Fatalf("updates = %#v; want none with the error", got)
+			}
+		})
+	}
+}
+
+// The version check reads the same list, so it must not answer "no update"
+// for a list it could not read.
+func TestFindUpdateByNameReportsAFailedListing(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setUpdates([]fakePackage{{info: 11, id: "linuxio;1.2.3;x86_64;repo", summary: "LinuxIO"}})
+	service.setListError("could not get the package manager lock")
+
+	got, err := FindUpdateByName(context.Background(), "linuxio")
+	if _, ok := errors.AsType[*pkgkit.Error](err); !ok || got != "" {
+		t.Fatalf("FindUpdateByName = %q, %v; want empty and a PackageKit error", got, err)
 	}
 }
 

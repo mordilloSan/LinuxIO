@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
@@ -21,8 +22,23 @@ import (
 
 var (
 	detachedIndexerUpdates sync.WaitGroup
-	errIndexerUnavailable  = errors.New("indexer unavailable")
+	// detachedInFlight counts the detached notifications that have not been
+	// answered yet.
+	detachedInFlight      atomic.Int64
+	errIndexerUnavailable = errors.New("indexer unavailable")
 )
+
+// indexerUpdatesInFlight reports whether a detached notification is still on
+// its way to the indexer. A finished task reports done first and tells the
+// indexer after, so a size the page asks for right then can reach the indexer
+// before the update does: the size is pending although the indexer does not
+// know it yet. It is read before the indexer is asked, so an update that is
+// answered in between is one the indexer already counts as waiting or has
+// applied. It is not narrowed to a path: a size asked for elsewhere in those
+// milliseconds is asked for once more.
+func indexerUpdatesInFlight() bool {
+	return detachedInFlight.Load() > 0
+}
 
 // indexerError tags an unreachable indexer with errIndexerUnavailable so
 // callers can degrade, and keeps every other failure's identity under %w.
@@ -77,24 +93,15 @@ func addCopiedPathToIndexer(ctx context.Context, path string, info os.FileInfo, 
 	return indexPath(ctx, path, info.IsDir())
 }
 
-func movePathInIndexer(ctx context.Context, source, destination string, removeExistingDestination bool, statDestination func() (os.FileInfo, error)) error {
-	if err := deleteFromIndexer(ctx, source); err != nil {
-		slog.Debug("failed to delete source from indexer after move", "source", source, "error", err)
+// movePathInIndexer tells the indexer that source is now at destination. The
+// indexer renames the rows when the move was a rename, and otherwise lets the
+// index follow the disk for both paths: a move to another filesystem, into a
+// folder that was already there, or one that stopped part-way.
+func movePathInIndexer(ctx context.Context, source, destination string) error {
+	if err := indexer.Move(ctx, source, destination); err != nil {
+		return indexerError("move", err)
 	}
-	if removeExistingDestination {
-		if err := deleteFromIndexer(ctx, destination); err != nil {
-			slog.Debug("failed to delete overwritten destination from indexer after move", "destination", destination, "error", err)
-		}
-	}
-
-	info, err := statDestination()
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			slog.Debug("failed to stat destination for indexer update", "destination", destination, "error", err)
-		}
-		return nil
-	}
-	return addCopiedPathToIndexer(ctx, destination, info, false)
+	return nil
 }
 
 func notifyIndexerForCreatedResource(ctx context.Context, root *fsroot.FSRoot, cleanPath, relPath string) {
@@ -111,10 +118,8 @@ func notifyIndexerForCreatedResource(ctx context.Context, root *fsroot.FSRoot, c
 	}
 }
 
-func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resourcePatchRequest) {
-	if err := movePathInIndexer(ctx, req.realSrc, req.realDest, false, func() (os.FileInfo, error) {
-		return root.Root.Lstat(fsroot.ToRel(req.realDest))
-	}); err != nil {
+func notifyIndexerAfterPatch(ctx context.Context, req resourcePatchRequest) {
+	if err := movePathInIndexer(ctx, req.realSrc, req.realDest); err != nil {
 		slog.Debug("failed to update indexer after move", "source", req.realSrc, "destination", req.realDest, "error", err)
 	}
 }
@@ -122,7 +127,9 @@ func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resou
 // runDetachedIndexerUpdate bounds intentionally fire-and-forget indexer notifications
 // that should outlive the request/task which already completed the filesystem change.
 func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
+	detachedInFlight.Add(1)
 	detachedIndexerUpdates.Go(func() {
+		defer detachedInFlight.Add(-1)
 		if err := withIndexerTimeout(fn); err != nil {
 			slog.Debug("detached indexer update failed", "operation", label, "error", err)
 		}
@@ -143,6 +150,18 @@ func addToIndexerDetached(label, path string) {
 	})
 }
 
+// refreshInIndexerDetached asks the indexer to bring the entries of a folder
+// that was just listed up to date. The indexer queues it and skips a folder it
+// refreshed a short while ago.
+func refreshInIndexerDetached(path string) {
+	runDetachedIndexerUpdate("refresh", func(ctx context.Context) error {
+		if err := indexer.Refresh(ctx, path); err != nil {
+			return indexerError("refresh", err)
+		}
+		return nil
+	})
+}
+
 func reindexDetached(label, path string) {
 	runDetachedIndexerUpdate(label, func(ctx context.Context) error {
 		return requestIndexerReindex(ctx, path)
@@ -156,7 +175,9 @@ func reconcileDetached[T any](label string, items []T, fn func(context.Context, 
 	if len(items) == 0 {
 		return
 	}
+	detachedInFlight.Add(1)
 	detachedIndexerUpdates.Go(func() {
+		defer detachedInFlight.Add(-1)
 		for _, item := range items {
 			if err := withIndexerTimeout(func(ctx context.Context) error { return fn(ctx, item) }); err != nil {
 				slog.Debug("indexer reconciliation failed", "operation", label, "error", err)

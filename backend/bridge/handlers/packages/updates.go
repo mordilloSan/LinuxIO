@@ -204,6 +204,9 @@ func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool)
 	}, true
 }
 
+// collectUpdatePackages reads a GetUpdates transaction to its end. One that
+// PackageKit ends with ErrorCode is a failed listing whatever it named first,
+// so that an empty answer always means a list that was read.
 func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal) ([]string, map[string]packageUpdateMeta, error) {
 	var pkgIDs []string
 	metaByPkg := make(map[string]packageUpdateMeta)
@@ -214,7 +217,10 @@ func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 			if !ok {
 				return nil, nil, pkgkit.ErrSignalsClosed
 			}
-			if sig.Name == pkgkit.TransactionIface+".Finished" {
+			switch sig.Name {
+			case pkgkit.TransactionIface + ".ErrorCode":
+				return nil, nil, pkgkit.ErrorFromSignal(sig, "GetUpdates")
+			case pkgkit.TransactionIface + ".Finished":
 				return pkgIDs, metaByPkg, nil
 			}
 

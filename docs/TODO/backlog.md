@@ -44,48 +44,46 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- A settings save made while the bridge cannot be reached looks stored.
-  `updateConfig` (`frontend/src/contexts/ConfigProvider.tsx`) writes the
-  patch into the page's copy before `save` finds that nothing can be sent,
-  so the form shows the new value with nothing to save, and the warning
-  toast comes only once. Decide whether a bridge setting should be applied
-  to the page at all in that state, or taken back.
+- A scheduled script cannot run a tool that an AppArmor profile confines with
+  profile changes on exec. LinuxIO writes `NoNewPrivileges=yes` into every
+  generated schedule unit (`backend/bridge/handlers/schedules/native.go`,
+  documented in `docs/scheduled-scripts.md`), and under that flag the kernel
+  refuses the change: on Ubuntu 26.04 a script that calls `wg-quick` is
+  expected to fail with "Operation not permitted", as the root job host did
+  (2026-11-23, `docs/wireguard.md`). The same flag stops a script from using
+  `sudo`, `su` or any setuid program. Scripts should be able to
+  gain privileges: either drop the line from the generated unit, or make it a
+  choice per schedule that the dialog shows. Units already saved keep the old
+  line until they are rewritten. **not verified** with a real script
+
 - The Updates page can say "Your system is up to date" while the banner
   names a LinuxIO update. Seen once in four runs of `jobs-update.spec.ts` on
   Fedora 45 (2026-11-21), right after Refresh Sources; the list asks again by
   itself after 50 s. The cause is not found. Ruled out in the test VM:
   PackageKit asked on one connection the instant a refresh ends lists the
-  update (4 of 4), also while `dnf` runs beside it (18 of 18). One defect
-  that gives the same picture is known and not fixed: `collectUpdatePackages`
-  (`backend/bridge/handlers/packages/updates.go`) ignores a transaction's
-  `ErrorCode`, so a `GetUpdates` that failed is an empty list with no error,
-  where the rest of that package reports it (`pkgkit.AwaitFinished`). Fixing
-  it makes a failed listing an error on the page and a Warn from
-  `control.version`, so it needs the `packagekit` suite and the Updates specs
-  on both distributions. **not verified**
+  update (4 of 4), also while `dnf` runs beside it (18 of 18). A `GetUpdates`
+  that failed was an empty list until 2026-11-22 and is an error on the page
+  since, so the picture seen again means the list was read and was empty.
+  **not verified**
 
 ## Tests that are missing
 
-- Nothing checks that a failed or a cancelled update of the package leaves
-  LinuxIO running the old build with no restart; [Jobs](../jobs.md#updates)
-  says so from how apt, dnf and the package's scripts work. A test VM can
-  show it (`jobs-update.spec.ts` updates through PackageKit). **not
-  verified**
-
 ## Needs the owner
 
-- The release workflow has never run, so nothing is published at
-  `packages.engmariz.com` and the README's install commands do not work yet:
-  the keys, the public key in the repository and the `release` environment
-  with its secret are done (2026-11-21); Pages, the DNS record, the release
-  rules and then a first release remain
-  ([Releases](../releases.md#owner-setup), steps 5 to 8). **checked**
-- Whether `linuxio.repo` sets `skip_if_unavailable=False`: today dnf given a
-  repository whose `repomd.xml` signature fails reports it, goes on without
-  the repository and exits 0, so a tampered repository looks like "nothing to
-  upgrade"; with the setting it exits 1, but every dnf transaction on the
-  host also fails while the repository is unreachable
-  (`packaging/scripts/repo-rpm.sh`). **checked**
+- Whether every start of the index timer should bring a full index. The
+  timer is monotonic (`packaging/systemd/linuxio-indexer-index.timer`), so a
+  boot, a restart of `linuxio.target`, a package upgrade and a saved interval
+  each start a scan 15 minutes later, whatever the age of the index. A scan
+  that finds little changed is cheap now (9 seconds and 19 rows on 963,000
+  entries), which may be enough. A calendar timer with `Persistent=true`
+  remembers its last run and runs at once only when one was missed, but it
+  turns the interval setting into a schedule. **checked**
+
+- Whether Gemini CLI and Codex get a LinuxIO profile as Claude Code has
+  (`ProfileEnv` in `backend/bridge/internal/acpagents`): today their sign-in,
+  settings and history are the ones the user's terminal uses. Codex reads
+  `CODEX_HOME`; neither variable has been tried through its ACP adapter, and
+  each needs a sign-in at its vendor to check.
 
 ## Needs a real machine or a measurement
 
@@ -107,11 +105,11 @@ after a change that issues ioctls).
   must not show `docker.service` waiting 30 s).
 
 - The package's install, upgrade from the signed repository, removal and
-  kept configuration ran in the test VMs on Ubuntu 26.04 and Fedora 45 only.
-  Not run: Debian stable and the previous Fedora release, which have no test
-  VM (the DEB takes its dependencies' names from Ubuntu, and that Debian has
-  them under the same names is expected, not seen), and the DEB on Ubuntu
-  24.04, which the rig has (`VM_RELEASE=noble`). **needs a host**
+  kept configuration ran in the test VMs on Ubuntu 26.04, Ubuntu 24.04 and
+  Fedora 45 only. Not run: Debian stable and the previous Fedora release,
+  which have no test VM (the DEB takes its dependencies' names from Ubuntu,
+  and that Debian has them under the same names is expected, not seen).
+  **needs a host**
 - An update of LinuxIO by the distribution's unattended upgrade
   (`unattended-upgrades`, `dnf-automatic`) with a job running is not run:
   that LinuxIO then runs the new build with no `linuxio restart`, the job
@@ -125,6 +123,19 @@ Do one of these only when something shows it is needed.
 ## Rejected
 
 Listed once, with the reason, so they are not raised again.
+
+WireGuard, after interfaces went through their unit (2026-11-23):
+
+- `NoNewPrivileges=no` for the root job host, so that it can run a tool its
+  distribution confines with AppArmor (Ubuntu's `wg-quick`). No: the flag is
+  also what keeps the commands the root host runs as the signed-in admin
+  (npm for a capability, `claude plugin`) away from `sudo`. Such a tool is
+  started through its unit instead ([WireGuard Interfaces](../wireguard.md)).
+- Adding rules to Ubuntu's AppArmor profile for `wg-quick`
+  (`/etc/apparmor.d/local/wg-quick`). No: it belongs to another package and
+  to the administrator, and loosens the profile for everyone on the host.
+- Taking the WireGuard writes out of the job host. No: every write is a job
+  ([Jobs](../jobs.md)), and the host would still be unable to run the tool.
 
 File browser, after the link fix:
 
@@ -181,11 +192,30 @@ File browser, after the link fix:
 
 Memory overflow:
 
-- A swap partition, or a swap device `/etc/fstab` does not name, is never
-  stopped or held off. A host with an active swap partition cannot choose
-  compressed memory only, and a device with no fstab entry cannot be drained:
-  only a device matched to an entry has a unit that can be started again, and
-  the feature never takes away swap it cannot bring back.
+- A `swapoff` can wake the OOM killer inside a memory-limited cgroup (a
+  container, or a unit with a memory limit, whose pages are in swap) although
+  the host has free memory and the room check passes: the kernel charges each
+  page it reads back to the cgroup that owns it, and the room check reads only
+  the host's `MemAvailable`. Seen in the test VM (Ubuntu 26.04, kernel 7.0): a
+  unit with `MemoryMax=256M` and about 800 MB in swap was killed by the memory
+  cgroup's OOM killer the moment `swapoff` started, and `swapoff` itself
+  failed with `Cannot allocate memory` and left the file swapping. It applies
+  to the drain, Resize, Remove and the switch to compressed memory alike, and
+  older releases had it in the drain and the switch too. Open: a check per
+  cgroup, or a warning in the confirm.
+- On btrfs, while a drain or a resize has a swap file off, a snapshot of the
+  subvolume it is in (snapper, Timeshift) makes the file's blocks shared, and
+  `swapon` then refuses the file, now and at boot, until that snapshot is
+  deleted; a balance or a device operation running at that moment refuses
+  `swapon` too, with `EBUSY`, until it ends (seen on Fedora 45 during a
+  balance: `/sys/fs/btrfs/<fsid>/exclusive_operation` reads `balance`, and
+  the kernel logs "cannot activate swapfile while exclusive operation is
+  running"). Only a file outside a subvolume
+  of its own is exposed to the snapshot: LinuxIO's own file is not, and a
+  resize that uses the temporary swap file is covered while that file swaps,
+  since an active swap file blocks snapshots of its subvolume. The owner's
+  choice: always swap on a temporary file beside it in that window, refuse
+  the drain and the resize for such a file and offer Move, or leave it.
 - A malformed optional kernel file (a non-numeric sysctl, an `mm_stat` with
   fewer than three fields) fails the status route instead of reading as zero:
   a format change in the kernel should surface.
@@ -202,6 +232,18 @@ Docker startup:
   handoff would have to rewrite the drop-in inside the network manager's
   rollback window
   ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips)).
+
+Indexer, decided with the rework of 2026-11-22:
+
+- No indexer daemon, with the root bridge reading and writing the database.
+  It moves SQLite and the index writes into the bridge, takes the sandbox
+  away from scoped scans, and loses the one place that orders updates and
+  scans ([Filesystem Indexer](../indexer.md#full-index)).
+- A filesystem watcher for the index. It needs a root process that always
+  runs, and `CAP_SYS_ADMIN` for fanotify on whole filesystems; the indexer
+  runs on demand. A folder is refreshed when it is opened instead.
+- An index schedule that adapts to how often files change. It needs a process
+  that always runs.
 
 Without sudo:
 
@@ -324,6 +366,12 @@ Sign-in where SELinux is enforcing
 
 Packages ([Packages, installation and updates](../packaging.md)):
 
+- `skip_if_unavailable=False` in `linuxio.repo`, so that dnf fails on a
+  LinuxIO repository it cannot read. Decided 2026-11-22: no. With it every
+  dnf transaction on the host, an unattended upgrade among them, fails while
+  the repository is unreachable, and Fedora sets the opposite for every
+  repository that is not its own. Refresh Sources reports the repository
+  instead ([LinuxIO's own update](../packaging.md#linuxios-own-update)).
 - The libvirt hook under `/usr` with a link in `/etc` made at first install,
   like the banner's links: it would deliver every fix and honour a deleted
   link on both families, but a program started through a link runs under the

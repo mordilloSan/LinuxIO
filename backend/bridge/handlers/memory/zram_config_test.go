@@ -129,8 +129,12 @@ func TestPlanSwapModeAsksBeforeReplacingAZramConfig(t *testing.T) {
 				path = zramGeneratorConfigPath
 			}
 			view.status.ForeignZramConfig = foreignAt(path)
+			req := test.req
+			if req.Mode == apischema.SwapModeZram {
+				req.ConfirmRemove = removableSwapFiles(view.status.SwapFiles)
+			}
 
-			got, err := planSwapMode(view, test.req)
+			got, err := planSwapMode(view, req)
 			if !test.refused {
 				if err != nil {
 					t.Fatal(err)
@@ -165,7 +169,7 @@ func TestPlanSwapModeRefusesToLeaveZramAnotherGeneratorFileDefines(t *testing.T)
 	view := planView(apischema.SwapModeDisk)
 	view.status.ZramProvider = apischema.ZramProviderGenerator
 	view.status.ZramGeneratorDevices = devices
-	if _, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err != nil {
+	if _, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmRemove: []string{"/swap.img"}}); err != nil {
 		t.Errorf("to zram: %v", err)
 	}
 
@@ -190,7 +194,7 @@ func TestSetSwapModeKeepsACopyOfAZramswapFileThatIsNotLinuxIOs(t *testing.T) {
 	copyPath := zramswapConfigPath + ".before-linuxio"
 	f.write(copyPath, "an older copy\n")
 
-	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	_, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys))
 	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), zramswapConfigPath) {
 		t.Fatalf("err = %v, want a conflict naming %s", err, zramswapConfigPath)
 	}
@@ -199,7 +203,7 @@ func TestSetSwapModeKeepsACopyOfAZramswapFileThatIsNotLinuxIOs(t *testing.T) {
 		t.Fatalf("zramswap config = %q, want it untouched", got)
 	}
 
-	_, err = sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmReplace: zramswapConfigPath})
+	_, err = sys.executor(nil).setSwapMode(t.Context(), zramReplacing(t, sys, zramswapConfigPath))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +232,7 @@ func TestSetSwapModeKeepsTheCopyWhenTheRunFails(t *testing.T) {
 	f.write(zramswapConfigPath, zramswapAdmins)
 	sys.failures["set "+swappinessParam+"=180"] = errors.New("read-only")
 
-	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmReplace: zramswapConfigPath})
+	_, err := sys.executor(nil).setSwapMode(t.Context(), zramReplacing(t, sys, zramswapConfigPath))
 	// The error says where the copy the rollback left is.
 	if err == nil || !strings.Contains(err.Error(), zramswapConfigPath+".before-linuxio") {
 		t.Fatalf("err = %v, want the copy named", err)
@@ -246,7 +250,7 @@ func TestSetSwapModeKeepsTheCopyWhenTheRunFails(t *testing.T) {
 func TestSetSwapModeReplacesLinuxIOsOwnZramConfigWithoutACopy(t *testing.T) {
 	_, sys := diskHost(t)
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err != nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys)); err != nil {
 		t.Fatal(err)
 	}
 	if slices.ContainsFunc(sys.calls, func(call string) bool { return strings.HasSuffix(call, ".before-linuxio") }) {
@@ -442,7 +446,7 @@ func TestSetSwapModeReplacesAnUnchangedPackageConffileWithoutACopy(t *testing.T)
 	f.write(zramswapConfigPath, zramswapStock)
 	f.write(dpkgStatusPath, dpkgStatus(zramswapConfigPath, zramswapStock, ""))
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err != nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys)); err != nil {
 		t.Fatal(err)
 	}
 	if f.exists(zramswapConfigPath + ".before-linuxio") {
@@ -665,7 +669,7 @@ func TestSetSwapModeRefusesAConfirmationOfAnotherFile(t *testing.T) {
 	mutationMu.Lock()
 	defer mutationMu.Unlock()
 
-	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmReplace: "/etc/passwd"})
+	_, err := sys.executor(nil).setSwapMode(t.Context(), zramReplacing(t, sys, "/etc/passwd"))
 	if !errors.Is(err, bridgeipc.ErrInvalidArgs) {
 		t.Fatalf("err = %v, want invalid arguments", err)
 	}
@@ -681,7 +685,7 @@ func TestSetSwapModeLogsTheConfigurationFileItReplaced(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	_, sys := diskHost(t)
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err != nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), zramRequest(t, sys)); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(logs.String(), "zram_config") {
@@ -691,7 +695,7 @@ func TestSetSwapModeLogsTheConfigurationFileItReplaced(t *testing.T) {
 	logs.Reset()
 	f, sys := diskHost(t)
 	f.write(zramswapConfigPath, zramswapAdmins)
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmReplace: zramswapConfigPath}); err != nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), zramReplacing(t, sys, zramswapConfigPath)); err != nil {
 		t.Fatal(err)
 	}
 	want := "zram_config_replaced=" + zramswapConfigPath + " zram_config_copy=" + zramswapConfigPath + ".before-linuxio"
@@ -715,7 +719,7 @@ func TestSetSwapModeStopsWhenTheCopyCannotBeWritten(t *testing.T) {
 				f.symlink(filepath.Join(f.root, "/srv/elsewhere"), copyPath)
 			}
 
-			_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmReplace: zramswapConfigPath})
+			_, err := sys.executor(nil).setSwapMode(t.Context(), zramReplacing(t, sys, zramswapConfigPath))
 			if err == nil || !strings.Contains(err.Error(), copyPath) {
 				t.Fatalf("err = %v, want the copy named", err)
 			}

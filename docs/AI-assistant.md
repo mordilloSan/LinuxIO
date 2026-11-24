@@ -6,7 +6,9 @@ CLI or Codex) running on the host as the logged-in user. The agent speaks the
 over stdin/stdout). The browser is the ACP client and renders the session; the
 model runs at the vendor. LinuxIO runs no model, holds no API key and stores
 nothing about conversations. The only thing it persists is the chosen agent id
-(`assistant.agent` in the per-user config).
+(`assistant.agent` in the per-user config). What the agent itself keeps
+(sign-in, settings, chat history, memory) is in the agent's own folder, which
+for Claude Code is one LinuxIO gives it: see [Profile](#profile).
 
 ## Relay
 
@@ -66,6 +68,73 @@ new chat starts with; `config.set {assistant:{defaults}}` replaces the whole
 map (unknown ids and values with control characters or over 128 bytes error).
 An agent with no entry gets LinuxIO's starting point, which exists only for
 `claude`: `opus`, `high`, `auto`.
+
+## Profile
+
+Claude Code started by LinuxIO keeps its state in a folder of its own,
+`~/.local/share/linuxio/profiles/claude`, which the bridge names in
+`CLAUDE_CONFIG_DIR` (`ProfileEnv`, `ProfileDir` and `Profile` in `acpagents`).
+The same user's `claude` in a terminal or an editor extension uses
+`~/.claude`, and the two would otherwise be one: signing out in the editor
+signed the Assistant out, and the model saved there was the Assistant's. In
+the profile, and so the Assistant's alone, are:
+
+- the sign-in (`.credentials.json`), which may be another account than the
+  terminal's;
+- `settings.json` (model, permissions, hooks) and the user-level `CLAUDE.md`,
+  skills and MCP servers;
+- plugins and marketplaces, which are the ones the Plugins dialog lists;
+- chat history, so `session/list` offers only chats of the Assistant;
+- memory (`projects/*/memory/`) and caches.
+
+Every process LinuxIO starts for the agent gets the variable: the chat and the
+Settings probe (`assistant.open`), the Terminal sign-in and the
+`claude plugin` commands. A start without it would read and write `~/.claude`.
+The pane relay hands its environment on to the CLI. The Terminal sign-in runs
+through the user's login shell, so there the variables are set by
+`/usr/bin/env` after the shell's start-up files: a `~/.bashrc` that exports
+`CLAUDE_CONFIG_DIR` for the user's own Claude Code does not move the sign-in
+away from the profile the chat reads.
+
+`Profile` makes the folder with `install -d -m 0700` run as the session user,
+which also sets that mode again on a folder that exists: it holds a sign-in
+and chats, and the bridge, which may be root, creates nothing in a home the
+user controls. It is beside the install folder (`agents/claude`), which an
+install replaces, so reinstalling the agent keeps the profile. LinuxIO copies
+nothing into it from `~/.claude`: the Assistant starts signed out, with no
+history, plugins or memory, and what the user's own Claude Code holds stays
+where it is.
+
+A chat works in the user's home, and Claude Code reads `.claude/` in the
+folder it works in as that folder's project settings: there, `~/.claude`, the
+other profile, whose model, hooks and plugins would be the chat's again. So
+every session request to Claude Code (`session/new`, `load`, `fork`, `resume`)
+carries `_meta.claudeCode.options.settingSources: ["user"]` (`SESSION_META` in
+`frontend/src/api/acp/connection.ts`), and the CLI loads the profile's
+user-level settings alone. A chat therefore reads no project file of the home
+folder: not `~/CLAUDE.md`, `~/.claude/CLAUDE.md` or `~/.mcp.json`. The
+`claude plugin` commands take no such option, so they run in the profile's
+folder, where there is no `.claude/` to read: run in the home they list a
+plugin as `~/.claude/settings.json` switches it, and change it there.
+
+Shared with every other `claude` on the host: the managed settings under
+`/etc/claude-code`, and the `claude` program itself.
+
+Known limits:
+
+- The adapter resolves a few settings by itself, for the folder the chat works
+  in and whatever the setting sources: the default permission mode, the
+  switches that turn auto and bypass modes off, the `availableModels` and
+  `modelOverrides` lists and the effort level still come from
+  `~/.claude/settings.json` when it sets them. A new chat's mode and effort
+  are then replaced by the [chat defaults](#features), except that a mode
+  switched off there is not offered.
+- The Terminal sign-in is an interactive `claude` in the home folder, which
+  loads project settings as any terminal session does; it signs in and is
+  closed.
+
+Gemini CLI and Codex have no profile (`ProfileEnv` is empty): they keep their
+usual folders in the user's home, shared with their use outside LinuxIO.
 
 ## Installing agents
 
@@ -202,13 +271,18 @@ advertises the matching capability.
 - **Read-only commands.** `transcript/readOnlyCommand.ts` decides which
   commands only read: a list of readers (`cat`, `ls`, `ss`, `df`, ...),
   read-only subcommands (`systemctl status`, `docker ps`, `btrfs filesystem
-  usage`, ...) and commands that read unless a mutating flag is present
-  (`find -delete`, `sed -i`, `journalctl --vacuum-*`). Every segment of a
-  pipeline must read, and a redirection or command substitution makes the
-  whole command count as acting. Quoted text is literal, so a `|` or `>`
-  inside a search pattern does not split or redirect; a substitution inside
-  double quotes still counts. This is presentation only and errs towards
-  "acting"; permissions stay with the agent.
+  usage`, ...) and, for either, the arguments that make it act (`find
+  -delete`, `sed -i`, `sort -o`, `date -s`, `hostname NAME`, `git diff
+  --output`, ...). `env` is read through: the command after its options and
+  assignments, and the text of `-S`, is what is judged. Every segment of a
+  pipeline must read, and a redirection to a file, input from a file or
+  here-document, a command substitution or an unclosed quote makes the whole
+  command count as acting; output sent to `/dev/null` or another descriptor
+  does not. Quotes are read in one pass as the shell reads them, so a `|` or
+  `>` inside a search pattern does not split or redirect, an apostrophe inside
+  double quotes does not open a quote, and a substitution inside double
+  quotes still counts. This is presentation only and errs towards "acting";
+  permissions stay with the agent.
 - **Turn footer.** A turn that ran in this page ends in a footer showing how
   long it took (in hours and minutes from an hour on) and, when the agent's
   `session/prompt` response carries `usage`, the output tokens
@@ -323,7 +397,9 @@ advertises the matching capability.
     2`, numbered per prompt), each tool call, `answer ready`, and a change
     of model between prompts (`fable 5.2 → opus 5.5`). A call is named in a
     few words: the agent's description of a command (or the command's name),
-    the last two parts of a file's path, a web address's host, a subagent's
+    the last two parts of a file's path, a web address's host (also when
+    it is written without `https://`; the tool's name when it has none,
+    never the address), a subagent's
     title, a skill's name. Finished calls in a row at one station, by the
     chat or by one subagent, fold into one row (`+2`) with their times
     added. A call still running is not pushed out by newer rows: it stays
@@ -350,10 +426,13 @@ advertises the matching capability.
     `podman pull`, and the package managers' installs, updates and
     refreshes (`apt`, `dnf`, `yum`, `zypper`, `pacman -S`, `apk`, `snap`,
     `flatpak`). The command that counts is the one run behind `sudo`,
-    `env`, `timeout`, `nice`, `xargs`, `chroot`, `runuser` and the like,
+    `env`, `timeout`, `nice`, `xargs`, `chroot`, `runuser` and the like
+    (past their flags, a long one that takes a word as its short one:
+    `timeout --signal KILL 5 curl x` is `curl`),
     after `do`, `then` or `!` and the assignments and redirections before
     it (`2>/dev/null ls` is `ls`, and the text of `<<<"…"` is never a
-    name), inside `$(…)` or a function's body, in the line handed to
+    name), inside `$(…)`, backticks (also backticks written inside
+    backticks) or a function's body, in the line handed to
     `bash -c`, `su -c`, `eval` or `watch`, and by `find -exec`. A `;` or
     `|` in quotes splits nothing, a comment is not read, a `case` pattern
     on any branch (`a|b)`, `(a|b)`) runs nothing but the commands after
@@ -361,20 +440,32 @@ advertises the matching capability.
     `declare` or `local`) is values and only what `$(…)` or `<(…)` runs
     inside it is a command (a `(` after `=` in `[[ … ]]` is a regex, not a
     list), the text of a here-document is not run unless a shell reads it
-    (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`
-    are text, `sudo bash <<EOF` and `bash -s 2>&1 <<EOF` are read as
-    commands), and only the first 8,000 characters of a line are read. A
+    (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`,
+    or with backticks in place of `$(…)`, are text, `sudo bash <<EOF` and
+    `bash -s 2>&1 <<EOF` are read as commands). Its mark is a word with
+    its quotes taken off (`<<E"O"F`, `<<"END MSG"`, `<<'1'`) that starts
+    with a letter, `_`, a quote or a backslash; it ends at the line that
+    is its mark, and inside `$(…)` or backticks also where they close, as
+    it does in bash: at a `)` after the mark (`EOF)`) and at the first
+    backtick, in its text or on the line of its `<<`, so what follows is
+    read. Only the first 8,000 characters of
+    a line are read, and a longer one that shows nothing reaching out
+    goes to Shell, never to Files, since the rest may run anything. A
     line follows no more than 256 commands run inside others (in `$(…)`,
     behind `find -exec`, in the line handed to `bash -c`): one that holds
     more is read no further and goes to Shell. A row with no description is
     named by the first command that says something (`make` for
     `cd /srv && make`). Known limits: a command kept in an array and run
     later (`cmd=(curl …); "${cmd[@]}"`) lands on Shell, where lot-map shows
-    Network, an array element whose index holds a space (`m[a b]=1`)
+    Network, a here-document whose bare mark starts with anything but a
+    letter or `_` (`<<1`, `<<$X`, `<<!`) is taken for a shift, which it
+    far more often is, so its text is read as commands, the line handed
+    to `env -S` is not read, an array element whose index holds a space (`m[a b]=1`)
     is read as a command, and so are the patterns of a `case` whose `in`
     stands on a line of its own, while a `case` inside `$(…)` ends the
     `$(…)` at the `)` of its first pattern unless that opens with `(`.
-    A line of file commands that names `.claude/projects/*/memory/` goes to
+    A line of file commands that names `projects/*/memory/` of the
+    [profile](#profile) or of `~/.claude` goes to
     Memory, as does a file under it; an MCP tool goes by its server
     (`Claude_Browser` and `claude-in-chrome` to Browser, `terminal`
     to Shell, a server named for memory to Memory, any other to Network),
@@ -419,7 +510,12 @@ advertises the matching capability.
     row whose time was not seen shows nothing there. A step carries the model
     that was set when its prompt was sent.
   - *What it lacks beside the plugin.* Hooks stays quiet: the adapter drops
-    Claude Code's hook events, so they never reach the browser. A subagent's
+    Claude Code's hook events, so they never reach the browser. A command
+    sent to the background reads as finished the moment it is handed off,
+    and its station rests: the adapter ends the call then, and tells of the
+    command's own life only to a client that declares its `asyncTasks`
+    extension, an ACP v2 background list or a terminal, none of which
+    LinuxIO does (read from the source of `claude-agent-acp` 0.102.0). A subagent's
     own calls fly from the core, not from the Agents station; a call a hook
     refused is an ordinary failure; and compaction is not a step.
   - *Card.* It shares the plugin pane's box, blending, width and resizing,
@@ -535,6 +631,48 @@ advertises the matching capability.
   history state once taken, so a reload does not type it again, and nothing
   is typed into an agent login PTY. Code in a plugin pane or a side question
   has Copy only.
+
+  The terminal can also sit in a browser tab beside the chat
+  (`utils/terminalTab.ts`). A click first asks, on a `BroadcastChannel`,
+  whether another tab of this server has its shell terminal up, and waits
+  200 ms for an answer. A tab that answers gets the command and the chat
+  stays where it is; with several, the first to answer gets it. With none, a
+  middle click or Ctrl+click (Cmd on a Mac) opens `/terminal` in a new tab
+  and hands the command over once that terminal says it is up, within 30 s
+  (a second click in that time replaces the command the tab will get),
+  and a plain click navigates as above; so does a middle click when the
+  browser refuses the tab. The button's tooltip names the middle click. Each
+  browser tab has a shell of its own, so every step of an answer lands in the
+  one shell of that tab, where an earlier `cd` still holds. The channel
+  carries the command for the same reason history state does: only a page of
+  this origin can post to it, never a link. The chat opens its tab under a
+  window name of its own, which is the name that tab answers by, so the
+  command for a new tab goes to that tab and to no other terminal. The
+  terminal passes what it receives through `typedCommand.ts`, and a terminal
+  showing an agent login, or one whose shell has ended, does not answer.
+
+  Nobody is looking at the terminal tab when such a command arrives, so it
+  is typed only at a prompt: a shell that turns bracketed paste on and off
+  (bash 5.1 and later, zsh, fish) has it on exactly while it waits at its
+  prompt, and a command that arrives while a program has the terminal (an
+  editor, a pager, a running command) waits, with a line in the terminal
+  saying so, and is typed when the prompt is back. A shell never seen to
+  touch the mode (an older bash) gives no such sign, and one line is typed
+  into it as it is on the page's own visit. What the page remembers of a
+  shell from its last visit holds only until the shell next sets the mode.
+
+  Known limits: a page can bring to the front only a tab it opened, and not
+  in every browser, so the chat shows "Sent to your terminal tab" when it is
+  still the tab in view 300 ms later. A terminal tab that has moved to
+  another page, or that the browser has put to sleep, does not answer, and
+  the click then acts as if there were none. Reloading the chat forgets which
+  tab it opened; the command still reaches it, without the tab coming
+  forward. The new tab is opened 200 ms after the click, once no terminal
+  has answered; a browser that allows a new tab only inside the click itself
+  refuses it, and the terminal opens in place of the chat (checked in
+  Chromium only). A tab that never brings a terminal up within the 30 s,
+  such as one that lands on the sign-in page, drops its command without a
+  message.
 - **Auto-scroll.** The transcript follows new content while it is scrolled to
   the bottom and pauses when the user scrolls up.
 - **Shortcuts.** Enter sends, Shift+Enter inserts a newline, Escape stops a
@@ -662,7 +800,8 @@ composer is disabled then, and a plugin can be the reason. It exists for Claude 
 the other agents' ids are refused with 400. Claude Code's own `/plugin` is a
 terminal screen the ACP adapter does not advertise, so LinuxIO manages plugins
 the way Claude Code's editor extensions do: the bridge runs
-`claude plugin ... --json` and never edits `~/.claude` itself.
+`claude plugin ... --json`, in the Assistant's [profile](#profile), and never
+edits the agent's settings files itself.
 
 | Route | Kind | Runs |
 |-------|------|------|
@@ -675,11 +814,12 @@ the way Claude Code's editor extensions do: the bridge runs
 | `assistant.remove_marketplace` | Mutation | `plugin marketplace remove <name> --json` |
 | `assistant.update_marketplace` | Mutation | `plugin marketplace update <name> --json` |
 
-- **Who runs it.** Every command runs as the session user, in their home, with
+- **Who runs it.** Every command runs as the session user, in the
+  [profile](#profile)'s folder, with
   the `claude` on their login-shell PATH (409 when there is none), standard
   input closed and arguments passed as an argv array. It writes only under
-  that user's `~/.claude`, so no route is privileged: it is what the user can
-  already type in the Terminal page. Reads have 30 s, writes 10 min, and a
+  that user's profile folder, so no route is privileged: it is what the user
+  can already type in the Terminal page with `CLAUDE_CONFIG_DIR` set. Reads have 30 s, writes 10 min, and a
   cancelled job kills the CLI's whole process group.
 - **Search.** The catalogue is a few megabytes (about 4,000 entries), so the
   browser never receives it. The bridge drops installed plugins, keeps the
@@ -807,7 +947,10 @@ untouched.
 
 ## Login
 
-Login state belongs to the agent CLI, not LinuxIO. The Settings tab probes it:
+Login state belongs to the agent CLI, not LinuxIO. Claude Code keeps it in its
+[profile](#profile), so the Assistant is signed in by itself: a sign-in in a
+terminal does not sign the Assistant in, and a logout here leaves the
+terminal's. The Settings tab probes it:
 it sends `initialize`, waits up to 2 s for an `_auth/status_update`, and
 otherwise tries `session/new`, mapping JSON-RPC error `-32000` to "not logged
 in". When logged in it keeps (or, after a pushed status, opens) that session to

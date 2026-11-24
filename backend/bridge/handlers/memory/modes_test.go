@@ -14,6 +14,8 @@ var (
 )
 
 func TestDeriveMode(t *testing.T) {
+	removable := []string{"/swap.img"}
+	lockedFile := apischema.SwapDevice{Path: "/home/swapfile", Kind: apischema.SwapDeviceFile}
 	tests := []struct {
 		name         string
 		devices      []apischema.SwapDevice
@@ -24,8 +26,9 @@ func TestDeriveMode(t *testing.T) {
 		{name: "no swap with zswap enabled", zswapEnabled: true, want: apischema.SwapModeNone},
 		{name: "zram only", devices: []apischema.SwapDevice{zramDevice}, want: apischema.SwapModeZram},
 		{name: "zram only with zswap enabled", devices: []apischema.SwapDevice{zramDevice}, zswapEnabled: true, want: apischema.SwapModeZram},
-		{name: "zram and swap file", devices: []apischema.SwapDevice{zramDevice, fileDevice}, want: apischema.SwapModeMixed},
-		{name: "zram and partition", devices: []apischema.SwapDevice{partitionDevice, zramDevice}, zswapEnabled: true, want: apischema.SwapModeMixed},
+		{name: "zram and a removable swap file", devices: []apischema.SwapDevice{zramDevice, fileDevice}, want: apischema.SwapModeMixed},
+		{name: "zram and a swap file LinuxIO does not change", devices: []apischema.SwapDevice{zramDevice, lockedFile}, want: apischema.SwapModeZram},
+		{name: "zram and partition", devices: []apischema.SwapDevice{partitionDevice, zramDevice}, zswapEnabled: true, want: apischema.SwapModeZram},
 		{name: "swap file with zswap", devices: []apischema.SwapDevice{fileDevice}, zswapEnabled: true, want: apischema.SwapModeZswap},
 		{name: "partition with zswap", devices: []apischema.SwapDevice{partitionDevice}, zswapEnabled: true, want: apischema.SwapModeZswap},
 		{name: "swap file alone", devices: []apischema.SwapDevice{fileDevice}, want: apischema.SwapModeDisk},
@@ -33,7 +36,7 @@ func TestDeriveMode(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := deriveMode(test.devices, test.zswapEnabled); got != test.want {
+			if got := deriveMode(test.devices, removable, test.zswapEnabled); got != test.want {
 				t.Fatalf("mode = %q, want %q", got, test.want)
 			}
 		})
@@ -41,57 +44,37 @@ func TestDeriveMode(t *testing.T) {
 }
 
 func TestRecommendMode(t *testing.T) {
+	onBtrfs := apischema.SwapFileRow{Path: "/swap.img", Active: true, FSType: "btrfs", BlocksSnapshots: true}
+	inOwnFolder := apischema.SwapFileRow{Path: ownSwapFilePath, Active: true, FSType: "btrfs"}
+	offOnBtrfs := apischema.SwapFileRow{Path: "/old.img", FSType: "btrfs", BlocksSnapshots: true}
+	lockedOnBtrfs := apischema.SwapFileRow{Path: "/swapfile", Active: true, FSType: "btrfs", BlocksSnapshots: true, LockedReason: apischema.SwapFileNotInFstab}
+	mmcFile := apischema.SwapDevice{Path: "/swapfile", Kind: apischema.SwapDeviceFile, DiskHint: apischema.SwapDiskHintMMC}
+	usbFile := apischema.SwapDevice{Path: "/mnt/usb/swapfile", Kind: apischema.SwapDeviceFile, DiskHint: apischema.SwapDiskHintRemovable}
 	tests := []struct {
-		name            string
-		swapFile        *apischema.SwapFile
-		partitionActive bool
-		noZswap         bool
-		want            apischema.SwapMode
+		name    string
+		devices []apischema.SwapDevice
+		rows    []apischema.SwapFileRow
+		noZswap bool
+		want    apischema.SwapMode
 	}{
-		{name: "no swap file", want: apischema.SwapModeZram},
-		{
-			name:     "swap file on an SD card or eMMC",
-			swapFile: &apischema.SwapFile{Path: "/swapfile", FSType: "ext4", DiskHint: apischema.SwapDiskHintMMC},
-			want:     apischema.SwapModeZram,
-		},
-		{
-			name:     "swap file on a removable drive",
-			swapFile: &apischema.SwapFile{Path: "/mnt/usb/swapfile", Active: true, FSType: "ext4", DiskHint: apischema.SwapDiskHintRemovable},
-			want:     apischema.SwapModeZram,
-		},
-		{
-			name:     "swap file on btrfs",
-			swapFile: &apischema.SwapFile{Path: "/swap/swapfile", Active: true, FSType: "btrfs"},
-			want:     apischema.SwapModeZram,
-		},
-		{
-			name:     "swap file anywhere else",
-			swapFile: &apischema.SwapFile{Path: "/swap.img", Active: true, FSType: "ext4"},
-			want:     apischema.SwapModeZswap,
-		},
-		{
-			name:     "inactive swap file anywhere else",
-			swapFile: &apischema.SwapFile{Path: "/swap.img", FSType: "xfs"},
-			want:     apischema.SwapModeZswap,
-		},
-		{name: "swap partition and no swap file", partitionActive: true, want: apischema.SwapModeZswap},
-		{
-			name:            "swap partition beside a swap file on btrfs",
-			swapFile:        &apischema.SwapFile{Path: "/swap/swapfile", Active: true, FSType: "btrfs"},
-			partitionActive: true,
-			want:            apischema.SwapModeZswap,
-		},
-		{
-			name:     "swap file anywhere else on a kernel without zswap",
-			swapFile: &apischema.SwapFile{Path: "/swap.img", Active: true, FSType: "ext4"},
-			noZswap:  true,
-			want:     apischema.SwapModeZram,
-		},
-		{name: "swap partition on a kernel without zswap", partitionActive: true, noZswap: true, want: apischema.SwapModeDisk},
+		{name: "no disk swap", want: apischema.SwapModeZram},
+		{name: "zram only", devices: []apischema.SwapDevice{zramDevice}, want: apischema.SwapModeZram},
+		{name: "an off swap file only", rows: []apischema.SwapFileRow{offOnBtrfs}, want: apischema.SwapModeZram},
+		{name: "swap file on an SD card or eMMC", devices: []apischema.SwapDevice{mmcFile}, want: apischema.SwapModeZram},
+		{name: "swap file on a removable drive", devices: []apischema.SwapDevice{usbFile}, want: apischema.SwapModeZram},
+		{name: "swap file that blocks snapshots", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{onBtrfs}, want: apischema.SwapModeZram},
+		{name: "swap file that blocks snapshots and stays", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{lockedOnBtrfs}, want: apischema.SwapModeZswap},
+		{name: "one that goes beside one that stays", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{onBtrfs, lockedOnBtrfs}, want: apischema.SwapModeZswap},
+		{name: "one that goes beside one that is off and stays", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{onBtrfs, {Path: "/old.img", BlocksSnapshots: true, LockedReason: apischema.SwapFileNotRootOnly}}, want: apischema.SwapModeZram},
+		{name: "swap file in LinuxIO's subvolume", devices: []apischema.SwapDevice{fileDevice}, rows: []apischema.SwapFileRow{inOwnFolder}, want: apischema.SwapModeZswap},
+		{name: "swap file anywhere else", devices: []apischema.SwapDevice{fileDevice}, want: apischema.SwapModeZswap},
+		{name: "swap partition", devices: []apischema.SwapDevice{partitionDevice}, want: apischema.SwapModeZswap},
+		{name: "swap file on a kernel without zswap", devices: []apischema.SwapDevice{fileDevice}, noZswap: true, want: apischema.SwapModeDisk},
+		{name: "no disk swap on a kernel without zswap", noZswap: true, want: apischema.SwapModeZram},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := recommendMode(test.swapFile, test.partitionActive, !test.noZswap); got != test.want {
+			if got := recommendMode(test.devices, test.rows, !test.noZswap); got != test.want {
 				t.Fatalf("recommended mode = %q, want %q", got, test.want)
 			}
 		})
@@ -189,36 +172,64 @@ func TestLiveSysctls(t *testing.T) {
 }
 
 func TestDrainBlockedReason(t *testing.T) {
+	file := func(path string, used uint64) apischema.SwapDevice {
+		return apischema.SwapDevice{Path: path, Kind: apischema.SwapDeviceFile, Size: 8 * gib, Used: used}
+	}
+	row := func(path string, used uint64, locked apischema.SwapFileLockedReason) apischema.SwapFileRow {
+		return apischema.SwapFileRow{Path: path, Active: true, Used: used, LockedReason: locked}
+	}
+	partition := apischema.SwapDevice{Path: "/dev/sda3", Kind: apischema.SwapDevicePartition, Size: 8 * gib, Used: gib}
 	tests := []struct {
 		name         string
-		diskUsed     uint64
-		managedUsed  uint64
+		devices      []apischema.SwapDevice
+		rows         []apischema.SwapFileRow
 		memAvailable uint64
-		unitHeldOff  bool
-		leftOutUsed  bool
 		want         apischema.SwapDrainBlockedReason
 	}{
 		{name: "nothing parked", memAvailable: 8 * gib, want: apischema.SwapDrainNothingParked},
-		{name: "nothing parked and little memory", memAvailable: 100 * mib, want: apischema.SwapDrainNothingParked},
-		{name: "room", diskUsed: 1 * gib, managedUsed: 1 * gib, memAvailable: 4 * gib},
-		{name: "no room", diskUsed: 3900 * mib, managedUsed: 3900 * mib, memAvailable: 4 * gib, want: apischema.SwapDrainNotEnoughMemory},
-		{name: "more parked than available", diskUsed: 6 * gib, managedUsed: 6 * gib, memAvailable: 4 * gib, want: apischema.SwapDrainNotEnoughMemory},
-		{name: "available below the margin", diskUsed: 1 * mib, managedUsed: 1 * mib, memAvailable: 256 * mib, want: apischema.SwapDrainNotEnoughMemory},
-		{name: "exactly at the margin", diskUsed: 4*gib - 512*mib, managedUsed: 4*gib - 512*mib, memAvailable: 4 * gib, want: apischema.SwapDrainNotEnoughMemory},
-		{name: "one byte inside the margin", diskUsed: 4*gib - 512*mib - 1, managedUsed: 4*gib - 512*mib - 1, memAvailable: 4 * gib},
-		{name: "parked only on unmanaged devices", diskUsed: 1 * gib, memAvailable: 8 * gib, want: apischema.SwapDrainUnmanagedDevice},
-		{name: "room for the managed share", diskUsed: 6 * gib, managedUsed: 1 * gib, memAvailable: 4 * gib},
-		{name: "parked only in a swap file others can redirect", diskUsed: 1 * gib, memAvailable: 8 * gib, leftOutUsed: true, want: apischema.SwapDrainOthersCanWrite},
-		{name: "such a file beside a managed device", diskUsed: 2 * gib, managedUsed: 1 * gib, memAvailable: 8 * gib, leftOutUsed: true},
-		{name: "a masked unit", diskUsed: 1 * gib, managedUsed: 1 * gib, memAvailable: 8 * gib, unitHeldOff: true, want: apischema.SwapDrainUnitHeldOff},
-		{name: "a masked unit without room", diskUsed: 6 * gib, managedUsed: 6 * gib, memAvailable: 4 * gib, unitHeldOff: true, want: apischema.SwapDrainUnitHeldOff},
+		{name: "nothing parked and little memory", devices: []apischema.SwapDevice{file("/swap.img", 0)}, rows: []apischema.SwapFileRow{row("/swap.img", 0, "")},
+			memAvailable: 100 * mib, want: apischema.SwapDrainNothingParked},
+		{name: "room", devices: []apischema.SwapDevice{file("/swap.img", gib)}, rows: []apischema.SwapFileRow{row("/swap.img", gib, "")}, memAvailable: 4 * gib},
+		{name: "no room", devices: []apischema.SwapDevice{file("/swap.img", 3900*mib)}, rows: []apischema.SwapFileRow{row("/swap.img", 3900*mib, "")},
+			memAvailable: 4 * gib, want: apischema.SwapDrainNotEnoughMemory},
+		{name: "exactly at the margin", devices: []apischema.SwapDevice{file("/swap.img", 4*gib-512*mib)}, rows: []apischema.SwapFileRow{row("/swap.img", 4*gib-512*mib, "")},
+			memAvailable: 4 * gib, want: apischema.SwapDrainNotEnoughMemory},
+		{name: "one byte inside the margin", devices: []apischema.SwapDevice{file("/swap.img", 4*gib-512*mib-1)}, rows: []apischema.SwapFileRow{row("/swap.img", 4*gib-512*mib-1, "")},
+			memAvailable: 4 * gib},
+		{name: "free space on a partition counts as room", devices: []apischema.SwapDevice{file("/swap.img", 6*gib), partition},
+			rows: []apischema.SwapFileRow{row("/swap.img", 6*gib, "")}, memAvailable: 4 * gib},
+		{name: "parked only on a partition", devices: []apischema.SwapDevice{partition}, memAvailable: 8 * gib, want: apischema.SwapDrainOtherSwap},
+		{name: "parked only on a locked swap file", devices: []apischema.SwapDevice{file("/home/swapfile", gib)},
+			rows: []apischema.SwapFileRow{row("/home/swapfile", gib, apischema.SwapFileNotInFstab)}, memAvailable: 8 * gib, want: apischema.SwapDrainOtherSwap},
+		{name: "zram data is in memory already", devices: []apischema.SwapDevice{{Path: "/dev/zram0", Kind: apischema.SwapDeviceZram, Used: gib}},
+			memAvailable: 8 * gib, want: apischema.SwapDrainNothingParked},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := drainBlockedReason(test.diskUsed, test.managedUsed, test.memAvailable, test.leftOutUsed, test.unitHeldOff); got != test.want {
+			status := apischema.SwapStatus{Devices: test.devices, SwapFiles: test.rows, MemAvailable: test.memAvailable}
+			if got := drainBlockedReason(status); got != test.want {
 				t.Fatalf("drain blocked reason = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+// The room check before a swap file is turned off counts the free space on
+// the other disk swap devices, not on zram.
+func TestRoomToTurnOff(t *testing.T) {
+	status := apischema.SwapStatus{MemAvailable: gib, Devices: []apischema.SwapDevice{
+		{Path: "/swap.img", Kind: apischema.SwapDeviceFile, Size: 4 * gib, Used: 2 * gib},
+		{Path: "/dev/zram0", Kind: apischema.SwapDeviceZram, Size: 8 * gib},
+	}}
+	if roomToTurnOff(status, "/swap.img") {
+		t.Fatal("room with 1 GiB free for 2 GiB of data, want none")
+	}
+	status.Devices = append(status.Devices, apischema.SwapDevice{Path: "/swap.img.linuxio-resize", Kind: apischema.SwapDeviceFile, Size: 2 * gib})
+	if !roomToTurnOff(status, "/swap.img") {
+		t.Fatal("no room with 1 GiB free and 2 GiB free on another swap file for 2 GiB of data")
+	}
+	if !roomToTurnOff(status, "/gone.img") {
+		t.Fatal("a device that is not active needs room")
 	}
 }
 
@@ -238,22 +249,10 @@ func TestZramPlannedSize(t *testing.T) {
 }
 
 func TestZramUnavailableReason(t *testing.T) {
-	tests := []struct {
-		name            string
-		toolsInstalled  bool
-		partitionActive bool
-		want            apischema.ZramUnavailableReason
-	}{
-		{name: "available", toolsInstalled: true},
-		{name: "package missing", want: apischema.ZramPackageMissing},
-		{name: "swap partition active", toolsInstalled: true, partitionActive: true, want: apischema.ZramSwapPartitionActive},
-		{name: "package missing wins", partitionActive: true, want: apischema.ZramPackageMissing},
+	if got := zramUnavailableReason(true); got != "" {
+		t.Errorf("zram unavailable reason with a tool = %q, want none", got)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := zramUnavailableReason(test.toolsInstalled, test.partitionActive); got != test.want {
-				t.Fatalf("zram unavailable reason = %q, want %q", got, test.want)
-			}
-		})
+	if got := zramUnavailableReason(false); got != apischema.ZramPackageMissing {
+		t.Errorf("zram unavailable reason without a tool = %q, want package_missing", got)
 	}
 }

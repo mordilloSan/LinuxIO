@@ -15,14 +15,13 @@ import (
 // zramInstallHoldPath is the runtime drop-in that keeps zramswap.service from
 // starting while zram-tools installs. It is under /run, so a boot clears it.
 //
-// It is a condition drop-in, the way a swap file is held off at boot
-// (holdOffDropInPath), and not a mask: under a mask the package's postinst
+// It is a condition drop-in and not a mask: under a mask the package's postinst
 // does not enable the unit either, deb-systemd-helper then records no state
 // for it, and the next upgrade of the package enables and starts it (seen in
 // the Ubuntu 26.04 test VM, init-system-helpers 1.69). zramswap.service is
 // wanted by multi-user.target only, no swap.target, so holding it holds
 // nothing else back.
-const zramInstallHoldPath = "/run/systemd/system/" + zramService + ".d/" + holdOffDropInName
+const zramInstallHoldPath = "/run/systemd/system/" + zramService + ".d/90-linuxio-memory.conf"
 
 // renderZramInstallHold is the hold: "/" always exists, so the negated
 // condition never holds and systemd skips a start of the unit. Its content

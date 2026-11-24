@@ -24,9 +24,8 @@ var program = version.Program{
 	About:     "the LinuxIO file index daemon",
 	StartedBy: "systemd (linuxio-indexer.service, and linuxio-indexer-index.service for the timer)",
 	Usage: []string{
-		"linuxio-indexer [--config PATH] [--verbose]           the daemon",
-		"linuxio-indexer --trigger-index [--socket-path PATH]  the timer's request for an index run",
-		"linuxio-indexer --index-mode [--config PATH]          the scanner, which the daemon starts",
+		"linuxio-indexer [--config PATH] [--verbose]   the daemon",
+		"linuxio-indexer --index-mode [--config PATH]  the scanner, which the index timer starts",
 	},
 }
 
@@ -36,11 +35,8 @@ func Run(args []string) int {
 		return 0
 	}
 	if len(args) > 1 {
-		switch args[1] {
-		case "--index-mode":
+		if args[1] == "--index-mode" {
 			return runIndexMode(args[2:])
-		case "--trigger-index":
-			return runIndexTrigger(args[2:])
 		}
 	}
 	return runDaemon(args[1:])

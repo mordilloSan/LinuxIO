@@ -201,7 +201,7 @@ func sectionValues(section *ini.Section, name string) []string {
 
 // addNATHooks appends the forwarding and masquerade rules to PostUp and their
 // removal to PostDown, skipping lines already there, and reports whether it
-// added any.
+// added any. IPv4 forwarding itself is not a hook: see ensureForwarding.
 func addNATHooks(cfg *WireGuardConfig, egressNic, subnet string) bool {
 	if cfg.Hooks == nil {
 		cfg.Hooks = apischema.WireGuardHooks{}
@@ -227,7 +227,6 @@ func natPostUpHooks(egressNic, subnet string) []string {
 	source := shellArg(subnet)
 
 	return []string{
-		"sysctl -w net.ipv4.ip_forward=1",
 		fmt.Sprintf("iptables -C FORWARD -i %s -o %s -j ACCEPT || iptables -I FORWARD 1 -i %s -o %s -j ACCEPT", iface, egress, iface, egress),
 		fmt.Sprintf("iptables -C FORWARD -o %s -i %s -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -I FORWARD 1 -o %s -i %s -m state --state RELATED,ESTABLISHED -j ACCEPT", iface, egress, iface, egress),
 		fmt.Sprintf("iptables -t nat -C POSTROUTING -o %s -s %s -j MASQUERADE || iptables -t nat -A POSTROUTING -o %s -s %s -j MASQUERADE", egress, source, egress, source),

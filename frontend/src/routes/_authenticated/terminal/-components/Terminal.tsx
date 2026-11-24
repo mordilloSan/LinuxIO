@@ -17,6 +17,7 @@ import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
 import { alpha } from "@/theme/colorUtils";
 import { cardBorderRadius, shadowSm } from "@/theme/constants";
+import { listenForTypedCommands } from "@/utils/terminalTab";
 
 import { typedCommandFromState, typedCommandInput } from "./typedCommand";
 
@@ -67,6 +68,11 @@ const PROMPT_WAIT_MS = 1500;
 // proof of a prompt: the terminal can be set up again, or the page left and
 // opened again, while the shell it started a moment ago is still not reading.
 const shellStartedAt = new WeakMap<object, number>();
+
+// Shells seen to turn bracketed paste on or off. Such a shell has it on
+// exactly while it sits at its prompt; one that never does (an older bash)
+// gives no such sign.
+const shellsWithPasteMode = new WeakSet<object>();
 
 function hadTimeForPrompt(stream: object) {
   const startedAt = shellStartedAt.get(stream) ?? -Infinity;
@@ -220,19 +226,50 @@ const TerminalXTerm = () => {
       if (!isOpen) return;
 
       const existing = login ? null : getStream("terminal.open");
-      const pasteKnown = existing !== null && shellTakesPastes;
-      const atPrompt = existing !== null && hadTimeForPrompt(existing);
+      // What a reattached shell was last seen to do, until it says otherwise:
+      // from then on the terminal's own reading of the output is the truth.
+      let pasteKnown = existing !== null && shellTakesPastes;
+      const pasteModeSet = (params: (number | number[])[]) => {
+        if (params.includes(2004)) {
+          pasteKnown = false;
+          if (streamRef.current) shellsWithPasteMode.add(streamRef.current);
+        }
+        return false;
+      };
+      const pasteModeHooks = [
+        terminal.parser.registerCsiHandler(
+          { prefix: "?", final: "h" },
+          pasteModeSet,
+        ),
+        terminal.parser.registerCsiHandler(
+          { prefix: "?", final: "l" },
+          pasteModeSet,
+        ),
+      ];
+      // A command from another tab arrives with nobody looking at this one.
+      // Typed into a program in the foreground it would be that program's
+      // keystrokes, so where the shell shows when it is at its prompt, the
+      // command waits for that.
+      let fromOtherTab = false;
+      // Asked each time: a command from another tab can come long after this.
+      const atPrompt = () => {
+        const stream = streamRef.current;
+        return stream !== null && hadTimeForPrompt(stream);
+      };
       // Types the Assistant's command once that cannot run it: one line at
       // once, several lines when the shell takes them as a single paste.
       // A shell started just now is not reading yet: the terminal would echo
       // the command above the prompt and the shell would show it again after
       // it. Turning bracketed paste on is the shell saying its prompt is up;
       // `settled` is for the shell that never does.
-      const typePending = (settled = atPrompt) => {
+      const typePending = (settled = atPrompt()) => {
         const pending = pendingCommand.current;
         if (pending === null) return;
         const takesPastes = pasteKnown || terminal.modes.bracketedPasteMode;
-        if (!settled && !takesPastes) return;
+        const stream = streamRef.current;
+        const waitsForPrompt =
+          fromOtherTab && stream !== null && shellsWithPasteMode.has(stream);
+        if (!takesPastes && (waitsForPrompt || !settled)) return;
         const input = typedCommandInput(pending, takesPastes);
         if (input === null) return;
         pendingCommand.current = null;
@@ -263,10 +300,26 @@ const TerminalXTerm = () => {
           : undefined,
       });
       let notice: number | undefined;
+      const take = (taken: string, otherTab = false) => {
+        pendingCommand.current = taken;
+        fromOtherTab = otherTab;
+        typePending();
+        window.clearTimeout(notice);
+        notice = window.setTimeout(() => {
+          typePending(true);
+          if (pendingCommand.current === null) return;
+          terminal.write(
+            pendingCommand.current.includes("\n")
+              ? "\r\n[The command from the Assistant has several lines. It is typed, not run, once the shell shows a prompt that takes a paste.]\r\n"
+              : "\r\n[A command from the Assistant is waiting. It is typed, not run, once the shell shows a prompt that takes a paste.]\r\n",
+          );
+        }, PROMPT_WAIT_MS);
+      };
+      let stopListening: (() => void) | undefined;
       if (opened) {
         streamRef.current?.resize(terminal.cols, terminal.rows);
         if (command) {
-          pendingCommand.current = command;
+          take(command);
           // Typed once: a reload or the back button must not type it again.
           void navigate({
             to: ".",
@@ -274,22 +327,27 @@ const TerminalXTerm = () => {
             state: (previous) => ({ ...previous, terminalCommand: undefined }),
           });
         }
-        typePending();
-        notice = window.setTimeout(() => {
-          typePending(true);
-          if (pendingCommand.current === null) return;
-          terminal.write(
-            "\r\n[The command from the Assistant has several lines. It is typed, not run, once the shell shows a prompt that takes a paste.]\r\n",
+        // The Assistant in another tab types here too; never into a login.
+        if (!login) {
+          stopListening = listenForTypedCommands(
+            (sent) => {
+              const typed = typedCommandFromState(sent);
+              if (typed !== null) take(typed, true);
+            },
+            // A shell that has ended types nothing.
+            () => streamRef.current !== null,
           );
-        }, PROMPT_WAIT_MS);
+        }
       }
 
       return () => {
         window.clearTimeout(notice);
+        stopListening?.();
+        for (const hook of pasteModeHooks) hook.dispose();
         // The shell persists for reconnection; only a login PTY is closed.
         if (login) closeStream();
         else {
-          shellTakesPastes = terminal.modes.bracketedPasteMode;
+          shellTakesPastes = pasteKnown || terminal.modes.bracketedPasteMode;
           detachStream();
         }
       };

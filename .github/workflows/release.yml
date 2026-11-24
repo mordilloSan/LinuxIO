@@ -493,37 +493,32 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: read # the release PR's body is the notes
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
       - name: Fetch the release assets
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-assets
           path: release-assets
 
-      - name: Write the release notes
+      # The notes are the body gh release-flow open-pr wrote on the release PR,
+      # as it stands when this job runs: the PR from dev/<tag> whose merge
+      # commit is the commit this run's tag points at.
+      - name: Read the release notes
         env:
-          # The generator asks GitHub for each author's login.
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          git fetch --tags --force
-          prev="$(git tag -l 'v*' --sort=-v:refname | awk -v tag="$TAG" 'found { print; exit } $0 == tag { found = 1 }')"
-          range=""
-          [[ -n $prev ]] && range="$prev..$TAG"
-          # The generator gh release-flow open-pr uses, so the PR body and the
-          # release notes match.
-          {
-            echo "## $TAG — $(date -u +%Y-%m-%d)"
-            echo ""
-            ./.github/scripts/changelog-entry.sh "$TAG" "$prev" "$range" "$GITHUB_REPOSITORY"
-          } >RELEASE_NOTES.md
+          gh api "repos/$GITHUB_REPOSITORY/pulls?state=closed&base=main&head=$GITHUB_REPOSITORY_OWNER:dev/$TAG" \
+            --jq "[.[] | select(.merged_at != null and .merge_commit_sha == \"$GITHUB_SHA\") | .body // \"\"] | first // \"\"" \
+            >RELEASE_NOTES.md
+          if [[ -z $(tr -d '[:space:]' <RELEASE_NOTES.md) ]]; then
+            echo "::error::No merged pull request from dev/$TAG with merge commit $GITHUB_SHA, or its body is empty"
+            exit 1
+          fi
           cat RELEASE_NOTES.md
 
       # A draft first, with every asset, then published in one step: an

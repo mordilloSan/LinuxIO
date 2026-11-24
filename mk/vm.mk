@@ -140,7 +140,7 @@ vm_suites := memory btrfs indexer docker packagekit relay userconfig filebrowser
 # test-vm-backend and test-vm-browser run when SUITES and PLAYWRIGHT_ARGS name
 # nothing; add a suite or a spec here once it passes on Fedora.
 vm_fedora_suites := memory indexer packagekit relay userconfig filebrowser
-vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts
+vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts indexer.spec.ts wireguard.spec.ts
 SUITES ?= $(if $(filter fedora,$(DISTRO)),$(vm_fedora_suites),$(vm_suites))
 # The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
 RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
@@ -219,7 +219,7 @@ endef
 vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel tests in the test VM
 	@$(call vm_suite,btrfs)
 
-vm-test-memory-integration: ensure-go ## Run the root swap mode and drain tests in the test VM
+vm-test-memory-integration: ensure-go ## Run the root swap file, mode and drain tests in the test VM
 	@$(call vm_suite,memory)
 
 vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests in the test VM

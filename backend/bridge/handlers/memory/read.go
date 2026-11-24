@@ -230,35 +230,6 @@ func (h hostRoot) readZramDevice(name string) (apischema.ZramDevice, error) {
 	return device, nil
 }
 
-// fstabSwapFile returns the swap file among the fstab swap entries, one
-// whose source is a path outside /dev, that LinuxIO manages: the first that
-// is active or whose unit is held off at boot, or when there is none, the
-// first. A held-off unit keeps the choice where it was after a switch to
-// zram stopped the file and held it off, so the way back starts that one,
-// and a later switch does not move on to another. Any other is left as it
-// is.
-func fstabSwapFile(entries []fstabSwap) (fstabSwap, bool) {
-	first, found := fstabSwap{}, false
-	for _, entry := range entries {
-		if !isSwapFilePath(entry.path) {
-			continue
-		}
-		if entry.device != "" || entry.heldOff {
-			return entry, true
-		}
-		if !found {
-			first, found = entry, true
-		}
-	}
-	return first, found
-}
-
-// isSwapFilePath reports whether an fstab swap path names a file rather
-// than a block device.
-func isSwapFilePath(path string) bool {
-	return strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "/dev/")
-}
-
 // mountEntry is one mount from mountinfo.
 type mountEntry struct {
 	mountPoint, fsType, source string

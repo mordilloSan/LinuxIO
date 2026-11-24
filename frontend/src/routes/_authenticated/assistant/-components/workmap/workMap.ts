@@ -193,9 +193,13 @@ const MCP_RESOURCE_TOOLS = new Set([
 const FILE_KINDS = new Set(["read", "edit", "delete", "move", "search"]);
 
 // The agent's own notes: a file in the folder, or the folder named in a
-// command line.
-const MEMORY_PATH = /\/\.claude\/projects\/[^/]+\/memory\//;
-const MEMORY_FOLDER = /\/\.claude\/projects\/[^/\s]+\/memory(?![\w.-])/;
+// command line. A chat keeps them in its LinuxIO profile, which a command
+// line may name by its variable; `~/.claude` holds the notes of the user's
+// Claude Code outside LinuxIO.
+const MEMORY_PATH =
+  /\/(?:linuxio\/profiles\/claude|\.claude)\/projects\/[^/]+\/memory\//;
+const MEMORY_FOLDER =
+  /(?:\/linuxio\/profiles\/claude|\/\.claude|\$\{?CLAUDE_CONFIG_DIR\}?)\/projects\/[^/\s]+\/memory(?![\w.-])/;
 const BROWSER_SERVERS = new Set(["Claude_Browser", "claude-in-chrome"]);
 
 /** A command line that only handles files works on notes when it names them. */
@@ -273,12 +277,18 @@ export function stationOf(block: ToolBlock): StationId {
 const lastTwo = (path: string) =>
   path.replaceAll("\\", "/").split("/").filter(Boolean).slice(-2).join("/");
 
+// The host of an address, also of one written without its scheme, and
+// nothing when it has none: the rest of it is never a label.
 const hostOf = (url: string) => {
-  try {
-    return new URL(url).host || url;
-  } catch {
-    return url;
+  for (const address of url.includes("://") ? [url] : [url, `https://${url}`]) {
+    try {
+      const { host } = new URL(address);
+      if (host) return host;
+    } catch {
+      // Not an address as written; the next form may be.
+    }
   }
+  return "";
 };
 
 export const spaced = (name: string) => name.replace(/_+/g, " ");

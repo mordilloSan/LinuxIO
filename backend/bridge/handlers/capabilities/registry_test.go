@@ -74,6 +74,9 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 		{name: "e2fsprogs", wantDebian: "e2fsprogs", wantRHEL: "e2fsprogs"},
 		{name: "xfsprogs", wantDebian: "xfsprogs", wantRHEL: "xfsprogs"},
 		{name: "zram", wantDebian: "zram-tools", wantRHEL: "zram-generator"},
+		// iptables too, though Detect asks only for wg-quick: the NAT hooks
+		// of an interface LinuxIO creates are iptables lines.
+		{name: "wireguard", wantDebian: "wireguard-tools iptables", wantRHEL: "wireguard-tools iptables-nft"},
 		{
 			name:             "avahi",
 			wantDebian:       "avahi-daemon libnss-mdns",

@@ -11,7 +11,7 @@ set -e
 # lists to the paths it writes. The prerm stopped and disabled the two
 # timers. What LinuxIO writes for something an administrator set up stays,
 # since it works without LinuxIO: scheduled scripts (linuxio-schedule-*), the
-# rsync service, Docker's and the swap units' drop-ins.
+# rsync service and Docker's drop-ins.
 written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer
 /etc/systemd/system/linuxio-docker-update.timer

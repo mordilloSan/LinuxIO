@@ -8,9 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -18,6 +20,10 @@ import (
 var ErrAborted = errors.New("operation aborted")
 
 var errIndexerStreamEnded = errors.New("indexer stream ended unexpectedly")
+
+// errIndexerOperationLost is returned for an operation the daemon no longer
+// knows: it stopped or restarted while the operation ran or waited.
+var errIndexerOperationLost = errors.New("indexer lost the operation")
 
 const maxStatusStreamReattachAttempts = 3
 
@@ -29,9 +35,23 @@ type IndexerCallbacks struct {
 	OnError    func(msg string, code int) error
 }
 
+// indexerScanUnitName is the unit that scans the whole filesystem: the index
+// timer's, which a full index someone asks for starts as well.
+const indexerScanUnitName = "linuxio-indexer-index.service"
+
+// startScanUnit asks systemd to start a unit and returns when the start is
+// queued. A variable for tests.
+var startScanUnit = systemdapi.StartUnit
+
 // StreamIndexer triggers a full index for / or a path reindex for a subpath,
 // then attaches to GET /status?stream=true for live SSE updates. The caller
 // controls cancellation through ctx.
+//
+// A reindex is the daemon's own work. A full index is the scanner's, a
+// process systemd runs: systemd is asked to start it, and the daemon names
+// the operation to follow, which is the scanner's. Asking twice is safe,
+// since the daemon answers with the index that waits or runs and systemd
+// does not start a unit that is running.
 //
 // HTTP status-to-error mapping is centralized here so handler wrappers stay thin.
 func StreamIndexer(ctx context.Context, path string, cb IndexerCallbacks) error {
@@ -42,6 +62,16 @@ func StreamIndexer(ctx context.Context, path string, cb IndexerCallbacks) error 
 		Operation: indexerOperationForPath(path),
 	}); progressErr != nil {
 		return fmt.Errorf("on progress callback: %w", progressErr)
+	}
+
+	// The scanner first, so that a start that fails leaves nothing reserved
+	// in the daemon's queue. Whichever of the scanner and the request below
+	// reaches the daemon first makes the index; the other joins it.
+	if indexerOperationForPath(path) == "index" {
+		if startErr := startScanUnit(ctx, indexerScanUnitName); startErr != nil {
+			_, err := triggerIndexerError(cb, fmt.Sprintf("the scanner could not be started: %v", startErr), 500, fmt.Errorf("start the scanner: %w", startErr))
+			return err
+		}
 	}
 
 	// Step 1: Trigger the requested operation.
@@ -218,6 +248,7 @@ type indexerStatusSnapshot struct {
 	FilesIndexed int64
 	DirsIndexed  int64
 	TotalSize    int64
+	Waiting      []indexerapi.WaitingOperation
 }
 
 func fetchIndexerStatus(ctx context.Context) (indexerStatusSnapshot, error) {
@@ -234,6 +265,7 @@ func fetchIndexerStatus(ctx context.Context) (indexerStatusSnapshot, error) {
 		FilesIndexed: status.NumFiles,
 		DirsIndexed:  status.NumDirs,
 		TotalSize:    status.TotalSize,
+		Waiting:      status.Waiting,
 	}, nil
 }
 
@@ -246,43 +278,90 @@ func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, expected
 		return false, errIndexerStreamEnded
 	}
 
-	if status.Running {
-		if err := validateActiveIndexerStatus(cb, expected, status); err != nil {
-			return false, err
-		}
-		if status.Path == "" {
-			status.Path = expected.path
-		}
-		if err := reportRecoveredIndexerProgress(cb, status); err != nil {
-			return false, err
-		}
-		if attempt >= maxStatusStreamReattachAttempts {
-			if callbackErr := callOnError(cb, "indexer status stream kept closing while indexer was running", 500); callbackErr != nil {
-				return false, fmt.Errorf("on error callback: %w", callbackErr)
-			}
-			return false, errIndexerStreamEnded
-		}
-		select {
-		case <-time.After(500 * time.Millisecond):
-			return true, nil
-		case <-ctx.Done():
-			return false, reportIndexerAbort(cb)
-		}
+	// The daemon queues its work and lets an operation be attached to while it
+	// waits, so a stream that ended belongs to an operation that is over. What
+	// the status shows running then is this operation only when it carries its
+	// ID; anything else is other work that came after it.
+	if status.Running && status.OperationID == expected.operationID {
+		return reattachToRunningOperation(ctx, cb, expected, status, attempt)
+	}
+	// Still waiting for its turn: the stream broke, the operation has not run.
+	if slices.ContainsFunc(status.Waiting, func(waiting indexerapi.WaitingOperation) bool {
+		return waiting.OperationID == expected.operationID
+	}) {
+		return pauseBeforeReattach(ctx, cb, attempt)
 	}
 
-	if cb.OnResult != nil {
-		if err := cb.OnResult(IndexerResult{
-			Operation:    expected.operation,
-			OperationID:  expected.operationID,
-			Path:         expected.path,
-			FilesIndexed: status.FilesIndexed,
-			DirsIndexed:  status.DirsIndexed,
-			TotalSize:    status.TotalSize,
-		}); err != nil {
-			return false, fmt.Errorf("on result callback: %w", err)
+	return false, reportEndedOperation(ctx, cb, expected)
+}
+
+// reportEndedOperation reports how an operation that neither runs nor waits
+// ended, as the daemon recorded it. A stream that closed does not say: the
+// operation completed before the bridge attached, failed, or went with a
+// daemon that stopped, and only the first is a success.
+func reportEndedOperation(ctx context.Context, cb IndexerCallbacks, expected *indexerStreamExpectation) error {
+	outcome, err := Outcome(ctx, expected.operationID)
+	var responseErr *ResponseError
+	switch {
+	case errors.As(err, &responseErr) && responseErr.StatusCode == http.StatusNotFound:
+		// The daemon that answers is not the one that held the operation.
+		if callbackErr := callOnError(cb, "the indexer lost the operation: it stopped or restarted before the operation ended", http.StatusServiceUnavailable); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
 		}
+		return errIndexerOperationLost
+	case err != nil && ctx.Err() != nil:
+		return reportIndexerAbort(cb)
+	case err != nil:
+		if callbackErr := callOnError(cb, "indexer stream ended unexpectedly", 500); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return fmt.Errorf("read the operation's outcome: %w", err)
 	}
-	return false, nil
+
+	switch outcome.Event {
+	case indexerapi.EventComplete:
+		_, err = reportIndexerComplete(cb, string(outcome.Data), expected)
+		return err
+	case indexerapi.EventError:
+		return reportIndexerError(cb, string(outcome.Data), expected)
+	default:
+		if callbackErr := callOnError(cb, "indexer reported an outcome that is neither complete nor error", 500); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return fmt.Errorf("indexer outcome %q is neither complete nor error", outcome.Event)
+	}
+}
+
+// reattachToRunningOperation reports where the operation stands and says
+// whether to attach to its stream once more.
+func reattachToRunningOperation(ctx context.Context, cb IndexerCallbacks, expected *indexerStreamExpectation, status indexerStatusSnapshot, attempt int) (bool, error) {
+	if err := validateActiveIndexerStatus(cb, expected, status); err != nil {
+		return false, err
+	}
+	if status.Path == "" {
+		status.Path = expected.path
+	}
+	if err := reportRecoveredIndexerProgress(cb, status); err != nil {
+		return false, err
+	}
+	return pauseBeforeReattach(ctx, cb, attempt)
+}
+
+// pauseBeforeReattach says whether to attach to the operation's stream once
+// more, after a short pause, or that it has broken too often.
+func pauseBeforeReattach(ctx context.Context, cb IndexerCallbacks, attempt int) (bool, error) {
+	if attempt >= maxStatusStreamReattachAttempts {
+		if callbackErr := callOnError(cb, "indexer status stream kept closing while indexer was running", 500); callbackErr != nil {
+			return false, fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return false, errIndexerStreamEnded
+	}
+	select {
+	case <-time.After(500 * time.Millisecond):
+		return true, nil
+	case <-ctx.Done():
+		return false, reportIndexerAbort(cb)
+	}
 }
 
 func reportRecoveredIndexerProgress(cb IndexerCallbacks, status indexerStatusSnapshot) error {
@@ -328,7 +407,12 @@ func StreamIndexerAttach(ctx context.Context, path string, cb IndexerCallbacks) 
 		}
 		return err
 	}
-	if !status.Running || status.OperationID == "" {
+	// The daemon queues its work: the operation for this path may be the one
+	// that runs, or wait behind another, and is attached to either way.
+	if waiting, ok := waitingOperationFor(status, path); ok {
+		return attachStatusStream(ctx, cb, streamExpectation(path, waiting.OperationID))
+	}
+	if !status.Running || status.OperationID == "" || !runsFor(status, path) {
 		message := "no active indexer operation"
 		if callbackErr := callOnError(cb, message, http.StatusConflict); callbackErr != nil {
 			return fmt.Errorf("on error callback: %w", callbackErr)
@@ -340,6 +424,35 @@ func StreamIndexerAttach(ctx context.Context, path string, cb IndexerCallbacks) 
 		return err
 	}
 	return attachStatusStream(ctx, cb, expected)
+}
+
+// runsFor reports whether the operation the daemon runs is the one a caller
+// for path means. The daemon reindexes folders of its own accord, such as
+// one the refresh of an opened folder found new: that is other work, not a
+// conflict with the caller's.
+func runsFor(status indexerStatusSnapshot, path string) bool {
+	want := streamExpectation(path, "")
+	statusPath := status.Path
+	if statusPath == "" {
+		statusPath = "/"
+	}
+	return status.Operation == want.operation && indexerapi.NormalizePath(statusPath) == indexerapi.NormalizePath(want.path)
+}
+
+// waitingOperationFor finds, among the operations the daemon holds back, the
+// one a caller for path means: the full index for the root, else the reindex
+// of that folder. The operation that runs is preferred when it is that one.
+func waitingOperationFor(status indexerStatusSnapshot, path string) (indexerapi.WaitingOperation, bool) {
+	want := streamExpectation(path, "")
+	if status.Operation == want.operation && indexerapi.NormalizePath(status.Path) == indexerapi.NormalizePath(want.path) {
+		return indexerapi.WaitingOperation{}, false
+	}
+	for _, waiting := range status.Waiting {
+		if waiting.Operation == want.operation && indexerapi.NormalizePath(waiting.Path) == indexerapi.NormalizePath(want.path) {
+			return waiting, true
+		}
+	}
+	return indexerapi.WaitingOperation{}, false
 }
 
 // consumeSSEEvents reads SSE events from an HTTP response and dispatches them
