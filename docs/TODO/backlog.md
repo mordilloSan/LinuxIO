@@ -56,16 +56,6 @@ after a change that issues ioctls).
   choice per schedule that the dialog shows. Units already saved keep the old
   line until they are rewritten. **not verified** with a real script
 
-- The Updates page can say "Your system is up to date" while the banner
-  names a LinuxIO update. Seen once in four runs of `jobs-update.spec.ts` on
-  Fedora 45 (2026-11-21), right after Refresh Sources; the list asks again by
-  itself after 50 s. The cause is not found. Ruled out in the test VM:
-  PackageKit asked on one connection the instant a refresh ends lists the
-  update (4 of 4), also while `dnf` runs beside it (18 of 18). A `GetUpdates`
-  that failed was an empty list until 2026-11-22 and is an error on the page
-  since, so the picture seen again means the list was read and was empty.
-  **not verified**
-
 ## Tests that are missing
 
 ## Needs the owner

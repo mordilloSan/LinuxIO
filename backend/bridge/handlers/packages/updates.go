@@ -188,8 +188,9 @@ func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool)
 }
 
 // collectUpdatePackages reads a GetUpdates transaction to its end. One that
-// PackageKit ends with ErrorCode is a failed listing whatever it named first,
-// so that an empty answer always means a list that was read.
+// PackageKit ends with ErrorCode, or with any exit but success, is a failed
+// listing whatever it named first, so that an empty answer always means a
+// list that was read.
 func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal) ([]string, map[string]packageUpdateMeta, error) {
 	var pkgIDs []string
 	metaByPkg := make(map[string]packageUpdateMeta)
@@ -204,6 +205,9 @@ func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 			case pkgkit.TransactionIface + ".ErrorCode":
 				return nil, nil, pkgkit.ErrorFromSignal(sig, "GetUpdates")
 			case pkgkit.TransactionIface + ".Finished":
+				if exit, failed := unsuccessfulExit(sig); failed {
+					return nil, nil, fmt.Errorf("GetUpdates ended with PackageKit exit %d", exit)
+				}
 				return pkgIDs, metaByPkg, nil
 			}
 
@@ -218,6 +222,18 @@ func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 			return nil, nil, ctx.Err()
 		}
 	}
+}
+
+// unsuccessfulExit reads the exit of a Finished signal and whether it is a
+// failure. PackageKit ends some transactions with no ErrorCode: one cancelled
+// for a higher-priority transaction (a refresh), one skipped. Exit 0,
+// unknown, counts as success, as an update's does.
+func unsuccessfulExit(sig *dbusclient.Signal) (uint32, bool) {
+	if len(sig.Body) == 0 {
+		return 0, false
+	}
+	exit, _ := sig.Body[0].(uint32)
+	return exit, exit > pkgkit.ExitSuccess
 }
 
 func buildBasicUpdates(pkgIDs []string, metaByPkg map[string]packageUpdateMeta) []UpdateDetail {

@@ -56,6 +56,7 @@ type fakePackageKit struct {
 	refreshes       int
 	refreshErr      string
 	listErr         string
+	listExit        uint32
 	refreshHangs    bool
 	refreshStarted  chan struct{}
 	offlineTriggers []string
@@ -413,6 +414,14 @@ func (s *fakePackageKit) setListError(message string) {
 	s.listErr = message
 }
 
+// setListExit makes GetUpdates end with exit and no ErrorCode, as PackageKit
+// ends a transaction cancelled for a higher-priority one or skipped.
+func (s *fakePackageKit) setListExit(exit uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.listExit = exit
+}
+
 func (s *fakePackageKit) setRefreshHang() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -484,6 +493,7 @@ func (tx *fakeTransaction) GetUpdates(filters uint64) *godbus.Error {
 	updates := tx.service.snapshotUpdates()
 	tx.service.mu.Lock()
 	listErr := tx.service.listErr
+	listExit := tx.service.listExit
 	tx.service.mu.Unlock()
 	tx.emitLater(func() {
 		for _, pkg := range updates {
@@ -494,7 +504,7 @@ func (tx *fakeTransaction) GetUpdates(filters uint64) *godbus.Error {
 			tx.emit("Finished", uint32(2), uint32(0))
 			return
 		}
-		tx.emit("Finished", uint32(0), uint32(0))
+		tx.emit("Finished", listExit, uint32(0))
 	})
 	return nil
 }
@@ -813,6 +823,39 @@ func TestGetUpdatesBasicReportsAFailedListing(t *testing.T) {
 			}
 			if got != nil {
 				t.Fatalf("updates = %#v; want none with the error", got)
+			}
+		})
+	}
+}
+
+// PackageKit ends some transactions with no ErrorCode: any exit but success
+// is a failed listing too, and exit 0 (unknown) is not one.
+func TestGetUpdatesBasicReportsAnExitWithoutErrorCode(t *testing.T) {
+	for name, tc := range map[string]struct {
+		exit  uint32
+		fails bool
+	}{
+		"success":                {1, false},
+		"unknown":                {0, false},
+		"failed":                 {2, true},
+		"cancelled":              {3, true},
+		"cancelled for priority": {9, true},
+		"skipped":                {10, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := setupFakePackageKit(t, false)
+			service.setUpdates([]fakePackage{{info: 11, id: "demo;1.2.3;x86_64;repo", summary: "Demo package"}})
+			service.setListExit(tc.exit)
+
+			got, err := GetUpdatesBasic(context.Background())
+			if tc.fails {
+				if err == nil || got != nil {
+					t.Fatalf("GetUpdatesBasic = %#v, %v; want no updates and an error for exit %d", got, err, tc.exit)
+				}
+				return
+			}
+			if err != nil || len(got) != 1 {
+				t.Fatalf("GetUpdatesBasic = %#v, %v; want the one update", got, err)
 			}
 		})
 	}

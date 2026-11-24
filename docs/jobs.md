@@ -576,7 +576,9 @@ PackageKit gives for the pending update to the package `linuxio`
 nothing. A host without PackageKit, without that package, or whose PackageKit
 fails or takes more than 20 s gets the running build alone; the failure is
 logged at Debug when PackageKit is missing or does not answer in time, and at
-Warn otherwise. A `GetUpdates` that PackageKit ends with an error is such a
+Warn otherwise. A `GetUpdates` that PackageKit ends with an error, or with
+any exit but success (it ends some with no error: one cancelled for a
+higher-priority transaction such as a refresh, one skipped), is such a
 failure for both readers, whatever it listed first, so an empty list always
 means a list that was read: the Updates page shows the error, or keeps the
 list it had, where it would otherwise say the system is up to date. The footer
