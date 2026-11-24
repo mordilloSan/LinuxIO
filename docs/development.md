@@ -256,7 +256,8 @@ has run; in a log or a pipe the results come alone. The
 run ends with a table for each VM (tests, passed, failed, skipped, when it
 finished), a timeline of which file ran on which VM, and each failure with
 its error, its code and its trace. Every line, without colour, is also in
-`.cache/test-logs/test-vm-browser.log`.
+`.cache/test-logs/test-vm-browser.log`. `LINUXIO_VM_LOG_DIR` moves these logs
+to another folder; `test-vm-all` gives each of its four runs one.
 
 Each VM has a lock, `~/.cache/linuxio-vm/locks/DOMAIN`. A target takes the
 locks of the VMs it acts on, without waiting, as its recipe begins: after
@@ -460,8 +461,16 @@ release-update spec, which is written for both distributions. The other
 suites and specs do things with `apt` packages or were never run there; one
 that passes on Fedora is added to its list. `capability-install.spec.ts`
 skips its cancel test on Fedora. `make test-vm-all` runs the four in turn:
-Ubuntu's root suites and browser specs, then Fedora's. It ends at the first
-failure and takes no `SUITES`, `PLAYWRIGHT_ARGS` or `DISTRO`.
+Ubuntu's root suites and browser specs, then Fedora's. A failure does not
+stop it, since none of the four needs another (each reverts its VMs, and
+Fedora's VMs are not Ubuntu's). Each writes its logs to a folder of its own,
+`.cache/test-logs/test-vm-all/DISTRO-backend` or `DISTRO-browser`, emptied as
+it starts, so Fedora's logs do not overwrite Ubuntu's. The run ends with a
+recap of the four: each one's result and time, the folder of each one that
+failed, and the totals line of each browser run (the specs and the
+release-update spec). It fails when one of the four failed. Ctrl-C ends it
+once the target running stops, and the recap shows the rest as not run. It
+takes no `SUITES`, `PLAYWRIGHT_ARGS` or `DISTRO`.
 
 ```sh
 make test-vm-browser        # everything below that a browser run needs, in one go

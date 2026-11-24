@@ -338,11 +338,46 @@ test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Pic
 
 # Everything the test VMs run, one target after another: Ubuntu's root suites
 # and browser specs, then Fedora's (vm_fedora_suites, vm_fedora_specs and the
-# release-update spec). The first failure ends it. It takes no SUITES,
+# release-update spec). A failure does not end it, since none of the four
+# needs another: each reverts its VMs, and Fedora's VMs are not Ubuntu's.
+# Each writes its logs to a folder of its own under vm_all_logs, emptied as it
+# starts, so the four keep theirs and a total read from one is that run's.
+# The run ends with each one's result and time and the totals of the browser
+# runs, and fails when one failed. Ctrl-C ends it once the target running
+# stops, and the rest are shown as not run. It takes no SUITES,
 # PLAYWRIGHT_ARGS or DISTRO: a narrowed run is a run of one of the four.
-test-vm-all: ## Run the root suites and the browser specs in the test VMs on Ubuntu, then on Fedora what is written for it
+vm_all_logs := $(cache_dir)/test-logs/test-vm-all
+vm_all_logs_shown := $(patsubst $(repo_root)/%,%,$(vm_all_logs))
+test-vm-all: ## Run the root suites and the browser specs in the test VMs on Ubuntu, then on Fedora what is written for it, and end with the result of each
 	@$(if $(filter command line environment,$(origin SUITES) $(origin PLAYWRIGHT_ARGS))$(strip $(DISTRO)),echo "❌ test-vm-all takes no SUITES or PLAYWRIGHT_ARGS or DISTRO: run test-vm-backend or test-vm-browser for a narrowed run" >&2; exit 1)
-	@$(MAKE) --no-print-directory test-vm-backend DISTRO=
-	@$(MAKE) --no-print-directory test-vm-browser DISTRO=
-	@$(MAKE) --no-print-directory test-vm-backend DISTRO=fedora
-	@$(MAKE) --no-print-directory test-vm-browser DISTRO=fedora
+	@failed=0 stopped=0 recap=()
+	@if [[ -t 1 && -z $${NO_COLOR:-} ]]; then ok=$$'\e[32m✓\e[0m' bad=$$'\e[31m✘\e[0m'; else ok=✓ bad=✘; fi
+	@trap 'stopped=1' INT
+	@for run in "ubuntu backend root suites" "ubuntu browser browser specs" "fedora backend root suites" "fedora browser browser specs"; do
+	  read -r distro kind label <<<"$$run"
+	  name="$$(printf '%-7s %-14s' "$$distro" "$$label")"
+	  if ((stopped)); then
+	    recap+=("  – $$name not run")
+	    continue
+	  fi
+	  logs="$(vm_all_logs)/$$distro-$$kind"
+	  rm -rf "$$logs" && mkdir -p "$$logs" || exit 1
+	  begun=$$EPOCHSECONDS code=0
+	  $(MAKE) --no-print-directory "test-vm-$$kind" DISTRO="$${distro#ubuntu}" LINUXIO_VM_LOG_DIR="$$logs" || code=$$?
+	  took=$$((EPOCHSECONDS - begun))
+	  line="$$name $$(printf '%3dm %02ds' $$((took / 60)) $$((took % 60)))"
+	  if ((code == 0)); then
+	    recap+=("  $$ok $$line")
+	  else
+	    failed=1
+	    recap+=("  $$bad $$line  $(vm_all_logs_shown)/$$distro-$$kind/")
+	  fi
+	  for log in "specs test-vm-browser" "release-update test-vm-browser-release-update"; do
+	    read -r part file <<<"$$log"
+	    total="$$(grep -E '^[0-9]+ passed, ' "$$logs/$$file.log" 2>/dev/null | tail -n 1)"
+	    [[ -z $$total ]] || recap+=("      $$(printf '%-15s' "$$part") $$total")
+	  done
+	done
+	@printf '%s\n' "" "test-vm-all, logs in $(vm_all_logs_shown)/" "$${recap[@]}"
+	@((stopped == 0)) || exit 130
+	@exit "$$failed"
