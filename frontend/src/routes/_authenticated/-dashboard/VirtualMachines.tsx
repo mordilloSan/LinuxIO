@@ -23,6 +23,7 @@ import {
   stateChipColor,
   type VMAction,
   vmIPAddresses,
+  vmOSColor,
   vmOSIcon,
 } from "../vm/-components/vmShared";
 import DashboardStatRows from "./DashboardStatRows";
@@ -55,6 +56,7 @@ const selectSummaries = (vms: VirtualMachine[]) =>
     .map((vm) => ({
       name: vm.name,
       icon: vmOSIcon(vm.os),
+      iconColor: vmOSColor(vm.os, "var(--app-palette-text-primary)"),
       running: vm.state === "running",
       paused: vm.state === "paused",
       state: vm.state,
@@ -181,7 +183,7 @@ const VMList = () => {
               }}
             >
               <Icon
-                color="var(--app-palette-text-primary)"
+                color={vm.iconColor}
                 height={36}
                 icon={vm.icon}
                 style={{ opacity: vm.running ? 1 : 0.45 }}

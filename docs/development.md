@@ -978,6 +978,13 @@ It also picks up WireGuard's existing capability icon. The Simple Icons package
 is a development dependency; only selected logos enter the generated bundle.
 Keep distro IDs explicit so the scanner can discover them.
 
+The VM pages tint these one-colour logos with the brand colour from
+`OS_BRAND_COLORS` (`frontend/src/theme/colors.ts`, keyed by Iconify id, the
+Simple Icons hex). A brand that is black or dark navy (AlmaLinux, Alpine,
+CentOS, Slackware, SUSE) has no entry and keeps the text colour, since it would
+vanish on a dark card. System Overview's avatar stays in the card's primary
+colour, as every dashboard card's does.
+
 ## Target index
 
 `make help` prints the common targets only (the `help_common` list in the

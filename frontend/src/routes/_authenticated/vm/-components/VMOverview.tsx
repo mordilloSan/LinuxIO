@@ -24,7 +24,7 @@ import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formatters";
 
 import PreflightSummary from "./PreflightSummary";
-import { normalizeState, vmOSIcon } from "./vmShared";
+import { normalizeState, vmOSColor, vmOSIcon } from "./vmShared";
 
 const FILTERS = [
   { label: "All", value: "all" },
@@ -151,6 +151,7 @@ function Metric({
 function Row({
   children,
   icon,
+  iconColor = "var(--app-palette-primary-main)",
   muted,
   name,
   status,
@@ -158,6 +159,7 @@ function Row({
 }: {
   children: ReactNode;
   icon: string;
+  iconColor?: string;
   muted?: boolean;
   name: string;
   status: string;
@@ -171,7 +173,7 @@ function Row({
     >
       <div style={rowIdentityStyle}>
         <Icon
-          color={muted ? STATUS_COLOR.muted : "var(--app-palette-primary-main)"}
+          color={muted ? STATUS_COLOR.muted : iconColor}
           height={28}
           icon={icon}
           width={28}
@@ -351,6 +353,7 @@ export default function VMOverview({
             return (
               <Row
                 icon={vmOSIcon(vm.os)}
+                iconColor={vmOSColor(vm.os, "var(--app-palette-primary-main)")}
                 key={vm.name}
                 muted={off}
                 name={vm.name}
