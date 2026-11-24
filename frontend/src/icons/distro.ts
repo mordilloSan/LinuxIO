@@ -25,7 +25,7 @@ export const distroIcons: Record<string, string> = {
   sled: "simple-icons:suse",
   suse: "simple-icons:suse",
   slackware: "simple-icons:slackware",
-  ubuntu: "simple-icons:ubuntu",
+  ubuntu: "mdi:ubuntu",
   void: "simple-icons:voidlinux",
   zorin: "simple-icons:zorin",
 };

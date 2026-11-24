@@ -41,6 +41,7 @@ export const GREY_TOKENS = {
  */
 export const OS_BRAND_COLORS: Readonly<Record<string, string>> = {
   "mdi:microsoft-windows": "#0078D4",
+  "mdi:ubuntu": "#E95420",
   "simple-icons:archlinux": "#1793D1",
   "simple-icons:debian": "#A81D33",
   "simple-icons:elementary": "#64BAFF",
@@ -58,7 +59,6 @@ export const OS_BRAND_COLORS: Readonly<Record<string, string>> = {
   "simple-icons:raspberrypi": "#A22846",
   "simple-icons:redhat": "#EE0000",
   "simple-icons:rockylinux": "#10B981",
-  "simple-icons:ubuntu": "#E95420",
   "simple-icons:voidlinux": "#478061",
   "simple-icons:zorin": "#15A6F0",
 };

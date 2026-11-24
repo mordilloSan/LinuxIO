@@ -976,7 +976,10 @@ The existing icon generator bundles the literal IDs in
 `frontend/src/icons/distro.ts`, including distro aliases and a Linux fallback.
 It also picks up WireGuard's existing capability icon. The Simple Icons package
 is a development dependency; only selected logos enter the generated bundle.
-Keep distro IDs explicit so the scanner can discover them.
+Keep distro IDs explicit so the scanner can discover them. Ubuntu is the one
+distro drawn from Material Design Icons (`mdi:ubuntu`): a filled disc with the
+circle of friends cut out, so it reads like Fedora's filled logo instead of
+Simple Icons' bare symbol.
 
 The VM pages tint these one-colour logos with the brand colour from
 `OS_BRAND_COLORS` (`frontend/src/theme/colors.ts`, keyed by Iconify id, the
