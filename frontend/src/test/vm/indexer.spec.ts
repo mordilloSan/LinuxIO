@@ -16,6 +16,10 @@ const scanUnit = async (property: string) =>
 const searchFor = async (page: Page, name: string) =>
   JSON.stringify(await bridgeCall(page, "filebrowser.search", { query: name }));
 
+/** A search below basePath, which also reads that folder on disk. */
+const searchIn = (page: Page, basePath: string, name: string) =>
+  bridgeCall(page, "filebrowser.search", { basePath, query: name });
+
 test.afterEach(async ({ page }) => {
   await signOutIfSignedIn(page);
   await vmSsh(`sudo rm -rf ${FOLDERS}`);
@@ -87,4 +91,84 @@ test("Index filesystem runs the scan unit, and a folder changed outside LinuxIO 
   expect(await searchFor(page, "made-outside")).not.toContain(
     "made-outside.txt",
   );
+});
+
+test("an open folder shows a file made or deleted outside LinuxIO without a reload", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const FOLDER = `${FOLDERS}/live-${Date.now()}`;
+  await vmSsh(
+    `sudo mkdir -p ${FOLDER} && sudo chmod 755 ${FOLDERS} ${FOLDER} && sudo touch ${FOLDER}/listed-before.txt`,
+  );
+  await signIn(page);
+  await page.goto(`/filebrowser${FOLDER}`);
+  await expect(page.getByText("listed-before.txt").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  // The page opens its watch of the folder after the listing was read and
+  // shown, and the bridge puts it on the folder a moment later: a change in
+  // between is not reported (a known limit), so the test waits that out.
+  await page.waitForTimeout(1000);
+  const shownAt = page.url();
+  let navigations = 0;
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) navigations += 1;
+  });
+
+  await vmSsh(`sudo touch ${FOLDER}/made-while-open.txt`);
+  await expect(page.getByText("made-while-open.txt").first()).toBeVisible({
+    timeout: 10_000,
+  });
+  await vmSsh(`sudo rm ${FOLDER}/listed-before.txt`);
+  await expect(page.getByText("listed-before.txt")).toHaveCount(0, {
+    timeout: 10_000,
+  });
+
+  // Nothing read the folder again on the page's side: no reload, no
+  // navigation.
+  expect(page.url()).toBe(shownAt);
+  expect(navigations).toBe(0);
+});
+
+test("a search inside a folder finds a file made outside LinuxIO in a subfolder never opened", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const FOLDER = `${FOLDERS}/walk-${Date.now()}`;
+  await vmSsh(`sudo mkdir -p ${FOLDER} && sudo chmod 755 ${FOLDERS} ${FOLDER}`);
+  await signIn(page);
+  // Search answers once a full index has completed, and reads the disk
+  // beside it: a VM that never scanned scans first.
+  if ((await searchIn(page, "/", "any-name")).status !== "ok") {
+    await vmSsh(`sudo systemctl start ${SCAN_UNIT}`);
+  }
+  await vmSsh(
+    `sudo mkdir -p ${FOLDER}/never/opened && sudo touch ${FOLDER}/never/opened/found-on-disk.txt`,
+  );
+
+  // The index has not seen the file: a search from / reads the index only.
+  expect(await searchFor(page, "found-on-disk")).not.toContain(
+    "found-on-disk.txt",
+  );
+  // A search from a folder above it reads that folder on disk.
+  const below = await searchIn(page, FOLDERS, "found-on-disk");
+  expect(below.status).toBe("ok");
+  expect(below.data).toMatchObject({
+    results: [
+      expect.objectContaining({
+        path: `${FOLDER}/never/opened/found-on-disk.txt`,
+      }),
+    ],
+    walk: "complete",
+  });
+
+  // The page searches the folder it shows.
+  await page.goto(`/filebrowser${FOLDER}`);
+  await page
+    .getByPlaceholder("Search files and folders...")
+    .fill("found-on-disk");
+  await expect(page.getByText("found-on-disk.txt").first()).toBeVisible({
+    timeout: 15_000,
+  });
 });

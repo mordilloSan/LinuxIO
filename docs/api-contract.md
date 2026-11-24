@@ -1198,12 +1198,14 @@ payload-specific helper instead of constructing envelopes directly.
 | `openChannel("docker.logs.follow_all", request)` | `docker.logs.follow_all` | Direct server-producing merged log Channel for every running container; NDJSON records `{id, name, ts, line, stderr?}`, containers that start later are attached. |
 | `openChannel("logs.service.follow", request)` | `logs.service.follow` | Direct server-producing unit log Channel. With `invocationId` (32 lowercase hex characters, `400` otherwise) it follows one run: only the lines of that invocation's own processes, control characters kept (`journalctl --all`), in the `short-iso` format a scheduled run's saved output uses. |
 | `openChannel("logs.general.follow", request)` | `logs.general.follow` | Direct journal Channel with backlog progress and cursor resume. |
+| `openChannel("filebrowser.watch", { path })` | `filebrowser.watch` | Direct server-producing Channel for the folder a page shows: one inotify watch on it, data frames of one JSON line each: `{"type":"watching"}` once the watch is on, `{"type":"changed"}` (paced: at once after twice the gap, else gaps doubling from 1 s to 10 s) and `{"type":"gone"}`, then close. Data, not progress: progress counts as the user's activity. At most 32 a bridge; past that, and at an inotify limit, `409`. See [File Browser Live Listing](./filebrowser-live-listing.md). |
 | `openTaskWatchStream(taskId)` | `tasks.watch` | Task progress/result. |
 | `openTaskDataStream(taskId, offset?)` | `tasks.data` | Binary Task data. |
 | `openTaskEventsStream()` | `tasks.events` | Task lifecycle events. |
 
-Terminal and container sessions are bidirectional Channels. The three log
-routes are direct server-producing Channels and never create a Task.
+Terminal and container sessions are bidirectional Channels. The log routes
+and `filebrowser.watch` are direct server-producing Channels and never create
+a Task.
 
 ### Channel lifecycle and ownership
 
@@ -1214,7 +1216,7 @@ routes are direct server-producing Channels and never create a Task.
   multiple producers must serialize their frames before writing.
 - Writes are synchronous and provide backpressure. Do not add an unbounded
   queue between a producer and the connection.
-- Direct log Channels use `ReceiveOnlyChannelContext`; Task watch/events use
+- Direct log Channels and `filebrowser.watch` use `ReceiveOnlyChannelContext`; Task watch/events use
   focused monitors with the same write-deadline rule. Client close, abort, or
   disconnect therefore interrupts a blocked server write. Direct Channel
   cleanup restores deadlines without taking ownership of the connection.

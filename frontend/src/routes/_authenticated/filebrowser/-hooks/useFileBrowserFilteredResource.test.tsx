@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SearchResult } from "@/api";
-import { renderHook } from "@/test/render";
+import type { FileSearchWalk, SearchResult } from "@/api";
+import { act, renderHook } from "@/test/render";
 
 import type { FileResource } from "../-types";
 import { useFileBrowserFilteredResource } from "./useFileBrowserFilteredResource";
@@ -35,6 +35,7 @@ function mockSearch(
     isLoading: boolean;
     isUnavailable: boolean;
     results: SearchResult[];
+    walk: FileSearchWalk;
   }> = {},
 ) {
   useFileSearchMock.mockReturnValue({
@@ -48,11 +49,14 @@ function mockSearch(
 }
 
 function renderFiltered(params: {
+  basePath?: string;
   caseSensitive?: boolean;
   resource?: FileResource;
   searchQuery: string;
 }) {
-  return renderHook(() => useFileBrowserFilteredResource(params));
+  return renderHook(() =>
+    useFileBrowserFilteredResource({ basePath: "/", ...params }),
+  );
 }
 
 describe("useFileBrowserFilteredResource", () => {
@@ -245,6 +249,142 @@ describe("useFileBrowserFilteredResource", () => {
       }),
     ]);
   });
+
+  it("searches the folder it shows", () => {
+    renderFiltered({
+      basePath: "/srv/projects",
+      resource: directoryResource,
+      searchQuery: "Alpha",
+    });
+
+    expect(useFileSearchMock).toHaveBeenLastCalledWith({
+      basePath: "/srv/projects",
+      caseSensitive: false,
+      enabled: true,
+      query: "Alpha",
+    });
+  });
+
+  it("says when the folder searched in was not read whole on disk", () => {
+    mockSearch({ walk: "partial" });
+    const partial = renderFiltered({
+      basePath: "/srv/projects",
+      resource: directoryResource,
+      searchQuery: "alpha",
+    });
+    expect(partial.result.current.isSearchPartial).toBe(true);
+
+    mockSearch({ walk: "complete" });
+    const complete = renderFiltered({
+      basePath: "/srv/projects",
+      resource: directoryResource,
+      searchQuery: "alpha",
+    });
+    expect(complete.result.current.isSearchPartial).toBe(false);
+
+    mockSearch({ walk: "partial" });
+    const cleared = renderFiltered({
+      basePath: "/srv/projects",
+      resource: directoryResource,
+      searchQuery: "al",
+    });
+    expect(cleared.result.current.isSearchPartial).toBe(false);
+
+    const file = renderFiltered({
+      basePath: "/srv/notes.txt",
+      resource: { name: "notes.txt", path: "/srv/notes.txt", type: "file" },
+      searchQuery: "alpha",
+    });
+    expect(file.result.current.isSearchPartial).toBe(false);
+  });
+
+  it("sends one search for a query typed quickly", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = renderHook(
+        ({ searchQuery }: { searchQuery: string }) =>
+          useFileBrowserFilteredResource({
+            basePath: "/srv/projects",
+            resource: directoryResource,
+            searchQuery,
+          }),
+        { initialProps: { searchQuery: "" } },
+      );
+      for (const typed of ["r", "re", "rep", "repo", "repor", "report"]) {
+        rerender({ searchQuery: typed });
+        act(() => {
+          vi.advanceTimersByTime(50);
+        });
+      }
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      const searched = new Set(
+        useFileSearchMock.mock.calls
+          .filter(([options]) => options.enabled)
+          .map(([options]) => options.query),
+      );
+      expect([...searched]).toEqual(["report"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Retyping a settled query must not bring its results back under the new
+  // one while the new one settles.
+  it.each([
+    ["typed over", ["x", "xy", "xyz"]],
+    ["corrected", ["ab", "abd"]],
+  ])(
+    "never searches for another query than the one typed (%s)",
+    (_, typing) => {
+      vi.useFakeTimers();
+      try {
+        let typed = "abc";
+        const searched: Array<[string, string]> = [];
+        useFileSearchMock.mockImplementation(
+          (options: { enabled: boolean; query: string }) => {
+            if (options.enabled) searched.push([typed, options.query]);
+            return {
+              count: 0,
+              error: null,
+              isLoading: false,
+              isUnavailable: false,
+              results: [],
+            };
+          },
+        );
+        const { rerender } = renderHook(
+          ({ searchQuery }: { searchQuery: string }) => {
+            typed = searchQuery;
+            return useFileBrowserFilteredResource({
+              basePath: "/srv/projects",
+              resource: directoryResource,
+              searchQuery,
+            });
+          },
+          { initialProps: { searchQuery: "abc" } },
+        );
+        for (const next of typing) {
+          rerender({ searchQuery: next });
+          act(() => {
+            vi.advanceTimersByTime(50);
+          });
+        }
+        act(() => {
+          vi.advanceTimersByTime(300);
+        });
+
+        expect(searched.filter(([shown, query]) => shown !== query)).toEqual(
+          [],
+        );
+        expect(searched.at(-1)).toEqual([typing.at(-1), typing.at(-1)]);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("preserves the resource shell but empties items when search yields nothing", () => {
     mockSearch({ results: [] });

@@ -82,6 +82,45 @@ func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string
 	return results, nil
 }
 
+// FolderSizes returns the size the index holds for each of paths that it
+// holds a folder row with a size for; any other path is not in the map.
+func (s *Store) FolderSizes(ctx context.Context, paths []string) (map[string]int64, error) {
+	sizes := make(map[string]int64, len(paths))
+	if len(paths) == 0 {
+		return sizes, nil
+	}
+	args := make([]any, len(paths))
+	for i, path := range paths {
+		args[i] = path
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT e.relative_path, e.size
+		FROM entries e
+		JOIN `+latestGenerationSubquery+` latest
+		  ON latest.id = e.index_id
+		WHERE e.type = 1 AND e.relative_path IN (?`+strings.Repeat(", ?", len(paths)-1)+`)
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("folder sizes query failed: %w", err)
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			slog.Warn("rows close failed", "query", "folder sizes", "error", cerr)
+		}
+	}()
+	for rows.Next() {
+		var path string
+		var size sql.NullInt64
+		if err := rows.Scan(&path, &size); err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+		if size.Valid {
+			sizes[path] = size.Int64
+		}
+	}
+	return sizes, rows.Err()
+}
+
 // exactSearchTerms are the terms a case-sensitive search must find as typed,
 // and none for a search that ignores case.
 func exactSearchTerms(opts searchquery.Options) []string {
@@ -97,13 +136,15 @@ func exactSearchTerms(opts searchquery.Options) []string {
 	return terms
 }
 
+// appendSearchBaseFilter keeps the rows below basePath, the folder itself
+// left out: the page searches the folder it shows, which is not one of its
+// own results. From "/" every row is kept.
 func appendSearchBaseFilter(where string, args []any, basePath string) (string, []any) {
 	if basePath == "" || basePath == "/" {
 		return where, args
 	}
-	lo, childLo, hi := subtreeBounds(basePath)
-	return where + ` AND relative_path >= ? AND relative_path < ? AND (relative_path = ? OR relative_path >= ?)`,
-		append(args, lo, hi, lo, childLo)
+	_, childLo, hi := subtreeBounds(basePath)
+	return where + ` AND relative_path >= ? AND relative_path < ?`, append(args, childLo, hi)
 }
 
 func buildSearchFilter(opts searchquery.Options) (string, []any) {

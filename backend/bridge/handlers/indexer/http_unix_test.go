@@ -75,7 +75,7 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 			if r.Method != http.MethodGet || r.URL.Query().Get("q") != "readme" || r.URL.Query().Get("limit") != "10" || r.URL.Query().Get("base") != "/docs" {
 				t.Errorf("search request = %s %s", r.Method, r.URL.String())
 			}
-			_, _ = io.WriteString(w, `[{"path":"/docs/readme.txt","name":"readme.txt"}]`)
+			_, _ = io.WriteString(w, `{"results":[{"path":"/docs/readme.txt","name":"readme.txt"},{"path":"/docs/new","name":"new","type":"folder","size_unknown":true}],"walk":"partial"}`)
 			return
 		default:
 			t.Errorf("unexpected path %q", r.URL.Path)
@@ -101,7 +101,7 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 	if got, err := Subfolders(context.Background(), "docs"); err != nil || len(got.Subfolders) != 1 || got.Subfolders[0].Path != "/docs/a" || !got.Pending {
 		t.Fatalf("Subfolders = %#v, %v", got, err)
 	}
-	if got, err := Search(context.Background(), "readme", "10", "docs"); err != nil || len(got) != 1 || got[0].Name != "readme.txt" {
+	if got, err := Search(context.Background(), "readme", "10", "docs"); err != nil || len(got.Results) != 2 || got.Results[0].Name != "readme.txt" || !got.Results[1].SizeUnknown || got.Walk != indexerapi.SearchWalkPartial {
 		t.Fatalf("Search = %#v, %v", got, err)
 	}
 }

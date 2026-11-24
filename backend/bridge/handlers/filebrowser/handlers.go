@@ -14,6 +14,8 @@ import (
 func routeBindings(owner sessionOwner) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeDownloadStream, apischema.NoEndpoint()).Duplex(streamFileDownload),
+		// A read, like the listing: not Privileged.
+		apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeFolderWatch, apischema.NoEndpoint()).Duplex(streamFolderWatch),
 		apischema.Call[apischema.PathRequest, apischema.DirectoryListing]("filebrowser.list_directory", apischema.RetrySafe()).Handle(func(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
 			return listOpenedDirectory(ctx, req, owner)
 		}),

@@ -38,15 +38,12 @@ func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.S
 }
 
 // searchInIndexer queries the indexer for files matching the search term
-func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]indexerapi.EntryResult, error) {
-	results, err := indexer.Search(ctx, query, limit, basePath)
+func searchInIndexer(ctx context.Context, query, limit, basePath string) (indexerapi.SearchResponse, error) {
+	resp, err := indexer.Search(ctx, query, limit, basePath)
 	if err != nil {
-		return nil, indexerError("search", err)
+		return indexerapi.SearchResponse{}, indexerError("search", err)
 	}
-	if results == nil {
-		return []indexerapi.EntryResult{}, nil
-	}
-	return results, nil
+	return resp, nil
 }
 
 // dirSize returns the indexer's cached recursive size of a directory.
@@ -160,15 +157,15 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischem
 	if err != nil {
 		return apischema.SearchResponse{}, err
 	}
-	results, err := searchInIndexer(ctx, req.Query, limit, resolved)
+	found, err := searchInIndexer(ctx, req.Query, limit, resolved)
 	if err != nil {
 		return apischema.SearchResponse{}, fmt.Errorf("error searching files: %w", err)
 	}
-	for i := range results {
-		results[i].Path = pathAsRequested(basePath, resolved, results[i].Path)
+	for i := range found.Results {
+		found.Results[i].Path = pathAsRequested(basePath, resolved, found.Results[i].Path)
 	}
 
-	return searchResponseFromIndexer(results), nil
+	return searchResponseFromIndexer(found), nil
 }
 
 // indexedPath is the path the indexer knows the folder at path by: its real
@@ -191,9 +188,12 @@ func indexedPath(ctx context.Context, path string) (string, error) {
 	return resolved, nil
 }
 
-func searchResponseFromIndexer(results []indexerapi.EntryResult) apischema.SearchResponse {
-	response := apischema.SearchResponse{Results: make([]apischema.SearchResult, 0, len(results))}
-	for _, result := range results {
+func searchResponseFromIndexer(found indexerapi.SearchResponse) apischema.SearchResponse {
+	response := apischema.SearchResponse{
+		Results: make([]apischema.SearchResult, 0, len(found.Results)),
+		Walk:    apischema.FileSearchWalk(found.Walk),
+	}
+	for _, result := range found.Results {
 		response.Results = append(response.Results, searchResultFromIndexer(result))
 	}
 	return response
@@ -207,9 +207,13 @@ func searchResultFromIndexer(result indexerapi.EntryResult) apischema.SearchResu
 		canOpen := result.Size < services.MaxTextFileBytes
 		canOpenAsText = &canOpen
 	}
+	var size *int64
+	if !result.SizeUnknown {
+		size = &result.Size
+	}
 	return apischema.SearchResult{
 		IsDir: isDir, IsRegularFile: isRegularFile,
-		ModTime: formatResourceModTime(result.ModTime), Name: result.Name, Path: result.Path, Size: result.Size,
+		ModTime: formatResourceModTime(result.ModTime), Name: result.Name, Path: result.Path, Size: size,
 		CanOpenAsText: canOpenAsText,
 	}
 }

@@ -164,12 +164,15 @@ func Subfolders(ctx context.Context, path string) (indexerapi.SubfoldersResponse
 	return out, err
 }
 
-func Search(ctx context.Context, query, limit, basePath string) ([]indexerapi.EntryResult, error) {
+// Search asks the daemon for the entries below basePath whose name matches
+// query. Below a folder other than "/" the daemon also reads the folder on
+// disk, and the answer says how far it got (Walk).
+func Search(ctx context.Context, query, limit, basePath string) (indexerapi.SearchResponse, error) {
 	q := url.Values{"q": {query}, "limit": {limit}}
 	if basePath != "" && basePath != "/" {
 		q.Set("base", indexerapi.NormalizePath(basePath))
 	}
-	var out []indexerapi.EntryResult
+	var out indexerapi.SearchResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteSearch, q, nil, &out)
 	return out, err
 }

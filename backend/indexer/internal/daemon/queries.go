@@ -80,6 +80,8 @@ func (d *daemon) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid base path: path traversal not allowed", http.StatusBadRequest)
 		return
 	}
+	// The index answers first, and its answer before the first full index
+	// (503) stands: a search reads the disk only beside an index.
 	results, err := d.store.SearchEntriesUnder(ctx, q, basePath, searchResultLimit)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -89,7 +91,15 @@ func (d *daemon) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), status)
 		return
 	}
-	writeJSON(w, results)
+	resp := api.SearchResponse{Results: results}
+	if basePath != "/" {
+		resp, err = d.searchOnDisk(ctx, q, basePath, results)
+		if err != nil {
+			// The request has ended: nobody reads an answer.
+			return
+		}
+	}
+	writeJSON(w, resp)
 }
 
 func (d *daemon) handleDirSize(w http.ResponseWriter, r *http.Request) {

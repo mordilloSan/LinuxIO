@@ -107,6 +107,7 @@ var StringEnums = map[string][]string{
 	"ConfigStorageMode":             enumNames(userconfig.StorageModeHome, userconfig.StorageModeFallback, userconfig.StorageModeMemory),
 	"FileUploadOwner":               {"session"},
 	"FileBatchFailureReason":        enumNames(FileBatchFailureExists, FileBatchFailureNoTrash),
+	"FileSearchWalk":                enumNames(FileSearchWalkComplete, FileSearchWalkPartial),
 	"TaskState":                     enumNames(bridgeipc.TaskStateQueued, bridgeipc.TaskStateRunning, bridgeipc.TaskStateCompleted, bridgeipc.TaskStateFailed, bridgeipc.TaskStateCanceled, bridgeipc.TaskStateInterrupted),
 	"MonitoringHistoryResolution":   monitoringapi.HistoryResolutions(),
 	// SensorReadingKind is defined by the shared monitoring API; keeping its
@@ -125,9 +126,9 @@ var StringEnums = map[string][]string{
 	"NetworkBridgeHandoffState": enumNames(NetworkBridgeHandoffApplying, NetworkBridgeHandoffAwaitingConfirmation, NetworkBridgeHandoffConfirmed, NetworkBridgeHandoffReverted, NetworkBridgeHandoffUnknown),
 	"NetworkBridgeHookState":    enumNames(NetworkBridgeHookInstalled, NetworkBridgeHookMissing, NetworkBridgeHookNotExecutable),
 	"WireGuardHookKind":         enumNames(WireGuardHookKinds...),
-	"SwapMode":                  enumNames(SwapModeDisk, SwapModeZswap, SwapModeZram, SwapModeNone, SwapModeMixed),
 	"WireGuardCheckStepID":      enumNames(WireGuardCheckStepIDs...),
 	"WireGuardCheckStatus":      enumNames(WireGuardCheckOK, WireGuardCheckFailed, WireGuardCheckSkipped),
+	"SwapMode":                  enumNames(SwapModeDisk, SwapModeZswap, SwapModeZram, SwapModeNone, SwapModeMixed),
 	"SwapDeviceKind":            enumNames(SwapDeviceFile, SwapDevicePartition, SwapDeviceZram),
 	"SwapDiskHint":              enumNames("", SwapDiskHintMMC, SwapDiskHintRemovable),
 	"ZramProvider":              enumNames("", ZramProviderTools, ZramProviderGenerator),

@@ -26,6 +26,37 @@ export function markDirectorySizesStale(
 }
 
 /**
+ * The folder's watch saw its entries change, or missed a while: mark its
+ * listing stale. Only the listing, since its own query marks the folder's
+ * sizes stale when its answer arrives. With `fetch` false the listing is
+ * marked and not fetched (a hidden tab); the watch asks again when the tab
+ * shows. A read already running is not restarted, so a folder whose listing
+ * takes longer than the watch's frames still updates; it may have started
+ * before the change, so the listing is read once more when it settles.
+ */
+export function markListingStale(
+  queryClient: QueryClient,
+  normalizedPath: string,
+  fetch: boolean,
+) {
+  const path = stripTrailingSlash(normalizedPath || "/");
+  const queryKey = linuxio.filebrowser.list_directory({ path }).queryKey;
+  const running =
+    queryClient.getQueryState(queryKey)?.fetchStatus === "fetching";
+  const marked = queryClient.invalidateQueries(
+    { queryKey, refetchType: fetch ? "active" : "none" },
+    { cancelRefetch: false },
+  );
+  if (!running || !fetch) return;
+  void marked.then(() =>
+    queryClient.invalidateQueries(
+      { queryKey, refetchType: "active" },
+      { cancelRefetch: false },
+    ),
+  );
+}
+
+/**
  * Invalidation shared by every flow that changes a directory's contents
  * (file mutations, uploads, drag-and-drop): refresh the path's listing and
  * drop the cached subfolder sizes, which any change makes stale.

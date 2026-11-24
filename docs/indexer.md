@@ -149,6 +149,7 @@ symlinks are recorded as entries but are not traversed.
 | Search result cap | `100` |
 | Search query cap | `256` bytes |
 | Minimum search length | `3` characters |
+| Disk read of a search inside a folder | `2s` and `500ms` of grace, at most two at once with `500ms` of wait for one, 256 folders deep (`daemon/search.go`, `indexing/search.go`) |
 | Idle grace | `90s` |
 | Idle check interval | `15s` |
 | Copies of the index | one, updated in place |
@@ -367,6 +368,11 @@ by `POST /refresh` for that folder's real path, from a session with sudo; a
 session without it cannot use the index and asks for nothing. The listing is
 answered first and never waits for the refresh
 (`listOpenedDirectory` in `backend/bridge/handlers/filebrowser/resource_read.go`).
+The listing of an open folder is watched, by the session's bridge and not by
+the indexer: one inotify watch on the folder the page shows tells the page to
+read the listing again ([File Browser Live Listing](./filebrowser-live-listing.md)),
+and each of those listings asks the indexer to refresh that folder, which the
+daemon does at most once in 30 seconds (below).
 
 The daemon reads the folder's own entries, one level deep, reads their rows
 with one range read and writes what differs (`RefreshFolder` in
@@ -395,6 +401,90 @@ Going in and out of a folder does not read it every time:
 Like a scan, the refresh reaches the folder one component at a time without
 following a symlink, looks at each entry without following one, and leaves
 out what the index leaves out, which it decides before it touches the disk.
+
+### Search inside a folder
+
+The file browser searches the folder it shows: a search in `/home/user`
+finds what is below it, as Windows Explorer does, and a search from `/` is
+the whole disk (`useFileBrowserFilteredResource` passes the listed folder as
+`basePath`). The folder searched in is not one of its own results, in the
+index's answer or the disk's. The page sends the query once it has stayed
+unchanged for 250 ms, while the field shows every keystroke; a query typed
+over one that was searched searches nothing until it settles, rather than
+showing the old one's results. The page keeps an answer 30 seconds, except a
+`partial` one, which the same query asked again asks for anew. The index alone
+misses what was made outside LinuxIO in a folder nobody has opened since, so
+a search inside a folder also reads that folder's tree on disk, as Explorer
+walks a place it has not indexed (`searchOnDisk` in
+`backend/indexer/internal/daemon/search.go`, `SearchTree` in
+`backend/indexer/internal/indexing/search.go`):
+
+- The index answers first. Before the first full index the search answers
+  `503` as before, and nothing is read on disk.
+- The read reaches the folder and everything below it as a scan does (each
+  folder opened without following a symlink, a symlink an entry of its own,
+  never followed), leaves out what a scan leaves out, and reads folders in
+  chunks of names. It skips an entry or folder it cannot read, as a scan
+  does, and then does not count the tree as read whole, unless the index
+  would leave that entry out anyway (a user's FUSE mount below an excluded
+  path that root may not look at). It reads at most 256 folders deep below
+  the folder searched in (`maxSearchDepth`): each level holds an open folder
+  and a chunk of names, and a deeper chain, which any local user can make,
+  ends the read short of whole. A folder the index leaves out is not read.
+- It writes nothing and queues nothing. It does not take a turn in the work
+  queue, so it runs while a scan or other work holds the queue; what it finds
+  reaches the index only when its folder is opened or the next scan runs.
+- Names read on disk are matched in Go (`searchquery.Matcher`), folding each
+  rune to one rune of its Unicode case-folding orbit ("ς", "σ" and "Σ" are
+  one, as are "µ" and "μ", or "ſ" and "s"). That is not the index's matching
+  rune for rune, and the answer does not rely on it: a read that completed
+  keeps every result of the index that is still on disk, looking at each one
+  it did not find itself (`indexing.Lstat`), and drops only those that are
+  gone or that the index now leaves out. Those looks share the read's
+  deadline: one that runs out keeps the results it has not looked at, and
+  the answer is then `partial`. Where the two differ, the read
+  finds more: the index's fallback for a term of one or two characters folds
+  ASCII only (Known limits). A test runs one table of names and queries
+  through both and checks they agree where they are meant to
+  (`search_parity_test.go` in `backend/indexer/internal/storage`).
+- At most two searches read the disk at once (`maxLiveSearches`). One more
+  waits up to 500 ms for a read to end (`liveSearchSlotWait`), since the page
+  cancels the search of a query that was typed on and its read ends a moment
+  later, and then answers from the index alone.
+- The read has two seconds (`liveSearchBudget`) and ends at once when the
+  request ends: a cancelled search reaches the daemon as the end of its HTTP
+  request. The read checks its time and its request between calls to the
+  kernel, and one call can hold it far longer (a failing disk, a mount that
+  does not answer), so it runs on a goroutine of its own and the search waits
+  for it 500 ms past the budget at most (`liveSearchGrace`), then answers
+  from the index alone. The read keeps its slot until its call returns and
+  then ends; it writes nothing, and the daemon does not wait for it when it
+  stops. It runs outside the HTTP server's recovery, so it recovers a panic
+  itself, logs it with its stack, and the search answers `partial` from the
+  index.
+
+The answer says how it was made, in `walk`:
+
+| `walk` | When | Results |
+|--------|------|---------|
+| absent | a search from `/`, or of a folder the index leaves out or that is not there | the index's, as before |
+| `complete` | the whole tree was read in time | what the read found, and the index's results that are still on disk, the newest 100 by modification time; an index result that is gone from the disk is not returned |
+| `partial` | the read ran out of time or did not return, could not read part of the tree, stopped at the depth limit, or found no free slot within its wait | the index's results and what the read found, one per path (the disk's entry wins), the newest 100 |
+
+A file read on disk carries the size a scan would give it (allocated blocks,
+`EntryFromFileInfo`). A folder carries the size the index holds for it; a
+folder the index has no row for has no size (`size_unknown` on the daemon's
+wire, no `size` on the bridge's), since nothing has counted what is below it,
+and the page shows it as an unavailable size, never as 0. With `partial` the
+page says under the search field: "This folder could not be searched on disk
+completely, so recent changes may be missing." The line names no cause: the
+tree was too large for the budget, no read was free, the kernel held the
+read, part of the tree could not be read, or it is deeper than the limit.
+
+The folder watch of the open folder ([File Browser Live
+Listing](./filebrowser-live-listing.md)) refetches the listing, not the
+search: while results show, the listing's new answer changes only the shell
+the results are shown in.
 
 ### Mutation reconciliation
 
@@ -601,7 +691,7 @@ bridge before an indexer request is made.
 | `indexer.set_config` | Call | partial `exclude_paths` and/or `include_network_mounts` | saved combined config |
 | `indexer.set_timer_interval` | Call | `interval` | saved `interval` |
 | `filebrowser.index` | session Task, exclusive (one at a time) | optional `path`; absent or empty means `/` | progress plus final index/reindex totals |
-| `filebrowser.search` | Call | `query`, optional `basePath`, optional compatibility `limit` | matching filesystem entries |
+| `filebrowser.search` | Call | `query`, optional `basePath`, optional compatibility `limit` | `results` (matching entries; `size` absent for a folder of unknown size) and, for a search inside a folder, `walk`: `complete` or `partial` ([Search inside a folder](#search-inside-a-folder)) |
 | `filebrowser.dir_size` | Call | `path` | `size`, `fileCount`, `folderCount`, and `pending` while an update for the folder has not been applied |
 | `filebrowser.subfolders` | Call | `path`; empty means `/` | direct subfolder paths and sizes, and `pending` as above |
 
@@ -659,7 +749,7 @@ plain-text message.
 | `GET /status` | none | status object | Returns current state and latest completed totals |
 | `GET /status?stream=1&operation=<op>&operation_id=<id>&path=<path>` | exact operation tuple | `text/event-stream` | Attaches to work that runs or waits; a mismatch falls back to JSON status |
 | `GET /operation?operation_id=<id>` | operation ID | `event` (`complete` or `error`) and that event's `data` | How an operation that is over ended; `404` for one that still runs or waits, and for one this daemon never held |
-| `GET /search?q=<query>&base=<path>` | query and optional base, default `/` | array of entry results | Query max 256 bytes; result cap 100; `limit` is ignored |
+| `GET /search?q=<query>&base=<path>` | query and optional base, default `/` | `{"results":[...],"walk":"complete"\|"partial"}`, `walk` absent when the disk was not read | Query max 256 bytes; result cap 100; `limit` is ignored; below a base other than `/` it also reads the base's tree on disk for up to two seconds |
 | `GET /dirsize?path=<path>` | optional path, default `/` | path, recursive size, file count, directory count, `pending` | Reads cached aggregates; `pending` is set while work that can change them runs or waits |
 | `GET /subfolders?path=<path>` | optional path, default `/` | `{"subfolders":[...],"pending":bool}` | Each result includes path, name, size, and modification time |
 | `POST /add` | strict JSON `{"path":"/absolute/path"}` | `{"status":"ok"}` | Makes the index agree with the disk for that path once its turn comes; excluded paths are a successful no-op |
@@ -693,7 +783,8 @@ names and payloads are:
 | `error` | operation identity and `message` |
 
 Search entry results contain `path`, `name`, `type`, `size`, `mod_time`,
-`inode`, and directory aggregate fields when applicable. Direct-subfolder
+`inode`, `size_unknown` for a folder found on disk that the index holds no
+size for, and directory aggregate fields when applicable. Direct-subfolder
 results contain `path`, `name`, `size`, and `mod_time`.
 
 Common error statuses are:
@@ -801,8 +892,8 @@ old cache remains available for inspection.
   entries. Such rows come from a folder opened by its path, or a file
   operation, inside a folder that was made outside LinuxIO and that no scan or
   listing has seen yet. When that outer folder is then removed outside
-  LinuxIO before either happens, its rows stay: search finds entries that
-  open nothing.
+  LinuxIO before either happens, its rows stay: a search from `/`, or one
+  inside a folder too large to read in time, finds entries that open nothing.
 - The scanner's idle I/O class gives it the disk only when nothing else wants
   it. On a disk that stays busy a scan takes long, and the updates of file
   operations wait behind it; their sizes are marked pending for that time.
@@ -820,10 +911,30 @@ old cache remains available for inspection.
   details of a folder selected in it, when its contents changed outside
   LinuxIO, are kept for the five minutes or until that folder is opened.
 - A folder opened in the file browser is refreshed one level deep. A change
-  made outside LinuxIO further down shows up when that folder is opened, or
-  at the next scan; until then the sizes of the folders above it are the old
-  ones. A change inside a folder of more than 10,000 entries waits for the
-  scan.
+  made outside LinuxIO further down shows up in the index when that folder is
+  opened, or at the next scan; until then the sizes of the folders above it
+  are the old ones, and only a search inside a folder above it finds it. A
+  change inside a folder of more than 10,000 entries waits for the scan.
+- A search inside a folder reads it on disk for two seconds. A larger tree
+  answers `partial`, from the index and what was read, and a search from `/`
+  reads the index only, so there a change made outside LinuxIO waits for its
+  folder to be opened or for the scan.
+- At most two searches read the disk at once; a third waits 500 ms for one
+  of them to end and then answers `partial` from the index. A read that the
+  kernel holds (a disk or mount that does not answer) is answered for from
+  the index 500 ms past its budget, and keeps its slot until the kernel lets
+  it go: two such reads leave the other searches the index alone until then.
+- A tree more than 256 folders deep below the folder searched in is read to
+  that depth, and its answer is `partial`.
+- A folder that holds something root may not look at, such as a user's FUSE
+  mount without `allow_other` that the index does not leave out, answers
+  `partial` at every search, and the page shows its note each time.
+- A folder found on disk that the index holds no row for has no size until
+  it is opened or scanned; the page shows its size as unavailable.
+- A complete read drops an index result below a path the index leaves out
+  without looking at it, taking the path for a folder; a file that sits
+  exactly at an excluded path or mount point, which a scan does index, is
+  then missing from the answer unless the read found it itself.
 
 - A scan holds the hard link groups of the subtree it scans in memory, one
   path each, to keep their sizes where they are. A tree of backups made of
@@ -832,9 +943,17 @@ old cache remains available for inspection.
   repeats every path: on the host of 1.85 million entries it is about a
   quarter of the database. An index keyed by the parent's row would be
   smaller; it was not built.
-- Case-insensitive search folds case as Unicode does. The smaller search
-  index (`detail=none`) was not taken: its `LIKE` folds ASCII only, so
-  "RELATÓRIO" would no longer find "relatório".
+- Case-insensitive search of the index folds case with SQLite's Unicode
+  table on the trigram path, taken when every term has three or more
+  characters. A term of
+  one or two characters (`ab|report`) takes the `LIKE` fallback, which folds
+  ASCII only, so there "ó" does not find "RELATÓRIO". The read on disk of a
+  search inside a folder folds by Unicode's case-folding orbits always, so it
+  can find such a name where the index misses it
+  (`TestTheIndexFoldsASCIIOnlyForAShortTerm`); a search from `/` cannot. The
+  smaller search index (`detail=none`) was not taken: its `LIKE` would fold
+  ASCII only for every query, so "RELATÓRIO" would no longer find
+  "relatório".
 - On btrfs the index is not checksummed, which is what no-CoW costs. It is a
   cache that a full index rebuilds. On a btrfs with mirrored data, a disk that
   dropped out and came back can then serve old pages of the index without

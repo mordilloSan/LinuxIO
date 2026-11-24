@@ -112,6 +112,17 @@ func withDirectoryEntries(ctx context.Context, path string, fn func(*fsroot.FSRo
 	return readDirectoryEntries(ctx, root, dir, cleanPath, fn)
 }
 
+// OpenDirectory opens the folder at path exactly as ListDirectory opens the
+// folder it lists, and returns it with its real path. The caller closes it.
+func OpenDirectory(ctx context.Context, path string) (*os.File, string, error) {
+	root, dir, cleanPath, err := openDirectoryForRead(ctx, path)
+	if err != nil {
+		return nil, "", err
+	}
+	root.Close()
+	return dir, cleanPath, nil
+}
+
 func openDirectoryForRead(ctx context.Context, path string) (*fsroot.FSRoot, *os.File, string, error) {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, nil, "", ctxErr

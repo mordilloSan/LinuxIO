@@ -128,6 +128,7 @@ export const ROUTE_MODES = {
   "filebrowser.upload": "mutation",
   "filebrowser.upload_batch": "mutation",
   "filebrowser.users_groups": "call",
+  "filebrowser.watch": "duplex",
   "hostname.set_hostname": "mutation",
   "indexer.get_config": "call",
   "indexer.get_status": "call",
@@ -349,8 +350,8 @@ export const ROUTE_MODES = {
   "virt.update": "mutation",
   "wireguard.add_interface": "mutation",
   "wireguard.add_peer": "mutation",
-  "wireguard.disable_interface": "mutation",
   "wireguard.check_interface": "mutation",
+  "wireguard.disable_interface": "mutation",
   "wireguard.down_interface": "mutation",
   "wireguard.enable_interface": "mutation",
   "wireguard.list_interfaces": "call",
@@ -360,8 +361,8 @@ export const ROUTE_MODES = {
   "wireguard.remove_interface": "mutation",
   "wireguard.remove_peer": "mutation",
   "wireguard.restore_forwarding": "mutation",
-  "wireguard.update_interface": "mutation",
   "wireguard.up_interface": "mutation",
+  "wireguard.update_interface": "mutation",
   "wireguard.update_peer": "mutation",
 } as const satisfies Record<string, RouteMode>;
 

@@ -1664,6 +1664,8 @@ export interface FileSearchRequest {
   basePath?: string;
 }
 
+export type FileSearchWalk = "complete" | "partial";
+
 export interface FileUploadBatchEntry {
   path: string;
   size: string;
@@ -2875,6 +2877,7 @@ export interface SchedulesListResult {
 
 export interface SearchResponse {
   results: SearchResult[];
+  walk?: FileSearchWalk;
 }
 
 export interface SearchResult {
@@ -2883,7 +2886,7 @@ export interface SearchResult {
   mod_time: string;
   name: string;
   path: string;
-  size: number;
+  size?: number;
   canOpenAsText?: boolean;
 }
 
@@ -3934,9 +3937,6 @@ export interface WireGuardAddPeerRequest {
   name?: string;
 }
 
-export type WireGuardHookKind = "PreUp" | "PostUp" | "PreDown" | "PostDown";
-
-export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
 export interface WireGuardCheckResult {
   steps: WireGuardCheckStep[];
 }
@@ -3952,6 +3952,9 @@ export interface WireGuardCheckStep {
 
 export type WireGuardCheckStepID = "handshake" | "tunnel" | "beyond" | "dns";
 
+export type WireGuardHookKind = "PreUp" | "PostUp" | "PreDown" | "PostDown";
+
+export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
 
 export interface WireGuardInterface {
   address: string;
@@ -5477,14 +5480,14 @@ export interface LinuxIOSchema {
       request: WireGuardAddPeerRequest;
       result: void;
     };
-    disable_interface: {
-      input: [name: string];
-      request: NameRequest;
     check_interface: {
       input: [name: string];
       request: NameRequest;
       result: WireGuardCheckResult;
     };
+    disable_interface: {
+      input: [name: string];
+      request: NameRequest;
       result: void;
     };
     down_interface: {
@@ -5867,6 +5870,7 @@ export interface LinuxIOStreamSchema {
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.logs.follow_all": DockerLogsFollowAllRequest;
   "filebrowser.download_stream": PathRequest;
+  "filebrowser.watch": PathRequest;
   "logs.general.follow": GeneralLogsFollowRequest;
   "logs.service.follow": ServiceLogsFollowRequest;
   "tasks.data": TaskDataRequest;

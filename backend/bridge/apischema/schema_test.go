@@ -162,6 +162,7 @@ var unprivilegedChanges = map[string]string{
 	"filebrowser.trash_restore":   "the session user's own files, as that user",
 	"filebrowser.upload":          "the session user's own files, as that user",
 	"filebrowser.upload_batch":    "the session user's own files, as that user",
+	"filebrowser.watch":           "a read stream of a folder the session user may list",
 
 	"logs.general.follow": "a read stream of the journal the session user may read",
 	"logs.service.follow": "a read stream of the journal the session user may read",
@@ -362,7 +363,7 @@ func TestEndpointExcludesChannels(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"docker.logs.follow", "docker.logs.follow_all", "logs.general.follow", "logs.service.follow"} {
+	for _, route := range []string{"docker.logs.follow", "docker.logs.follow_all", "logs.general.follow", "logs.service.follow", "filebrowser.watch"} {
 		spec := mustRoute(t, route)
 		if spec.Mode != bridgeipc.ModeDuplex || spec.Kind != apischema.KindDuplex {
 			t.Fatalf("%s should be a direct channel, got mode=%q kind=%q", route, spec.Mode, spec.Kind)

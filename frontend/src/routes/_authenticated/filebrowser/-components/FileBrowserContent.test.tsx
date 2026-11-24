@@ -133,6 +133,42 @@ describe("FileBrowserContent render boundaries", () => {
   });
 });
 
+describe("FileBrowserContent search of a folder on disk", () => {
+  const folder = {
+    items: [{ name: "a.txt", path: "/srv/a.txt", type: "file" }],
+    name: "srv",
+    path: "/srv",
+    type: "directory",
+  };
+  const note =
+    "This folder could not be searched on disk completely, so recent changes may be missing.";
+  const searching = (
+    data: Partial<FileBrowserContentProps["data"]>,
+  ): FileBrowserContentProps => ({
+    ...contentProps,
+    chrome: { ...contentProps.chrome, searchQuery: "alpha" },
+    data: {
+      ...contentProps.data,
+      filteredResource: folder,
+      resource: folder,
+      ...data,
+    },
+  });
+
+  it("says so when the folder could not be read whole", () => {
+    render(<FileBrowserContent {...searching({ isSearchPartial: true })} />);
+
+    expect(screen.getByText(note)).toBeInTheDocument();
+    expect(screen.getByTestId("listing")).toBeInTheDocument();
+  });
+
+  it("says nothing when the folder was read whole or not read", () => {
+    render(<FileBrowserContent {...searching({ isSearchPartial: false })} />);
+
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+  });
+});
+
 describe("FileBrowserContent card size", () => {
   const folder = {
     items: [{ name: "a.txt", path: "/srv/a.txt", type: "file" }],

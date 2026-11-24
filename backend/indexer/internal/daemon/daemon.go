@@ -30,10 +30,14 @@ type daemon struct {
 	workStreamMu   sync.RWMutex
 	workStream     *workStreamBroadcaster
 	activeRequests atomic.Int64
-	activityMu     sync.RWMutex
-	lastActivity   time.Time
-	bgCancel       context.CancelFunc
-	bgWG           sync.WaitGroup
+	// liveSearches holds a token for each search that reads the disk
+	// (search.go); made on first use.
+	liveSearches     chan struct{}
+	liveSearchesOnce sync.Once
+	activityMu       sync.RWMutex
+	lastActivity     time.Time
+	bgCancel         context.CancelFunc
+	bgWG             sync.WaitGroup
 }
 
 // New opens the cache, recovering from corruption, and returns a daemon that

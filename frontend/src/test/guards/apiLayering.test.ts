@@ -194,6 +194,10 @@ describe("API layering guard", () => {
         "logs.general.follow",
       ],
       ["components/cards/UnitLogsCard.tsx", "logs.service.follow"],
+      [
+        "routes/_authenticated/filebrowser/-hooks/useFolderWatch.ts",
+        "filebrowser.watch",
+      ],
     ] as const;
     for (const [path, route] of directConsumers) {
       const source = readSource(path);

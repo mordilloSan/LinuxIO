@@ -592,7 +592,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   ([Filesystem Indexer](./indexer.md#full-index)). It then makes a file
   outside LinuxIO, opens its folder and finds the file by search, and renames
   it through LinuxIO. It scans the whole VM, and creates and removes
-  `/srv/e2e-indexer`.
+  `/srv/e2e-indexer`. It also checks that a file made and one deleted in the
+  VM appear and go in an open folder without a reload
+  ([File Browser Live Listing](./filebrowser-live-listing.md)).
   `wireguard.spec.ts` creates an interface `wge2e` through the page's create
   dialog, setting its port, CIDR and NIC under Advanced, checks that the
   first device's QR code opens with `iface` and `qr` in the URL, then calls

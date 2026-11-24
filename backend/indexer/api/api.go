@@ -125,17 +125,41 @@ type DirSizeResponse struct {
 	Pending bool `json:"pending,omitempty"`
 }
 
-// EntryResult is returned by /search.
+// How a search inside a folder read that folder on disk (SearchResponse.Walk).
+// A search from "/", or of a folder the index leaves out, reads the index
+// alone and says nothing.
+const (
+	// SearchWalkComplete: the whole folder was read in time, and the results
+	// are what is on the disk now: what the read found, and the index's
+	// results that are still there.
+	SearchWalkComplete = "complete"
+	// SearchWalkPartial: the folder was not read whole (out of time, no free
+	// read within a short wait, a part that could not be read, or a tree
+	// deeper than the read goes), and the results are the index's with what
+	// the read found.
+	SearchWalkPartial = "partial"
+)
+
+// SearchResponse is returned by /search.
+type SearchResponse struct {
+	Results []EntryResult `json:"results"`
+	Walk    string        `json:"walk,omitempty"`
+}
+
+// EntryResult is one entry of a search answer.
 type EntryResult struct {
-	Path       string    `json:"path"`
-	Name       string    `json:"name"`
-	Type       string    `json:"type"`
-	Size       int64     `json:"size"`
-	ModTime    time.Time `json:"mod_time"`
-	Inode      uint64    `json:"inode"`
-	TotalSize  int64     `json:"total_size,omitzero"`
-	TotalFiles int64     `json:"total_files,omitzero"`
-	TotalDirs  int64     `json:"total_dirs,omitzero"`
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Size int64  `json:"size"`
+	// SizeUnknown is set for a folder found on disk that the index holds no
+	// row for: nothing has counted what is below it, and Size is not a size.
+	SizeUnknown bool      `json:"size_unknown,omitempty"`
+	ModTime     time.Time `json:"mod_time"`
+	Inode       uint64    `json:"inode"`
+	TotalSize   int64     `json:"total_size,omitzero"`
+	TotalFiles  int64     `json:"total_files,omitzero"`
+	TotalDirs   int64     `json:"total_dirs,omitzero"`
 }
 
 // SubfoldersResponse is returned by /subfolders.
