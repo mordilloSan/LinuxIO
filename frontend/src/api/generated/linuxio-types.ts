@@ -3644,6 +3644,7 @@ export interface UnitNameRequest {
 
 export interface Update {
   changelog: string;
+  homepage?: string;
   cve: string[];
   info_enum: number;
   issued: string;

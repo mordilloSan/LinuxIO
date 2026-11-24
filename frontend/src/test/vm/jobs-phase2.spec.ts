@@ -49,6 +49,17 @@ test("a reload mid package update picks the same job up and completes it", async
     .filter({ has: page.getByText("2.0 · ") })
     .filter({ has: page.getByRole("button", { name: "Update", exact: true }) })
     .last();
+  // docs/packaging.md (Changelog): its source publishes no changelog, so the
+  // card says there is none and links to the package's Homepage.
+  await card.getByRole("button", { name: "View Changelog" }).click();
+  await expect(card).toContainText(
+    "No changelog is available for this update",
+    { timeout: 30_000 },
+  );
+  await expect(
+    card.getByRole("link", { name: "Project page" }),
+  ).toHaveAttribute("href", "https://linuxio-e2e.invalid/slow");
+  await card.getByRole("button", { name: "View Changelog" }).click();
   await card.getByRole("button", { name: "Update", exact: true }).click();
   await waitForJob("packages.update", before, "running");
 

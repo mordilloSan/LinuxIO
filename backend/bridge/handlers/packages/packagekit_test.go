@@ -3,6 +3,7 @@ package packages
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,6 +41,9 @@ type fakePackageKit struct {
 	nextTransaction int
 	updates         []fakePackage
 	details         map[string][]any
+	homepages       map[string]string
+	detailsCalls    int
+	detailsErr      string
 	installed       []string
 	updated         []string
 	updateCalls     [][]string
@@ -140,6 +144,7 @@ func setupFakePackageKit(t *testing.T, prepared bool) *fakePackageKit {
 		prepared:       prepared,
 		termLogPath:    termLogPath,
 		details:        make(map[string][]any),
+		homepages:      make(map[string]string),
 		updateErrors:   make(map[string]string),
 		updateHangs:    make(map[string]bool),
 		updateStarted:  make(chan string, 16),
@@ -513,6 +518,53 @@ func (tx *fakeTransaction) GetUpdateDetail(packageIDs []string) *godbus.Error {
 	return nil
 }
 
+// GetDetails answers with a Details signal (one a{sv}, as PackageKit 1.2 and
+// later send it) for each package given a homepage, the url of the first
+// pointing at another package as PackageKit's would not.
+func (tx *fakeTransaction) GetDetails(packageIDs []string) *godbus.Error {
+	tx.service.mu.Lock()
+	tx.service.detailsCalls++
+	homepages := maps.Clone(tx.service.homepages)
+	detailsErr := tx.service.detailsErr
+	tx.service.mu.Unlock()
+	tx.emitLater(func() {
+		if detailsErr != "" {
+			tx.emit("ErrorCode", uint32(8), detailsErr) // PK_ERROR_ENUM_PACKAGE_NOT_FOUND
+			tx.emit("Finished", uint32(2), uint32(0))
+			return
+		}
+		for _, id := range packageIDs {
+			homepage, ok := homepages[id]
+			if !ok {
+				continue
+			}
+			tx.emit("Details", map[string]godbus.Variant{
+				"package-id": godbus.MakeVariant("other;1;x86_64;repo"),
+				"url":        godbus.MakeVariant("https://other.example"),
+			})
+			tx.emit("Details", map[string]godbus.Variant{
+				"package-id": godbus.MakeVariant(id),
+				"url":        godbus.MakeVariant(homepage),
+				"summary":    godbus.MakeVariant("Demo"),
+			})
+		}
+		tx.emit("Finished", uint32(0), uint32(0))
+	})
+	return nil
+}
+
+func (s *fakePackageKit) setHomepage(packageID, homepage string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.homepages[packageID] = homepage
+}
+
+func (s *fakePackageKit) detailsCallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.detailsCalls
+}
+
 func (tx *fakeTransaction) InstallPackages(flags uint64, packageIDs []string) *godbus.Error {
 	tx.service.mu.Lock()
 	tx.asked = true
@@ -668,7 +720,10 @@ func (tx *fakeTransaction) emitLater(fn func()) {
 	}()
 }
 
-func detailBody(packageID, version string) []any {
+// detailBody is an UpdateDetail signal as PackageKit sends it: package ID,
+// updates, obsoletes, vendor, bug and CVE URLs, restart, update text,
+// changelog, state, issued and updated, the last two dates.
+func detailBody(packageID string) []any {
 	return []any{
 		packageID,
 		"", "", "", "",
@@ -678,7 +733,7 @@ func detailBody(packageID, version string) []any {
 		"demo (1.0) stable; urgency=medium\n\n  * fix CVE-2026-0002\n\n -- Demo <demo@example.com>  Tue, 12 May 2026 12:00:00 +0000",
 		uint32(2),
 		"2026-05-12T12:00:00Z",
-		version,
+		"2026-05-13T08:00:00Z",
 	}
 }
 
@@ -830,13 +885,15 @@ func TestRefreshUpdateCacheCallsRefreshCache(t *testing.T) {
 func TestGetSingleUpdateDetailIgnoresNonMatchingDetail(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 	const packageID = "demo;1.2.3;x86_64;repo"
-	service.setDetail("wrong;0;x86_64;repo", detailBody("wrong;0;x86_64;repo", "0"))
-	service.setDetail(packageID, detailBody(packageID, "1.2.3"))
+	service.setDetail("wrong;0;x86_64;repo", detailBody("wrong;0;x86_64;repo"))
+	service.setDetail(packageID, detailBody(packageID))
 
 	got, err := getSingleUpdateDetail(context.Background(), packageID)
 	if err != nil {
 		t.Fatalf("getSingleUpdateDetail: %v", err)
 	}
+	// The version is the package ID's, not the signal's last field (the
+	// date the update last changed).
 	if got.PackageID != packageID || got.Version != "1.2.3" {
 		t.Fatalf("unexpected detail: %#v", got)
 	}
@@ -849,7 +906,7 @@ func TestGetSingleUpdateDetailReadsUpdateTextWithoutChangelog(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 	const packageID = "linuxio;0.58.0-1;x86_64;linuxio"
 	const notes = "Features:\n\n- updates: show the package's changes (abc1234)"
-	body := detailBody(packageID, "0.58.0-1")
+	body := detailBody(packageID)
 	body[7] = notes
 	body[8] = ""
 	service.setDetail(packageID, body)
@@ -860,6 +917,79 @@ func TestGetSingleUpdateDetailReadsUpdateTextWithoutChangelog(t *testing.T) {
 	}
 	if got.Changelog != notes {
 		t.Fatalf("Changelog = %q, want the update text %q", got.Changelog, notes)
+	}
+}
+
+func TestGetSingleUpdateDetailKeepsEveryNewEntry(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	const packageID = "fwupd;2.1.6-3ubuntu4;amd64;ubuntu"
+	const changelog = "fwupd (2.1.6-3ubuntu4) resolute; urgency=medium\n\n * Backport to resolute.\n\n -- Dev <dev@example.com>  Tue, 13 Oct 2026 12:55:15 -0500\n\n" +
+		"fwupd (2.1.6-3ubuntu3) resolute; urgency=medium\n\n * Allow PixArt touchpads.\n\n -- Dev <dev@example.com>  Wed, 07 Oct 2026 16:36:26 +0200"
+	body := detailBody(packageID)
+	body[8] = changelog
+	service.setDetail(packageID, body)
+	service.setHomepage(packageID, "https://fwupd.org")
+
+	got, err := getSingleUpdateDetail(context.Background(), packageID)
+	if err != nil {
+		t.Fatalf("getSingleUpdateDetail: %v", err)
+	}
+	if got.Changelog != changelog {
+		t.Fatalf("Changelog = %q, want both entries %q", got.Changelog, changelog)
+	}
+	if got.Homepage != "" || service.detailsCallCount() != 0 {
+		t.Fatalf("Homepage = %q after %d GetDetails calls, want none asked for with a changelog", got.Homepage, service.detailsCallCount())
+	}
+}
+
+func TestGetSingleUpdateDetailWithoutChangelogGivesTheHomepage(t *testing.T) {
+	for name, tc := range map[string]struct {
+		changelog, homepage, want string
+	}{
+		"apt says it has none": {aptNoChangelog, "https://www.docker.com", "https://www.docker.com"},
+		"empty":                {"", "http://example.org/project", "http://example.org/project"},
+		"not a web address":    {"", "javascript:alert(1)", ""},
+		"relative":             {"", "/usr/share/doc/demo", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := setupFakePackageKit(t, false)
+			const packageID = "docker-ce;5:29.10.0-1;amd64;docker"
+			body := detailBody(packageID)
+			body[8] = tc.changelog
+			service.setDetail(packageID, body)
+			service.setHomepage(packageID, tc.homepage)
+
+			got, err := getSingleUpdateDetail(context.Background(), packageID)
+			if err != nil {
+				t.Fatalf("getSingleUpdateDetail: %v", err)
+			}
+			if got.Changelog != "" {
+				t.Fatalf("Changelog = %q, want none", got.Changelog)
+			}
+			if got.Homepage != tc.want {
+				t.Fatalf("Homepage = %q, want %q", got.Homepage, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetSingleUpdateDetailWithoutTheHomepageWhenDetailsFail(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	const packageID = "docker-ce;5:29.10.0-1;amd64;docker"
+	body := detailBody(packageID)
+	body[8] = aptNoChangelog
+	service.setDetail(packageID, body)
+	service.setHomepage(packageID, "https://www.docker.com")
+	service.mu.Lock()
+	service.detailsErr = "Package not found: " + packageID
+	service.mu.Unlock()
+
+	got, err := getSingleUpdateDetail(context.Background(), packageID)
+	if err != nil {
+		t.Fatalf("getSingleUpdateDetail: %v, want the detail without a homepage", err)
+	}
+	if got.PackageID != packageID || got.Changelog != "" || got.Homepage != "" {
+		t.Fatalf("detail = %#v, want no changelog and no homepage", got)
 	}
 }
 

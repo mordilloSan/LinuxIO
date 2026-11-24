@@ -1,7 +1,8 @@
 #!/bin/bash
 # Run as root in the test VM. Installs version 1.0 of linuxio-e2e-slow and
 # serves 2.0 from a local apt source, so PackageKit offers an update whose
-# postinst takes 20 seconds.
+# postinst takes 20 seconds. The source names no changelog, as Docker's does
+# not, and the package has a Homepage, which the Updates page links to then.
 set -euo pipefail
 
 work="$(mktemp -d)"
@@ -14,6 +15,7 @@ Package: linuxio-e2e-slow
 Version: ${version}
 Architecture: all
 Maintainer: LinuxIO e2e <e2e@localhost>
+Homepage: https://linuxio-e2e.invalid/slow
 Description: LinuxIO e2e package whose upgrade takes 20 seconds
 CONTROL
 	# configure with a previous version is an upgrade.

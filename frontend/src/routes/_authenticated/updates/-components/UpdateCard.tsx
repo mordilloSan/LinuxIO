@@ -4,6 +4,7 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
+import AppLinkButton from "@/components/ui/AppLinkButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_LG } from "@/theme/constants";
 
@@ -11,6 +12,8 @@ import { isDeferredUpdate } from "./packageUpdates";
 
 interface UpdateCardProps {
   changelog: string | undefined;
+  /** The project's address, given when the update has no changelog. */
+  homepage?: string;
   isCurrentPackage: boolean;
   isExpanded: boolean;
   isLoadingChangelog: boolean;
@@ -27,6 +30,7 @@ const UpdateCard = ({
   isUpdating,
   isCurrentPackage,
   changelog,
+  homepage,
   isLoadingChangelog,
   onPrefetchChangelog,
   onToggleChangelog,
@@ -143,9 +147,24 @@ const UpdateCard = ({
               <AppCircularProgress size={20} />
             </div>
           ) : (
-            <AppTypography color="text.secondary" variant="body2">
-              {changelog || "Loading..."}
-            </AppTypography>
+            <>
+              <AppTypography color="text.secondary" variant="body2">
+                {changelog || "Loading..."}
+              </AppTypography>
+              {homepage ? (
+                <AppLinkButton
+                  href={homepage}
+                  rel="noopener noreferrer"
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  target="_blank"
+                  title={homepage}
+                  variant="text"
+                >
+                  Project page
+                </AppLinkButton>
+              ) : null}
+            </>
           )}
         </AppTypography>
       </AppCollapse>

@@ -41,11 +41,18 @@ const UpdateList = ({
     }),
     enabled: changelogPackageId !== null,
     staleTime: CACHE_TTL_MS.FIVE_MINUTES,
-    select: (detail) => detail.changelog || "No changelog available",
+    select: (detail) => ({
+      changelog:
+        detail.changelog || "No changelog is available for this update",
+      homepage: detail.homepage,
+    }),
   });
   const changelog = changelogQuery.isError
     ? "Failed to load changelog"
-    : changelogQuery.data;
+    : changelogQuery.data?.changelog;
+  const homepage = changelogQuery.isError
+    ? undefined
+    : changelogQuery.data?.homepage;
   const toggleExpanded = (packageId: string) => {
     if (packageId === expandedPackageId) {
       setExpandedPackageId(null);
@@ -107,6 +114,9 @@ const UpdateList = ({
           <UpdateCard
             changelog={
               update.package_id === changelogPackageId ? changelog : undefined
+            }
+            homepage={
+              update.package_id === changelogPackageId ? homepage : undefined
             }
             isCurrentPackage={currentPackage === update.package_id}
             isExpanded={expandedPackageId === update.package_id}

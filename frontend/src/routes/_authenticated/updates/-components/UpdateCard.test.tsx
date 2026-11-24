@@ -54,4 +54,28 @@ describe("UpdateCard", () => {
     await user.hover(screen.getByRole("button", { name: "View Changelog" }));
     expect(onPrefetchChangelog).toHaveBeenCalledTimes(1);
   });
+
+  it("links to the project when the update has no changelog", () => {
+    render(
+      <UpdateCard
+        changelog="No changelog is available for this update"
+        homepage="https://www.docker.com"
+        isCurrentPackage={false}
+        isExpanded
+        isLoadingChangelog={false}
+        isUpdating={false}
+        onPrefetchChangelog={vi.fn()}
+        onToggleChangelog={vi.fn()}
+        onUpdate={vi.fn()}
+        update={{ ...deferredUpdate, info_enum: 11 }}
+      />,
+    );
+
+    expect(
+      screen.getByText("No changelog is available for this update"),
+    ).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Project page" });
+    expect(link).toHaveAttribute("href", "https://www.docker.com");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
 });

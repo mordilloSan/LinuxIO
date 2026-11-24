@@ -71,7 +71,10 @@ type InstallCapabilityResult struct {
 }
 
 type Update struct {
-	Changelog string   `json:"changelog"`
+	Changelog string `json:"changelog"`
+	// Homepage is the package's project address, given by
+	// updates.get_update_detail when the update has no changelog.
+	Homepage  string   `json:"homepage,omitempty"`
 	CVE       []string `json:"cve"`
 	InfoEnum  uint32   `json:"info_enum"`
 	Issued    string   `json:"issued"`

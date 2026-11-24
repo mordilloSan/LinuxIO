@@ -506,8 +506,22 @@ neither package manager reads from the package itself:
   text where PackageKit sends no changelog (`buildUpdateDetail` in
   `backend/bridge/handlers/packages`).
 
-The page shows the newest entry of the changelog. Its update card names the
-package, with the version and PackageKit's summary of it below.
+This holds for every package on the Updates page, not only LinuxIO's
+(`getSingleUpdateDetail` in `backend/bridge/handlers/packages`). The card
+names the package, with the version, which is the PackageKit package ID's,
+and PackageKit's summary of it below. Its changelog is every entry PackageKit
+sends, which the apt backend limits to the versions newer than the one
+installed, so an update over several versions shows all of them. Where the
+apt backend has no changelog it sends "Changelog for this version is not yet
+available", which the bridge takes for none: the repository publishes none,
+as Docker's, gh's and Ubuntu ESM's do not (apt knows where to look only for
+Debian's and Ubuntu's archives), Ubuntu's changelog site has not caught up
+with an upload yet, or the download failed. With no changelog and no update
+text, from either backend, the page says that none is available and links
+to the project's page, the `url` PackageKit's `GetDetails` gives (the
+package's `Homepage` or `URL`), when it is an http or https address; a
+failed `GetDetails` leaves the link out and the rest of the details as they
+are.
 
 ## Third-party notices
 

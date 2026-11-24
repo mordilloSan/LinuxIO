@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,6 +29,7 @@ type UpdateDetail struct {
 	Version   string   `json:"version"`
 	Issued    string   `json:"issued"`
 	Changelog string   `json:"changelog"`
+	Homepage  string   `json:"homepage,omitempty"`
 	CVEs      []string `json:"cve"`
 	Restart   uint32   `json:"restart"`
 	State     uint32   `json:"state"`
@@ -101,30 +103,11 @@ func extractCVEs(text string) []string {
 	return re.FindAllString(text, -1)
 }
 
-// extractLatestChangelog extracts only the most recent changelog entry.
-// Debian/Ubuntu changelogs have multiple version entries; we only want the first one.
-func extractLatestChangelog(changelog string) string {
-	if changelog == "" {
-		return changelog
-	}
-
-	// Debian changelog format: each entry ends with a signature line like:
-	// " -- Name <email>  Date"
-	// followed by a blank line and then the next entry starts with:
-	// "packagename (version) distribution; urgency=level"
-
-	// Find where the second changelog entry starts (a line starting with a package name and version)
-	// Pattern: two newlines followed by package name and (version)
-	nextEntryPattern := regexp.MustCompile(`\n\n[a-zA-Z0-9][a-zA-Z0-9._+-]*\s+\([^)]+\)\s+[^;]+;`)
-	matches := nextEntryPattern.FindStringIndex(changelog)
-
-	if matches != nil {
-		// Return everything before the next entry
-		return strings.TrimSpace(changelog[:matches[0]])
-	}
-
-	return changelog
-}
+// aptNoChangelog is what PackageKit's apt backend sends as the changelog when
+// it has none: the repository publishes no changelog (Docker's, gh's, Ubuntu
+// ESM's: apt knows where to look only for Debian's and Ubuntu's archives), it
+// has not yet, or the download failed. The page says so in its own words.
+const aptNoChangelog = "Changelog for this version is not yet available"
 
 func extractIssued(changelog string) string {
 	re := regexp.MustCompile(`(\w{3},\s*\d{1,2}\s*\w+\s*\d{4}\s*\d{2}:\d{2}:\d{2}\s*[-+]\d{4})`)
@@ -258,13 +241,9 @@ func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetai
 		return UpdateDetail{}, fmt.Errorf("invalid pkgID: %w", err)
 	}
 
-	version, err := dbusclient.AsString(body[11])
-	if err != nil {
-		return UpdateDetail{}, fmt.Errorf("invalid version for %q: %w", pkgID, err)
-	}
-	if version == "" {
-		version = packageIDVersion(pkgID)
-	}
+	// The signal carries no version: its last field is the date the update
+	// was last changed. The version is the package ID's.
+	version := packageIDVersion(pkgID)
 
 	issued, err := dbusclient.AsString(body[10])
 	if err != nil {
@@ -275,9 +254,13 @@ func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetai
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid changelog for %q: %w", pkgID, err)
 	}
+	changelogRaw = strings.TrimSpace(changelogRaw)
+	if changelogRaw == aptNoChangelog {
+		changelogRaw = ""
+	}
 	// PackageKit's dnf backend sends no changelog, only the advisory's text
 	// (the repository's updateinfo) as update_text.
-	if strings.TrimSpace(changelogRaw) == "" {
+	if changelogRaw == "" {
 		changelogRaw, err = dbusclient.AsString(body[7])
 		if err != nil {
 			return UpdateDetail{}, fmt.Errorf("invalid update text for %q: %w", pkgID, err)
@@ -303,7 +286,9 @@ func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetai
 		Summary:   summary,
 		Version:   version,
 		Issued:    issued,
-		Changelog: extractLatestChangelog(changelogRaw),
+		// The apt backend sends the entries newer than the installed version,
+		// so an update over several versions shows all of them.
+		Changelog: strings.TrimSpace(changelogRaw),
 		CVEs:      mergeUpdateCVEs(changelogRaw, toStringSlice(body[5])),
 		Restart:   restart,
 		State:     state,
@@ -545,9 +530,87 @@ func getSingleUpdateDetail(ctx context.Context, packageID string) (*UpdateDetail
 		defer cancel()
 
 		detail, err = collectSingleUpdateDetail(waitCtx, trans.Signals(), packageID)
-		return err
+		if err != nil || detail.Changelog != "" {
+			return err
+		}
+		// Without notes, the page links to the project instead.
+		detail.Homepage = packageHomepage(session, packageID)
+		return nil
 	})
 	return detail, err
+}
+
+// packageHomepage is the homepage PackageKit's GetDetails gives for
+// packageID (the package's Homepage or URL field) when it is an http or
+// https address, and "" otherwise. It is an extra to the update's details, so
+// a failure is logged and leaves the detail without one.
+func packageHomepage(session pkgkit.ClientSession, packageID string) string {
+	trans, err := session.CreateTransaction(4)
+	if err != nil {
+		warnNoHomepage(session.Context(), packageID, err)
+		return ""
+	}
+	defer pkgkit.LogClose(session.Context(), trans)
+	if err = trans.Call("GetDetails", []string{packageID}); err != nil {
+		warnNoHomepage(session.Context(), packageID, err)
+		return ""
+	}
+	// PackageKit reads the details from its cache; the request has already
+	// waited for the update's details.
+	waitCtx, cancel := context.WithTimeout(session.Context(), 5*time.Second)
+	defer cancel()
+	homepage := ""
+	for {
+		select {
+		case sig, ok := <-trans.Signals():
+			if !ok {
+				return homepage
+			}
+			switch sig.Name {
+			case pkgkit.TransactionIface + ".Details":
+				if found := detailsHomepage(sig.Body, packageID); found != "" {
+					homepage = found
+				}
+			case pkgkit.TransactionIface + ".ErrorCode":
+				warnNoHomepage(session.Context(), packageID, pkgkit.ErrorFromSignal(sig, "GetDetails"))
+			case pkgkit.TransactionIface + ".Finished":
+				return homepage
+			}
+		case <-waitCtx.Done():
+			warnNoHomepage(session.Context(), packageID, waitCtx.Err())
+			return homepage
+		}
+	}
+}
+
+// warnNoHomepage logs why packageHomepage has none, unless the request was
+// cancelled, which is the page's own doing (it closed or moved on).
+func warnNoHomepage(ctx context.Context, packageID string, err error) {
+	if ctx.Err() != nil {
+		return
+	}
+	slog.Warn("could not read the package homepage", "package_id", packageID, "error", err)
+}
+
+// detailsHomepage reads the url of a Details signal (one a{sv} argument)
+// about packageID, when it is an absolute http or https address.
+func detailsHomepage(body []any, packageID string) string {
+	if len(body) == 0 {
+		return ""
+	}
+	data, ok := body[0].(map[string]dbusclient.Variant)
+	if !ok {
+		return ""
+	}
+	if id, _ := data["package-id"].Value().(string); id != packageID {
+		return ""
+	}
+	raw, _ := data["url"].Value().(string)
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return raw
 }
 
 // --- Update History (log parsing) ---
