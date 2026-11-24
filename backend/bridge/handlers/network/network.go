@@ -342,6 +342,7 @@ func liveInterfaceInfo(
 		Name:       iface.Name,
 		Type:       interfaceType(iface.Name),
 		MAC:        iface.HardwareAddr.String(),
+		Master:     interfaceMaster(sysClassNet, iface.Name),
 		MTU:        iface.MTU,
 		Speed:      networkInterfaceLinkSpeed(iface.Name),
 		Duplex:     networkInterfaceDuplex(iface.Name),
@@ -477,6 +478,21 @@ func networkInterfaceDriver(name string) string {
 		return ""
 	}
 	target, err := os.Readlink(fmt.Sprintf("/sys/class/net/%s/device/driver", name))
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(target)
+}
+
+const sysClassNet = "/sys/class/net"
+
+// The kernel links a bridge or bond port's folder to its master; a card on
+// its own has no such link.
+func interfaceMaster(sysfs, name string) string {
+	if name == "" {
+		return ""
+	}
+	target, err := os.Readlink(filepath.Join(sysfs, name, "master"))
 	if err != nil {
 		return ""
 	}

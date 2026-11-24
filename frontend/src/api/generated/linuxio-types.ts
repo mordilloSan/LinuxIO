@@ -356,6 +356,11 @@ export interface BtrfsBalanceRequest {
   dataUsage?: number;
 }
 
+export interface BtrfsBalanceStatus {
+  state: string;
+  percent: number;
+}
+
 export interface BtrfsCompression {
   algorithm: string;
   level?: number;
@@ -422,6 +427,7 @@ export interface BtrfsFilesystem {
   spare?: BtrfsSpare;
   autoRebuild: boolean;
   rebuild?: BtrfsRebuild;
+  balance?: BtrfsBalanceStatus;
 }
 
 export interface BtrfsJobIDRequest {
@@ -2248,12 +2254,7 @@ export interface MonitoringHistoryRequest {
   limit?: number;
 }
 
-export type MonitoringHistoryResolution =
-  | "1m"
-  | "10m"
-  | "20m"
-  | "120m"
-  | "480m";
+export type MonitoringHistoryResolution = "1m" | "10m" | "20m" | "60m";
 
 export interface MonitoringListener {
   address: string;
@@ -2534,6 +2535,7 @@ export interface NetworkInterface {
   ipv4_method?: string;
   log_unit?: string;
   mac: string;
+  master?: string;
   mtu: number;
   name: string;
   operstate: string;
@@ -3644,6 +3646,7 @@ export interface UnitNameRequest {
 
 export interface Update {
   changelog: string;
+  homepage?: string;
   cve: string[];
   info_enum: number;
   issued: string;
@@ -3959,6 +3962,7 @@ export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
 export interface WireGuardInterface {
   address: string;
   dns: string[];
+  egressNic: string;
   forwardingOff: boolean;
   hooks: WireGuardHooks;
   host: string;
@@ -3982,6 +3986,8 @@ export interface WireGuardUpdateInterfaceRequest {
   mtu?: number;
   listenPort?: number;
   hooks?: WireGuardHooks;
+  address?: string;
+  egressNic?: string;
 }
 
 export interface WireGuardUpdatePeerRequest {

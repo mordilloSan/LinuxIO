@@ -686,10 +686,11 @@ func TestGetCurrentData(t *testing.T) {
 		assert.InDelta(t, 20.0, result2["0"].Usage, 0.01, "CacheKey1: Delta average should be 60/3 = 20")
 		assert.InDelta(t, 50.0, result2["0"].Power, 0.01, "CacheKey1: Delta average should be 150/3 = 50")
 
-		// Check with cacheKey2 for the first time - should get average since beginning
+		// Check with cacheKey2 for the first time - it starts where cacheKey1,
+		// which read last, stands, not at the daemon's start (160/5 = 32)
 		result3 := gm.GetCurrentData(cacheKey2)
-		assert.InDelta(t, 32.0, result3["0"].Usage, 0.01, "CacheKey2: Total average should be 160/5 = 32")
-		assert.InDelta(t, 70.0, result3["0"].Power, 0.01, "CacheKey2: Total average should be 350/5 = 70")
+		assert.InDelta(t, 20.0, result3["0"].Usage, 0.01, "CacheKey2: cacheKey1's latest window, 60/3 = 20")
+		assert.InDelta(t, 50.0, result3["0"].Power, 0.01, "CacheKey2: cacheKey1's latest window, 150/3 = 50")
 
 		// Simulate more GPU activity
 		gm.GpuDataMap["0"].Usage += 80  // Now total: 240
@@ -712,6 +713,62 @@ func TestGetCurrentData(t *testing.T) {
 		assert.NotNil(t, gm.lastSnapshots[cacheKey1]["0"])
 		assert.NotNil(t, gm.lastSnapshots[cacheKey2]["0"])
 	})
+}
+
+// A caller's first read averages over the newest window another caller
+// read, not over everything since the daemon started, and between samples
+// each caller is served its own last average, not the last one anyone got.
+func TestGetCurrentDataWindowsPerCaller(t *testing.T) {
+	gm := &Manager{
+		GpuDataMap: map[string]*systemmodel.GPUData{
+			"0": {Name: "TestGPU", Temperature: 55, Usage: 100, Power: 200, Count: 2},
+		},
+	}
+	const history, live = uint16(5000), uint16(10000)
+	gpu := gm.GpuDataMap["0"]
+
+	assert.InDelta(t, 50.0, gm.GetCurrentData(history)["0"].Usage, 0.01, "history: 100/2")
+	gpu.Usage, gpu.Count = gpu.Usage+60, gpu.Count+3 // 160 over 5
+
+	first := gm.GetCurrentData(live)["0"]
+	assert.InDelta(t, 20.0, first.Usage, 0.01, "live's first read: since history's read, 60/3, not 160/5")
+
+	gpu.Usage, gpu.Count = gpu.Usage+90, gpu.Count+1 // 250 over 6
+	assert.InDelta(t, 37.5, gm.GetCurrentData(history)["0"].Usage, 0.01, "history: 150/4")
+	assert.InDelta(t, 90.0, gm.GetCurrentData(live)["0"].Usage, 0.01, "live: 90/1")
+
+	// No sample since: each caller keeps its own last average.
+	assert.InDelta(t, 37.5, gm.GetCurrentData(history)["0"].Usage, 0.01)
+	assert.InDelta(t, 90.0, gm.GetCurrentData(live)["0"].Usage, 0.01)
+}
+
+// nvtop alone keeps retrying after a failure, as the other collectors do,
+// instead of handing over to a fallback that starts nothing.
+func TestNvtopAloneRetriesAfterAFailure(t *testing.T) {
+	retryWaitTime = time.Millisecond
+	t.Cleanup(func() { retryWaitTime = 5 * time.Second })
+
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	t.Setenv("GPU_COLLECTOR", "nvtop")
+	// Shell built-ins only: PATH holds nothing but the fake nvtop.
+	ran := filepath.Join(dir, "ran")
+	script := fmt.Sprintf(`#!/bin/sh
+if [ ! -e %[1]s ]; then : > %[1]s; echo 'not-json'; exit 1; fi
+echo '[{"device_name":"NVIDIA Test GPU","temp":"52C","power_draw":"31W","gpu_util":"37%%","mem_total":"4294967296","mem_used":"536870912","processes":[]}]'`, ran)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nvtop"), []byte(script), 0o755))
+
+	gm, err := NewManager()
+	require.NoError(t, err)
+	require.NotNil(t, gm)
+	startManagerForTest(t, gm)
+
+	require.Eventually(t, func() bool {
+		gpu, ok := gpuDataForTest(gm, "n0")
+		return ok && gpu.Count > 0
+	}, 10*time.Second, 5*time.Millisecond)
+	_, err = os.Stat(ran)
+	require.NoError(t, err, "the first run failed")
 }
 
 func TestCalculateDeltaCount(t *testing.T) {
@@ -997,7 +1054,7 @@ func TestInitializeSnapshots(t *testing.T) {
 
 	t.Run("initializes only missing maps", func(t *testing.T) {
 		gm := &Manager{
-			lastAvgData: make(map[string]systemmodel.GPUData),
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {}},
 		}
 		cacheKey := uint16(5000)
 
@@ -1034,9 +1091,9 @@ func TestCalculateGPUAverage(t *testing.T) {
 					"0": {count: 10, usage: 100, power: 200},
 				},
 			},
-			lastAvgData: map[string]systemmodel.GPUData{
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {
 				"0": {Usage: 50.0, Power: 100.0},
-			},
+			}},
 		}
 
 		gpu := &systemmodel.GPUData{
@@ -1059,9 +1116,9 @@ func TestCalculateGPUAverage(t *testing.T) {
 					"0": {count: 10, usage: 100, power: 200},
 				},
 			},
-			lastAvgData: map[string]systemmodel.GPUData{
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {
 				"0": {Usage: 50.0, Power: 100.0},
-			},
+			}},
 		}
 
 		gpu := &systemmodel.GPUData{
@@ -1077,12 +1134,40 @@ func TestCalculateGPUAverage(t *testing.T) {
 		assert.InDelta(t, 0.0, result.Power, 1e-9, "Should return zero power")
 	})
 
+	// An Intel GPU reports engines but no temperature or memory, so between
+	// samples it carries its last average forward instead of reading as zero.
+	t.Run("carries last average for an engine GPU between samples", func(t *testing.T) {
+		gm := &Manager{
+			lastSnapshots: map[uint16]map[string]*gpuSnapshot{
+				5000: {"0": {count: 10, engines: map[string]float64{"Render/3D": 300}}},
+			},
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {
+				"0": {Name: "Intel GPU", Usage: 30, Engines: map[string]float64{"Render/3D": 30}},
+			}},
+		}
+		gpu := &systemmodel.GPUData{
+			Name:    "Intel GPU",
+			Count:   10, // no new sample since the snapshot
+			Engines: map[string]float64{"Render/3D": 300},
+		}
+
+		result := gm.calculateGPUAverage("0", gpu, 5000)
+
+		assert.InDelta(t, 30.0, result.Usage, 1e-9)
+		assert.InDelta(t, 30.0, result.Engines["Render/3D"], 1e-9)
+		assert.Equal(t, "Intel GPU", result.Name)
+
+		// With no average yet, the GPU keeps its name.
+		delete(gm.lastAvgData[5000], "0")
+		assert.Equal(t, "Intel GPU", gm.calculateGPUAverage("0", gpu, 5000).Name)
+	})
+
 	t.Run("calculates average for standard GPU", func(t *testing.T) {
 		gm := &Manager{
 			lastSnapshots: map[uint16]map[string]*gpuSnapshot{
 				5000: {},
 			},
-			lastAvgData: make(map[string]systemmodel.GPUData),
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {}},
 		}
 
 		gpu := &systemmodel.GPUData{
@@ -1104,7 +1189,7 @@ func TestCalculateGPUAverage(t *testing.T) {
 			lastSnapshots: map[uint16]map[string]*gpuSnapshot{
 				5000: {},
 			},
-			lastAvgData: make(map[string]systemmodel.GPUData),
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {}},
 		}
 
 		gpu := &systemmodel.GPUData{
@@ -1139,7 +1224,7 @@ func TestCalculateGPUAverage(t *testing.T) {
 					},
 				},
 			},
-			lastAvgData: make(map[string]systemmodel.GPUData),
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {}},
 		}
 
 		gpu := &systemmodel.GPUData{
@@ -1161,7 +1246,7 @@ func TestCalculateGPUAverage(t *testing.T) {
 			lastSnapshots: map[uint16]map[string]*gpuSnapshot{
 				5000: {},
 			},
-			lastAvgData: make(map[string]systemmodel.GPUData),
+			lastAvgData: map[uint16]map[string]systemmodel.GPUData{5000: {}},
 		}
 
 		gpu := &systemmodel.GPUData{
@@ -1172,7 +1257,7 @@ func TestCalculateGPUAverage(t *testing.T) {
 
 		result := gm.calculateGPUAverage("0", gpu, 5000)
 
-		assert.Equal(t, result, gm.lastAvgData["0"], "Should store calculated average")
+		assert.Equal(t, result, gm.lastAvgData[5000]["0"], "Should store calculated average")
 	})
 }
 
@@ -2145,6 +2230,111 @@ echo '{"card0": {"GUID": "1", "Temperature (Sensor edge) (C)": "50.0", "GPU use 
 		gpu, ok := gpuDataForTest(gm, "1")
 		return ok && gpu.Count > 0
 	}, 10*time.Second, 5*time.Millisecond)
+}
+
+func TestRetryDelayDoublesUpToMax(t *testing.T) {
+	assert.Equal(t, retryWaitTime, retryDelay(0))
+	assert.Equal(t, retryWaitTime, retryDelay(1))
+	assert.Equal(t, 2*retryWaitTime, retryDelay(2))
+	assert.Equal(t, 8*retryWaitTime, retryDelay(4))
+	assert.Equal(t, maxRetryWait, retryDelay(100))
+}
+
+// writeNvidiaSmi installs a fake nvidia-smi on PATH that runs script.
+func writeNvidiaSmi(t *testing.T, script string) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, nvidiaSmiCmd), []byte("#!/bin/sh\n"+script), 0o755))
+}
+
+func nvidiaCollectorForTest(gm *Manager) gpuCollector {
+	return gpuCollector{name: nvidiaSmiCmd, bufSize: 1024, parse: gm.parseNvidiaData}
+}
+
+// A line the parser rejects is skipped, and blank lines are ignored, so one
+// bad line does not lose the samples around it.
+func TestGPUCollectSkipsRejectedLines(t *testing.T) {
+	writeNvidiaSmi(t, `echo "0, GPU A, 50, 1024, 4096, 25, 100"
+echo "not a sample"
+echo ""
+echo "1, GPU B, 60, 2048, 4096, 50, 150"
+`)
+	gm := &Manager{GpuDataMap: make(map[string]*systemmodel.GPUData)}
+	collector := nvidiaCollectorForTest(gm)
+
+	hasValidData, err := collector.collect(context.Background())
+
+	require.NoError(t, err)
+	assert.True(t, hasValidData)
+	for _, id := range []string{"0", "1"} {
+		_, ok := gpuDataForTest(gm, id)
+		assert.True(t, ok, "GPU %s", id)
+	}
+}
+
+func TestGPUCollectWithoutValidDataReportsFirstLine(t *testing.T) {
+	writeNvidiaSmi(t, `echo "first bad line"
+echo "second bad line"
+`)
+	gm := &Manager{GpuDataMap: make(map[string]*systemmodel.GPUData)}
+	collector := nvidiaCollectorForTest(gm)
+
+	hasValidData, err := collector.collect(context.Background())
+
+	assert.False(t, hasValidData)
+	require.ErrorIs(t, err, errNoValidData)
+	assert.ErrorContains(t, err, "first bad line")
+}
+
+// A collector whose tool keeps failing is started again with a growing wait
+// instead of stopping for good, and picks up once the tool works.
+func TestGPUCollectorRestartsAfterRunsWithoutValidData(t *testing.T) {
+	retryWaitTime = time.Millisecond
+	t.Cleanup(func() { retryWaitTime = 5 * time.Second })
+
+	dir := t.TempDir()
+	counter := filepath.Join(dir, "runs")
+	writeNvidiaSmi(t, fmt.Sprintf(`echo x >> %[1]s
+if [ "$(wc -l < %[1]s)" -le 3 ]; then echo 'NVIDIA-SMI has failed'; exit 9; fi
+echo "0, NVIDIA Test GPU, 50, 1024, 4096, 25, 100"
+`, counter))
+
+	gm := &Manager{GpuDataMap: make(map[string]*systemmodel.GPUData)}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+		gm.Stop()
+	})
+	gm.startNvidiaSmiCollector(ctx, "4")
+
+	require.Eventually(t, func() bool {
+		gpu, ok := gpuDataForTest(gm, "0")
+		return ok && gpu.Count > 0
+	}, 10*time.Second, 5*time.Millisecond)
+}
+
+// The restart loop ends when its context does, even while waiting.
+func TestGPUCollectorStartStopsOnCancel(t *testing.T) {
+	writeNvidiaSmi(t, `exit 1
+`)
+	gm := &Manager{GpuDataMap: make(map[string]*systemmodel.GPUData)}
+	collector := nvidiaCollectorForTest(gm)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		collector.start(ctx)
+	}()
+	time.Sleep(20 * time.Millisecond) // let it fail and enter its wait
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("collector did not stop after cancel")
+	}
 }
 
 func TestGetCurrentDataZeroesStaleGPU(t *testing.T) {

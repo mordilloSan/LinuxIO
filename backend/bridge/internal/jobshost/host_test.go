@@ -404,6 +404,77 @@ func TestHostRejectsProtocolMismatch(t *testing.T) {
 	}
 }
 
+func TestHostRejectsBridgeAfterBinaryReplaced(t *testing.T) {
+	var replaced atomic.Bool
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Replaced = replaced.Load
+	})
+	th.start()
+
+	// Until the update, the host serves bridges of its protocol.
+	th.connect()
+	// The host answers the hello before it counts the bridge in.
+	waitFor(t, "the bridge to be counted", func() bool {
+		bridges, _ := th.host.counts()
+		return bridges == 1
+	})
+
+	replaced.Store(true)
+	sess := th.dial()
+	if result := hello(t, sess, jobs.Protocol); result.Status != "error" || result.Code != 426 || result.Error != "job host binary replaced" {
+		t.Fatalf("hello result = %#v, want 426 job host binary replaced", result)
+	}
+	select {
+	case <-sess.CloseChan():
+	case <-time.After(ioTimeout):
+		t.Fatal("session still open after the binary was replaced")
+	}
+	// The refused bridge does not keep the host up; the first one still does.
+	if bridges, _ := th.host.counts(); bridges != 1 {
+		t.Fatalf("bridges = %d, want 1", bridges)
+	}
+}
+
+func TestReplacedAtFollowsTheFileAtThePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "linuxio-bridge")
+	if err := os.WriteFile(path, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	running, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced := replacedAt(running, path)
+	if replaced() {
+		t.Fatal("replaced before the update")
+	}
+
+	// A package update writes the new file beside the old and renames it over.
+	next := path + ".dpkg-new"
+	if err := os.WriteFile(next, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(next, path); err != nil {
+		t.Fatal(err)
+	}
+	if !replaced() {
+		t.Fatal("not replaced after a new file was renamed over the path")
+	}
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if !replaced() {
+		t.Fatal("not replaced after the file was removed")
+	}
+}
+
+func TestExecutableReplacedIsFalseForTheRunningBinary(t *testing.T) {
+	if executableReplaced()() {
+		t.Fatal("the running test binary reads as replaced")
+	}
+}
+
 func TestHostIdleExitAfterGrace(t *testing.T) {
 	base := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 	var offset atomic.Int64
@@ -435,6 +506,91 @@ func TestHostIdleExitAfterGrace(t *testing.T) {
 	}
 	if _, err := os.Stat(th.cfg.SocketPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("socket after idle exit: %v, want it removed", err)
+	}
+}
+
+// stillServing fails when Serve returns within a little more than one idle
+// tick.
+func (th *testHost) stillServing(why string) {
+	th.t.Helper()
+	time.Sleep(1500 * time.Millisecond)
+	select {
+	case err := <-th.served:
+		th.served <- err // for the cleanup's stop
+		th.t.Fatalf("Serve returned %v %s", err, why)
+	default:
+	}
+}
+
+// standingClock is a Now that never moves, so IdleExit never runs out.
+func standingClock() time.Time { return time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC) }
+
+func TestReplacedHostExitsOnceIdle(t *testing.T) {
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Replaced = func() bool { return true }
+		cfg.Now = standingClock
+	})
+	th.start()
+
+	th.waitNotify("STOPPING=1")
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after the binary was replaced = %v, want nil", err)
+	}
+}
+
+func TestReplacedHostStaysForItsBridgesAndJobs(t *testing.T) {
+	var replaced atomic.Bool
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Replaced = replaced.Load
+		cfg.Now = standingClock
+	})
+	th.start()
+	sess := th.connect()
+	th.startJob(sess, "test.job", jobA)
+
+	replaced.Store(true)
+	th.stillServing("with a bridge of its own build connected")
+
+	_ = sess.Close()
+	waitFor(t, "the bridge to disconnect", func() bool {
+		bridges, _ := th.host.counts()
+		return bridges == 0
+	})
+	th.stillServing("with a job running")
+
+	// The host exits once the job ended, and not before its record and its
+	// alert are written.
+	th.release <- errors.New("boom")
+	th.waitNotify("STOPPING=1")
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after the last job = %v, want nil", err)
+	}
+	if record := th.record(jobA); record.State != jobs.StateFailed || record.FinishedAt.IsZero() {
+		t.Fatalf("record = %s, finished %v, want failed and finished", record.State, record.FinishedAt)
+	}
+	want := []alerts.Observation{
+		{Source: "jobs", Key: jobA, Severity: alerts.SeverityError, Title: "test.job failed", Message: "boom", Link: "/history?job=" + jobA},
+	}
+	if got := th.observed(); !slices.Equal(got, want) {
+		t.Fatalf("alerts = %#v, want %#v", got, want)
+	}
+}
+
+func TestHostNotReplacedWaitsForIdleExit(t *testing.T) {
+	base := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	var offset atomic.Int64
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Replaced = func() bool { return false }
+		cfg.IdleExit = time.Minute
+		cfg.Now = func() time.Time { return base.Add(time.Duration(offset.Load())) }
+	})
+	th.start()
+
+	th.stillServing("with nothing to do before IdleExit")
+	offset.Add(int64(2 * time.Minute))
+	th.waitNotify("STOPPING=1")
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after idle exit = %v, want nil", err)
 	}
 }
 

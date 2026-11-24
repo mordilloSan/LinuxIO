@@ -1,8 +1,9 @@
 # The RPM of LinuxIO, assembled by packaging/scripts/package-rpm.sh from
 # programs already built: nothing is compiled here. The script defines
 # linuxio_version, linuxio_build_dir (the programs and their
-# THIRD_PARTY_NOTICES.md), linuxio_packaging_dir (packaging/) and
-# linuxio_source_dir (the folder holding LICENSE).
+# THIRD_PARTY_NOTICES.md), linuxio_packaging_dir (packaging/),
+# linuxio_source_dir (the folder holding LICENSE) and linuxio_changelog (the
+# %%changelog text changelog-entry.sh wrote).
 #
 # The programs go in byte for byte as built: the webserver checks the SHA-256
 # of linuxio-bridge recorded at build time. So no debuginfo package (whose
@@ -11,7 +12,8 @@
 %global debug_package %{nil}
 %global _build_id_links none
 %global __os_install_post %{nil}
-# There is no %%changelog to take a build time from.
+# The build time is the build's, not the date of the %%changelog entry, which
+# has no time of day.
 %global source_date_epoch_from_changelog 0
 
 %global selinuxtype targeted
@@ -108,6 +110,16 @@ if command -v restorecon >/dev/null 2>&1; then
 	restorecon %{_libexecdir}/linuxio/linuxio-auth || :
 fi
 %tmpfiles_create linuxio.conf
+# Scheduled scripts: earlier releases wrote NoNewPrivileges=yes into each
+# schedule's unit, which kept a script from sudo, setuid programs and a tool
+# AppArmor confines. The line is deleted from the saved units, so they match
+# what a save writes and Run now accepts them (docs/scheduled-scripts.md).
+# The DEB's postinst does the same.
+for unit in %{_sysconfdir}/systemd/system/linuxio-schedule-*.service; do
+	if [ -f "$unit" ] && [ ! -L "$unit" ]; then
+		sed -i '/^NoNewPrivileges=yes$/d' "$unit" || :
+	fi
+done
 if [ "$1" -eq 1 ]; then
 	systemctl --no-reload enable %{enabled_units} >/dev/null 2>&1 || :
 	# LinuxIO enables these itself for a pool made later.
@@ -221,3 +233,8 @@ fi
 %license LICENSE
 %doc THIRD_PARTY_NOTICES.md
 %{_mandir}/man8/linuxio.8*
+
+# Read with %%(cat), whose output rpm takes as it is: an %%include'd line would
+# have its macros expanded (docs/packaging.md, "Changelog").
+%changelog
+%(cat %{linuxio_changelog})

@@ -60,17 +60,18 @@ import {
 // were running keep the new build waiting.
 //
 // B is the update build (LINUXIO_VM_UPDATE_BUILD, `make vm-update-build`):
-// this tree with jobs.Protocol one higher, so A's hosts are older ones to B's
-// bridge and it waits for their jobs (docs/jobs.md, Testing), and a version of
-// its own, which `linuxio --version` reports. On Fedora B also carries a
+// this tree with a version of its own, which `linuxio --version` reports. It
+// keeps jobs.Protocol, as most releases do, so A's hosts refuse B's bridge
+// because the update replaced their binary, and it waits for their jobs
+// (docs/jobs.md, Testing). On Fedora B also carries a
 // changed SELinux module: the rig appends a comment to the copy of
 // linuxio.cil B is assembled from. A is the plain build (LINUXIO_VM_BUILD_DIR)
 // at this checkout's package version; B is that version with +e2e1. Without
 // the two builds the tests are skipped.
 //
 // The tests are one serial group sharing one update, because each update costs
-// minutes (two packages assembled and installed, then the older host's idle
-// minute and the relay's backoff): the first test sets it up, the others read
+// minutes (two packages assembled and installed, then the relay's backoff
+// once the older host exits): the first test sets it up, the others read
 // the wait from a different side, the fifth ends the jobs, and on Fedora the
 // last checks the SELinux module across a reboot. The jobs are two in the root
 // host (a throttled btrfs scrub and a throttled copy) and one in the host of a
@@ -146,7 +147,7 @@ const current = () => {
 };
 
 // Every click and locator check fails in seconds: the tests' own long waits
-// (a host's idle minute, a scrub's end) carry their own timeouts.
+// (the relay's backoff, a scrub's end) carry their own timeouts.
 test.use({ actionTimeout: 15_000 });
 const ui = expect.configure({ timeout: 15_000 });
 
@@ -429,13 +430,11 @@ test.describe
     );
     await offer.getByText("Open Updates", { exact: true }).click();
     await ui(page).toHaveURL(/\/updates$/);
+    // The card names the package; the version and the summary are below it.
     const card = page
       .locator("div")
-      .filter({
-        has: page.getByText(`linuxio · ${packageKitVersion(version)}`, {
-          exact: true,
-        }),
-      })
+      .filter({ has: page.getByText("linuxio", { exact: true }) })
+      .filter({ has: page.getByText(`${packageKitVersion(version)} · `) })
       .filter({
         has: page.getByRole("button", { name: "Update", exact: true }),
       })
@@ -444,6 +443,17 @@ test.describe
       name: "Update",
       exact: true,
     });
+    // docs/packaging.md (Changelog): B's changelog, the fixture release
+    // notes the VM packages carry, read by PackageKit from the repository:
+    // the apt Changelogs field on Ubuntu, updateinfo on Fedora.
+    await card.getByRole("button", { name: "View Changelog" }).click();
+    await ui(card).toContainText(
+      "updates: show the package's changes on the Updates page (abc1234)",
+      { timeout: 60_000 },
+    );
+    // As written: the spec's %changelog takes the text without expanding it.
+    await ui(card).toContainText("memory: keep 50% of %{name} free (def5678)");
+    await card.getByRole("button", { name: "View Changelog" }).click();
 
     // An update that does not go through leaves A installed and running, and
     // this session signed in: nothing but the package's own step restarts
@@ -638,13 +648,15 @@ test.describe
     );
     // PackageKit lists no newer LinuxIO now.
     await ui(available(page)).toHaveCount(0);
-    // The older host refused the new bridge's hello on the protocol number.
+    // The older host refused the new bridge's hello because the update
+    // replaced its binary, not on the protocol, which the update kept.
     const refused = await vmSsh(
       "sudo journalctl -b -u linuxio-jobs@0.service -o cat --no-pager | grep -F 'job host refused a bridge hello' || true",
     );
-    const [, theirs, ours] = refused.match(/protocol (\d+), want (\d+)/) ?? [];
-    expect(Number(ours), refused).toBeGreaterThan(0);
-    expect(Number(theirs), refused).toBe(Number(ours) + 1);
+    expect(refused).toContain(
+      "job host refused a bridge hello: binary replaced",
+    );
+    expect(refused).not.toMatch(/protocol \d+, want \d+/);
 
     await waitingBanner
       .getByRole("button", { name: "Show running jobs" })
@@ -702,7 +714,9 @@ test.describe
     const refused = await vmSsh(
       `sudo journalctl -b -u linuxio-jobs@${w.uid}.service -o cat --no-pager | grep -F 'job host refused a bridge hello' || true`,
     );
-    expect(refused).toMatch(/protocol \d+, want \d+/);
+    expect(refused).toContain(
+      "job host refused a bridge hello: binary replaced",
+    );
     expect(await hostPid(w.uid)).toBe(w.userPid);
     expect(await hostSha(w.uid)).toBe(w.oldSha);
     expect(
@@ -813,8 +827,8 @@ test.describe
     page,
   }) => {
     // The bounds: the copies' end 120 s, the banner 45 s, the scrub's end
-    // 300 s, the older host's idle minute and the relay's backoff 150 s, the
-    // reads 60 s: some 700 s.
+    // 300 s, the older host's exit 30 s, the relay's backoff and the banner's
+    // poll 90 s, the reads 60 s: some 645 s.
     test.setTimeout(900_000);
     const w = current();
     await signIn(page);
@@ -863,14 +877,19 @@ test.describe
         timeout: 300_000,
       })
       .toBe("completed");
-    await ui(banner(page)).toContainText(
-      "LinuxIO was updated. New jobs can start shortly.",
-      { timeout: 30_000 },
-    );
-    // The older host exits a minute after its last job and bridge (a refused
-    // hello is no bridge); the relay tries again within 30 s, and the banner
-    // asks every 15 s.
-    await ui(banner(page)).toBeHidden({ timeout: 150_000 });
+    // With its last job recorded and no bridge of its own build (a refused
+    // hello is no bridge), the older host exits within a second, without
+    // waiting out its idle minute.
+    await expect
+      .poll(() => hostPid(0), {
+        intervals: [1_000],
+        message: "the older host exits after its last job",
+        timeout: 30_000,
+      })
+      .not.toBe(w.rootPid);
+    // The relay tries again within 30 s (its backoff ends at 30 s), which
+    // starts a host of the new build, and the banner asks every 15 s.
+    await ui(banner(page)).toBeHidden({ timeout: 90_000 });
     const newerPid = await hostPid(0);
     expect(newerPid, "a host of the new build runs").not.toBe("0");
     expect(newerPid).not.toBe(w.rootPid);
@@ -924,7 +943,7 @@ test.describe
     );
     await signOut(page);
 
-    // The user's host exited a minute after its copy; the next sign-in of the
+    // The user's host exited once its copy ended; the next sign-in of the
     // user starts one of the new build, which lists the copy.
     await signIn(page, w.user);
     await ui(page.getByRole("button", { name: "Account" })).toBeVisible();

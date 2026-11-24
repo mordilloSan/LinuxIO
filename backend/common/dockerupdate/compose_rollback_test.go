@@ -252,7 +252,7 @@ func TestComposeUpFromLocalImagesPullsAndBuildsNothing(t *testing.T) {
 		t.Fatalf("composeUpFromLocalImages: %v", err)
 	}
 	called, _ := os.ReadFile(args)
-	if got := strings.TrimSpace(string(called)); !strings.HasSuffix(got, "--file compose.yml up -d --no-deps --pull never --no-build web worker") {
+	if got := strings.TrimSpace(string(called)); !strings.HasSuffix(got, "--file compose.yml up -d --no-deps --pull never --no-build --force-recreate web worker") {
 		t.Fatalf("docker called with %q", got)
 	}
 }

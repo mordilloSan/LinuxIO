@@ -27,8 +27,10 @@ const CpuTempBadge = () => {
     (live: MonitoringLive) => {
       const values = live.cpu.temperatures ?? {};
       const keys = Object.keys(values);
+      // "package0" is the first socket's on a host with several.
       const defaultSensor =
-        values["package"] !== undefined ? "package" : keys[0];
+        ["package", "package0"].find((key) => values[key] !== undefined) ??
+        keys[0];
       const effectiveSensor =
         selectedSensor && values[selectedSensor] !== undefined
           ? selectedSensor

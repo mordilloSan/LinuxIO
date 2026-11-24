@@ -44,12 +44,42 @@ func TestClaudeUsesTheInstalledClaudeCode(t *testing.T) {
 	require.Contains(t, agent.InstallArgs, "--omit=optional")
 }
 
-func TestClaudeKeepsAProfileOfItsOwn(t *testing.T) {
-	agent, ok := acpagents.Lookup("claude")
-	require.True(t, ok)
+func TestEveryAgentKeepsAProfileOfItsOwn(t *testing.T) {
 	// Without it a chat signs in, and reads its settings and memory, as the
-	// user's Claude Code in a terminal or an editor does.
-	require.Equal(t, "CLAUDE_CONFIG_DIR", agent.ProfileEnv)
+	// same agent in the user's terminal or editor does.
+	for id, env := range map[string]string{
+		"claude": "CLAUDE_CONFIG_DIR",
+		"gemini": "GEMINI_CLI_HOME",
+		"codex":  "CODEX_HOME",
+	} {
+		agent, ok := acpagents.Lookup(id)
+		require.True(t, ok, id)
+		require.Equal(t, env, agent.ProfileEnv, id)
+	}
+	require.ElementsMatch(t, []string{"claude", "codex", "gemini"}, acpagents.IDs(), "a new agent needs its profile variable here")
+}
+
+func TestGeminiAndCodexWorkInTheirProfile(t *testing.T) {
+	// Each reads a .gemini or .codex folder where it works as project
+	// settings, which in the home is the user's own profile.
+	for _, id := range []string{"gemini", "codex"} {
+		agent, ok := acpagents.Lookup(id)
+		require.True(t, ok, id)
+		require.True(t, agent.WorkInProfile, id)
+	}
+	gemini, _ := acpagents.Lookup("gemini")
+	require.Equal(t, "--include-directories", gemini.IncludeDirFlag)
+	require.Contains(t, gemini.Args, "--skip-trust")
+	// Claude Code is kept to the profile by settingSources instead.
+	claude, _ := acpagents.Lookup("claude")
+	require.False(t, claude.WorkInProfile)
+	// The relay starts the agent in a folder only Profile makes.
+	for _, id := range acpagents.IDs() {
+		agent, _ := acpagents.Lookup(id)
+		if agent.WorkInProfile {
+			require.NotEmpty(t, agent.ProfileEnv, id)
+		}
+	}
 }
 
 func currentUser(t *testing.T) session.User {

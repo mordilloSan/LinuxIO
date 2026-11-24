@@ -21,8 +21,12 @@ type NetworkInterface struct {
 	// LogUnit is the installed systemd unit whose journal covers this
 	// interface's stack, resolved from ConfigBackend. Empty when none of the
 	// candidate units exist, which is the signal to offer no log view.
-	LogUnit   string `json:"log_unit,omitempty"`
-	MAC       string `json:"mac"`
+	LogUnit string `json:"log_unit,omitempty"`
+	MAC     string `json:"mac"`
+	// Master names the device the kernel lists as this interface's master,
+	// usually a bridge or bond. A bridge or bond port has no address of its
+	// own: the host's addresses are on the master. Empty when there is none.
+	Master    string `json:"master,omitempty"`
 	MTU       int    `json:"mtu"`
 	Name      string `json:"name"`
 	OperState string `json:"operstate"`

@@ -249,7 +249,11 @@ func (s store) renderService(def apischema.ScheduleDefinition, account *user.Use
 	// legitimate second-level activations, including successful oneshot runs.
 	fmt.Fprintf(&body, "[Unit]\nDescription=LinuxIO scheduled task %s\nStartLimitIntervalSec=0\n\n[Service]\nType=oneshot\nUser=%s\nGroup=%s\n",
 		def.ID, account.Uid, account.Gid)
-	fmt.Fprintf(&body, "TimeoutStartSec=%ds\nTimeoutStopSec=15s\nKillMode=control-group\nNoNewPrivileges=yes\nUMask=0077\n",
+	// No NoNewPrivileges=: a script may use sudo, a setuid program or a tool
+	// AppArmor confines with a profile change on exec (wg-quick), as it could
+	// from cron. Only a sudo session creates a schedule (every route is
+	// Privileged), and the script has the rights of any process of its account.
+	fmt.Fprintf(&body, "TimeoutStartSec=%ds\nTimeoutStopSec=15s\nKillMode=control-group\nUMask=0077\n",
 		def.Options.TimeoutSeconds)
 	fmt.Fprintf(&body, "ExecStart=:/usr/bin/bash %s", unitWord(s.scriptPath(def)))
 	for _, arg := range def.Options.Arguments {

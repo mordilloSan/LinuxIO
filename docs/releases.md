@@ -111,12 +111,12 @@ failure anywhere, in either package format, stops everything after it:
 
 | Job | Runs in | Does | Permissions | Secrets and environment |
 | --- | --- | --- | --- | --- |
-| `prepare` | `ubuntu-latest` (reads files only) | Reads `packaging/build/pins.env`; checks that a publishing run's ref is a `vX.Y.Z` tag | `contents: read` | none |
-| `compile` | `COMPILE_IMAGE` | Installs the build packages; `make ci-frontend-deps build-vite build-binaries`; `make package-deb`; `make test-packages-quiet`; keeps the programs and the third-party notices written from them as one tar (modes and bytes intact) and the DEB | `contents: read` | none |
-| `rpm` | `RPM_IMAGE` | Unpacks the compile job's programs; `make package-rpm`; `make test-packages-quiet`; keeps the RPM | `contents: read` | none |
+| `prepare` | `ubuntu-latest` (reads files and the API only) | Reads `packaging/build/pins.env`; checks that a publishing run's ref is a `vX.Y.Z` tag; on a tag, reads the release notes from the merged release PR: the PR from `dev/<tag>` whose merge commit is the tagged commit, with the body `gh release-flow open-pr` wrote (see "Release notes"); a publishing run fails when there is none or its body is empty | `contents: read`, `pull-requests: read` | none |
+| `compile` | `COMPILE_IMAGE` | Installs the build packages; `make ci-frontend-deps build-vite build-binaries`; `make package-deb` with the notes as `RELEASE_NOTES`; `make test-packages-quiet`; keeps the programs and the third-party notices written from them as one tar (modes and bytes intact) and the DEB | `contents: read` | none |
+| `rpm` | `RPM_IMAGE` | Unpacks the compile job's programs; `make package-rpm` with the notes as `RELEASE_NOTES`; `make test-packages-quiet`; keeps the RPM | `contents: read` | none |
 | `repositories` | `RPM_IMAGE` | Fetches the kept earlier packages; imports the signing subkey into a GnuPG home of its own; `make repo-apt repo-rpm`; checks every signature against `packaging/keys/linuxio.asc`; deletes the GnuPG home; keeps the tree as the Pages artifact and this version's packages as the release assets | `contents: read` | environment `release`, `LINUXIO_SIGNING_KEY` |
 | `deploy` | `ubuntu-latest` (calls the Pages API) | `actions/deploy-pages` with the tree | `pages: write`, `id-token: write` | environment `github-pages` |
-| `publish` | `ubuntu-latest` (calls the Releases API) | Reads the release notes from the merged release PR: the PR from `dev/<tag>` whose merge commit is the tagged commit, with the body `gh release-flow open-pr` wrote (see "Release notes"); fails when there is none or its body is empty; creates a draft release with the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write`, `pull-requests: read` | none |
+| `publish` | `ubuntu-latest` (calls the Releases API) | Creates a draft release with the notes `prepare` read, the DEB, the signed RPM and `SHA256SUMS`, then publishes it | `contents: write` | none |
 
 The workflow's default permissions are none. The package tests run before any
 job that can see the signing key, and the GitHub release is published only
@@ -145,12 +145,17 @@ in [gh-release-flow's README](https://github.com/mordilloSan/gh-release-flow#gen
 and the footers in the shared
 [contributing guide](https://github.com/mordilloSan/.github/blob/main/CONTRIBUTING.md#commit-messages).
 
-`publish` reads the body as it stands when the job runs, after the build, the
-approval of the `release` environment and the Pages deploy: an edit made on
-the PR before `gh release-flow merge` reaches the release, one made before a
-later `open-pr` run does not, and one made on the merged PR before `publish`
-runs reaches it too. An introduction is written on the published release on
-GitHub: a release is immutable, but its title and notes stay editable.
+`prepare` reads the body once, as it stands when the release run starts, and
+the same text is the packages' changelog
+([Packages](./packaging.md#changelog)) and the GitHub release's notes: an
+edit made on the PR before `gh release-flow merge` reaches both, one made
+before a later `open-pr` run does not, and one made on the merged PR after
+the release run started reaches neither. An introduction, or a correction,
+is written on the published release on GitHub: a release is immutable, but
+its title and notes stay editable, and the packages keep the text they were
+built with. A dry run on a tag reads the notes too and goes on without them;
+on a branch it has none, and its packages' changelog names the version
+alone.
 
 ## Repositories
 

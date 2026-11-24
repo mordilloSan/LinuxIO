@@ -6,7 +6,9 @@
 # throwaway key in a temporary GnuPG home: two versions published one after
 # the other are both kept, the metadata's signatures verify against the
 # public key the client file carries, the index is reachable by its SHA-256,
-# and a published version rebuilt with other contents is refused. The test
+# each package's changelog is where apt changelog and PackageKit read it
+# (the APT Changelogs field, the RPM updateinfo), and a published version
+# rebuilt with other contents is refused. The test
 # VMs publish real packages and install from them with apt, dnf and
 # PackageKit (package-repository.spec.ts, jobs-update.spec.ts).
 set -euo pipefail
@@ -14,6 +16,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_APT="${SCRIPT_DIR}/../repo-apt.sh"
 REPO_RPM="${SCRIPT_DIR}/../repo-rpm.sh"
+CHANGELOG_ENTRY="${SCRIPT_DIR}/../changelog-entry.sh"
+NOTES="${SCRIPT_DIR}/release-notes.md"
 
 fail() {
 	echo "❌ $*" >&2
@@ -75,14 +79,22 @@ key=$(gpg --batch --with-colons --list-secret-keys "=${uid}" 2>/dev/null | awk -
 
 # --- APT ---------------------------------------------------------------------
 if ((apt_tools)); then
-	# fake_deb VERSION TEXT: a linuxio_VERSION_amd64.deb in packages/ alone.
+	# fake_deb VERSION TEXT [no-changelog]: a linuxio_VERSION_amd64.deb in
+	# packages/ alone, with the changelog of the fixture notes. A rebuild has
+	# the same bytes: one changelog per version, whose date is in its text,
+	# and SOURCE_DATE_EPOCH for the times dpkg-deb writes.
 	fake_deb() {
 		local root="${work}/deb-root"
 		rm -rf "$root" "${work}/packages"/*
-		mkdir -p "${root}/DEBIAN" "${root}/usr/share/linuxio"
+		mkdir -p "${root}/DEBIAN" "${root}/usr/share/linuxio" "${root}/usr/share/doc/linuxio"
 		printf 'Package: linuxio\nVersion: %s\nArchitecture: amd64\nMaintainer: fixture <fixture@linuxio.invalid>\nDescription: fixture\n' "$1" >"${root}/DEBIAN/control"
 		echo "$2" >"${root}/usr/share/linuxio/fixture"
-		dpkg-deb --root-owner-group --build "$root" "${work}/packages/linuxio_${1}_amd64.deb" >/dev/null
+		if [[ ${3:-} != no-changelog ]]; then
+			[[ -f "${work}/changelog-${1}.gz" ]] ||
+				bash "$CHANGELOG_ENTRY" deb --version "$1" --notes "$NOTES" | gzip -9n >"${work}/changelog-${1}.gz"
+			cp "${work}/changelog-${1}.gz" "${root}/usr/share/doc/linuxio/changelog.gz"
+		fi
+		SOURCE_DATE_EPOCH=1700000000 dpkg-deb --root-owner-group --build "$root" "${work}/packages/linuxio_${1}_amd64.deb" >/dev/null
 	}
 	out="${work}/apt"
 	publish_apt() { bash "$REPO_APT" --packages-dir "${work}/packages" --key "$key" --base-url https://example.invalid/apt/ --out-dir "$out" 2>/dev/null; }
@@ -108,6 +120,18 @@ if ((apt_tools)); then
 	done
 	pass "Release lists the index by SHA-256 only, and the index is under by-hash"
 
+	# apt fills @CHANGEPATH@ with component/l/source/source_version.
+	grep -qx 'Changelogs: https://example.invalid/apt/changelogs/@CHANGEPATH@_changelog' "$release" ||
+		fail "Release has no Changelogs field under the base URL"
+	for v in 1.0.0 1.0.1; do
+		changelog="${out}/changelogs/main/l/linuxio/linuxio_${v}_changelog"
+		[[ -f $changelog ]] || fail "no changelog of ${v} at ${changelog#"${out}"/}"
+		[[ $(head -n 1 "$changelog") == "linuxio (${v}) unstable; urgency=medium" ]] || fail "the changelog of ${v} is not its own"
+	done
+	grep -qxF "  * updates: show the package's changes on the Updates page (abc1234)" "$changelog" ||
+		fail "the changelog does not carry the notes as text"
+	pass "Release's Changelogs field leads to each package's changelog"
+
 	sources="${out}/linuxio.sources"
 	grep -qx 'URIs: https://example.invalid/apt' "$sources" || fail "linuxio.sources does not point at the base URL"
 	! grep -q 'trusted' "$sources" || fail "linuxio.sources marks the repository trusted"
@@ -128,13 +152,26 @@ if ((apt_tools)); then
 	fake_deb 1.0.1 two
 	publish_apt || fail "publishing the same package again failed"
 	pass "a published version is not replaced by other contents"
+
+	fake_deb 1.0.2 three no-changelog
+	if publish_apt; then fail "a package without a changelog was published"; fi
+	[[ ! -e "${out}/pool/main/l/linuxio/linuxio_1.0.2_amd64.deb" ]] || fail "a package without a changelog went into the pool"
+	pass "a package without a changelog is refused before it reaches the pool"
 fi
 
 # --- RPM ---------------------------------------------------------------------
 if ((rpm_tools)); then
-	# fake_rpm VERSION TEXT: a linuxio-VERSION-1.x86_64.rpm in packages/ alone.
+	# fake_rpm VERSION TEXT [notes]: a linuxio-VERSION-1.x86_64.rpm in
+	# packages/ alone; with notes, its %changelog is the fixture notes', as
+	# linuxio.spec reads it.
 	fake_rpm() {
 		rm -rf "${work}/rpmbuild" "${work}/packages"/*
+		local changelog=""
+		if [[ ${3:-} == notes ]]; then
+			bash "$CHANGELOG_ENTRY" rpm --version "$1" --notes "$NOTES" >"${work}/changelog"
+			changelog="%changelog
+%(cat ${work}/changelog)"
+		fi
 		cat >"${work}/fixture.spec" <<EOF
 Name: linuxio
 Version: $1
@@ -148,6 +185,7 @@ mkdir -p %{buildroot}/usr/share/linuxio
 echo $2 >%{buildroot}/usr/share/linuxio/fixture
 %files
 /usr/share/linuxio/fixture
+${changelog}
 EOF
 		rpmbuild -bb --quiet --target x86_64 --define "_topdir ${work}/rpmbuild" "${work}/fixture.spec" >/dev/null 2>&1 ||
 			fail "rpmbuild could not build the fixture package"
@@ -157,7 +195,7 @@ EOF
 	publish_rpm() { bash "$REPO_RPM" --packages-dir "${work}/packages" --key "$key" --base-url https://example.invalid/rpm --out-dir "$out" 2>/dev/null; }
 	fake_rpm 1.0.0 one
 	publish_rpm
-	fake_rpm 1.0.1 two
+	fake_rpm 1.0.1 two notes
 	publish_rpm
 	for v in 1.0.0 1.0.1; do
 		file="${out}/stable/x86_64/linuxio-${v}-1.x86_64.rpm"
@@ -175,6 +213,24 @@ EOF
 		grep -qxF "$line" "${out}/linuxio.repo" || fail "linuxio.repo has no line ${line}"
 	done
 	pass "repomd.xml.asc verifies against the published key, and linuxio.repo checks both signatures"
+
+	updateinfo=$(sed -n 's|.*<location href="\(repodata/[^"]*updateinfo\.xml\.gz\)".*|\1|p' "$repomd")
+	[[ -n $updateinfo ]] || fail "repomd.xml lists no gzip updateinfo"
+	gzip -dc "${out}/stable/x86_64/${updateinfo}" >"${work}/updateinfo.xml"
+	if command -v xmllint >/dev/null; then
+		xmllint --noout "${work}/updateinfo.xml" || fail "updateinfo is not well-formed XML"
+	fi
+	[[ $(grep -c '<update ' "${work}/updateinfo.xml") == 2 ]] || fail "updateinfo does not hold one advisory per package"
+	grep -q 'type="bugfix"' "${work}/updateinfo.xml" || fail "the advisory of notes with Bug Fixes is not a bugfix"
+	grep -qF -- "- updates: show the package's changes on the Updates page (abc1234)" "${work}/updateinfo.xml" ||
+		fail "the advisory does not carry the package's %changelog"
+	grep -qF -- '- memory: keep 50% of %{name} free (def5678)' "${work}/updateinfo.xml" ||
+		fail "rpm expanded a macro of the notes"
+	grep -qF -- '- #42 stays as it was' "${work}/updateinfo.xml" || fail "rpm dropped a line of the notes"
+	grep -qF -- '- %post stays text' "${work}/updateinfo.xml" || fail "rpm read a line of the notes as a section"
+	grep -qF -- '- LinuxIO 1.0.0.' "${work}/updateinfo.xml" || fail "a package without %changelog does not name its version"
+	pass "updateinfo holds each package's %changelog, as written"
+
 	fake_rpm 1.0.1 other
 	if publish_rpm; then fail "a published version was replaced by another build"; fi
 	pass "a published version is not replaced by another build"

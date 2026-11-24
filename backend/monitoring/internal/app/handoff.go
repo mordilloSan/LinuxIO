@@ -58,7 +58,10 @@ func awaitCollectorRun(ctx context.Context, run *collectorRun) (*collectorAPISam
 	}
 }
 
-func newCollectorAPISample(capturedAt int64, data *systemmodel.CombinedData) (*collectorAPISample, error) {
+// newCollectorAPISample encodes the tick's sample for the requests waiting on
+// it. A payload the tick did not collect (collectedOnTick) is left out, so
+// such a request collects it itself instead of reading an empty one.
+func newCollectorAPISample(capturedAt int64, data *systemmodel.CombinedData, due func(string) bool) (*collectorAPISample, error) {
 	if data == nil {
 		return nil, fmt.Errorf("collector sample data is nil")
 	}
@@ -66,6 +69,9 @@ func newCollectorAPISample(capturedAt int64, data *systemmodel.CombinedData) (*c
 	payloadValues := plugins.Snapshot(data)
 	payloads := make(map[string]jsontext.Value, len(payloadValues)+2)
 	for plugin, payload := range payloadValues {
+		if !collectedOnTick(plugin, due) {
+			continue
+		}
 		raw, err := json.Marshal(payload, encodeOpts)
 		if err != nil {
 			return nil, fmt.Errorf("marshal collector %s payload: %w", plugin, err)
@@ -73,17 +79,19 @@ func newCollectorAPISample(capturedAt int64, data *systemmodel.CombinedData) (*c
 		payloads[plugin] = raw
 	}
 
-	processes, err := json.Marshal(liveProcessesData{Count: data.ProcessCount, Items: data.Processes}, encodeOpts)
-	if err != nil {
-		return nil, fmt.Errorf("marshal collector processes payload: %w", err)
-	}
-	payloads[plugins.Processes] = processes
+	if collectedOnTick(plugins.Processes, due) {
+		processes, err := json.Marshal(liveProcessesData{Count: data.ProcessCount, Items: data.Processes}, encodeOpts)
+		if err != nil {
+			return nil, fmt.Errorf("marshal collector processes payload: %w", err)
+		}
+		payloads[plugins.Processes] = processes
 
-	programs, err := json.Marshal(data.Programs, encodeOpts)
-	if err != nil {
-		return nil, fmt.Errorf("marshal collector programs payload: %w", err)
+		programs, err := json.Marshal(data.Programs, encodeOpts)
+		if err != nil {
+			return nil, fmt.Errorf("marshal collector programs payload: %w", err)
+		}
+		payloads[plugins.Programs] = programs
 	}
-	payloads[plugins.Programs] = programs
 
 	summary, err := json.Marshal(systemmodel.NewSummary(data), encodeOpts)
 	if err != nil {

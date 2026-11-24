@@ -489,6 +489,25 @@ func TestBalanceRefusesBeforeRunning(t *testing.T) {
 	}
 }
 
+// A balance without a convert would write what it moves as single on the
+// disks present, so a pool missing a disk is balanced only by a convert.
+func TestBalanceOfADegradedPoolOnlyConverts(t *testing.T) {
+	k := raid1Kernel()
+	k.devices[2].path = ""
+	stubKernel(t, k)
+	for _, opts := range []BalanceOptions{{}, {DataUsageMax: new(50)}} {
+		if err := Balance(context.Background(), dataUUID, opts, func(float64) {}); !errors.Is(err, errDiskMissing) {
+			t.Fatalf("balance %+v: err = %v", opts, err)
+		}
+	}
+	if calls := k.Calls(); len(calls) != 0 {
+		t.Fatalf("calls after refusal: %v", calls)
+	}
+	if err := Balance(context.Background(), dataUUID, BalanceOptions{DataProfile: new("single"), MetadataProfile: new("dup")}, func(float64) {}); err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+}
+
 func TestBalanceCancelsWithContextAndReportsProgress(t *testing.T) {
 	k := raid1Kernel()
 	k.balanceProgress = func() (balanceArgs, error) {
@@ -692,7 +711,7 @@ func TestResumeBalanceResumesAPausedBalance(t *testing.T) {
 func TestResumeBalanceObservesAKernelRun(t *testing.T) {
 	for _, c := range []struct {
 		name string
-		end  error // what BALANCE_PROGRESS gives after two running reads
+		end  error // what BALANCE_PROGRESS gives after three running reads
 		want error
 	}{
 		{"finished", unix.ENOTCONN, nil},
@@ -700,8 +719,10 @@ func TestResumeBalanceObservesAKernelRun(t *testing.T) {
 	} {
 		k := raid1Kernel()
 		reads := 0
+		// Running for the pool's inventory, ResumeBalance's look and one
+		// tick of observeBalance.
 		k.balanceProgress = func() (balanceArgs, error) {
-			if reads++; reads > 2 {
+			if reads++; reads > 3 {
 				return balanceArgs{}, c.end
 			}
 			return balanceArgs{State: balanceStateRunning, Stat: balanceProgress{Expected: 4, Completed: 1}}, nil

@@ -7,6 +7,7 @@
 #   OUT_DIR/dists/stable/{InRelease,Release,Release.gpg}
 #   OUT_DIR/dists/stable/main/binary-amd64/Packages{,.gz}
 #   OUT_DIR/dists/stable/main/binary-amd64/by-hash/SHA256/<sum>
+#   OUT_DIR/changelogs/main/l/linuxio/linuxio_<version>_changelog
 #
 # A package already in OUT_DIR stays, so publishing one more version keeps
 # the earlier ones; the metadata is generated again over all of them with
@@ -60,6 +61,12 @@ command -v dpkg-deb >/dev/null || die "dpkg-deb is missing: install dpkg"
 gpg --batch --list-secret-keys -- "$key" >/dev/null 2>&1 ||
 	die "no secret key '${key}' in the GnuPG keyring${GNUPGHOME:+ ${GNUPGHOME}}"
 
+# deb_changelog DEB: the debian/changelog DEB carries, which apt changelog
+# reads from the repository (step 3).
+deb_changelog() {
+	dpkg-deb --fsys-tarfile "$1" | tar -xOf - ./usr/share/doc/linuxio/changelog.gz 2>/dev/null | gzip -dc
+}
+
 shopt -s nullglob
 debs=("${packages_dir}"/linuxio_*_amd64.deb)
 [[ ${#debs[@]} -gt 0 ]] || die "no linuxio_*_amd64.deb in ${packages_dir}"
@@ -77,6 +84,7 @@ for deb in "${debs[@]}"; do
 	version="$(dpkg-deb --field "$deb" Version)"
 	arch="$(dpkg-deb --field "$deb" Architecture)"
 	[[ $name == linuxio && $arch == amd64 ]] || die "${deb} is ${name} ${arch}, not linuxio amd64"
+	deb_changelog "$deb" >/dev/null || die "${deb} carries no /usr/share/doc/linuxio/changelog.gz"
 	dest="${pool}/linuxio_${version}_amd64.deb"
 	if [[ -e $dest ]]; then
 		cmp -s "$deb" "$dest" || die "linuxio ${version} is already published with other contents (${dest})"
@@ -104,8 +112,21 @@ for file in Packages Packages.gz; do
 	mv -f -- "${work}/${file}" "${index}/${file}"
 done
 
-# 3. Release over the index, then its two signatures. The earlier Release and
+# 3. The changelog of every package in the pool, the debian/changelog it
+# carries, where Release's Changelogs field sends apt changelog and PackageKit:
+# the field's @CHANGEPATH@ is main/l/linuxio/linuxio_<version>.
+mkdir -p "${work}/changelogs/main/l/linuxio"
+for deb in "${pool}"/linuxio_*_amd64.deb; do
+	version="$(dpkg-deb --field "$deb" Version)" || die "cannot read ${deb}"
+	deb_changelog "$deb" >"${work}/changelogs/main/l/linuxio/linuxio_${version#*:}_changelog" ||
+		die "${deb} carries no /usr/share/doc/linuxio/changelog.gz"
+done
+rm -rf "${out_dir}/changelogs"
+mv -- "${work}/changelogs" "${out_dir}/changelogs"
+
+# 4. Release over the index, then its two signatures. The earlier Release and
 # its signatures go first, so the new Release does not list them.
+# apt-ftparchive writes no Changelogs field, so it goes in before the sums.
 rm -f "${dist}/Release" "${dist}/InRelease" "${dist}/Release.gpg"
 (cd "$dist" && apt-ftparchive "${hash_options[@]}" \
 	-o APT::FTPArchive::Release::Origin=LinuxIO \
@@ -118,13 +139,20 @@ rm -f "${dist}/Release" "${dist}/InRelease" "${dist}/Release.gpg"
 	-o APT::FTPArchive::Release::Description="LinuxIO packages" \
 	release .) >"${work}/Release"
 grep -q '^Acquire-By-Hash: yes$' "${work}/Release" || die "apt-ftparchive wrote no Acquire-By-Hash field"
+# apt's file: method leaves what it fetches where it is, and apt changelog
+# (PackageKit too) then finds no changelog; its copy: method copies it, so a
+# repository on the local disk, a test VM's, names its changelogs with copy:.
+awk -v field="Changelogs: ${base_url/#file:/copy:}/changelogs/@CHANGEPATH@_changelog" \
+	'/^SHA256:/ && !done { print field; done = 1 } { print }' "${work}/Release" >"${work}/Release.new"
+mv -f -- "${work}/Release.new" "${work}/Release"
+grep -q '^Changelogs: ' "${work}/Release" || die "Release has no SHA256 list to put the Changelogs field before"
 grep -q ' main/binary-amd64/Packages.gz$' "${work}/Release" || die "Release does not list main/binary-amd64/Packages.gz"
 sign=(gpg --batch --yes --quiet --local-user "$key" --digest-algo SHA512)
 "${sign[@]}" --clearsign --output "${work}/InRelease" "${work}/Release" || die "gpg could not sign Release with ${key}"
 "${sign[@]}" --armor --detach-sign --output "${work}/Release.gpg" "${work}/Release" || die "gpg could not sign Release with ${key}"
 mv -f -- "${work}/Release" "${work}/InRelease" "${work}/Release.gpg" "$dist/"
 
-# 4. The source file administrators install, with the public key inline:
+# 5. The source file administrators install, with the public key inline:
 # deb822 continues a field on lines that start with a space, and writes an
 # empty line as " .".
 gpg --batch --armor --export --export-options export-minimal -- "$key" >"${work}/key.asc"

@@ -22,11 +22,13 @@ const (
 	maxListenPort = 65535
 )
 
-// UpdateInterface applies a partial update to an interface. Port, MTU and
-// hooks are server-side: when the interface is up it is brought down while
-// the old config is still on disk (so the old PostDown hooks undo the old
-// PostUp), the new config is written, and it is brought back up. Host and DNS
-// only affect exported client configs, which are rewritten without a restart.
+// UpdateInterface applies a partial update to an interface. Address, network
+// card, port, MTU and hooks are server-side: when the interface is up it is
+// brought down while the old config is still on disk (so the old PostDown
+// hooks undo the old PostUp), the new config is written, and it is brought
+// back up. A new address also renumbers the exported client configs. Host
+// and DNS only affect exported client configs, which are rewritten without a
+// restart.
 func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterfaceRequest) error {
 	configMu.Lock()
 	defer configMu.Unlock()
@@ -45,30 +47,16 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 		return fmt.Errorf("read config: %w", err)
 	}
 	cfg := old
-	if err := applyInterfaceUpdate(&cfg, req); err != nil {
+	if err = applyInterfaceUpdate(&cfg, req); err != nil {
 		return err
 	}
-
-	serverChanged := cfg.ListenPort != old.ListenPort || cfg.MTU != old.MTU || hooksChanged(cfg.Hooks, old.Hooks)
-	restart := serverChanged && isInterfaceUpFunc(req.Name)
-
-	if restart {
-		if _, err := runWGQuickCommand(ctx, "down", req.Name); err != nil {
-			return fmt.Errorf("bring down interface: %w", err)
-		}
+	renumbered, err := applyTunnelMove(ctx, &cfg, req)
+	if err != nil {
+		return err
 	}
-	if err := WriteWireGuardConfig(configPath(req.Name), cfg); err != nil {
-		return fmt.Errorf("write config: %w", err)
-	}
-	if hooksChanged(cfg.Hooks, old.Hooks) {
-		// The NAT rules may be gone, and with them the last need for
-		// forwarding at boot; an up turns it on for hooks that add them.
-		dropForwardingAtBoot()
-	}
-	if restart {
-		if _, err := runWGQuickCommand(ctx, "up", req.Name); err != nil {
-			return fmt.Errorf("interface %s is down: bring up failed: %w", req.Name, err)
-		}
+	restart, err := saveInterfaceUpdate(ctx, req.Name, old, cfg, renumbered)
+	if err != nil {
+		return err
 	}
 
 	if cfg.Host != old.Host || cfg.ListenPort != old.ListenPort || !slices.Equal(cfg.DNS, old.DNS) {
@@ -76,8 +64,46 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 			return err
 		}
 	}
-	slog.Info("WireGuard interface updated", "interface", req.Name, "restarted", restart)
+	slog.Info("WireGuard interface updated", "interface", req.Name, "restarted", restart, "peers_renumbered", len(renumbered))
 	return nil
+}
+
+// saveInterfaceUpdate writes the updated config and the peer files a new
+// address renumbered, and reports whether it restarted the interface. A
+// server-side change to an interface that is up brings it down while the old
+// config is still on disk and up again on the new one.
+func saveInterfaceUpdate(ctx context.Context, name string, old, cfg WireGuardConfig, renumbered []peerFile) (bool, error) {
+	serverChanged := !slices.Equal(cfg.Address, old.Address) || cfg.ListenPort != old.ListenPort || cfg.MTU != old.MTU || hooksChanged(cfg.Hooks, old.Hooks)
+	restart := serverChanged && isInterfaceUpFunc(name)
+
+	// The peer files first, while the interface still runs: wg-quick never
+	// reads them, and the server config's [Peer] sections are derived from
+	// them. A move that fails here leaves the interface up, and running it
+	// again keeps the addresses already written (renumber).
+	for _, file := range renumbered {
+		if err := writePeerFile(peerConfigPath(name, file.ID), file); err != nil {
+			return false, fmt.Errorf("rewrite peer %s: %w", file.ID, err)
+		}
+	}
+	if restart {
+		if _, err := runWGQuickCommand(ctx, "down", name); err != nil {
+			return false, fmt.Errorf("bring down interface: %w", err)
+		}
+	}
+	if err := WriteWireGuardConfig(configPath(name), cfg); err != nil {
+		return false, fmt.Errorf("write config: %w", err)
+	}
+	if hooksChanged(cfg.Hooks, old.Hooks) {
+		// The NAT rules may be gone, and with them the last need for
+		// forwarding at boot; an up turns it on for hooks that add them.
+		dropForwardingAtBoot()
+	}
+	if restart {
+		if _, err := runWGQuickCommand(ctx, "up", name); err != nil {
+			return false, fmt.Errorf("interface %s is down: bring up failed: %w", name, err)
+		}
+	}
+	return restart, nil
 }
 
 func applyInterfaceUpdate(cfg *WireGuardConfig, req apischema.WireGuardUpdateInterfaceRequest) error {

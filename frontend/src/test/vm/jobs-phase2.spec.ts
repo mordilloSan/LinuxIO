@@ -45,9 +45,21 @@ test("a reload mid package update picks the same job up and completes it", async
   await page.goto("/updates");
   const card = page
     .locator("div")
-    .filter({ has: page.getByText("linuxio-e2e-slow · 2.0") })
+    .filter({ has: page.getByText("linuxio-e2e-slow", { exact: true }) })
+    .filter({ has: page.getByText("2.0 · ") })
     .filter({ has: page.getByRole("button", { name: "Update", exact: true }) })
     .last();
+  // docs/packaging.md (Changelog): its source publishes no changelog, so the
+  // card says there is none and links to the package's Homepage.
+  await card.getByRole("button", { name: "View Changelog" }).click();
+  await expect(card).toContainText(
+    "No changelog is available for this update",
+    { timeout: 30_000 },
+  );
+  await expect(
+    card.getByRole("link", { name: "Project page" }),
+  ).toHaveAttribute("href", "https://linuxio-e2e.invalid/slow");
+  await card.getByRole("button", { name: "View Changelog" }).click();
   await card.getByRole("button", { name: "Update", exact: true }).click();
   await waitForJob("packages.update", before, "running");
 
@@ -62,9 +74,7 @@ test("a reload mid package update picks the same job up and completes it", async
   await waitForJob("packages.update", before, "completed");
   await expect(item).toBeHidden({ timeout: 15_000 });
   await page.keyboard.press("Escape");
-  await expect(page.getByText("linuxio-e2e-slow · 2.0")).toBeHidden({
-    timeout: 30_000,
-  });
+  await expect(card).toBeHidden({ timeout: 30_000 });
   expect(await vmSsh("dpkg-query -W -f '${Version}' linuxio-e2e-slow")).toBe(
     "2.0",
   );
@@ -89,7 +99,8 @@ test("a package update whose job host is killed is picked up from PackageKit and
   await page.goto("/updates");
   const card = page
     .locator("div")
-    .filter({ has: page.getByText("linuxio-e2e-slow · 2.0") })
+    .filter({ has: page.getByText("linuxio-e2e-slow", { exact: true }) })
+    .filter({ has: page.getByText("2.0 · ") })
     .filter({ has: page.getByRole("button", { name: "Update", exact: true }) })
     .last();
   await card.getByRole("button", { name: "Update", exact: true }).click();

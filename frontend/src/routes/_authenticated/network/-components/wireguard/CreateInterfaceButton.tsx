@@ -146,11 +146,7 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   };
 
   const availableNICs = getEgressNICOptions(networkData);
-  const firstOnlineNIC = availableNICs.find(
-    (candidate) => !candidate.label.includes("disconnected"),
-  );
-  const selectedNIC =
-    nic || firstOnlineNIC?.name || availableNICs[0]?.name || "";
+  const selectedNIC = nic || availableNICs[0]?.name || "";
 
   const handleCreateInterface = () => {
     setError(null);

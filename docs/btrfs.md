@@ -66,7 +66,9 @@ the mounted pool is listed as dropped out, with the path it had (see
 [Missing disks](#missing-disks)). The health banner at the
 top of the details leads with the worst condition and the one action that
 fixes it: **Replace missing disk** on a degraded pool, a disk that dropped
-out coming before the errors its failed writes count, **Reclaim space** when
+out coming before the errors its failed writes count, and the error counters
+of a missing disk (since 7.1 the kernel marks a pulled disk missing, with the
+writes it failed counted) reading as degraded, not errors; **Reclaim space** when
 metadata is nearly full. Health, scrub and space alerts link to those details;
 snapshot and replication alerts link to the Subvolumes tab's Snapshots and
 Replication views.
@@ -1411,15 +1413,24 @@ primary superblock at 64 KiB.
 | Hot spare | Sets, changes the delay of, or removes the pool's hot spare (see [Hot spare](#hot-spare)). |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
-| Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
-| Reclaim space | A balance of data chunks at most 50% full, which turns slack into unallocated space. |
+| Balance | **Balance** on the pool's Disks card asks what to balance. *Lightly used data chunks* (the default) balances data chunks at most 10, 25, 50 (the default) or 75% full, which turns slack into unallocated space. *Everything* balances every chunk with no filter, which spreads data and metadata over all disks, as after adding one. *Change profile* converts: see the next row. On a pool missing a disk only *Change profile* is offered, and `Balance` refuses any balance that is not a convert: the kernel writes every chunk it moves as `single` on the disks present (`btrfs_reduce_alloc_profile`), which the resync would then have to convert back. |
+| Change profile | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
+| Reclaim space | The health banner's action when metadata is nearly full: a balance of data chunks at most 50% full. |
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`, with a running scrub's progress (see [Scrub progress](#scrub-progress)); scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. A scrub is refused while the kernel already scrubs the pool, for another scrub or a device replace, while LinuxIO's own scrub of it still runs, and when a device could not be read. |
 
 Remove, replace, balance and scrub are blocking kernel calls run inside the
 job, so progress comes from the kernel. A removal has no kernel progress: its
 percentage is the share of the device's allocation already moved off it, and
-a resumed removal starts again at 0 for what is left. A balance or scrub
-started elsewhere is still shown as running. The ioctls run on a locked thread with async signals
+a resumed removal starts again at 0 for what is left. A scrub started
+elsewhere is still shown as running. A balance the Disks card is not
+following, one started from the command line, by btrfsmaintenance's timer or
+by Reclaim space, is read from the kernel (`BALANCE_PROGRESS`, the pool's
+`balance` field) and shown on the card with its percentage and a **Cancel**,
+or as paused, which holds the pool until it ends; the card offers no other
+balance, addition, removal or replace meanwhile, and names `btrfs balance
+resume` and `btrfs balance cancel` for a paused one, which a `skip_balance`
+mount leaves paused. A bridge that is
+not root cannot read it (the ioctl needs `CAP_SYS_ADMIN`) and shows none. The ioctls run on a locked thread with async signals
 blocked: since kernel 6.19 any signal aborts a scrub or a replace (and a replace
 aborted that way loses its target). A freeze still interrupts them: a scrub
 continues by itself (see [Scrub progress](#scrub-progress)), a replace fails.

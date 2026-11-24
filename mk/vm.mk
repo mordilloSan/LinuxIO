@@ -3,13 +3,16 @@
 # ~/.cache/linuxio-vm, never in git. docs/development.md, "Test VM".
 
 vm_script := $(repo_root)/packaging/vm/linuxio-vm.sh
-# DISTRO=fedora selects the distribution, a profile in the script: Fedora's
-# VMs are linuxio-e2e-fedora and ~/.cache/linuxio-vm-fedora, beside Ubuntu's.
-# Without it, Ubuntu and the names it always had.
+# DISTRO=fedora or debian selects the distribution, a profile in the script:
+# Fedora's VMs are linuxio-e2e-fedora and ~/.cache/linuxio-vm-fedora, Debian
+# 13's linuxio-e2e-debian, beside Ubuntu's. Without it, Ubuntu and the names
+# it always had.
 DISTRO ?=
 export LINUXIO_VM_DISTRO := $(DISTRO)
 # VM_RELEASE=noble selects the second Ubuntu VM (linuxio-e2e-noble, Ubuntu
-# 24.04), kept for the root tests on an older kernel.
+# 24.04), kept for the root tests on an older kernel; with DISTRO=fedora,
+# VM_RELEASE=44 selects the previous Fedora release (linuxio-e2e-fedora44),
+# kept for the package's install, upgrade and removal.
 VM_RELEASE ?=
 export LINUXIO_VM_RELEASE := $(VM_RELEASE)
 # There can be several VMs of a release, numbered from 1, so targets run side
@@ -94,7 +97,7 @@ fi
 endef
 
 ##@ Test VM|yellow
-vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud image (DISTRO=fedora: Fedora 45) and snapshot it as clean
+vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud image (DISTRO=fedora: Fedora 45, DISTRO=debian: Debian 13) and snapshot it as clean
 	@$(call vm_lock,$(vm_one),lock)
 	@"$(vm_script)" create
 
@@ -138,9 +141,13 @@ vm_suites := memory btrfs indexer docker packagekit relay userconfig filebrowser
 # What is written for Fedora as well: the other suites and specs do things
 # with apt or were never run there. With DISTRO=fedora these are what
 # test-vm-backend and test-vm-browser run when SUITES and PLAYWRIGHT_ARGS name
-# nothing; add a suite or a spec here once it passes on Fedora.
-vm_fedora_suites := memory indexer packagekit relay userconfig filebrowser
-vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts indexer.spec.ts wireguard.spec.ts
+# nothing; add a suite or a spec here once it passes on Fedora. btrfs passes
+# there but for TestBtrfsRebuildProofIntegration and
+# TestBtrfsAutoRebuildIntegration, and btrfs-rebuild.spec.ts fails, all three
+# written for kernel 7.0's handling of a disk pulled off the bus
+# (docs/TODO/e2e-testing.md, "Distributions").
+vm_fedora_suites := memory indexer docker packagekit relay userconfig filebrowser network
+vm_fedora_specs := login.spec.ts capability-install.spec.ts package-repository.spec.ts indexer.spec.ts wireguard.spec.ts docker-host-ip-wait.spec.ts jobs-phase3.spec.ts jobs-phase4b.spec.ts jobs-journal.spec.ts
 SUITES ?= $(if $(filter fedora,$(DISTRO)),$(vm_fedora_suites),$(vm_suites))
 # The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
 RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
@@ -184,19 +191,24 @@ endif
 # A wrong DISTRO, VM_RELEASE or ZRAM_PROVIDER fails the same way, before the
 # builds of a VM target; the script checks them again.
 ifneq ($(filter vm-% test-vm-%,$(MAKECMDGOALS)),)
-ifneq ($(filter-out ubuntu fedora,$(DISTRO))$(word 2,$(DISTRO)),)
-$(error unknown DISTRO '$(DISTRO)' (ubuntu, the default, or fedora))
+ifneq ($(filter-out ubuntu fedora debian,$(DISTRO))$(word 2,$(DISTRO)),)
+$(error unknown DISTRO '$(DISTRO)' (ubuntu, the default, fedora or debian))
 endif
-ifneq ($(filter-out resolute noble,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
+ifeq ($(strip $(DISTRO)),fedora)
+ifneq ($(filter-out 45 44,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
+$(error unknown VM_RELEASE '$(VM_RELEASE)' for Fedora (45, the default, or 44))
+endif
+else ifeq ($(strip $(DISTRO)),debian)
+ifneq ($(filter-out trixie,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
+$(error unknown VM_RELEASE '$(VM_RELEASE)' for Debian (trixie, the default))
+endif
+else ifneq ($(filter-out resolute noble,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
 $(error unknown VM_RELEASE '$(VM_RELEASE)' (resolute, the default, or noble))
 endif
 ifneq ($(filter-out zram-tools zram-generator,$(ZRAM_PROVIDER))$(word 2,$(ZRAM_PROVIDER)),)
 $(error unknown ZRAM_PROVIDER '$(ZRAM_PROVIDER)' (zram-tools or zram-generator))
 endif
 ifeq ($(strip $(DISTRO)),fedora)
-ifneq ($(strip $(VM_RELEASE)),)
-$(error VM_RELEASE is for Ubuntu; DISTRO=fedora has one release)
-endif
 ifeq ($(strip $(ZRAM_PROVIDER)),zram-tools)
 $(error Fedora has no zram-tools: use ZRAM_PROVIDER=zram-generator, the default there)
 endif
@@ -247,29 +259,23 @@ test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Pi
 	@$(vm_all) test "$(vm_test_dir)"
 
 # The update build the update specs publish as package B (jobs-phase5a.spec.ts,
-# jobs-update.spec.ts): this tree with jobs.Protocol one higher, so a job host
-# of the installed build is an older one to its bridge, and a version of its
-# own (GIT_VERSION with +update), which `linuxio --version` reports, so the
-# specs see which build runs. A Go overlay of record.go raises the protocol
-# without touching the tree; the build is a copy of the plain one with its Go
-# binaries built again (linuxio-auth, in C, is the plain one's). docs/jobs.md,
-# Testing.
+# jobs-update.spec.ts): this tree with a version of its own (GIT_VERSION with
+# +update), which `linuxio --version` reports, so the specs see which build
+# runs. It keeps jobs.Protocol, as most releases do, so a job host of the
+# installed build refuses its bridge only because the update replaced the
+# host's binary. The build is a copy of the plain one with its Go binaries
+# built again (linuxio-auth, in C, is the plain one's). docs/jobs.md, Testing.
 vm_update_dir := $(cache_dir)/vm-update-build
 vm_update_build := $(vm_update_dir)/build
-vm_record_go := $(backend_dir)/common/jobs/record.go
 
 ##@ Test VM|yellow
-vm-update-build: build-nocheck ## Build this tree with jobs.Protocol one higher into .cache/vm-update-build/build, the build the update specs install
+vm-update-build: build-nocheck ## Build this tree again with a version of its own into .cache/vm-update-build/build, the build the update specs install
 	@set -e
 	@mkdir -p "$(vm_update_dir)"
-	@perl -pe 's/^(\tProtocol\s+=\s+)(\d+)$$/$$1 . ($$2 + 1)/e' "$(vm_record_go)" >"$(vm_update_dir)/record.go"
-	@if cmp -s "$(vm_record_go)" "$(vm_update_dir)/record.go"; then echo "vm-update-build: no jobs.Protocol line to raise in $(vm_record_go)" >&2; exit 1; fi
-	@printf '{"Replace":{"%s":"%s"}}\n' "$(vm_record_go)" "$(vm_update_dir)/record.go" >"$(vm_update_dir)/overlay.json"
 	@rm -rf "$(vm_update_build)"
 	@cp -a "$(bin_dir)" "$(vm_update_build)" && rm -rf "$(vm_update_build)/packages" "$(vm_update_build)/repo"
 	@$(MAKE) --no-print-directory build-go-binaries BIN_DIR="$(vm_update_build)" SKIP_ENSURE_GO=1 \
-	  GIT_VERSION="$(GIT_VERSION)+update" \
-	  GO_BUILD_EXTRA_ENV="GOFLAGS='-buildvcs=false -overlay=$(vm_update_dir)/overlay.json'"
+	  GIT_VERSION="$(GIT_VERSION)+update"
 
 # $(call vm_browser_specs,NUMBERS,ARGS[,ENV]) runs Playwright with ARGS on the
 # VMs NUMBERS, one worker for each: a worker takes the next spec file and keeps
@@ -332,11 +338,46 @@ test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Pic
 
 # Everything the test VMs run, one target after another: Ubuntu's root suites
 # and browser specs, then Fedora's (vm_fedora_suites, vm_fedora_specs and the
-# release-update spec). The first failure ends it. It takes no SUITES,
+# release-update spec). A failure does not end it, since none of the four
+# needs another: each reverts its VMs, and Fedora's VMs are not Ubuntu's.
+# Each writes its logs to a folder of its own under vm_all_logs, emptied as it
+# starts, so the four keep theirs and a total read from one is that run's.
+# The run ends with each one's result and time and the totals of the browser
+# runs, and fails when one failed. Ctrl-C ends it once the target running
+# stops, and the rest are shown as not run. It takes no SUITES,
 # PLAYWRIGHT_ARGS or DISTRO: a narrowed run is a run of one of the four.
-test-vm-all: ## Run the root suites and the browser specs in the test VMs on Ubuntu, then on Fedora what is written for it
+vm_all_logs := $(cache_dir)/test-logs/test-vm-all
+vm_all_logs_shown := $(patsubst $(repo_root)/%,%,$(vm_all_logs))
+test-vm-all: ## Run the root suites and the browser specs in the test VMs on Ubuntu, then on Fedora what is written for it, and end with the result of each
 	@$(if $(filter command line environment,$(origin SUITES) $(origin PLAYWRIGHT_ARGS))$(strip $(DISTRO)),echo "❌ test-vm-all takes no SUITES or PLAYWRIGHT_ARGS or DISTRO: run test-vm-backend or test-vm-browser for a narrowed run" >&2; exit 1)
-	@$(MAKE) --no-print-directory test-vm-backend DISTRO=
-	@$(MAKE) --no-print-directory test-vm-browser DISTRO=
-	@$(MAKE) --no-print-directory test-vm-backend DISTRO=fedora
-	@$(MAKE) --no-print-directory test-vm-browser DISTRO=fedora
+	@failed=0 stopped=0 recap=()
+	@if [[ -t 1 && -z $${NO_COLOR:-} ]]; then ok=$$'\e[32m✓\e[0m' bad=$$'\e[31m✘\e[0m'; else ok=✓ bad=✘; fi
+	@trap 'stopped=1' INT
+	@for run in "ubuntu backend root suites" "ubuntu browser browser specs" "fedora backend root suites" "fedora browser browser specs"; do
+	  read -r distro kind label <<<"$$run"
+	  name="$$(printf '%-7s %-14s' "$$distro" "$$label")"
+	  if ((stopped)); then
+	    recap+=("  – $$name not run")
+	    continue
+	  fi
+	  logs="$(vm_all_logs)/$$distro-$$kind"
+	  rm -rf "$$logs" && mkdir -p "$$logs" || exit 1
+	  begun=$$EPOCHSECONDS code=0
+	  $(MAKE) --no-print-directory "test-vm-$$kind" DISTRO="$${distro#ubuntu}" LINUXIO_VM_LOG_DIR="$$logs" || code=$$?
+	  took=$$((EPOCHSECONDS - begun))
+	  line="$$name $$(printf '%3dm %02ds' $$((took / 60)) $$((took % 60)))"
+	  if ((code == 0)); then
+	    recap+=("  $$ok $$line")
+	  else
+	    failed=1
+	    recap+=("  $$bad $$line  $(vm_all_logs_shown)/$$distro-$$kind/")
+	  fi
+	  for log in "specs test-vm-browser" "release-update test-vm-browser-release-update"; do
+	    read -r part file <<<"$$log"
+	    total="$$(grep -E '^[0-9]+ passed, ' "$$logs/$$file.log" 2>/dev/null | tail -n 1)"
+	    [[ -z $$total ]] || recap+=("      $$(printf '%-15s' "$$part") $$total")
+	  done
+	done
+	@printf '%s\n' "" "test-vm-all, logs in $(vm_all_logs_shown)/" "$${recap[@]}"
+	@((stopped == 0)) || exit 130
+	@exit "$$failed"

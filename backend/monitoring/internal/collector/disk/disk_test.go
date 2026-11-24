@@ -2,6 +2,7 @@ package disk
 
 import (
 	"context"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -596,7 +597,7 @@ func TestFindIoDevice(t *testing.T) {
 			"sdb": {Name: "sdb"},
 		}
 
-		device, ok := findIoDevice("sdb", ioCounters)
+		device, ok := findIoDevice("sdb", ioCounters, false)
 		assert.True(t, ok)
 		assert.Equal(t, "sdb", device)
 	})
@@ -607,9 +608,28 @@ func TestFindIoDevice(t *testing.T) {
 			"sdb": {Name: "sdb"},
 		}
 
-		device, ok := findIoDevice("rootfs", ioCounters)
+		device, ok := findIoDevice("rootfs", ioCounters, true)
 		assert.True(t, ok)
 		assert.Equal(t, "sda", device)
+	})
+
+	// The root's device comes from the mount table: another disk whose
+	// filesystem label is that name, or starts with it, must not be taken for
+	// it, while the device-mapper name of an LVM or LUKS volume still matches.
+	t.Run("matches a filesystem label only for a name the administrator gave", func(t *testing.T) {
+		ioCounters := map[string]psutilDisk.IOCountersStat{
+			"sdb":  {Name: "sdb", Label: "root", ReadBytes: 9000},
+			"sdc":  {Name: "sdc", Label: "root-backup", ReadBytes: 9000},
+			"dm-0": {Name: "dm-0", Label: "ubuntu--vg-ubuntu--lv"},
+		}
+
+		device, ok := findIoDevice("root", ioCounters, false)
+		assert.False(t, ok)
+		assert.Empty(t, device)
+
+		device, ok = findIoDevice("/dev/mapper/ubuntu--vg-ubuntu--lv", ioCounters, false)
+		assert.True(t, ok)
+		assert.Equal(t, "dm-0", device)
 	})
 
 	t.Run("returns no match when not found", func(t *testing.T) {
@@ -618,7 +638,7 @@ func TestFindIoDevice(t *testing.T) {
 			"sdb": {Name: "sdb"},
 		}
 
-		device, ok := findIoDevice("nvme0n1p1", ioCounters)
+		device, ok := findIoDevice("nvme0n1p1", ioCounters, false)
 		assert.False(t, ok)
 		assert.Empty(t, device)
 	})
@@ -629,7 +649,7 @@ func TestFindIoDevice(t *testing.T) {
 			"sda":     {Name: "sda"},
 		}
 
-		device, ok := findIoDevice("nvme0n1p2", ioCounters)
+		device, ok := findIoDevice("nvme0n1p2", ioCounters, false)
 		assert.True(t, ok)
 		assert.Equal(t, "nvme0n1", device)
 	})
@@ -640,7 +660,7 @@ func TestFindIoDevice(t *testing.T) {
 			"sdb": {Name: "sdb", ReadBytes: 1000, WriteBytes: 1000, ReadCount: 50, WriteCount: 50},
 		}
 
-		device, ok := findIoDevice("sd", ioCounters)
+		device, ok := findIoDevice("sd", ioCounters, false)
 		assert.True(t, ok)
 		assert.Equal(t, "sda", device)
 	})
@@ -651,7 +671,7 @@ func TestFindIoDevice(t *testing.T) {
 			"sdb": {Name: "sdb", ReadBytes: 2500, WriteBytes: 2500, ReadCount: 40, WriteCount: 40},
 		}
 
-		device, ok := findIoDevice("sd", ioCounters)
+		device, ok := findIoDevice("sd", ioCounters, false)
 		assert.True(t, ok)
 		assert.Equal(t, "sda", device)
 	})
@@ -661,7 +681,7 @@ func TestFindIoDevice(t *testing.T) {
 			"nda0": {Name: "nda0", ReadBytes: 1000, WriteBytes: 1000},
 		}
 
-		device, ok := findIoDevice("/dev/nda0p2", ioCounters)
+		device, ok := findIoDevice("/dev/nda0p2", ioCounters, false)
 		assert.True(t, ok)
 		assert.Equal(t, "nda0", device)
 	})
@@ -672,7 +692,7 @@ func TestFindIoDevice(t *testing.T) {
 			"sda": {Name: "sda", ReadBytes: 2000, WriteBytes: 2000, ReadCount: 10, WriteCount: 10},
 		}
 
-		device, ok := findIoDevice("sd", ioCounters)
+		device, ok := findIoDevice("sd", ioCounters, false)
 		assert.True(t, ok)
 		assert.Equal(t, "sda", device)
 	})
@@ -1120,6 +1140,62 @@ func TestApplyDiskIoCountersHandlesCounterReset(t *testing.T) {
 		writeCount: 2,
 		at:         start.Add(time.Second),
 	}, manager.diskPrev[1000]["sda"])
+}
+
+func TestIoTimeDelta(t *testing.T) {
+	assert.Equal(t, uint64(300), ioTimeDelta(1200, 900))
+	// A lower value after one that fits in 32 bits is the counter wrapping.
+	assert.Equal(t, uint64(1200), ioTimeDelta(200, math.MaxUint32+1-1000))
+	// A lower value after one past 32 bits cannot be a wrap, so it is a reset.
+	assert.Equal(t, uint64(0), ioTimeDelta(200, math.MaxUint32+1000))
+}
+
+// A millisecond counter that wraps at 32 bits keeps the sample: only the byte
+// and operation counters going down mean the device's counters started again.
+func TestApplyDiskIoCountersHandlesTimeCounterWrap(t *testing.T) {
+	start := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	nearWrap := uint64(math.MaxUint32 + 1 - 500)
+	manager := &Manager{
+		fsStats: map[string]*systemmodel.FsStats{
+			"sda": {FsTracking: systemmodel.FsTracking{Root: true, Time: start, TotalRead: 10_000, TotalWrite: 20_000}},
+		},
+		diskPrev: map[uint16]map[string]prevDisk{
+			1000: {
+				"sda": {
+					readBytes:  10_000,
+					writeBytes: 20_000,
+					readTime:   1000,
+					writeTime:  2000,
+					ioTime:     nearWrap,
+					weightedIO: nearWrap,
+					readCount:  100,
+					writeCount: 200,
+					at:         start,
+				},
+			},
+		},
+	}
+	var stats systemmodel.Stats
+
+	manager.applyDiskIoCounters(1000, &stats, map[string]psutilDisk.IOCountersStat{
+		"sda": {
+			Name:       "sda",
+			ReadBytes:  11_000,
+			WriteBytes: 22_000,
+			ReadTime:   1100,
+			WriteTime:  2200,
+			IoTime:     500, // 500 ms before the wrap plus 500 ms after it
+			WeightedIO: 1500,
+			ReadCount:  110,
+			WriteCount: 220,
+		},
+	}, start.Add(10*time.Second))
+
+	assert.Equal(t, [2]uint64{100, 200}, stats.DiskIO)
+	assert.InDelta(t, 10.0, stats.DiskIoStats[2], 1e-9, "1000 ms of I/O in 10 s")
+	assert.InDelta(t, 20.0, stats.DiskIoStats[5], 1e-9, "2000 weighted ms in 10 s")
+	assert.InDelta(t, 10.0, stats.DiskIoStats[3], 1e-9, "100 ms over 10 reads")
+	assert.Equal(t, uint64(11_000), manager.fsStats["sda"].TotalRead)
 }
 
 func TestDiskReseedsStaleLiveKey(t *testing.T) {

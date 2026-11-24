@@ -6,7 +6,11 @@
 # else) and runs as the build user; dpkg-deb gives every file to root. The path of
 # the package is the one line it prints on standard output.
 #
-# Usage: package-deb.sh --build-dir DIR --version VERSION --out-dir DIR
+# NOTES is the release notes file of a release (make RELEASE_NOTES=...), which
+# the package's changelog carries (changelog-entry.sh); without it the
+# changelog names the version alone.
+#
+# Usage: package-deb.sh --build-dir DIR --version VERSION --out-dir DIR [--notes NOTES]
 set -euo pipefail
 umask 022
 
@@ -21,25 +25,28 @@ die() {
 build_dir=""
 version=""
 out_dir=""
+notes=""
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--build-dir | --version | --out-dir)
+	--build-dir | --version | --out-dir | --notes)
 		[[ $# -ge 2 && -n $2 ]] || die "$1 needs a value"
 		case "$1" in
 		--build-dir) build_dir="$2" ;;
 		--version) version="$2" ;;
 		--out-dir) out_dir="$2" ;;
+		--notes) notes="$2" ;;
 		esac
 		shift 2
 		;;
-	*) die "unknown argument ${1} (usage: package-deb.sh --build-dir DIR --version VERSION --out-dir DIR)" ;;
+	*) die "unknown argument ${1} (usage: package-deb.sh --build-dir DIR --version VERSION --out-dir DIR [--notes NOTES])" ;;
 	esac
 done
 [[ -n $build_dir && -n $version && -n $out_dir ]] ||
-	die "usage: package-deb.sh --build-dir DIR --version VERSION --out-dir DIR"
+	die "usage: package-deb.sh --build-dir DIR --version VERSION --out-dir DIR [--notes NOTES]"
 [[ $version =~ ^[0-9][A-Za-z0-9.+~]*$ ]] ||
 	die "version '${version}' is not a package version (digits first, then letters, digits, '.', '+' or '~')"
 [[ -d $build_dir ]] || die "build folder ${build_dir} does not exist"
+[[ -z $notes || -f $notes ]] || die "release notes ${notes} do not exist"
 for tool in dpkg-buildpackage dh; do
 	command -v "$tool" >/dev/null ||
 		die "${tool} is missing: install debhelper (sudo apt-get install debhelper)"
@@ -58,13 +65,7 @@ src="${work}/linuxio-${version}"
 mkdir -p "$src"
 cp -r "${packaging_dir}/debian" "${src}/debian"
 cp "${source_dir}/LICENSE" "${build_dir}/THIRD_PARTY_NOTICES.md" "$src/"
-cat >"${src}/debian/changelog" <<EOF
-linuxio (${version}) unstable; urgency=medium
-
-  * LinuxIO ${version}.
-
- -- LinuxIO packages <packages@engmariz.com>  $(date -R)
-EOF
+"${packaging_dir}/scripts/changelog-entry.sh" deb --version "$version" ${notes:+--notes "$notes"} >"${src}/debian/changelog"
 
 (
 	cd "$src"

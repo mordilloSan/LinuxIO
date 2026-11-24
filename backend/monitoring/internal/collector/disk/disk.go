@@ -3,8 +3,10 @@ package disk
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +31,7 @@ type Manager struct {
 	devicePrev             map[uint16]map[string]prevDisk  // Previous per-block-device counters per cache interval
 	diskUsageCacheDuration time.Duration                   // How long to cache disk usage (avoids waking sleeping disks)
 	lastDiskUsageUpdate    time.Time                       // Last time disk usage was collected
+	statfs                 StatfsCalls                     // statfs calls of the tracked filesystems, which may outlive a collection
 }
 
 // NewManager constructs a Manager with disk usage caching disabled.
@@ -152,10 +155,10 @@ func registerFilesystemStats(existing map[string]*systemmodel.FsStats, device, m
 		// exact key match, then uses findIoDevice for normalized / prefix-based
 		// matching (e.g. nda0p2 -> nda0), and finally falls back to FILESYSTEM.
 		if _, ioMatch := ctx.diskIoCounters[key]; !ioMatch {
-			if matchedKey, match := findIoDevice(key, ctx.diskIoCounters); match {
+			if matchedKey, match := findIoDevice(key, ctx.diskIoCounters, false); match {
 				key = matchedKey
 			} else if ctx.filesystem != "" {
-				if matchedKey, match := findIoDevice(ctx.filesystem, ctx.diskIoCounters); match {
+				if matchedKey, match := findIoDevice(ctx.filesystem, ctx.diskIoCounters, true); match {
 					key = matchedKey
 				}
 			}
@@ -171,13 +174,13 @@ func registerFilesystemStats(existing map[string]*systemmodel.FsStats, device, m
 			if strings.HasPrefix(mountpoint, ctx.efPath) {
 				folderDevice, _ := parseFilesystemEntry(filepath.Base(mountpoint))
 				if folderDevice != "" {
-					if matchedKey, match := findIoDevice(folderDevice, ctx.diskIoCounters); match {
+					if matchedKey, match := findIoDevice(folderDevice, ctx.diskIoCounters, true); match {
 						key = matchedKey
 					}
 				}
 			}
 			if _, ioMatch = ctx.diskIoCounters[key]; !ioMatch {
-				if matchedKey, match := findIoDevice(key, ctx.diskIoCounters); match {
+				if matchedKey, match := findIoDevice(key, ctx.diskIoCounters, false); match {
 					key = matchedKey
 				}
 			}
@@ -228,7 +231,7 @@ func (d *diskDiscovery) addConfiguredRootFs() bool {
 
 	// FILESYSTEM may name a physical disk absent from partitions (e.g. ZFS lists
 	// dataset paths like zroot/ROOT/default, not block devices).
-	if ioKey, match := findIoDevice(d.ctx.filesystem, d.ctx.diskIoCounters); match {
+	if ioKey, match := findIoDevice(d.ctx.filesystem, d.ctx.diskIoCounters, true); match {
 		d.manager.fsStats[ioKey] = &systemmodel.FsStats{Root: true, Mountpoint: d.rootMountPoint, Device: ioKey}
 		return true
 	}
@@ -246,7 +249,7 @@ func isRootFallbackPartition(p psutilDisk.PartitionStat, rootMountPoint string) 
 // partition looks like the active root mount but still needs translating to an
 // I/O device key.
 func (d *diskDiscovery) addPartitionRootFs(device, mountpoint string) bool {
-	fs, match := findIoDevice(filepath.Base(device), d.ctx.diskIoCounters)
+	fs, match := findIoDevice(filepath.Base(device), d.ctx.diskIoCounters, false)
 	if !match {
 		return false
 	}
@@ -502,28 +505,40 @@ type ioMatchCandidate struct {
 	ops   uint64
 }
 
-// findIoDevice prefers exact device/label matches, then falls back to a
-// prefix-related candidate with the highest recent activity.
-func findIoDevice(filesystem string, diskIoCounters map[string]psutilDisk.IOCountersStat) (string, bool) {
+// findIoDevice prefers an exact device name, then the device-mapper name of a
+// dm device (the name under /dev/mapper, which LVM and LUKS mounts carry), and,
+// when byLabel is set, a filesystem label; last it falls back to the busiest
+// device whose name is a prefix of the other or has it as a prefix. byLabel is
+// set only for a name the administrator gave (FILESYSTEM, an extra-filesystems
+// folder): a name read from the mount table never matches another disk's
+// filesystem label, so that disk cannot be taken for the root device.
+func findIoDevice(filesystem string, diskIoCounters map[string]psutilDisk.IOCountersStat, byLabel bool) (string, bool) {
 	filesystem = normalizeDeviceName(filesystem)
 	if filesystem == "" {
 		return "", false
 	}
 
 	candidates := []ioMatchCandidate{}
+	labelMatch := ""
 
 	for _, d := range diskIoCounters {
-		if normalizeDeviceName(d.Name) == filesystem || (d.Label != "" && normalizeDeviceName(d.Label) == filesystem) {
+		name := normalizeDeviceName(d.Name)
+		if name == filesystem {
 			return d.Name, true
 		}
-		if prefixRelated(normalizeDeviceName(d.Name), filesystem) ||
-			(d.Label != "" && prefixRelated(normalizeDeviceName(d.Label), filesystem)) {
+		if d.Label != "" && normalizeDeviceName(d.Label) == filesystem && (byLabel || strings.HasPrefix(name, "dm-")) {
+			labelMatch = d.Name
+		}
+		if prefixRelated(name, filesystem) {
 			candidates = append(candidates, ioMatchCandidate{
 				name:  d.Name,
 				bytes: d.ReadBytes + d.WriteBytes,
 				ops:   d.ReadCount + d.WriteCount,
 			})
 		}
+	}
+	if labelMatch != "" {
+		return labelMatch, true
 	}
 
 	if len(candidates) == 0 {
@@ -622,7 +637,24 @@ func (m *Manager) initializeDiskIoStats(diskIoCounters map[string]psutilDisk.IOC
 	}
 }
 
-// UpdateUsage updates disk usage statistics for all monitored filesystems.
+// collectorStatfsWait is how long a collection waits for the statfs of a
+// tracked filesystem it started; diskUsage is the statfs, a variable for tests.
+var (
+	collectorStatfsWait = time.Second
+	diskUsage           = psutilDisk.UsageWithContext
+)
+
+// collectorLateStatfsMaxAge is how old a late statfs answer may be and still
+// be taken by the next collection, which comes a collector interval later (a
+// minute by default) or, for an extra filesystem, after the disk-usage cache;
+// its UsageAt is the time the answer came.
+const collectorLateStatfsMaxAge = time.Hour
+
+// UpdateUsage updates disk usage statistics for all monitored filesystems. It
+// runs under the collection lock, so a filesystem whose statfs does not
+// answer in collectorStatfsWait (a dead NFS server) keeps its last figures and
+// their UsageAt, and later collections do not wait for it while that call
+// runs; see StatfsCalls.
 func (m *Manager) UpdateUsage(ctx context.Context, systemStats *systemmodel.Stats) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -640,49 +672,71 @@ func (m *Manager) UpdateUsage(ctx context.Context, systemStats *systemmodel.Stat
 		if cacheExtraFs && !stats.Root {
 			continue
 		}
-		if d, err := psutilDisk.UsageWithContext(ctx, stats.Mountpoint); err == nil {
-			stats.DiskTotal = units.BytesToGigabytes(d.Total)
-			stats.DiskUsed = units.BytesToGigabytes(d.Used)
-			stats.TotalBytes = d.Total
-			stats.UsedBytes = d.Used
-			stats.FreeBytes = d.Free
-			stats.UsedPercent = d.UsedPercent
-			stats.UsageAt = time.Now()
-			stats.InodesTotal = d.InodesTotal
-			stats.InodesUsed = d.InodesUsed
-			stats.InodesFree = d.InodesFree
-			stats.InodesUsedPercent = d.InodesUsedPercent
-			if stats.Root {
-				systemStats.DiskTotal = units.BytesToGigabytes(d.Total)
-				systemStats.DiskUsed = units.BytesToGigabytes(d.Used)
-				systemStats.DiskPct = units.TwoDecimals(d.UsedPercent)
-			}
-		} else if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		} else {
+		d, at, err := m.statfs.Usage(ctx, stats.Mountpoint, collectorStatfsWait, collectorLateStatfsMaxAge, diskUsage)
+		switch {
+		case err == nil:
+			applyUsage(stats, d, at)
+		case ctx.Err() != nil:
+			return ctx.Err()
+		case errors.Is(err, ErrStatfsSlow):
+			slog.Warn("filesystem usage did not answer, keeping its last figures", "mountpoint", stats.Mountpoint, "error", err)
+		case errors.Is(err, ErrStatfsPending):
+			slog.Debug("filesystem usage still pending", "mountpoint", stats.Mountpoint)
+		default:
 			// reset stats if error (likely unmounted)
 			slog.Error("disk stats lookup failed", "name", stats.Mountpoint, "error", err)
-			stats.DiskTotal = 0
-			stats.DiskUsed = 0
-			stats.TotalRead = 0
-			stats.TotalWrite = 0
-			stats.TotalBytes = 0
-			stats.UsedBytes = 0
-			stats.FreeBytes = 0
-			stats.UsedPercent = 0
-			stats.UsageAt = time.Time{}
-			stats.InodesTotal = 0
-			stats.InodesUsed = 0
-			stats.InodesFree = 0
-			stats.InodesUsedPercent = 0
+			clearUsage(stats)
+		}
+		if stats.Root {
+			systemStats.DiskTotal = stats.DiskTotal
+			systemStats.DiskUsed = stats.DiskUsed
+			systemStats.DiskPct = units.TwoDecimals(stats.UsedPercent)
 		}
 	}
+	m.statfs.Forget(func(mountpoint string) bool {
+		for _, stats := range m.fsStats {
+			if stats.Mountpoint == mountpoint {
+				return true
+			}
+		}
+		return false
+	})
 
 	// Update the last disk usage update time when we've collected extra filesystems
 	if !cacheExtraFs {
 		m.lastDiskUsageUpdate = time.Now()
 	}
 	return nil
+}
+
+func applyUsage(stats *systemmodel.FsStats, d *psutilDisk.UsageStat, at time.Time) {
+	stats.DiskTotal = units.BytesToGigabytes(d.Total)
+	stats.DiskUsed = units.BytesToGigabytes(d.Used)
+	stats.TotalBytes = d.Total
+	stats.UsedBytes = d.Used
+	stats.FreeBytes = d.Free
+	stats.UsedPercent = d.UsedPercent
+	stats.UsageAt = at
+	stats.InodesTotal = d.InodesTotal
+	stats.InodesUsed = d.InodesUsed
+	stats.InodesFree = d.InodesFree
+	stats.InodesUsedPercent = d.InodesUsedPercent
+}
+
+func clearUsage(stats *systemmodel.FsStats) {
+	stats.DiskTotal = 0
+	stats.DiskUsed = 0
+	stats.TotalRead = 0
+	stats.TotalWrite = 0
+	stats.TotalBytes = 0
+	stats.UsedBytes = 0
+	stats.FreeBytes = 0
+	stats.UsedPercent = 0
+	stats.UsageAt = time.Time{}
+	stats.InodesTotal = 0
+	stats.InodesUsed = 0
+	stats.InodesFree = 0
+	stats.InodesUsedPercent = 0
 }
 
 // UpdateIO updates disk I/O statistics for all monitored filesystems.
@@ -815,25 +869,27 @@ func (m *Manager) applyDiskIoCounters(cacheTimeMs uint16, systemStats *systemmod
 		// This is the total number of milliseconds spent by all reads (as
 		// measured from __make_request() to end_that_request_last()).
 		// https://www.kernel.org/doc/Documentation/iostats.txt (fields 4, 8)
-		diskReadTime := units.TwoDecimals(float64(d.ReadTime-prev.readTime) / float64(msElapsed) * 100)
-		diskWriteTime := units.TwoDecimals(float64(d.WriteTime-prev.writeTime) / float64(msElapsed) * 100)
+		deltaReadTime := ioTimeDelta(d.ReadTime, prev.readTime)
+		deltaWriteTime := ioTimeDelta(d.WriteTime, prev.writeTime)
+		diskReadTime := units.TwoDecimals(float64(deltaReadTime) / float64(msElapsed) * 100)
+		diskWriteTime := units.TwoDecimals(float64(deltaWriteTime) / float64(msElapsed) * 100)
 
 		// I/O utilization %: fraction of wall time the device had any I/O in progress (0-100).
-		diskIoUtilPct := units.TwoDecimals(float64(d.IoTime-prev.ioTime) / float64(msElapsed) * 100)
+		diskIoUtilPct := units.TwoDecimals(float64(ioTimeDelta(d.IoTime, prev.ioTime)) / float64(msElapsed) * 100)
 
 		// Weighted I/O: queue-depth weighted I/O time, normalized to interval (can exceed 100%).
 		// Linux kernel field 11: incremented by iops_in_progress × ms_since_last_update.
 		// Used to display queue depth. Multiplied by 100 to increase accuracy of digit truncation (divided by 100 in UI).
-		diskWeightedIO := units.TwoDecimals(float64(d.WeightedIO-prev.weightedIO) / float64(msElapsed) * 100)
+		diskWeightedIO := units.TwoDecimals(float64(ioTimeDelta(d.WeightedIO, prev.weightedIO)) / float64(msElapsed) * 100)
 
 		// r_await / w_await: average time per read/write operation in milliseconds.
 		// Equivalent to r_await and w_await in iostat.
 		var rAwait, wAwait float64
 		if deltaReadCount := d.ReadCount - prev.readCount; deltaReadCount > 0 {
-			rAwait = units.TwoDecimals(float64(d.ReadTime-prev.readTime) / float64(deltaReadCount))
+			rAwait = units.TwoDecimals(float64(deltaReadTime) / float64(deltaReadCount))
 		}
 		if deltaWriteCount := d.WriteCount - prev.writeCount; deltaWriteCount > 0 {
-			wAwait = units.TwoDecimals(float64(d.WriteTime-prev.writeTime) / float64(deltaWriteCount))
+			wAwait = units.TwoDecimals(float64(deltaWriteTime) / float64(deltaWriteCount))
 		}
 
 		// Update global fsStats baseline for cross-interval correctness
@@ -866,15 +922,29 @@ func (m *Manager) applyDiskIoCounters(cacheTimeMs uint16, systemStats *systemmod
 	}
 }
 
+// diskCounterReset reports whether a byte or operation counter went down,
+// which means the device's counters started again. The millisecond counters
+// are left out: they wrap at 32 bits (see ioTimeDelta).
 func diskCounterReset(d psutilDisk.IOCountersStat, prev prevDisk) bool {
 	return d.ReadBytes < prev.readBytes ||
 		d.WriteBytes < prev.writeBytes ||
-		d.ReadTime < prev.readTime ||
-		d.WriteTime < prev.writeTime ||
-		d.IoTime < prev.ioTime ||
-		d.WeightedIO < prev.weightedIO ||
 		d.ReadCount < prev.readCount ||
 		d.WriteCount < prev.writeCount
+}
+
+// ioTimeDelta returns the increase of a cumulative millisecond counter of
+// /proc/diskstats. The kernel prints these fields as 32-bit unsigned ints, so
+// they wrap to zero at 2^32; a busy disk reaches that in days for the weighted
+// I/O time. A lower value after one that fits in 32 bits is that wrap, and
+// anything else lower is a reset.
+func ioTimeDelta(current, previous uint64) uint64 {
+	if current >= previous {
+		return current - previous
+	}
+	if previous <= math.MaxUint32 {
+		return current + (math.MaxUint32 + 1 - previous)
+	}
+	return 0
 }
 
 // getRootMountPoint returns the appropriate root mount point for the system.

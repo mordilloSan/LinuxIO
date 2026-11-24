@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,6 +28,7 @@ type ioStats struct {
 // Manager owns network interface tracking and per-cache-time NIC delta state.
 type Manager struct {
 	netInterfaces             map[string]struct{}                                   // Valid network interfaces
+	totalInterfaces           map[string]struct{}                                   // Interfaces the bandwidth total counts; nil counts every valid one
 	netIoStats                map[uint16]ioStats                                    // Bandwidth usage per cache interval
 	netInterfaceDeltaTrackers map[uint16]*deltatracker.DeltaTracker[string, uint64] // Per-cache-time NIC delta trackers
 }
@@ -165,11 +168,15 @@ func (m *Manager) refreshNetInterfaces(netIO []psutilNet.IOCountersStat) {
 	}
 
 	seen := make(map[string]struct{}, len(netIO))
+	counted := make(map[string]struct{}, len(netIO))
 	for _, v := range netIO {
 		if skipNetworkInterface(v, nicCfg) {
 			continue
 		}
 		seen[v.Name] = struct{}{}
+		if (nicCfg != nil && !nicCfg.isBlacklist) || isPhysicalNic(v.Name) {
+			counted[v.Name] = struct{}{}
+		}
 		if _, exists := m.netInterfaces[v.Name]; !exists {
 			slog.Debug("network interface detected", "name", v.Name, "sent", v.BytesSent, "recv", v.BytesRecv)
 		}
@@ -180,6 +187,29 @@ func (m *Manager) refreshNetInterfaces(netIO []psutilNet.IOCountersStat) {
 			delete(m.netInterfaces, name)
 		}
 	}
+	// With no card behind any interface (LinuxIO in a container), the total
+	// counts every interface it reports rather than nothing.
+	if len(counted) == 0 {
+		counted = seen
+	}
+	m.totalInterfaces = counted
+}
+
+// sysClassNet is where the kernel lists network interfaces; a variable for
+// tests.
+var sysClassNet = "/sys/class/net"
+
+// isPhysicalNic reports whether a device stands behind the interface (a PCI,
+// USB, virtio or platform card), which /sys/class/net/<name>/device links to.
+// Bridges, bonds, VLANs, veth, tap, tun and WireGuard have none: traffic they
+// carry also crosses a card, so the bandwidth total counts the cards only and
+// counts that traffic once. NICS in whitelist mode counts what it names.
+func isPhysicalNic(name string) bool {
+	if name == "" || name != filepath.Base(name) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(sysClassNet, name, "device"))
+	return err == nil
 }
 
 // ensureNetworkInterfacesMap ensures systemStats.NetworkInterfaces map exists
@@ -246,8 +276,10 @@ func (m *Manager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed uint64, 
 				downDelta = deltaBytes * 1000 / msElapsed
 			}
 		}
-		totalUp += upDelta
-		totalDown += downDelta
+		if _, counted := m.totalInterfaces[v.Name]; counted || m.totalInterfaces == nil {
+			totalUp += upDelta
+			totalDown += downDelta
+		}
 		systemStats.NetworkInterfaces[v.Name] = [4]uint64{upDelta, downDelta, v.BytesSent, v.BytesRecv}
 		systemStats.NetworkInterfaceCounters[v.Name] = systemmodel.NetworkInterfaceCounters{
 			RxDropped: v.Dropin, RxErrors: v.Errin, RxPackets: v.PacketsRecv,
@@ -258,7 +290,9 @@ func (m *Manager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed uint64, 
 	return totalUp, totalDown
 }
 
-// skipNetworkInterface returns true if the network interface should be ignored.
+// skipNetworkInterface returns true if the network interface should be ignored:
+// neither its rates nor the total report it. Of those it keeps, the total
+// counts only the cards (isPhysicalNic).
 func skipNetworkInterface(v psutilNet.IOCountersStat, nicCfg *NicConfig) bool {
 	if nicCfg != nil {
 		if !isValidNic(v.Name, nicCfg) {

@@ -112,6 +112,29 @@ func TestGetTemperatureMapUsesInputReadingsOnly(t *testing.T) {
 	}, temps)
 }
 
+// Two sockets each report "Package id" and "Core 0"; neither overwrites the other.
+func TestCPUTemperaturesNamesEachChipOnAMultiSocketHost(t *testing.T) {
+	reading := func(label string, value float64) monitoringapi.SensorReading {
+		return monitoringapi.SensorReading{Label: label, Field: "input", Kind: monitoringapi.SensorReadingKindNumber, Unit: "°C", Value: value}
+	}
+	groups := []monitoringapi.SensorGroup{
+		{Adapter: "coretemp-isa-0000", Readings: []monitoringapi.SensorReading{reading("Package id 0", 50), reading("Core 0", 45), reading("Core 1", 46)}},
+		{Adapter: "nct6798-isa-0290", Readings: []monitoringapi.SensorReading{reading("SYSTIN", 30)}},
+		{Adapter: "coretemp-isa-0001", Readings: []monitoringapi.SensorReading{reading("Package id 1", 60), reading("Core 0", 55)}},
+	}
+	require.Equal(t, map[string]float64{
+		"package0": 50, "package0core0": 45, "package0core1": 46,
+		"package1": 60, "package1core0": 55,
+	}, CPUTemperatures(groups))
+
+	// AMD reports one Tctl per socket and no cores.
+	groups = []monitoringapi.SensorGroup{
+		{Adapter: "k10temp-pci-00c3", Readings: []monitoringapi.SensorReading{reading("Tctl", 40)}},
+		{Adapter: "k10temp-pci-00cb", Readings: []monitoringapi.SensorReading{reading("Tctl", 42)}},
+	}
+	require.Equal(t, map[string]float64{"package0": 40, "package1": 42}, CPUTemperatures(groups))
+}
+
 func TestInputReadingsKeepsMeasurementsOnly(t *testing.T) {
 	stubSensorsCommand(t, "success")
 

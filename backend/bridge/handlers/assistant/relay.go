@@ -68,8 +68,8 @@ type relay struct {
 
 // HandleAssistantSession spawns the requested ACP agent as the session user
 // and relays its stdin/stdout over the duplex stream as data frames. The
-// first frame is a ready line with the working directory, the last an exit
-// line with the exit code and stderr tail.
+// first frame is a ready line with the working directory and the user's home,
+// the last an exit line with the exit code and stderr tail.
 func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.Conn, req apischema.AssistantOpenRequest) error {
 	sess := rt.Session
 	agent, ok := acpagents.Lookup(req.Agent)
@@ -108,6 +108,13 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: %w", err)
 	}
+	home := cmd.Dir
+	if agent.WorkInProfile {
+		cmd.Dir = acpagents.ProfileDir(agentsHome, req.Agent)
+		if agent.IncludeDirFlag != "" {
+			cmd.Args = append(cmd.Args, agent.IncludeDirFlag, home)
+		}
+	}
 	cmd.Env = append(cmd.Env, "PATH="+userPath)
 	cmd.Env = append(cmd.Env, launch.Env...)
 	cmd.Env = append(cmd.Env, profile...)
@@ -116,7 +123,6 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 	if panes != nil {
 		cmd.Env = append(cmd.Env, panes.agentEnv(agent.CLIEnv, launch.CLI)...)
 	}
-	home := cmd.Dir
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -139,7 +145,7 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 
 	r := &relay{cmd: cmd, stdin: stdin, done: make(chan struct{})}
 
-	ready, _ := json.Marshal(map[string]string{"linuxio": "ready", "cwd": home})
+	ready, _ := json.Marshal(map[string]string{"linuxio": "ready", "cwd": cmd.Dir, "home": home})
 	if err := streamrelay.WriteData(stream, append(ready, '\n')); err != nil {
 		r.terminate()
 		_ = cmd.Wait()

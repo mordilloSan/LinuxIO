@@ -27,7 +27,7 @@ func TestListInterfacesReportsHeaderAndHooks(t *testing.T) {
 		t.Fatalf("interfaces = %+v", interfaces)
 	}
 	iface := interfaces[0]
-	if iface.Host != "vpn.example.org" || !slices.Equal(iface.DNS, []string{"9.9.9.9"}) || iface.MTU != 1400 {
+	if iface.Host != "vpn.example.org" || !slices.Equal(iface.DNS, []string{"9.9.9.9"}) || iface.MTU != 1400 || iface.EgressNic != "eth0" {
 		t.Fatalf("interface = %+v", iface)
 	}
 	if hooksChanged(iface.Hooks, cfg.Hooks) {

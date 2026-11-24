@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/store/storetest"
@@ -31,7 +32,7 @@ func TestStoreSnapshotAndHistoryQueries(t *testing.T) {
 	defer store.Close()
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(42)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(42), store.BeginTick()))
 	var tableCount int
 	require.NoError(t, store.db.QueryRow(`
 		SELECT COUNT(*) FROM sqlite_master
@@ -116,51 +117,80 @@ func TestStoreRejectsNilSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	defer store.Close()
 
-	err = store.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), nil)
+	err = store.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), nil, store.BeginTick())
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "snapshot data is nil")
 }
 
-func TestStoreRejectsUnsupportedSchemaVersion(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "metrics.db")
-	db, err := sql.Open("sqlite3", dbPath)
-	require.NoError(t, err)
-	_, err = db.Exec(`
-		PRAGMA user_version = 3;
-	`)
-	require.NoError(t, err)
-	require.NoError(t, db.Close())
+// A store of another version, the previous release's or one the daemon does
+// not know, is deleted with its sidecars and the history starts again.
+func TestStoreDeletesAStoreOfAnotherVersion(t *testing.T) {
+	for _, version := range []int{7, storeSchemaVersion + 1} {
+		t.Run(fmt.Sprint(version), func(t *testing.T) {
+			tmpDir := t.TempDir()
+			dbPath := filepath.Join(tmpDir, "metrics.db")
+			db, err := sql.Open("sqlite3", dbPath)
+			require.NoError(t, err)
+			_, err = db.Exec(fmt.Sprintf(`
+				CREATE TABLE cpu_history (resolution TEXT NOT NULL, captured_at INTEGER NOT NULL, stats_json TEXT NOT NULL, PRIMARY KEY (resolution, captured_at));
+				CREATE INDEX idx_cpu_history_captured_at ON cpu_history (captured_at);
+				INSERT INTO cpu_history VALUES ('1m', 1, '{}');
+				PRAGMA user_version = %d;
+			`, version))
+			require.NoError(t, err)
+			require.NoError(t, db.Close())
+			require.NoError(t, os.WriteFile(dbPath+"-shm", []byte("stale shm"), 0o600))
 
-	store, err := OpenStore(t.Context(), tmpDir)
-	require.Error(t, err)
-	assert.Nil(t, store)
-	assert.Contains(t, err.Error(), "unsupported store schema version 3")
+			store, err := OpenStore(t.Context(), tmpDir)
+			require.NoError(t, err)
+			defer store.Close()
+
+			var got, rows, indexes int
+			require.NoError(t, store.db.QueryRow("PRAGMA user_version").Scan(&got))
+			assert.Equal(t, storeSchemaVersion, got)
+			require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM cpu_history").Scan(&rows))
+			assert.Zero(t, rows, "the old history is gone")
+			require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'").Scan(&indexes))
+			assert.Zero(t, indexes, "the primary key is the only index")
+			moved, err := filepath.Glob(dbPath + ".*")
+			require.NoError(t, err)
+			assert.Empty(t, moved, "nothing is moved aside")
+		})
+	}
 }
 
 func TestStoreMovesAsideCorruptDatabaseAndRecreatesSchema(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "metrics.db")
-	require.NoError(t, os.WriteFile(dbPath, []byte("this is not sqlite"), 0600))
-	require.NoError(t, os.WriteFile(dbPath+"-wal", []byte("stale wal"), 0600))
-	require.NoError(t, os.WriteFile(dbPath+"-shm", []byte("stale shm"), 0600))
+	// An older corrupt copy and its sidecar, moved aside by an earlier start.
+	const oldStamp = ".corrupt-20200101T000000.000000000Z"
+	require.NoError(t, os.WriteFile(dbPath+oldStamp, []byte("older"), 0o600))
+	require.NoError(t, os.WriteFile(dbPath+"-wal"+oldStamp, []byte("older wal"), 0o600))
+	// A copy an administrator named is neither counted nor deleted.
+	const kept = ".corrupt-before-upgrade"
+	require.NoError(t, os.WriteFile(dbPath+kept, []byte("kept"), 0o600))
+	require.NoError(t, os.WriteFile(dbPath, []byte("this is not sqlite"), 0o600))
+	require.NoError(t, os.WriteFile(dbPath+"-wal", []byte("stale wal"), 0o600))
+	require.NoError(t, os.WriteFile(dbPath+"-shm", []byte("stale shm"), 0o600))
 
 	store, err := OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	defer store.Close()
 
-	movedDBs, err := filepath.Glob(dbPath + ".corrupt-*")
+	assert.FileExists(t, dbPath+kept)
+	movedDBs, err := filepath.Glob(dbPath + ".corrupt-2*")
 	require.NoError(t, err)
-	require.Len(t, movedDBs, 1)
+	require.Len(t, movedDBs, 1, "only the newest copy is kept")
 	raw, err := os.ReadFile(movedDBs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "this is not sqlite", string(raw))
+	assert.NoFileExists(t, dbPath+"-wal"+oldStamp, "an older copy's sidecars go with it")
 
 	var version int
 	require.NoError(t, store.db.QueryRow("PRAGMA user_version").Scan(&version))
 	assert.Equal(t, storeSchemaVersion, version)
-	require.NoError(t, store.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42), store.BeginTick()))
 }
 
 func TestStoreDatabaseIntegrity(t *testing.T) {
@@ -168,7 +198,7 @@ func TestStoreDatabaseIntegrity(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	require.NoError(t, s.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
+	require.NoError(t, s.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42), s.BeginTick()))
 	require.NoError(t, s.IntegrityCheck(t.Context()))
 }
 
@@ -190,7 +220,7 @@ func TestStoreWritesHistoryOnlyForAllowlistedPlugins(t *testing.T) {
 	defer store.Close()
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(42)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(42), store.BeginTick()))
 
 	var cpuRows int
 	require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM cpu_history").Scan(&cpuRows))
@@ -217,14 +247,14 @@ func TestStoreConcurrentReadsDuringWriteSnapshot(t *testing.T) {
 	defer store.Close()
 
 	start := time.Now().UTC().Truncate(time.Millisecond)
-	require.NoError(t, store.WriteSnapshot(t.Context(), start.UnixMilli(), storetest.SampleCombinedData(1)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), start.UnixMilli(), storetest.SampleCombinedData(1), store.BeginTick()))
 
 	errs := make(chan error, 128)
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for i := range 50 {
 			capturedAt := start.Add(time.Duration(i+1) * time.Millisecond).UnixMilli()
-			if writeErr := store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(float64(i))); writeErr != nil {
+			if writeErr := store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(float64(i)), store.BeginTick()); writeErr != nil {
 				errs <- writeErr
 			}
 		}
@@ -247,7 +277,7 @@ func TestStoreConcurrentReadsDuringWriteSnapshot(t *testing.T) {
 	}
 }
 
-func TestStoreMaintenanceAppliesRetentionToAllHistoryTables(t *testing.T) {
+func TestStoreMaintenanceAppliesEachTiersRetentionToAllHistoryTables(t *testing.T) {
 	tmpDir := t.TempDir()
 	retention := 14 * 24 * time.Hour
 	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: plugins.HistoryCapable(), HistoryRetention: retention})
@@ -255,40 +285,32 @@ func TestStoreMaintenanceAppliesRetentionToAllHistoryTables(t *testing.T) {
 	defer store.Close()
 
 	now := time.Now().UTC().Truncate(time.Minute)
-	historyJSON := `{"retention":"test"}`
-
-	expiredAt := now.Add(-retention - time.Millisecond).UnixMilli()
-	boundaryAt := now.Add(-retention).UnixMilli()
+	keep := map[string]time.Duration{"1m": 24 * time.Hour, "10m": 12 * time.Hour, "20m": 24 * time.Hour, "60m": retention}
 	for _, plugin := range plugins.HistoryCapable() {
-		_, err = store.db.Exec(fmt.Sprintf(`
-			INSERT INTO %s (resolution, captured_at, stats_json)
-			VALUES (?, ?, ?), (?, ?, ?)
-		`, pluginHistoryTable(plugin)), resolution1m, expiredAt, historyJSON, resolution1m, boundaryAt, historyJSON)
-		require.NoError(t, err)
+		for resolution, kept := range keep {
+			_, err = store.db.Exec(fmt.Sprintf(`
+				INSERT INTO %s (resolution, captured_at, stats_json)
+				VALUES (?, ?, '{}'), (?, ?, '{}')
+			`, pluginHistoryTable(plugin)), resolution, now.Add(-kept-time.Millisecond).UnixMilli(), resolution, now.Add(-kept).UnixMilli())
+			require.NoError(t, err)
+		}
 	}
 
 	require.NoError(t, store.RunMaintenance(t.Context(), now))
 
-	cutoff := now.Add(-retention).UnixMilli()
 	for _, plugin := range plugins.HistoryCapable() {
-		var expiredRows int
-		err = store.db.QueryRow(fmt.Sprintf(`
-			SELECT COUNT(1)
-			FROM %s
-			WHERE resolution = ? AND captured_at < ?
-		`, pluginHistoryTable(plugin)), resolution1m, cutoff).Scan(&expiredRows)
-		require.NoError(t, err)
-		assert.Zero(t, expiredRows, "expired rows should be deleted for %s", plugin)
-
-		var keptRows int
-		err = store.db.QueryRow(fmt.Sprintf(`
-			SELECT COUNT(1)
-			FROM %s
-			WHERE resolution = ? AND captured_at = ?
-		`, pluginHistoryTable(plugin)), resolution1m, cutoff).Scan(&keptRows)
-		require.NoError(t, err)
-		assert.Equal(t, 1, keptRows, "boundary row should be kept for %s", plugin)
+		for resolution, kept := range keep {
+			var count, boundary int
+			require.NoError(t, store.db.QueryRow(fmt.Sprintf(`SELECT COUNT(1), COUNT(CASE WHEN captured_at = ? THEN 1 END) FROM %s WHERE resolution = ?`, pluginHistoryTable(plugin)), now.Add(-kept).UnixMilli(), resolution).Scan(&count, &boundary))
+			assert.Equal(t, [2]int{1, 1}, [2]int{count, boundary}, "%s %s keeps its boundary row only", plugin, resolution)
+		}
 	}
+}
+
+// history.retention is the hourly tier's length and bounds every tier.
+func TestTierRetentionIsBoundedByHistoryRetention(t *testing.T) {
+	assert.Equal(t, map[string]string{"1m": "24h0m0s", "10m": "12h0m0s", "20m": "24h0m0s", "60m": "720h0m0s"}, RetentionStrings())
+	assert.Equal(t, map[string]string{"1m": "6h0m0s", "10m": "6h0m0s", "20m": "6h0m0s", "60m": "6h0m0s"}, retentionStrings(6*time.Hour))
 }
 
 func TestStoreMaintenanceCullsDisabledPluginTables(t *testing.T) {
@@ -318,9 +340,10 @@ func TestStoreWritesAbortOnCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	now := time.Now().UTC()
-	require.ErrorIs(t, store.WriteSnapshot(ctx, now.UnixMilli(), storetest.SampleCombinedData(42)), context.Canceled)
+	require.ErrorIs(t, store.WriteSnapshot(ctx, now.UnixMilli(), storetest.SampleCombinedData(42), store.BeginTick()), context.Canceled)
 	require.ErrorIs(t, store.WriteSmartDevices(ctx, now.UnixMilli(), map[string]smartmodel.SmartData{}), context.Canceled)
 	require.ErrorIs(t, store.RunMaintenance(ctx, now), context.Canceled)
+	require.ErrorIs(t, store.Rollup(ctx, now), context.Canceled)
 
 	var cpuRows, smartRows int
 	require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM cpu_history").Scan(&cpuRows))
@@ -329,33 +352,57 @@ func TestStoreWritesAbortOnCancelledContext(t *testing.T) {
 	assert.Zero(t, smartRows)
 }
 
-func TestHistorySupportsQueryResolutions(t *testing.T) {
-	assert.True(t, ValidResolution(resolution1m))
-	for _, resolution := range []string{"10m", "20m", "120m", "480m"} {
-		assert.True(t, ValidResolution(resolution))
+func TestStoredTiersAreTheContractResolutions(t *testing.T) {
+	resolutions := make([]string, 0, len(tiers))
+	for i, tier := range tiers {
+		resolutions = append(resolutions, tier.resolution)
+		step, ok := monitoringapi.HistoryResolutionStep(tier.resolution)
+		require.True(t, ok, tier.resolution)
+		assert.Equal(t, step, tier.step, tier.resolution)
+		if i > 0 {
+			assert.Zero(t, tier.step%tiers[i-1].step, "a %s bucket holds whole %s buckets", tier.resolution, tiers[i-1].resolution)
+		}
 	}
-	assert.Equal(t, map[string]string{resolution1m: (30 * 24 * time.Hour).String()}, RetentionStrings())
+	assert.Equal(t, monitoringapi.HistoryResolutions(), resolutions)
+	for _, gone := range []string{"120m", "480m", "5m", ""} {
+		assert.False(t, ValidResolution(gone), gone)
+	}
 }
 
-func TestPluginHistoryDownsamplesAtQueryTimeAndAppliesLimitToNewest(t *testing.T) {
-	tmpDir := t.TempDir()
-	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
+// An hour-aligned time, so the 10m, 20m and 60m buckets all start at it.
+const rollupBase = int64(472_222) * 3_600_000
+
+func insertRow(t *testing.T, store *Store, plugin, resolution string, at int64, raw string) {
+	t.Helper()
+	_, err := store.db.Exec(fmt.Sprintf("INSERT INTO %s (resolution, captured_at, stats_json) VALUES (?, ?, ?)", pluginHistoryTable(plugin)), resolution, at, raw)
+	require.NoError(t, err)
+}
+
+func tierRows(t *testing.T, store *Store, plugin, resolution string) []HistoryRecord[jsontext.Value] {
+	t.Helper()
+	rows, err := store.PluginHistory(t.Context(), plugin, resolution, 0, rollupBase+24*3_600_000, 1000)
+	require.NoError(t, err)
+	return rows
+}
+
+func TestRollupAveragesEachClosedBucketIntoTheNextTier(t *testing.T) {
+	store, err := OpenStore(t.Context(), t.TempDir(), Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	defer store.Close()
-	base := int64(1_700_000_000_000)
-	samples := []string{
+	for i, sample := range []string{
 		`{"cpu_percent":10,"max_cpu_percent":15,"cpu_breakdown_percent":[10,20],"cpu_cores_percent":[10,20],"cpu_frequencies_mhz":[3000,2000]}`,
 		`{"cpu_percent":20,"max_cpu_percent":18,"cpu_breakdown_percent":[20,30],"cpu_cores_percent":[20,30],"cpu_frequencies_mhz":[3300,2200]}`,
 		`{"cpu_percent":30,"max_cpu_percent":35,"cpu_breakdown_percent":[30,40],"cpu_cores_percent":[30,40],"cpu_frequencies_mhz":[3600,2400]}`,
+	} {
+		insertRow(t, store, plugins.CPU, "1m", rollupBase+int64(i)*60_000, sample)
 	}
-	for i, sample := range samples {
-		_, err = store.db.Exec("INSERT INTO cpu_history (resolution, captured_at, stats_json) VALUES ('1m', ?, ?)", base+int64(i)*60_000, sample)
-		require.NoError(t, err)
-	}
-	rows, err := store.PluginHistory(context.Background(), plugins.CPU, "10m", base, base+180_000, 1)
-	require.NoError(t, err)
+	insertRow(t, store, plugins.CPU, "1m", rollupBase+10*60_000, `{"cpu_percent":40}`)
+
+	// At minute 11 only the first 10m bucket has closed.
+	require.NoError(t, store.Rollup(t.Context(), time.UnixMilli(rollupBase+11*60_000)))
+	rows := tierRows(t, store, plugins.CPU, "10m")
 	require.Len(t, rows, 1)
-	assert.Equal(t, base+120_000, rows[0].CapturedAt)
+	assert.Equal(t, rollupBase+120_000, rows[0].CapturedAt, "a row's time is its newest sample")
 	var cpu plugins.CPUData
 	require.NoError(t, json.Unmarshal(rows[0].Stats, &cpu))
 	assert.InDelta(t, 20, cpu.Cpu, 0.001)
@@ -363,38 +410,86 @@ func TestPluginHistoryDownsamplesAtQueryTimeAndAppliesLimitToNewest(t *testing.T
 	assert.Equal(t, []float64{20, 30}, cpu.CpuBreakdown)
 	assert.Equal(t, []uint8{20, 30}, []uint8(cpu.CpuCoresUsage))
 	assert.Equal(t, []float64{3300, 2200}, cpu.CpuFrequencies)
+	assert.Empty(t, tierRows(t, store, plugins.CPU, "20m"))
+	assert.Empty(t, tierRows(t, store, plugins.CPU, "60m"))
+
+	// At minute 61 the hour has closed: the second 10m bucket, then the 20m
+	// bucket from both 10m rows, then the hour from that 20m row.
+	at := time.UnixMilli(rollupBase + 61*60_000)
+	require.NoError(t, store.Rollup(t.Context(), at))
+	require.NoError(t, store.Rollup(t.Context(), at), "a second pass changes nothing")
+	assert.Len(t, tierRows(t, store, plugins.CPU, "10m"), 2)
+	for _, resolution := range []string{"20m", "60m"} {
+		rows := tierRows(t, store, plugins.CPU, resolution)
+		require.Len(t, rows, 1, resolution)
+		assert.Equal(t, rollupBase+600_000, rows[0].CapturedAt, resolution)
+		require.NoError(t, json.Unmarshal(rows[0].Stats, &cpu))
+		assert.InDelta(t, 30, cpu.Cpu, 0.001, resolution)
+	}
 }
 
-func TestPluginHistoryDownsamplesContainersByStableIdentityAndPresence(t *testing.T) {
-	tmpDir := t.TempDir()
-	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.Containers}})
+// A row that does not decode costs its own bucket; the next bucket and the
+// next tier still roll up.
+func TestRollupSkipsABucketThatDoesNotDecode(t *testing.T) {
+	store, err := OpenStore(t.Context(), t.TempDir(), Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	defer store.Close()
-	base := int64(1_700_000_000_000)
-	samples := []string{
-		`[{"id":"c1","name":"web","image":"v1","cpu_percent":10,"memory_mb":100},{"id":"c2","name":"job","cpu_percent":50,"memory_mb":200}]`,
-		`[{"id":"c1","name":"web","image":"v2","cpu_percent":30,"memory_mb":300}]`,
-	}
-	for i, sample := range samples {
-		_, err = store.db.Exec("INSERT INTO containers_history (resolution, captured_at, stats_json) VALUES ('1m', ?, ?)", base+int64(i)*60_000, sample)
-		require.NoError(t, err)
-	}
+	insertRow(t, store, plugins.CPU, "1m", rollupBase, `{"cpu_percent":"not a number"}`)
+	insertRow(t, store, plugins.CPU, "1m", rollupBase+10*60_000, `{"cpu_percent":20}`)
 
-	rows, err := store.PluginHistory(context.Background(), plugins.Containers, "10m", base, base+120_000, 10)
+	require.NoError(t, store.Rollup(t.Context(), time.UnixMilli(rollupBase+20*60_000)))
+	rows := tierRows(t, store, plugins.CPU, "10m")
+	require.Len(t, rows, 1)
+	assert.Equal(t, rollupBase+10*60_000, rows[0].CapturedAt)
+	require.Len(t, tierRows(t, store, plugins.CPU, "20m"), 1)
+}
+
+func TestRollupAfterARestartNeitherRepeatsNorSkipsABucket(t *testing.T) {
+	dir := t.TempDir()
+	store, err := OpenStore(t.Context(), dir, Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
+	insertRow(t, store, plugins.CPU, "1m", rollupBase, `{"cpu_percent":10}`)
+	require.NoError(t, store.Rollup(t.Context(), time.UnixMilli(rollupBase+10*60_000)))
+	insertRow(t, store, plugins.CPU, "1m", rollupBase+10*60_000, `{"cpu_percent":20}`)
+	require.NoError(t, store.Close())
+
+	store, err = OpenStore(t.Context(), dir, Options{HistoryPlugins: []string{plugins.CPU}})
+	require.NoError(t, err)
+	defer store.Close()
+	// The first bucket is rolled up already; the second closed while stopped.
+	require.NoError(t, store.Rollup(t.Context(), time.UnixMilli(rollupBase+25*60_000)))
+	rows := tierRows(t, store, plugins.CPU, "10m")
+	require.Len(t, rows, 2)
+	assert.Equal(t, []int64{rollupBase, rollupBase + 10*60_000}, []int64{rows[0].CapturedAt, rows[1].CapturedAt})
+}
+
+// A container in a rollup is keyed by name, so one recreated under a new ID
+// stays one series with the newest record's ID and details, and is divided by
+// every row of the bucket, so one absent from a row counts as zero there.
+func TestRollupAveragesContainersByNameOverEveryRow(t *testing.T) {
+	store, err := OpenStore(t.Context(), t.TempDir(), Options{HistoryPlugins: []string{plugins.Containers}})
+	require.NoError(t, err)
+	defer store.Close()
+	insertRow(t, store, plugins.Containers, "1m", rollupBase, `[{"id":"c1","name":"web","image":"v1","cpu_percent":10,"memory_mb":100},{"id":"c2","name":"job","cpu_percent":50,"memory_mb":200}]`)
+	insertRow(t, store, plugins.Containers, "1m", rollupBase+60_000, `[{"id":"c3","name":"web","image":"v2","cpu_percent":30,"memory_mb":300}]`)
+
+	require.NoError(t, store.Rollup(t.Context(), time.UnixMilli(rollupBase+10*60_000)))
+	rows := tierRows(t, store, plugins.Containers, "10m")
 	require.Len(t, rows, 1)
 	var records []struct {
 		ID    string  `json:"id"`
+		Name  string  `json:"name"`
 		Image string  `json:"image"`
 		Cpu   float64 `json:"cpu_percent"`
 	}
 	require.NoError(t, json.Unmarshal(rows[0].Stats, &records))
 	require.Len(t, records, 2)
-	assert.Equal(t, "c1", records[0].ID)
-	assert.Equal(t, "v2", records[0].Image, "latest metadata should be retained")
-	assert.InDelta(t, 20, records[0].Cpu, 0.001)
-	assert.Equal(t, "c2", records[1].ID)
-	assert.InDelta(t, 50, records[1].Cpu, 0.001, "an absent entity is not a zero sample")
+	assert.Equal(t, "c2", records[0].ID)
+	assert.InDelta(t, 25, records[0].Cpu, 0.001, "a container absent from a row counts as zero there")
+	assert.Equal(t, "c3", records[1].ID, "a recreated container keeps its newest ID")
+	assert.Equal(t, "web", records[1].Name)
+	assert.Equal(t, "v2", records[1].Image, "latest metadata should be retained")
+	assert.InDelta(t, 20, records[1].Cpu, 0.001)
 }
 
 func TestRecoverableStoreOpenErrorMatchesMattnCodes(t *testing.T) {
@@ -412,39 +507,27 @@ func TestRecoverableStoreOpenErrorMatchesMattnCodes(t *testing.T) {
 	}
 }
 
-func TestPluginHistoryBoundsTheScanToTheNewestRowsAndBuckets(t *testing.T) {
-	tmpDir := t.TempDir()
-	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
+func TestPluginHistoryReturnsTheNewestStoredRowsOfOneTier(t *testing.T) {
+	store, err := OpenStore(t.Context(), t.TempDir(), Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	defer store.Close()
-	base := int64(1_700_000_000_000)
-	insert := func(at int64, cpu int) {
-		_, execErr := store.db.Exec("INSERT INTO cpu_history (resolution, captured_at, stats_json) VALUES ('1m', ?, ?)", at,
-			fmt.Sprintf(`{"cpu_percent":%d,"max_cpu_percent":%d,"cpu_breakdown_percent":[%d,0],"cpu_cores_percent":[%d,0]}`, cpu, cpu, cpu, cpu))
-		require.NoError(t, execErr)
-	}
-	// One sample two buckets back, then five contiguous minutes; the bucket
-	// between them stays empty.
-	insert(base-1_200_000, 1)
 	for i := range 5 {
-		insert(base+int64(i)*60_000, 10+i)
+		insertRow(t, store, plugins.CPU, "1m", rollupBase+int64(i)*60_000, fmt.Sprintf(`{"cpu_percent":%d}`, i))
+		insertRow(t, store, plugins.CPU, "10m", rollupBase+int64(i)*600_000, fmt.Sprintf(`{"cpu_percent":%d}`, 10+i))
 	}
-	to := base + 600_000
 
-	rows, err := store.PluginHistory(context.Background(), plugins.CPU, resolution1m, 0, to, 2)
+	rows, err := store.PluginHistory(t.Context(), plugins.CPU, resolution1m, 0, rollupBase+180_000, 2)
 	require.NoError(t, err)
-	require.Len(t, rows, 2)
-	assert.Equal(t, []int64{base + 180_000, base + 240_000}, []int64{rows[0].CapturedAt, rows[1].CapturedAt}, "newest rows, ascending")
+	assert.Equal(t, []int64{rollupBase + 120_000, rollupBase + 180_000}, []int64{rows[0].CapturedAt, rows[1].CapturedAt}, "newest rows within the range, ascending")
 
-	rows, err = store.PluginHistory(context.Background(), plugins.CPU, "10m", 0, to, 1)
+	rows, err = store.PluginHistory(t.Context(), plugins.CPU, "10m", rollupBase+600_000, rollupBase+24*3_600_000, 10)
 	require.NoError(t, err)
-	require.Len(t, rows, 1)
-	assert.Equal(t, base+240_000, rows[0].CapturedAt, "newest bucket only")
+	require.Len(t, rows, 4, "the stored 10m rows from the start of the range, nothing averaged at read")
+	assert.JSONEq(t, `{"cpu_percent":11}`, string(rows[0].Stats))
 
-	rows, err = store.PluginHistory(context.Background(), plugins.CPU, "10m", 0, to, 2)
+	rows, err = store.PluginHistory(t.Context(), plugins.CPU, "60m", 0, rollupBase+24*3_600_000, 10)
 	require.NoError(t, err)
-	require.Len(t, rows, 2)
-	assert.Equal(t, []int64{base - 1_200_000, base + 240_000}, []int64{rows[0].CapturedAt, rows[1].CapturedAt}, "the two newest non-empty buckets, skipping the empty one")
+	assert.Empty(t, rows)
 }
 
 func TestWriteSnapshotHonoursHistoryEvery(t *testing.T) {
@@ -459,7 +542,7 @@ func TestWriteSnapshotHonoursHistoryEvery(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Minute).Add(-time.Hour)
 	for i := range 4 {
 		capturedAt := start.Add(time.Duration(i) * time.Minute).UnixMilli()
-		require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(float64(i))))
+		require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(float64(i)), store.BeginTick()))
 	}
 	end := start.Add(time.Hour).UnixMilli()
 
@@ -475,7 +558,7 @@ func TestWriteSnapshotHonoursHistoryEvery(t *testing.T) {
 
 	// Reload to every tick: the next snapshot writes mem again.
 	store.SetHistoryEvery(nil)
-	require.NoError(t, store.WriteSnapshot(t.Context(), start.Add(4*time.Minute).UnixMilli(), storetest.SampleCombinedData(4)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), start.Add(4*time.Minute).UnixMilli(), storetest.SampleCombinedData(4), store.BeginTick()))
 	mem, err = store.PluginHistory(ctx, plugins.Mem, resolution1m, 0, end, 10)
 	require.NoError(t, err)
 	assert.Len(t, mem, 3)

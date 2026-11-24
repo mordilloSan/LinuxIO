@@ -291,6 +291,27 @@ func TestLiveInterfaceInfoAlwaysSerialisesArrays(t *testing.T) {
 	}
 }
 
+func TestInterfaceMasterNamesTheBridgeAPortBelongsTo(t *testing.T) {
+	// A card that is a bridge port has no address of its own: the kernel
+	// links the port's sysfs folder to its bridge through "master".
+	sysfs := t.TempDir()
+	for _, name := range []string{"enp2s0", "eth1"} {
+		if err := os.Mkdir(filepath.Join(sysfs, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("../../../virtual/net/br-enp2s0", filepath.Join(sysfs, "enp2s0", "master")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := interfaceMaster(sysfs, "enp2s0"); got != "br-enp2s0" {
+		t.Fatalf("expected br-enp2s0 for the bridge port, got %q", got)
+	}
+	if got := interfaceMaster(sysfs, "eth1"); got != "" {
+		t.Fatalf("expected no master for a card on its own, got %q", got)
+	}
+}
+
 type networkConfigRunner struct {
 	calls []string
 }

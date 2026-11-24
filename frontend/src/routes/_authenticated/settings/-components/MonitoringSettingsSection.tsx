@@ -229,6 +229,9 @@ const nextListenerName = (listeners: MonitoringListener[]) => {
   return `${DEFAULT_LISTENER_NAME}-${n}`;
 };
 
+/** collector.interval's lower bound, config.MinCollectorInterval in the daemon. */
+const MIN_COLLECTOR_INTERVAL_MS = 15_000;
+
 const validateDraft = (draft: DraftConfig): DraftErrors => {
   const errors: DraftErrors = {};
 
@@ -237,6 +240,9 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
     errors.collector_interval = "Collector interval is required.";
   } else if (!isGoDuration(interval) || interval === "0") {
     errors.collector_interval = "Use a duration like 15s, 1m, or 5m.";
+  } else if ((goDurationToMs(interval) ?? 0) < MIN_COLLECTOR_INTERVAL_MS) {
+    // Every tick writes a history row; the daemon refuses anything shorter.
+    errors.collector_interval = "Use 15s or longer.";
   }
 
   const smartRefreshInterval = draft.smart_refresh_interval.trim();
@@ -756,8 +762,10 @@ const MonitoringSettingsSection = () => {
         title="Listeners"
       >
         <SettingsNote title="About listener access">
-          Listeners are unauthenticated. Anyone who can reach the address can
-          read the selected metrics.
+          Listeners are unauthenticated. Anyone who can reach the address, and
+          any local user through the loopback, can read what a listener serves.
+          A listener with no plugins selected serves all of them, including the
+          stored history and every process&apos;s command line.
         </SettingsNote>
         {draft.listeners.length === 0 ? (
           <AppTypography
@@ -813,7 +821,7 @@ const MonitoringSettingsSection = () => {
                         fullWidth
                         helperText={
                           errors.listener_addresses?.[index] ??
-                          "Listens on every interface."
+                          "Listens on every interface, without authentication."
                         }
                         label="Port"
                         onChange={(event) =>
@@ -928,7 +936,7 @@ const MonitoringSettingsSection = () => {
                 value={draft.disk_usage_cache}
               />
             </AppTooltip>
-            <AppTooltip title="How long one-minute history is retained">
+            <AppTooltip title="How long hourly history is kept; finer history is kept for a day at most">
               <AppTextField
                 disabled={busy}
                 error={Boolean(errors.history_retention)}

@@ -5,10 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestMdraidMockSysfsScanAndCollect(t *testing.T) {
+// fakeMdraidSysfs points the md reader at a sysfs tree holding md0, a
+// two-disk raid1 that is resyncing.
+func fakeMdraidSysfs(t *testing.T) {
+	t.Helper()
 	tmp := t.TempDir()
 	prev := mdraidSysfsRoot
 	mdraidSysfsRoot = tmp
@@ -16,20 +20,13 @@ func TestMdraidMockSysfsScanAndCollect(t *testing.T) {
 
 	mdDir := filepath.Join(tmp, "block", "md0", "md")
 	queueDir := filepath.Join(tmp, "block", "md0", "queue")
-	if err := os.MkdirAll(mdDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(queueDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(mdDir, 0o755))
+	require.NoError(t, os.MkdirAll(queueDir, 0o755))
 
 	write := func(path, content string) {
 		t.Helper()
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 	}
-
 	write(filepath.Join(mdDir, "array_state"), "active\n")
 	write(filepath.Join(mdDir, "level"), "raid1\n")
 	write(filepath.Join(mdDir, "raid_disks"), "2\n")
@@ -40,44 +37,23 @@ func TestMdraidMockSysfsScanAndCollect(t *testing.T) {
 	write(filepath.Join(mdDir, "mismatch_cnt"), "0\n")
 	write(filepath.Join(queueDir, "logical_block_size"), "4096\n") // size is always 512-byte units
 	write(filepath.Join(tmp, "block", "md0", "size"), "2048\n")
+}
+
+func TestMdraidMockSysfsScanAndCollect(t *testing.T) {
+	fakeMdraidSysfs(t)
 
 	devs := scanMdraidDevices()
-	if len(devs) != 1 {
-		t.Fatalf("scanMdraidDevices() = %d devices, want 1", len(devs))
-	}
-	if devs[0].Name != "/dev/md0" || devs[0].Type != "mdraid" {
-		t.Fatalf("scanMdraidDevices()[0] = %+v, want Name=/dev/md0 Type=mdraid", devs[0])
-	}
+	require.Equal(t, []string{"/dev/md0"}, devs)
 
-	sm := &Manager{SmartDataMap: map[string]*smartmodel.SmartData{}}
-	ok, err := sm.collectMdraidHealth(devs[0])
-	if err != nil || !ok {
-		t.Fatalf("collectMdraidHealth() = (ok=%v, err=%v), want (true,nil)", ok, err)
-	}
-	if len(sm.SmartDataMap) != 1 {
-		t.Fatalf("SmartDataMap len=%d, want 1", len(sm.SmartDataMap))
-	}
-	var got *smartmodel.SmartData
-	for _, v := range sm.SmartDataMap {
-		got = v
-		break
-	}
-	if got == nil {
-		t.Fatalf("SmartDataMap value nil")
-		return
-	}
-	if got.DiskType != "mdraid" || got.DiskName != "/dev/md0" {
-		t.Fatalf("disk fields = (type=%q name=%q), want (mdraid,/dev/md0)", got.DiskType, got.DiskName)
-	}
-	if got.SmartStatus != "WARNING" {
-		t.Fatalf("SmartStatus=%q, want WARNING", got.SmartStatus)
-	}
-	if got.ModelName == "" || got.Capacity != 2048*512 {
-		t.Fatalf("identity fields = (model=%q cap=%d), want non-empty model and cap=2048*512", got.ModelName, got.Capacity)
-	}
-	if len(got.Attributes) < 5 {
-		t.Fatalf("attributes len=%d, want >= 5", len(got.Attributes))
-	}
+	key, got, ok := readMdraidSmartData(devs[0])
+	require.True(t, ok)
+	assert.Equal(t, "mdraid:md0", key)
+	assert.Equal(t, "mdraid", got.DiskType)
+	assert.Equal(t, "/dev/md0", got.DiskName)
+	assert.Equal(t, "WARNING", got.SmartStatus)
+	assert.NotEmpty(t, got.ModelName)
+	assert.Equal(t, uint64(2048*512), got.Capacity)
+	assert.GreaterOrEqual(t, len(got.Attributes), 5)
 }
 
 func TestMdraidSmartStatus(t *testing.T) {

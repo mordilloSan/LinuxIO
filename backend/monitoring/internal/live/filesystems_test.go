@@ -27,6 +27,11 @@ func TestIsPseudoFSKeepsRealNetworkAndBlockMounts(t *testing.T) {
 	}{
 		{partition: psutilDisk.PartitionStat{Device: "proc", Fstype: "proc"}, pseudo: true},
 		{partition: psutilDisk.PartitionStat{Device: "overlay", Fstype: "overlay"}, pseudo: true},
+		{partition: psutilDisk.PartitionStat{Device: "binfmt_misc", Fstype: "binfmt_misc"}, pseudo: true},
+		{partition: psutilDisk.PartitionStat{Device: "efivarfs", Fstype: "efivarfs"}, pseudo: true},
+		{partition: psutilDisk.PartitionStat{Device: "hugetlbfs", Fstype: "hugetlbfs"}, pseudo: true},
+		{partition: psutilDisk.PartitionStat{Device: "mqueue", Fstype: "mqueue"}, pseudo: true},
+		{partition: psutilDisk.PartitionStat{Device: "sunrpc", Fstype: "rpc_pipefs"}, pseudo: true},
 		{partition: psutilDisk.PartitionStat{Device: "/dev/nvme0n1p1", Fstype: "ext4"}},
 		{partition: psutilDisk.PartitionStat{Device: "server:/export", Fstype: "nfs4"}},
 	}
@@ -112,5 +117,72 @@ func TestFilesystemInfoDoesNotHoldAppLockDuringUsage(t *testing.T) {
 	items := filesystems.Info(context.Background(), &mu, fakeTracker{})
 	if len(items) != 1 || lockedDuringUsage {
 		t.Fatalf("items = %#v, app lock held during usage = %v", items, lockedDuringUsage)
+	}
+}
+
+// A mount whose statfs does not return costs its own row: the collection that
+// started the call waits statfsWait for it, later ones do not wait at all and
+// start no second call, and the answer is served once it comes.
+func TestFilesystemInfoDoesNotWaitOnADeadMount(t *testing.T) {
+	partitions := []psutilDisk.PartitionStat{
+		{Device: "/dev/root", Mountpoint: "/", Fstype: "ext4"},
+		{Device: "server:/export", Mountpoint: "/mnt/nfs", Fstype: "nfs4"},
+	}
+	release := make(chan struct{})
+	var mu sync.Mutex
+	nfsCalls := 0
+	oldPartitions, oldUsage, oldWait := livePartitions, liveDiskUsage, statfsWait
+	livePartitions = func(context.Context, bool) ([]psutilDisk.PartitionStat, error) {
+		return append([]psutilDisk.PartitionStat(nil), partitions...), nil
+	}
+	liveDiskUsage = func(_ context.Context, mountpoint string) (*psutilDisk.UsageStat, error) {
+		if mountpoint == "/mnt/nfs" {
+			mu.Lock()
+			nfsCalls++
+			mu.Unlock()
+			<-release
+		}
+		return &psutilDisk.UsageStat{Total: 100, Used: 10, Free: 90}, nil
+	}
+	statfsWait = 50 * time.Millisecond
+	t.Cleanup(func() { livePartitions, liveDiskUsage, statfsWait = oldPartitions, oldUsage, oldWait })
+
+	var filesystems Filesystems
+	var appMu sync.Mutex
+	mounts := func() []string {
+		var out []string
+		for _, item := range filesystems.Info(context.Background(), &appMu, fakeTracker{}) {
+			out = append(out, item.Mountpoint)
+		}
+		return out
+	}
+
+	if got := mounts(); !reflect.DeepEqual(got, []string{"/"}) {
+		t.Fatalf("first listing = %v, want the root only", got)
+	}
+	start := time.Now()
+	if got := mounts(); !reflect.DeepEqual(got, []string{"/"}) {
+		t.Fatalf("second listing = %v, want the root only", got)
+	}
+	if waited := time.Since(start); waited >= statfsWait {
+		t.Fatalf("second listing waited %v on a call already running", waited)
+	}
+	mu.Lock()
+	calls := nfsCalls
+	mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("statfs calls on the dead mount = %d, want 1", calls)
+	}
+
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if got := mounts(); reflect.DeepEqual(got, []string{"/", "/mnt/nfs"}) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the mount's late answer was never served")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

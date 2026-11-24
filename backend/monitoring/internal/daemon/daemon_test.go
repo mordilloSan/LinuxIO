@@ -28,10 +28,12 @@ func TestListenersAlwaysIncludeFixedSockets(t *testing.T) {
 	if api.Address != "unix:"+monitoringapi.APISocketPath || api.Mode != config.APISocketMode || api.RootOnly || api.Plugins != nil || len(api.APIs) != 1 || api.APIs[0] != "metrics" {
 		t.Fatalf("api = %+v", api)
 	}
-	if control.Address != "unix:"+monitoringapi.ControlSocketPath || control.Mode != config.ControlSocketMode || !control.RootOnly || len(control.APIs) != 2 {
+	// History is on control.sock and configured listeners, never on the
+	// world-connectable api.sock.
+	if control.Address != "unix:"+monitoringapi.ControlSocketPath || control.Mode != config.ControlSocketMode || !control.RootOnly || !slices.Equal(control.APIs, []string{"metrics", "history", "commands"}) {
 		t.Fatalf("control = %+v", control)
 	}
-	if homepage.Address != "0.0.0.0:45876" || homepage.RootOnly || len(homepage.APIs) != 1 || homepage.APIs[0] != "metrics" || homepage.Plugins[0] != "cpu" {
+	if homepage.Address != "0.0.0.0:45876" || homepage.RootOnly || !slices.Equal(homepage.APIs, []string{"metrics", "history"}) || homepage.Plugins[0] != "cpu" {
 		t.Fatalf("homepage = %+v", homepage)
 	}
 	// A configured address that cannot bind must not take the fixed sockets

@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 import "@/icons/icons";
 import "@/icons/shell";
 
-import { VM_OS_OPTIONS, isValidVMName, vmOSIcon, vmOSLabel } from "./vmShared";
+import {
+  VM_OS_OPTIONS,
+  isValidVMName,
+  vmOSColor,
+  vmOSIcon,
+  vmOSLabel,
+} from "./vmShared";
 
 describe("isValidVMName", () => {
   it("applies the bridge rule", () => {
@@ -23,11 +29,21 @@ describe("isValidVMName", () => {
 
 describe("vmOSIcon", () => {
   it("maps OS ids to logos and falls back sensibly", () => {
-    expect(vmOSIcon("ubuntu")).toBe("simple-icons:ubuntu");
+    expect(vmOSIcon("ubuntu")).toBe("mdi:ubuntu");
     expect(vmOSIcon("homeassistant")).toBe("simple-icons:homeassistant");
     expect(vmOSIcon("win")).toBe("mdi:microsoft-windows");
     expect(vmOSIcon("silverblue")).toBe("simple-icons:linux");
     expect(vmOSIcon(undefined)).toBe("mdi:monitor");
+  });
+});
+
+describe("vmOSColor", () => {
+  it("gives a logo its brand colour and a dark or unknown one the fallback", () => {
+    expect(vmOSColor("ubuntu", "fallback")).toBe("#E95420");
+    expect(vmOSColor("homeassistant", "fallback")).toBe("#18BCF2");
+    expect(vmOSColor("win", "fallback")).toBe("#0078D4");
+    expect(vmOSColor("almalinux", "fallback")).toBe("fallback");
+    expect(vmOSColor(undefined, "fallback")).toBe("fallback");
   });
 });
 

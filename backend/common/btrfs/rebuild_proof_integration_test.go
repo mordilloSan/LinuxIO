@@ -722,7 +722,9 @@ func devt(dev string) string {
 // member's devid onto it with the dead source read always (_ALWAYS, which
 // btrfs replace start uses; LinuxIO's Replace avoids a missing source)
 // rebuilds the pool. Before that, the failure cases that need the disk out:
-// a smaller target and clones of members.
+// a smaller target and clones of members. Since 7.1 the kernel calls the
+// member missing at the pull, so what is written meanwhile goes to single
+// chunks, which the replace leaves and the resync converts, as here.
 func (r *rebuildRig) notMissing() {
 	t := r.t
 	vdc, vdd := r.disks["vdc"], r.disks["vdd"]
@@ -751,6 +753,7 @@ func (r *rebuildRig) notMissing() {
 	r.must("rebuild onto the returned disk", err)
 	_, err = ReplaceResult(r.ctx, r.uuid, 2, returned)
 	r.must("replace result", err)
+	r.convertIfMixed()
 	r.checkWhole("after rebuild 1 (not missing, source read always)", []int{1, 2}, raid1)
 	if di, _ := r.devInfo(2); formatUUID(di.UUID[:]) != devUUID {
 		t.Logf("member 2's device UUID changed from %s to %s", devUUID, formatUUID(di.UUID[:]))

@@ -41,6 +41,7 @@ const firstPeer: Peer = {
 const wg0: WireGuardInterface = {
   address: "10.10.20.0/24",
   dns: [],
+  egressNic: "eth0",
   forwardingOff: false,
   hooks: { PreUp: [], PostUp: [], PreDown: [], PostDown: [] },
   host: "",
@@ -225,6 +226,36 @@ describe("CreateInterfaceButton", () => {
 
     expect(advanced).toHaveAttribute("aria-expanded", "true");
     expect(within(dialog).getByLabelText("CIDR")).toHaveValue("");
+  });
+
+  it("sends the traffic through the card that holds the default route", async () => {
+    // A LAN card that is a port of a host bridge: the bridge has the address
+    // and the gateway, and libvirt's NAT bridge must not win.
+    fakeBackend({
+      nics: [
+        testNetworkInterface({ name: "enp2s0" }),
+        testNetworkInterface({
+          gateway: "192.168.1.1",
+          ipv4: ["192.168.1.66/24"],
+          name: "br-enp2s0",
+        }),
+        testNetworkInterface({ ipv4: ["192.168.122.1/24"], name: "virbr0" }),
+      ],
+    });
+    const view = render(<CreateInterfaceButton interfaces={[]} />);
+
+    await view.user.click(
+      screen.getByRole("button", { name: "Create New Interface" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create New Interface",
+    });
+
+    expect(
+      await within(dialog).findByText(
+        "Port 51820 · 10.10.20.0/24 · through br-enp2s0",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("opens Advanced by itself when no NIC is available", async () => {

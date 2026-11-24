@@ -18,6 +18,7 @@ import {
   formatMemory,
   normalizeState,
   vmIPAddresses,
+  vmOSColor,
   vmOSIcon,
   vmOSLabel,
 } from "./vmShared";
@@ -135,7 +136,7 @@ export default function VMCard({
               }}
             >
               <Icon
-                color="var(--app-palette-primary-main)"
+                color={vmOSColor(vm.os, "var(--app-palette-primary-main)")}
                 height={36}
                 icon={vmOSIcon(vm.os)}
                 width={36}
@@ -189,7 +190,7 @@ export default function VMCard({
         <>
           <div style={{ alignItems: "center", display: "flex", width: "100%" }}>
             <Icon
-              color="var(--app-palette-primary-main)"
+              color={vmOSColor(vm.os, "var(--app-palette-primary-main)")}
               height={48}
               icon={vmOSIcon(vm.os)}
               style={{ alignSelf: "flex-start", flexShrink: 0, marginRight: 6 }}

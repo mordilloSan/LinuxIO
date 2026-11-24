@@ -7,7 +7,6 @@ Plans for things that are not built yet each have their own document:
 
 - [Frontend test coverage](./e2e-testing.md)
 - [Watched conditions: checks that raise alerts on a schedule](./watched-conditions.md)
-- [Monitoring rework: Beszel's fixes, a smaller history store and cheaper scans](./monitoring-rework.md)
 
 ## Dependency maintenance
 

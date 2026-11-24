@@ -121,7 +121,7 @@ func newHTTPTestServer(t *testing.T) *Server {
 
 	capturedAt := time.Now().UTC().UnixMilli()
 	data := storetest.SampleCombinedData(55)
-	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, data))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, data, store.BeginTick()))
 
 	payloads := make(map[string]jsontext.Value)
 	for name, payload := range plugins.Snapshot(data) {
@@ -191,7 +191,7 @@ func TestCurrentRoutesUseCurrentReaderAndHistoryUsesStore(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(55)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(55), store.BeginTick()))
 
 	current := &fakeCurrentReader{
 		capturedAt: 123,
@@ -206,7 +206,7 @@ func TestCurrentRoutesUseCurrentReaderAndHistoryUsesStore(t *testing.T) {
 		SmartRefresher: fakeSmartRefresher{current: current},
 		DataDir:        tmpDir,
 	})
-	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics"}, nil)
+	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics", "history"}, nil)
 
 	cpuReq := httptest.NewRequest(http.MethodGet, "/api/v1/cpu", nil)
 	cpuRec := httptest.NewRecorder()
@@ -245,10 +245,42 @@ func TestMetaReportsActiveStoreRetention(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), `"retention":{"1m":"336h0m0s"}`)
 	var status monitoringapi.Status
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &status))
+	assert.Equal(t, map[string]string{"1m": "24h0m0s", "10m": "12h0m0s", "20m": "24h0m0s", "60m": "336h0m0s"}, status.Retention)
 	assert.Positive(t, status.DBSizeBytes)
+}
+
+// api.sock is world-connectable and mounts "metrics" without "history"; the
+// stored history is read over control.sock or a configured listener only.
+func TestHistoryRoutesNeedTheHistoryAPI(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storepkg.OpenStore(t.Context(), tmpDir, storepkg.Options{HistoryPlugins: []string{plugins.CPU}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	require.NoError(t, store.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(55), store.BeginTick()))
+
+	server := NewServer(Options{Metrics: store, Current: fakeCurrentReader{}, DataDir: tmpDir})
+	interval := func() time.Duration { return time.Minute }
+	const historyPath = "/api/v1/cpu/history?resolution=1m&from=0&to=9999999999999&limit=10"
+
+	metricsOnly := server.HandlerFor(interval, []string{"metrics"}, nil)
+	rec := httptest.NewRecorder()
+	metricsOnly.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, historyPath, nil))
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	rec = httptest.NewRecorder()
+	metricsOnly.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/plugins", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"name":"cpu","has_history":false`)
+	assert.NotContains(t, rec.Body.String(), "/history")
+
+	withHistory := server.HandlerFor(interval, []string{"metrics", "history"}, nil)
+	rec = httptest.NewRecorder()
+	withHistory.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, historyPath, nil))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	rec = httptest.NewRecorder()
+	withHistory.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/plugins", nil))
+	assert.Contains(t, rec.Body.String(), `"GET /api/v1/cpu/history"`)
 }
 
 func TestHistoryRoutesReflectUpdatedHistoryAllowlist(t *testing.T) {
@@ -258,14 +290,14 @@ func TestHistoryRoutesReflectUpdatedHistoryAllowlist(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(55)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(55), store.BeginTick()))
 
 	server := NewServer(Options{
 		Metrics: store,
 		Current: fakeCurrentReader{},
 		DataDir: tmpDir,
 	})
-	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics"}, nil)
+	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics", "history"}, nil)
 
 	pluginsReq := httptest.NewRequest(http.MethodGet, "/api/v1/plugins", nil)
 	pluginsRec := httptest.NewRecorder()
@@ -279,7 +311,7 @@ func TestHistoryRoutesReflectUpdatedHistoryAllowlist(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, disabledRec.Code)
 
 	store.SetHistoryPlugins([]string{plugins.CPU, plugins.Swap})
-	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt+1, storetest.SampleCombinedData(60)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt+1, storetest.SampleCombinedData(60), store.BeginTick()))
 
 	pluginsReq = httptest.NewRequest(http.MethodGet, "/api/v1/plugins", nil)
 	pluginsRec = httptest.NewRecorder()
@@ -302,11 +334,11 @@ func TestHistoryQueryValidationAndLimit(t *testing.T) {
 
 	start := time.Now().UTC().Truncate(time.Millisecond)
 	for i := range 3 {
-		require.NoError(t, store.WriteSnapshot(t.Context(), start.Add(time.Duration(i)*time.Millisecond).UnixMilli(), storetest.SampleCombinedData(float64(i+1))))
+		require.NoError(t, store.WriteSnapshot(t.Context(), start.Add(time.Duration(i)*time.Millisecond).UnixMilli(), storetest.SampleCombinedData(float64(i+1)), store.BeginTick()))
 	}
 
 	server := NewServer(Options{Metrics: store, Current: fakeCurrentReader{}, DataDir: tmpDir})
-	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics"}, nil)
+	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics", "history"}, nil)
 
 	tests := []struct {
 		name   string
@@ -316,7 +348,7 @@ func TestHistoryQueryValidationAndLimit(t *testing.T) {
 		body   string
 	}{
 		{name: "negative limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=-1", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
-		{name: "oversized limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=1001", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
+		{name: "oversized limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=6001", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
 		{name: "from after to", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&from=20&to=10", status: http.StatusBadRequest, body: `"error":"from must be <= to"`},
 		{name: "unknown plugin", method: http.MethodGet, path: "/api/v1/nope/history?resolution=1m", status: http.StatusNotFound, body: "404 page not found"},
 		{name: "method not allowed", method: http.MethodPost, path: "/api/v1/cpu/history?resolution=1m", status: http.StatusMethodNotAllowed, body: `"error":"method not allowed"`},
@@ -518,15 +550,39 @@ func TestAllRouteBatchesCurrentReads(t *testing.T) {
 	assert.Zero(t, current.currentCalls)
 	assert.NotContains(t, current.batchPlugins, plugins.Processes)
 	assert.NotContains(t, current.batchPlugins, plugins.Programs)
+	assert.NotContains(t, current.batchPlugins, plugins.ContainerTelemetry, "the process scan runs only on request")
 	body := rec.Body.String()
 	assert.Contains(t, body, `"mem":{"captured_at":123,"data":{"memory_gb":16}}`)
 	assert.Contains(t, body, `"cpu":"internal server error"`)
 	assert.NotContains(t, body, "private failure")
 }
 
+func TestAllRouteIncludesContainerTelemetryOnRequest(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	current := &batchCurrentReader{base: fakeCurrentReader{capturedAt: 123, plugins: map[string]jsontext.Value{
+		plugins.ContainerTelemetry: jsontext.Value(`[]`),
+	}}}
+	handler := NewServer(Options{Metrics: store, Current: current, DataDir: tmpDir}).
+		HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics"}, nil)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/all?include=container_telemetry", nil))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, current.batchPlugins, plugins.ContainerTelemetry)
+	assert.Contains(t, rec.Body.String(), `"container_telemetry":{"captured_at":123,"items":[]}`)
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/all?include=processes", nil))
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"error":"invalid include"`)
+}
+
 func TestHTTPRoutes(t *testing.T) {
 	server := newHTTPTestServer(t)
-	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics"}, nil)
+	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics", "history"}, nil)
 
 	tests := []struct {
 		name   string

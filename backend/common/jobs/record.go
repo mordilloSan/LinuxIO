@@ -12,7 +12,7 @@ const (
 	// Protocol is the job host protocol of this build. It goes up when a frame
 	// changes shape or a route moves between the bridge and the host, so a host
 	// of another build answers update_pending instead of serving it.
-	Protocol                 = 2
+	Protocol                 = 3
 	TerminalRetention        = 30 * 24 * time.Hour
 	MaxTerminalRecordsPerUID = 200
 	TransientMaxDuration     = time.Second

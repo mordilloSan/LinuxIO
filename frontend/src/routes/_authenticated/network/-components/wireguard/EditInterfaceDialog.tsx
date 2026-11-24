@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import {
@@ -16,10 +17,12 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
 import { isMtuValid } from "./CreateInterfaceDialog";
+import { getEgressNICOptions } from "./wireguardEgressNICs";
 
 const WIREGUARD_TOAST_META = {
   label: "Open WireGuard",
@@ -53,6 +56,21 @@ const isDnsList = (value: string) =>
 const parsePort = (value: string): number | null =>
   /^\d+$/.test(value.trim()) ? Number(value) : null;
 
+// The server's tunnel address: the first host of an IPv4 subnet from /24 to
+// /30, or the subnet itself, which stands for it.
+const isServerAddress = (value: string) => {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(
+    value,
+  );
+  if (!match) return false;
+  const octets = match.slice(1, 5).map(Number);
+  const prefix = Number(match[5]);
+  if (octets.some((octet) => octet > 255) || prefix < 24 || prefix > 30) {
+    return false;
+  }
+  return ((octets[3] ?? 0) & ((1 << (32 - prefix)) - 1)) <= 1;
+};
+
 // One field per wg-quick hook kind, in the order the config file lists them.
 // Keyed by the generated union, so typecheck fails when the backend adds or
 // drops a kind.
@@ -75,6 +93,9 @@ const EditInterfaceDialog = ({
   open,
 }: EditInterfaceDialogProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
+  const currentAddress = iface.address.split(",")[0]?.trim() ?? "";
+  const [address, setAddress] = useState(currentAddress);
+  const [nic, setNic] = useState(iface.egressNic);
   const [host, setHost] = useState(iface.host);
   const [dns, setDns] = useState(iface.dns.join(", "));
   const [mtu, setMtu] = useState(iface.mtu ? String(iface.mtu) : "");
@@ -87,6 +108,22 @@ const EditInterfaceDialog = ({
   );
   const [error, setError] = useState<string | null>(null);
 
+  // The card can move only where LinuxIO wrote the NAT lines.
+  const { data: networkData } = useQuery({
+    ...linuxio.network.get_network_info,
+    enabled: open && iface.egressNic !== "",
+  });
+  const nicOptions = getEgressNICOptions(networkData);
+  if (
+    iface.egressNic &&
+    !nicOptions.some((option) => option.name === iface.egressNic)
+  ) {
+    nicOptions.unshift({
+      name: iface.egressNic,
+      label: `${iface.egressNic} (current)`,
+    });
+  }
+
   const updateInterface = linuxio.wireguard.update_interface.useMutation({
     success: () => {
       toast.success(`Interface '${iface.name}' updated`);
@@ -98,6 +135,9 @@ const EditInterfaceDialog = ({
       ),
   });
 
+  const trimmedAddress = address.trim();
+  const addressChanged = trimmedAddress !== currentAddress;
+  const addressError = addressChanged && !isServerAddress(trimmedAddress);
   const trimmedHost = host.trim();
   const hostError = !isHostValid(trimmedHost);
   const dnsError = !isDnsList(dns);
@@ -105,11 +145,14 @@ const EditInterfaceDialog = ({
   const portValue = parsePort(port);
   const portError =
     portValue === null || portValue < MIN_PORT || portValue > MAX_PORT;
-  const invalid = hostError || dnsError || mtuError || portError;
+  const invalid =
+    addressError || hostError || dnsError || mtuError || portError;
 
   // Only fields that differ from the interface are sent; absent fields are
   // unchanged on the backend.
   const request: WireGuardUpdateInterfaceRequest = { name: iface.name };
+  if (addressChanged && !addressError) request.address = trimmedAddress;
+  if (nic !== iface.egressNic) request.egressNic = nic;
   if (trimmedHost !== iface.host) request.host = trimmedHost;
   const dnsList = splitList(dns);
   if (!sameList(dnsList, iface.dns)) request.dns = dnsList;
@@ -146,10 +189,45 @@ const EditInterfaceDialog = ({
       <AppDialogContent>
         <div className="app-dialog-fields">
           <AppAlert severity="info">
-            Changing port, MTU or hooks restarts {iface.name} and reconnects
-            peers. Changing the endpoint host or DNS rewrites client configs,
-            which peers must re-import.
+            Changing the address, NIC, port, MTU or hooks restarts {iface.name}{" "}
+            and reconnects peers; the NAT lines in PostUp and PostDown follow
+            the address and the NIC. Changing the endpoint host or DNS rewrites
+            client configs, which peers must re-import.
           </AppAlert>
+          <AppTextField
+            disabled={busy}
+            error={addressError}
+            fullWidth
+            helperText={
+              addressError
+                ? "Use the first address of a /24 to /30 subnet, such as 10.10.30.1/24"
+                : "The server's tunnel address. Devices are numbered in its subnet."
+            }
+            label="Address"
+            onChange={(e) => setAddress(e.target.value)}
+            value={address}
+          />
+          {addressChanged && !addressError && (
+            <AppAlert severity="warning">
+              Every device gets a new address: after saving, import the
+              configuration of each device again (scan its QR code).
+            </AppAlert>
+          )}
+          {iface.egressNic && (
+            <AppSelect
+              disabled={busy}
+              fullWidth
+              label="NIC"
+              onChange={(e) => setNic(e.target.value)}
+              value={nic}
+            >
+              {nicOptions.map((option) => (
+                <option key={option.name} value={option.name}>
+                  {option.label}
+                </option>
+              ))}
+            </AppSelect>
+          )}
           <AppTextField
             disabled={busy}
             error={hostError}

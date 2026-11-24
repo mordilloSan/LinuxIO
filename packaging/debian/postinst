@@ -71,6 +71,17 @@ if [ "$1" = configure ] || [ "$1" = abort-remove ]; then
 		done
 	fi
 
+	# Scheduled scripts: earlier releases wrote NoNewPrivileges=yes into each
+	# schedule's unit, which kept a script from sudo, setuid programs and a
+	# tool AppArmor confines (wg-quick). The line is deleted from the saved
+	# units, so they match what a save writes and Run now accepts them
+	# (docs/scheduled-scripts.md). The RPM's %post does the same.
+	for unit in /etc/systemd/system/linuxio-schedule-*.service; do
+		if [ -f "$unit" ] && [ ! -L "$unit" ]; then
+			sed -i '/^NoNewPrivileges=yes$/d' "$unit" || true
+		fi
+	done
+
 	if [ -d /run/systemd/system ]; then
 		systemctl --system daemon-reload >/dev/null || true
 		if [ "$first" = 1 ]; then

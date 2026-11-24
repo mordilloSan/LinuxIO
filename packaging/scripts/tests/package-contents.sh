@@ -10,7 +10,8 @@
 # - nothing is under /usr/local;
 # - the nine programs are byte for byte the build's (SHA-256): the webserver
 #   checks the bridge's hash recorded at build time;
-# - the third-party notices are the ones the build wrote from those programs.
+# - the third-party notices are the ones the build wrote from those programs;
+# - its changelog opens with an entry of its own version.
 #
 # The shared tree is not written down again here: package-root.sh stages it,
 # and package-root-fixtures.sh holds it to its manifest.
@@ -174,5 +175,18 @@ else
 fi
 [[ $packaged == "$built" ]] || fail "${notices} is not the build's THIRD_PARTY_NOTICES.md"
 pass "the third-party notices are the build's"
+
+# 7. The changelog entry changelog-entry.sh wrote, which the repositories
+# publish: the package's own version.
+if [[ $package == *.deb ]]; then
+	version=$(dpkg-deb --field "$package" Version)
+	entry=$(gzip -dc "${work}/unpacked/usr/share/doc/linuxio/changelog.gz" | sed -n 1p)
+	[[ $entry == "linuxio (${version}) "* ]] || fail "the changelog does not open with ${version}: ${entry}"
+else
+	version=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$package" 2>/dev/null)
+	entry=$(rpm -qp --qf '%{CHANGELOGNAME}' "$package" 2>/dev/null)
+	[[ $entry == *" - ${version}" ]] || fail "the %changelog does not open with ${version}: ${entry}"
+fi
+pass "the changelog opens with the package's version"
 
 printf '\033[1;32m%s\033[0m\n' "✅ ${package##*/} matches ${build_dir}"

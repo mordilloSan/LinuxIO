@@ -32,9 +32,19 @@ type Tracker interface {
 // cache key: several mounts can share a device and mounts can appear or
 // disappear. The zero value is ready to use; mu guards the cache.
 type Filesystems struct {
-	mu    sync.Mutex
-	cache map[string]cachedFilesystem
+	mu     sync.Mutex
+	cache  map[string]cachedFilesystem
+	statfs disk.StatfsCalls
 }
+
+// statfsWait is how long a live collection waits for the statfs it started.
+// A mount whose call is still running from an earlier collection is not
+// waited for at all, so a dead mount costs its own row and nothing else.
+var statfsWait = time.Second
+
+// lateStatfsMaxAge is how old the answer of a call that outlived its wait may
+// be and still be served by a later collection.
+const lateStatfsMaxAge = 30 * time.Second
 
 var (
 	livePartitions = psutilDisk.PartitionsWithContext
@@ -80,10 +90,11 @@ func (f *Filesystems) Info(ctx context.Context, appMu sync.Locker, tracker Track
 			continue
 		}
 
-		usage, err := liveDiskUsage(ctx, mountpoint)
+		usage, _, err := f.statfs.Usage(ctx, mountpoint, statfsWait, lateStatfsMaxAge, liveDiskUsage)
 		if err != nil {
-			// A mount may disappear between partition discovery and usage. Keep
-			// serving the other mounts in this optional live section.
+			// A mount may disappear between partition discovery and usage, or
+			// not answer in time. Keep serving the other mounts in this
+			// optional live section.
 			if found {
 				cache[mountpoint] = cached
 			}
@@ -96,6 +107,9 @@ func (f *Filesystems) Info(ctx context.Context, appMu sync.Locker, tracker Track
 	f.mu.Lock()
 	f.cache = cache
 	f.mu.Unlock()
+	f.statfs.Forget(func(mountpoint string) bool {
+		return slices.ContainsFunc(partitions, func(p psutilDisk.PartitionStat) bool { return p.Mountpoint == mountpoint })
+	})
 	slices.SortFunc(items, func(a, b monitoringapi.FilesystemInfo) int {
 		return cmp.Or(strings.Compare(a.Mountpoint, b.Mountpoint), strings.Compare(a.Device, b.Device))
 	})
@@ -157,7 +171,8 @@ func isPseudoFS(partition psutilDisk.PartitionStat) bool {
 	switch partition.Fstype {
 	case "proc", "sysfs", "devtmpfs", "devpts", "tmpfs", "cgroup", "cgroup2", "pstore",
 		"securityfs", "debugfs", "tracefs", "configfs", "overlay", "squashfs", "ramfs",
-		"bpf", "nsfs", "autofs", "fusectl":
+		"bpf", "nsfs", "autofs", "fusectl", "binfmt_misc", "efivarfs", "hugetlbfs",
+		"mqueue", "rpc_pipefs":
 		return true
 	case "ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "f2fs", "reiserfs", "jfs", "ntfs", "vfat", "exfat":
 		return false

@@ -196,7 +196,7 @@ export async function connectAssistant(
     .connect(transport.stream);
 
   const handshake = async () => {
-    const { cwd } = await transport.ready;
+    const { cwd, home } = await transport.ready;
     const init = await connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       // Boolean options (Fast mode) arrive as real toggles instead of an
@@ -209,12 +209,13 @@ export async function connectAssistant(
         subagents: {},
       },
     });
-    return { cwd, init };
+    return { cwd, home, init };
   };
   let cwd: string;
+  let home: string | undefined;
   let init: acp.InitializeResponse;
   try {
-    ({ cwd, init } = await withTimeout(
+    ({ cwd, home, init } = await withTimeout(
       handshake(),
       AGENT_START_TIMEOUT_MS,
       `The agent did not start within ${AGENT_START_TIMEOUT_MS / 1000} seconds`,
@@ -232,11 +233,17 @@ export async function connectAssistant(
   const canResume = Boolean(caps.sessionCapabilities?.resume);
   // Sent with every request that starts or reopens a session: an agent
   // rebuilds its instructions each time, so a reopened chat would lose them.
+  // An agent that runs in its LinuxIO profile (Gemini CLI, Codex) works
+  // there, away from the user's own settings in the home, and gets the home
+  // as a further folder of the session.
   const sessionSetup: Pick<
     acp.NewSessionRequest,
-    "cwd" | "mcpServers" | "systemPrompt" | "_meta"
+    "cwd" | "additionalDirectories" | "mcpServers" | "systemPrompt" | "_meta"
   > = {
     cwd,
+    ...(home && home !== cwd && caps.sessionCapabilities?.additionalDirectories
+      ? { additionalDirectories: [home] }
+      : {}),
     mcpServers: [],
     ...(SESSION_META[agent] ? { _meta: SESSION_META[agent] } : {}),
     ...(caps.sessionCapabilities?.systemPrompt

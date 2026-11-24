@@ -95,6 +95,11 @@ func (m *ipManager) buildUsedIPMap(peers []PeerConfig) map[int]bool {
 	return used
 }
 
+// network is the subnet in CIDR form, such as 10.10.20.0/24.
+func (m *ipManager) network() string {
+	return fmt.Sprintf("%s/%d", m.netBase, m.maskBits)
+}
+
 // makeIP creates a /32 CIDR from a host offset within the subnet.
 // For subnet 10.0.0.16/28 with offset 2: produces 10.0.0.18/32
 func (m *ipManager) makeIP(hostOffset int) string {

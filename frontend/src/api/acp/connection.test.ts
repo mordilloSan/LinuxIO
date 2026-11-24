@@ -20,6 +20,7 @@ const decoder = new TextDecoder();
 /** A fake bridge+agent: answers JSON-RPC requests from a table, records what was sent. */
 function fakeAgent(
   answers: Record<string, (params: unknown, id: number) => unknown>,
+  ready = '{"linuxio":"ready","cwd":"/home/alice"}',
 ) {
   const sent: Array<Record<string, unknown>> = [];
   let buffer = "";
@@ -72,7 +73,7 @@ function fakeAgent(
   };
   const feed = (text: string) => stream.onData?.(encoder.encode(text));
   const open = () => {
-    queueMicrotask(() => feed('{"linuxio":"ready","cwd":"/home/alice"}\n'));
+    queueMicrotask(() => feed(`${ready}\n`));
     return stream;
   };
   return { feed, open, sent, stream };
@@ -320,6 +321,72 @@ describe("connectAssistant", () => {
       cwd: "/home/alice",
       mcpServers: [],
     });
+  });
+
+  it("gives an agent that runs in its profile the home as a further folder", async () => {
+    const profile = "/home/alice/.local/share/linuxio/profiles/codex";
+    const agent = fakeAgent(
+      {
+        initialize: () => ({
+          protocolVersion: 1,
+          agentCapabilities: {
+            sessionCapabilities: {
+              additionalDirectories: {},
+              fork: {},
+              resume: {},
+            },
+          },
+        }),
+        "session/new": () => ({ sessionId: "s1" }),
+        "session/load": () => ({}),
+        "session/fork": () => ({ sessionId: "s2" }),
+        "session/resume": () => ({}),
+      },
+      JSON.stringify({ linuxio: "ready", cwd: profile, home: "/home/alice" }),
+    );
+    const conn = await connectAssistant("codex", handlers(), agent.open);
+    expect(conn.cwd).toBe(profile);
+    await conn.newSession();
+    await conn.loadSession("s1");
+    await conn.forkSession("s1");
+    for (const method of [
+      "session/new",
+      "session/load",
+      "session/fork",
+      "session/resume",
+    ]) {
+      const params = agent.sent.find((m) => m.method === method)?.params;
+      expect(params, method).toMatchObject({
+        cwd: profile,
+        additionalDirectories: ["/home/alice"],
+      });
+    }
+  });
+
+  it("adds no folder when the agent runs in the home or cannot take one", async () => {
+    for (const [ready, caps] of [
+      [
+        '{"linuxio":"ready","cwd":"/home/alice","home":"/home/alice"}',
+        { additionalDirectories: {} },
+      ],
+      ['{"linuxio":"ready","cwd":"/p","home":"/home/alice"}', {}],
+    ] as const) {
+      const agent = fakeAgent(
+        {
+          initialize: () => ({
+            protocolVersion: 1,
+            agentCapabilities: { sessionCapabilities: caps },
+          }),
+          "session/new": () => ({ sessionId: "s1" }),
+        },
+        ready,
+      );
+      const conn = await connectAssistant("gemini", handlers(), agent.open);
+      await conn.newSession();
+      expect(
+        agent.sent.find((m) => m.method === "session/new")?.params,
+      ).not.toHaveProperty("additionalDirectories");
+    }
   });
 
   it("sends image and resource blocks verbatim", async () => {

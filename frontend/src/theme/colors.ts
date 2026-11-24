@@ -33,6 +33,36 @@ export const GREY_TOKENS = {
   900: "#212121",
 } as const;
 
+/**
+ * Brand colours of the OS logos the VM pages show, keyed by Iconify id (the
+ * Simple Icons hex, Microsoft's blue for Windows). A brand whose colour is
+ * black or a dark navy (AlmaLinux, Alpine, CentOS, Slackware, SUSE) is left
+ * out, since it would vanish on a dark card; its logo keeps the text colour.
+ */
+export const OS_BRAND_COLORS: Readonly<Record<string, string>> = {
+  "mdi:microsoft-windows": "#0078D4",
+  "mdi:ubuntu": "#E95420",
+  "simple-icons:archlinux": "#1793D1",
+  "simple-icons:debian": "#A81D33",
+  "simple-icons:elementary": "#64BAFF",
+  "simple-icons:fedora": "#51A2DA",
+  "simple-icons:freebsd": "#AB2B28",
+  "simple-icons:gentoo": "#54487A",
+  "simple-icons:homeassistant": "#18BCF2",
+  "simple-icons:kalilinux": "#557C94",
+  "simple-icons:linux": "#FCC624",
+  "simple-icons:linuxmint": "#86BE43",
+  "simple-icons:manjaro": "#35BFA4",
+  "simple-icons:nixos": "#5277C3",
+  "simple-icons:opensuse": "#73BA25",
+  "simple-icons:popos": "#48B9C7",
+  "simple-icons:raspberrypi": "#A22846",
+  "simple-icons:redhat": "#EE0000",
+  "simple-icons:rockylinux": "#10B981",
+  "simple-icons:voidlinux": "#478061",
+  "simple-icons:zorin": "#15A6F0",
+};
+
 type ColorName = keyof typeof COLOR_TOKENS;
 
 /**

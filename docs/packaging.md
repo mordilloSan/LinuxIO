@@ -29,8 +29,15 @@ rather than the hosting provider's.
 
 The supported systems are Debian stable, Ubuntu LTS from 24.04, and the
 current and previous Fedora releases, on amd64 (`x86_64`) only. The DEB
-depends on `libpam0g`, `packagekit`, `polkitd | policykit-1` and `systemd`,
-with the shared libraries `dh_shlibdeps` finds; the RPM requires `pam`,
+depends on `libnss-systemd`, `libpam0g`, `packagekit`, `polkitd |
+policykit-1` and `systemd`, with the shared libraries `dh_shlibdeps` finds.
+`libnss-systemd` puts systemd in `/etc/nsswitch.conf`, which resolves the
+`linuxio-bridge-socket` group the auth socket is created with (a dynamic
+user's, [Process & Systemd Architecture](./process-systemd-architecture.md)):
+Ubuntu installs it by default and Debian does not, and without it
+`linuxio-auth.socket` fails with `216/GROUP` and nobody can sign in (seen on
+Debian 13 in the test VM). Fedora's systemd carries the module and its
+`nsswitch.conf` names it; the RPM requires `pam`,
 `polkit`, `PackageKit` and `systemd`, the libraries rpm finds, and
 `selinux-policy` at the floor Fedora's `%selinux_requires_min` sets. Neither
 recommends anything: Docker, libvirt and the other optional facilities are
@@ -158,7 +165,14 @@ them the `packages.update` job that installs the upgrade, and an old host
 finishes its jobs before the new build takes over
 ([Jobs](./jobs.md#updates)). An upgrade from a shell, the distribution's
 unattended upgrade and the Updates page end the same way, and no
-`linuxio restart` is needed.
+`linuxio restart` is needed. `package-repository.spec.ts` runs the upgrade
+with a job running both from a shell and through the distribution's own
+unattended service (`apt-daily-upgrade.service` running unattended-upgrades
+allowed the LinuxIO origin, or `dnf5-automatic.service` with
+`apply_updates`). The whole file passed on Debian 13 and Fedora 44, and its
+unattended test on Ubuntu 26.04 and Fedora 45 too (2026-11-24, test VMs);
+the DEB's removal, purge and install again and the RPM's erase and install
+again were checked by hand on Debian 13 and Fedora 44.
 
 An upgrade does not restart libvirt's daemon
 ([The libvirt hook](#the-libvirt-hook)).
@@ -169,7 +183,10 @@ program, because a setting decides what they hold: the verbose drop-ins
 (`backend/common/verbosemode`) and the alert drop-ins on the distribution's
 update services ([Alerts](./alerts.md)). A release that changes a command line
 LinuxIO writes on save rewrites the saved copies in the package's
-post-install step; no release has needed to yet. The snapshot, replication
+post-install step. The one such rewrite so far is in the scheduled scripts'
+units: the post-install step deletes the `NoNewPrivileges=yes` line earlier
+releases wrote into `/etc/systemd/system/linuxio-schedule-*.service`
+([Scheduled scripts](./scheduled-scripts.md#the-units)). The snapshot, replication
 and Docker update services are
 package units, and a save writes only their timers, which hold a schedule and
 no command line.
@@ -448,11 +465,12 @@ or an RPM before it is installed: its files and links are exactly the tree
 `package-root.sh` stages from the build, at the same modes, with what that
 family adds, all owned by root; everything under `/etc` is a configuration
 file; nothing is under `/usr/local`; the nine programs have the build's
-SHA-256; and the third-party notices are the build's. `make test-packages` runs it on every package in `PACKAGES_DIR`.
+SHA-256; the third-party notices are the build's; and the changelog opens
+with an entry of the package's own version. `make test-packages` runs it on every package in `PACKAGES_DIR`.
 `make test-packaging-scripts`, part of `make test`, runs the host-independent
 fixtures: `package-root-fixtures.sh`, `package-version-fixtures.sh`,
-`third-party-notices-fixtures.sh`, `repo-fixtures.sh` and
-`package-files-fixtures.sh`, which checks the files both packages ship (how
+`third-party-notices-fixtures.sh`, `changelog-entry-fixtures.sh`,
+`repo-fixtures.sh` and `package-files-fixtures.sh`, which checks the files both packages ship (how
 the units relate to `linuxio.target`, the run-record drop-in, the needrestart
 override, the two PAM files, the SELinux policy's file contexts, the icon
 sets the notices name).
@@ -463,6 +481,64 @@ from a signed repository of their own
 ([Development](./development.md#initial-setup),
 [Test VM](./development.md#test-vm)). The indexer's smoke test installs and
 removes a package under a real systemd ([Indexer](./indexer.md)).
+
+## Changelog
+
+Each package's changelog is its release's notes, the body `gh release-flow
+open-pr` writes on the release PR ([Releases](./releases.md#release-notes)):
+the release workflow passes them as `RELEASE_NOTES`, and
+`packaging/scripts/changelog-entry.sh` writes them as plain text into
+`debian/changelog` (installed as `/usr/share/doc/linuxio/changelog.gz`) and
+into the spec's `%changelog`. Headings become `Heading:`, bold and links keep
+their text, and every list item is one line. A build without notes, a local
+one or a dry run, says `LinuxIO VERSION.` alone.
+
+rpm expands the macros of a `%changelog` line that comes through `%include`
+(`%{name}` in a note would become `linuxio`), so the spec reads the file with
+`%(cat)`, whose output rpm does not expand. It still drops a line whose
+first character other than a space is `#`, as a comment, starts a new entry
+at a line beginning with `*`, and reads a line beginning with `%` as a
+section or a conditional, so the RPM's text turns such a line into a list
+item.
+
+The Updates page shows the notes of an update before it is installed, which
+neither package manager reads from the package itself:
+
+- apt reads a changelog from where the repository's `Release` names it, in
+  its `Changelogs` field; without the field it knows where only for Debian's
+  and Ubuntu's own archives, and PackageKit's apt backend says "Changelog for
+  this version is not yet available". `repo-apt.sh` writes the field
+  (`apt-ftparchive` has no option for it) and publishes the changelog of
+  every package in the pool, taken from the package, at
+  `changelogs/main/l/linuxio/linuxio_<version>_changelog`, the path apt
+  makes of `@CHANGEPATH@`. `apt changelog linuxio` reads it too, and the
+  script refuses a DEB without a changelog before it reaches the pool.
+- PackageKit's dnf backend sends no changelog at all, only the text of the
+  update's advisory in the repository's `updateinfo` as the update text.
+  `repo-rpm.sh` writes one advisory per RPM, its `%changelog` text as the
+  description and its type from the notes' headings (`security` with a
+  Security section, `bugfix` with Bug Fixes, `enhancement` otherwise, which
+  `dnf upgrade --security` and `dnf updateinfo` go by), and adds it with
+  `modifyrepo_c` before `repomd.xml` is signed. The bridge shows the update
+  text where PackageKit sends no changelog (`buildUpdateDetail` in
+  `backend/bridge/handlers/packages`).
+
+This holds for every package on the Updates page, not only LinuxIO's
+(`getSingleUpdateDetail` in `backend/bridge/handlers/packages`). The card
+names the package, with the version, which is the PackageKit package ID's,
+and PackageKit's summary of it below. Its changelog is every entry PackageKit
+sends, which the apt backend limits to the versions newer than the one
+installed, so an update over several versions shows all of them. Where the
+apt backend has no changelog it sends "Changelog for this version is not yet
+available", which the bridge takes for none: the repository publishes none,
+as Docker's, gh's and Ubuntu ESM's do not (apt knows where to look only for
+Debian's and Ubuntu's archives), Ubuntu's changelog site has not caught up
+with an upload yet, or the download failed. With no changelog and no update
+text, from either backend, the page says that none is available and links
+to the project's page, the `url` PackageKit's `GetDetails` gives (the
+package's `Homepage` or `URL`), when it is an http or https address; a
+failed `GetDetails` leaves the link out and the rest of the details as they
+are.
 
 ## Third-party notices
 
@@ -531,6 +607,13 @@ to the build's.
   cannot read ([above](#linuxios-own-update)). The Updates page says so only
   after Refresh Sources and only until it is left; the update banner, an
   unattended upgrade and a `dnf` whose output nobody reads do not.
+- `dnf5-automatic` imports no key: on a Fedora host where LinuxIO was not
+  installed by the README's `dnf install` (from a file, say), it declines the
+  prompt for the repository's metadata key, updates nothing and exits 0, and
+  with that key accepted it fails the package on its signature, since rpm
+  lacks the key (both seen on Fedora 45 in the test VM). The metadata key is
+  dnf's own and the package key rpm's; one `dnf upgrade linuxio` that accepts
+  the key puts it in both.
 - The check after Refresh Sources reads LinuxIO's repository even where an
   administrator disabled it, and shows any failure of that dnf command as
   the reason, a renamed section in `linuxio.repo` among them.
@@ -549,3 +632,6 @@ to the build's.
 - The settings whose files removal deletes are switched on again by hand
   after a new install, and a script install's settings are made again after
   the package replaces it.
+- A package's changelog holds its own release's notes only, so an update
+  over several releases shows the newest one's; the packages of releases
+  before the notes were carried say `LinuxIO VERSION.` alone.

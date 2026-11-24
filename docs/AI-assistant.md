@@ -7,8 +7,8 @@ over stdin/stdout). The browser is the ACP client and renders the session; the
 model runs at the vendor. LinuxIO runs no model, holds no API key and stores
 nothing about conversations. The only thing it persists is the chosen agent id
 (`assistant.agent` in the per-user config). What the agent itself keeps
-(sign-in, settings, chat history, memory) is in the agent's own folder, which
-for Claude Code is one LinuxIO gives it: see [Profile](#profile).
+(sign-in, settings, chat history, memory) is in the agent's own folder, one
+LinuxIO gives it: see [Profile](#profile).
 
 ## Relay
 
@@ -33,7 +33,9 @@ or needs a CLI that is not on the user's PATH. `npx` is not involved: it would
 ask the registry for the newest version on every start and reinstall inside
 the chat's or the login check's wait.
 
-The first data frame is `{"cwd":...,"linuxio":"ready"}`. When the process ends
+The first data frame is `{"cwd":...,"home":...,"linuxio":"ready"}`: the
+folder the agent runs in, where the page starts its sessions, and the user's
+home (the same folder unless the agent [works in its profile](#profile)). When the process ends
 the last data frame is `{"code":N,"linuxio":"exit","stderr":<4 KiB tail>}`,
 followed by a close frame. Closing the stream sends SIGHUP to the agent's
 process group, with SIGKILL after a 5 s grace if it is still running. Unlike
@@ -71,13 +73,23 @@ An agent with no entry gets LinuxIO's starting point, which exists only for
 
 ## Profile
 
-Claude Code started by LinuxIO keeps its state in a folder of its own,
-`~/.local/share/linuxio/profiles/claude`, which the bridge names in
-`CLAUDE_CONFIG_DIR` (`ProfileEnv`, `ProfileDir` and `Profile` in `acpagents`).
-The same user's `claude` in a terminal or an editor extension uses
-`~/.claude`, and the two would otherwise be one: signing out in the editor
-signed the Assistant out, and the model saved there was the Assistant's. In
-the profile, and so the Assistant's alone, are:
+Every agent started by LinuxIO keeps its state in a folder of its own,
+`~/.local/share/linuxio/profiles/<id>`, which the bridge names in the agent's
+variable (`ProfileEnv`, `ProfileDir` and `Profile` in `acpagents`):
+
+| Id | Variable | State in | The user's own copy uses |
+|----|----------|----------|--------------------------|
+| `claude` | `CLAUDE_CONFIG_DIR` | `profiles/claude` | `~/.claude` |
+| `gemini` | `GEMINI_CLI_HOME` | `profiles/gemini/.gemini` | `~/.gemini` |
+| `codex` | `CODEX_HOME` | `profiles/codex` | `~/.codex` |
+
+Gemini CLI takes its variable as a home and makes `.gemini` inside it; Codex
+runs inside `codex-acp`, which hands its environment on to the Codex
+app-server it starts. Without the profile the agent in the Assistant and the
+same agent in a terminal or an editor would be one: signing out in the editor
+signed the Assistant out, and the model saved there was the Assistant's.
+
+For Claude Code, in the profile, and so the Assistant's alone, are:
 
 - the sign-in (`.credentials.json`), which may be another account than the
   terminal's;
@@ -87,25 +99,50 @@ the profile, and so the Assistant's alone, are:
 - chat history, so `session/list` offers only chats of the Assistant;
 - memory (`projects/*/memory/`) and caches.
 
-Every process LinuxIO starts for the agent gets the variable: the chat and the
+Every process LinuxIO starts for an agent gets its variable: the chat and the
 Settings probe (`assistant.open`), the Terminal sign-in and the
-`claude plugin` commands. A start without it would read and write `~/.claude`.
+`claude plugin` commands. A start without it would read and write the user's
+own folder.
 The pane relay hands its environment on to the CLI. The Terminal sign-in runs
 through the user's login shell, so there the variables are set by
 `/usr/bin/env` after the shell's start-up files: a `~/.bashrc` that exports
-`CLAUDE_CONFIG_DIR` for the user's own Claude Code does not move the sign-in
-away from the profile the chat reads.
+`CLAUDE_CONFIG_DIR`, `GEMINI_CLI_HOME` or `CODEX_HOME` for the user's own
+agent does not move the sign-in away from the profile the chat reads.
 
 `Profile` makes the folder with `install -d -m 0700` run as the session user,
 which also sets that mode again on a folder that exists: it holds a sign-in
 and chats, and the bridge, which may be root, creates nothing in a home the
-user controls. It is beside the install folder (`agents/claude`), which an
+user controls. It is beside the install folder (`agents/<id>`), which an
 install replaces, so reinstalling the agent keeps the profile. LinuxIO copies
-nothing into it from `~/.claude`: the Assistant starts signed out, with no
-history, plugins or memory, and what the user's own Claude Code holds stays
-where it is.
+nothing into it from the user's own folder: the Assistant starts signed out,
+with no history, settings, plugins or memory, and what the user's own agent
+holds stays where it is.
 
-A chat works in the user's home, and Claude Code reads `.claude/` in the
+Each agent reads a folder in the folder it works in as that folder's project
+settings: `.claude/`, `.gemini/` or `.codex/`. In the user's home that is the
+user's own profile, whose model, hooks and plugins would be the chat's again.
+
+Gemini CLI and Codex have no option to leave project settings out, so their
+chats work in the profile folder (`WorkInProfile`): the relay starts the
+agent there and sends it as `cwd` in the ready line, and the page starts every
+session there. Gemini CLI then takes the folder as its own home and reads no
+project settings at all; Codex finds no `.codex/` there. The user's home is
+added to the workspace, so the agent's file tools and its write sandbox reach
+it as they did when the chat worked in it: Gemini CLI gets
+`--include-directories <home>` on its command line (`IncludeDirFlag`), since
+its ACP side takes no further folders, and the page sends Codex the home as
+`additionalDirectories` on every session request, which it does for any agent
+that advertises `sessionCapabilities.additionalDirectories` and works
+elsewhere than the home. Settings come only from the folder a session works
+in, not from a folder added to it. Gemini CLI is also started with
+`--skip-trust`: it keeps its list of trusted folders in the profile, where the
+profile folder itself would start untrusted, and in an untrusted folder it
+turns off every MCP server and all approval modes but the default. The folder
+is the user's own (0700) and is LinuxIO's to name, which is what the trust
+check is there to ask about. `codex-acp` marks the folders of every session it
+starts as trusted itself.
+
+Claude Code's chat works in the user's home, and Claude Code reads `.claude/` in the
 folder it works in as that folder's project settings: there, `~/.claude`, the
 other profile, whose model, hooks and plugins would be the chat's again. So
 every session request to Claude Code (`session/new`, `load`, `fork`, `resume`)
@@ -132,9 +169,19 @@ Known limits:
 - The Terminal sign-in is an interactive `claude` in the home folder, which
   loads project settings as any terminal session does; it signs in and is
   closed.
-
-Gemini CLI and Codex have no profile (`ProfileEnv` is empty): they keep their
-usual folders in the user's home, shared with their use outside LinuxIO.
+- Gemini CLI and Codex chats start in the profile folder, so a relative path
+  or "look here" in a prompt starts there, not in the home.
+- Gemini CLI looks for `.gemini/.env` in each folder from the one it works in
+  up to `/`: when the profile has none, it reads the user's own
+  `~/.gemini/.env` (which often holds `GEMINI_API_KEY`, and then signs the
+  Assistant in with it). `~/.env` is read in the same walk.
+- When the user's home is itself a git repository (dotfiles), both agents take
+  it as the project root above the profile folder: Codex may read
+  `~/.codex/config.toml` as project settings and `~/AGENTS.md`, and Gemini CLI
+  `~/GEMINI.md`.
+- Gemini CLI 0.67.0 reads one setting, `advanced.autoConfigureMemory`, from
+  `$GEMINI_CLI_HOME/settings.json` rather than from `.gemini` inside it, so
+  that setting in the profile's `settings.json` does not take effect.
 
 ## Installing agents
 
@@ -947,7 +994,7 @@ untouched.
 
 ## Login
 
-Login state belongs to the agent CLI, not LinuxIO. Claude Code keeps it in its
+Login state belongs to the agent CLI, not LinuxIO. Each agent keeps it in its
 [profile](#profile), so the Assistant is signed in by itself: a sign-in in a
 terminal does not sign the Assistant in, and a logout here leaves the
 terminal's. The Settings tab probes it:

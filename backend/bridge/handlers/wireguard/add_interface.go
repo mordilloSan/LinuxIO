@@ -116,6 +116,9 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 	if len(addresses) == 0 {
 		return addInterfaceRequest{}, fmt.Errorf("at least one address is required")
 	}
+	if err = validateNICName(req.EgressNic); err != nil {
+		return addInterfaceRequest{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
 
 	listenPort, err := strconv.Atoi(req.ListenPort)
 	if err != nil {

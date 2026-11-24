@@ -128,7 +128,10 @@ const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
         : `${dropped.path} dropped out of ${name} while it was mounted, and the pool runs on its other disks. The pool takes the disk back only when it is mounted again: reconnect the disk, then unmount and mount the pool, or restart, and LinuxIO resyncs it. Or replace the disk.`,
       title: "Disk dropped out",
     };
-  if (filesystem.devices.some((d) => deviceErrorCount(d) > 0))
+  // So does a disk the kernel marked missing as it went (since 7.1): its
+  // counters are the writes it failed, and the pool is degraded, not failing
+  // on the disks it runs on. The alert puts a missing disk first too.
+  if (filesystem.devices.some((d) => !d.missing && deviceErrorCount(d) > 0))
     return {
       color: STATUS_COLOR.error,
       icon: "mdi:shield-alert",
@@ -140,7 +143,9 @@ const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
       action: "replace",
       color: STATUS_COLOR.warning,
       icon: "mdi:shield-alert-outline",
-      text: `${name} is running without one of its devices. Replace it before another one fails.`,
+      text: filesystem.autoRebuild
+        ? `${name} is running without one of its devices. Reconnect it, and LinuxIO rebuilds the pool onto it, or replace it before another one fails.`
+        : `${name} is running without one of its devices. Replace it before another one fails.`,
       title: "Degraded",
     };
   if (

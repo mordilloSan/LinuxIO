@@ -11,6 +11,7 @@ import (
 	containermodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
 	systemmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/live"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 )
 
 // liveSample is the result of one live collection together with the scope it
@@ -50,9 +51,19 @@ func (a *App) Live(ctx context.Context) (monitoringapi.Live, error) {
 		threads = data.Details.Threads
 	}
 	telemetry, telemetryAt := a.lastTelemetry()
-	payload := live.Build(data, run.At, threads, telemetry, telemetryAt, 3*a.CollectorInterval())
+	payload := live.Build(data, run.At, threads, telemetry, telemetryAt, 3*a.telemetryInterval())
 	run.Value.extras.Apply(&payload)
 	return payload, nil
+}
+
+// telemetryInterval is how often the tick refreshes container telemetry: the
+// container_telemetry history interval, or every tick. With that history off
+// it is never refreshed, and the live containers carry no block I/O.
+func (a *App) telemetryInterval() time.Duration {
+	interval := a.CollectorInterval()
+	a.runtimeMu.RLock()
+	defer a.runtimeMu.RUnlock()
+	return max(interval, a.historyIntervals[plugins.ContainerTelemetry])
 }
 
 func (a *App) lastTelemetry() ([]containermodel.Telemetry, time.Time) {

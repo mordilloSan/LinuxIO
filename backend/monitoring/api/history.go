@@ -18,14 +18,16 @@ const (
 	PluginSensors            = "sensors"
 )
 
-var historyResolutions = []string{"1m", "10m", "20m", "120m", "480m"}
+// historyResolutions are the tiers the daemon stores. 1m rows are kept for an
+// hour, 10m rows for 12 hours, 20m rows for a day and 60m rows for
+// history.retention; a read returns the stored rows of the tier it names.
+var historyResolutions = []string{"1m", "10m", "20m", "60m"}
 
 var historyResolutionSteps = map[string]time.Duration{
-	"1m":   time.Minute,
-	"10m":  10 * time.Minute,
-	"20m":  20 * time.Minute,
-	"120m": 120 * time.Minute,
-	"480m": 480 * time.Minute,
+	"1m":  time.Minute,
+	"10m": 10 * time.Minute,
+	"20m": 20 * time.Minute,
+	"60m": time.Hour,
 }
 
 // HistoryResolutions lists the supported history resolutions, finest first.

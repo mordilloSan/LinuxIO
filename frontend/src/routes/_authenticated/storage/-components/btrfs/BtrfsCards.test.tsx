@@ -97,9 +97,26 @@ describe("BtrfsHealthBanner", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows Errors when a device counter is non-zero", () => {
-    render(<BtrfsHealthBanner filesystem={filesystem} />);
+  it("shows Errors when a present device's counter is non-zero", () => {
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...filesystem,
+          devices: [
+            { ...filesystem.devices[0], errors: { ...noErrors, write: 3 } },
+            filesystem.devices[1],
+          ],
+        }}
+      />,
+    );
     expect(screen.getByText("Errors")).toBeInTheDocument();
+  });
+
+  // Since 7.1 a pulled disk is marked missing with the writes it failed.
+  it("shows Degraded when only the missing disk counts errors", () => {
+    render(<BtrfsHealthBanner filesystem={filesystem} />);
+    expect(screen.getByText("Degraded")).toBeInTheDocument();
+    expect(screen.queryByText("Errors")).not.toBeInTheDocument();
   });
 
   it("shows Healthy and the finished scrub error count", () => {
@@ -140,6 +157,24 @@ describe("BtrfsHealthBanner", () => {
     expect(
       screen.getByRole("dialog", { name: "Replace missing disk" }),
     ).toBeInTheDocument();
+  });
+
+  it("offers reconnecting the missing disk only with the automatic rebuild on", () => {
+    const degraded = {
+      ...filesystem,
+      devices: filesystem.devices.map((d) => ({ ...d, errors: noErrors })),
+    };
+    const { unmount } = render(<BtrfsHealthBanner filesystem={degraded} />);
+    expect(
+      screen.getByText(/Reconnect it, and LinuxIO rebuilds the pool onto it/),
+    ).toBeInTheDocument();
+    unmount();
+
+    render(
+      <BtrfsHealthBanner filesystem={{ ...degraded, autoRebuild: false }} />,
+    );
+    expect(screen.getByText("Degraded")).toBeInTheDocument();
+    expect(screen.queryByText(/Reconnect it/)).not.toBeInTheDocument();
   });
 
   it("says a disk dropped out, ahead of the errors its failed writes count", async () => {

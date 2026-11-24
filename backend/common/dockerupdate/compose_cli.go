@@ -305,8 +305,10 @@ func composePullAndUpServicesValidated(ctx context.Context, target ComposeTarget
 		return fmt.Errorf("pull compose services %q: %w", normalized, err)
 	}
 	// The image is the one just pulled: an update never builds, also for a
-	// service with pull_policy: build.
-	upArgs := append([]string{"up", "-d", "--no-deps", "--no-build"}, normalized...)
+	// service with pull_policy: build. The recreate is forced as in
+	// composeUpFromLocalImages: a tag moved to an index that differs only in
+	// its attestations or its other platforms is no change to Compose 5.
+	upArgs := append([]string{"up", "-d", "--no-deps", "--no-build", "--force-recreate"}, normalized...)
 	if err := RunComposeProject(ctx, target, emitter, upArgs...); err != nil {
 		return fmt.Errorf("reconcile compose services %q: %w", normalized, err)
 	}
@@ -341,9 +343,13 @@ func composePullServices(ctx context.Context, target ComposeTarget, services []s
 // composeUpFromLocalImages brings services up on the images the host holds
 // and pulls or builds none, whatever their pull_policy says: a rollback must
 // not fetch or build again the image it undoes, and a rebuild brings a
-// service up on the image it has just built.
+// service up on the image it has just built. Both have moved the tag to
+// another image, so the containers are recreated whatever Compose makes of
+// the change: Compose 5 compares the platform manifest's digest, not the
+// image ID, and leaves a container on an image whose index differs only in
+// its attestations (seen with Compose 5.7; Compose 2.40 compares the ID).
 func composeUpFromLocalImages(ctx context.Context, target ComposeTarget, services []string, emitter ComposeLineEmitter) error {
-	return RunComposeProject(ctx, target, emitter, append([]string{"up", "-d", "--no-deps", "--pull", "never", "--no-build"}, services...)...)
+	return RunComposeProject(ctx, target, emitter, append([]string{"up", "-d", "--no-deps", "--pull", "never", "--no-build", "--force-recreate"}, services...)...)
 }
 
 // composeBuildAttestations is the environment of a rebuild's build. With the

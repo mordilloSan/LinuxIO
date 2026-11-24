@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -109,6 +110,8 @@ type DurationSetting struct {
 	// AllowZero accepts zero; otherwise the setting must be greater than zero.
 	// A setting is never negative.
 	AllowZero bool
+	// Min, when set, is the smallest value accepted.
+	Min time.Duration
 }
 
 // DurationSettings lists every duration setting in the order validation checks
@@ -124,6 +127,7 @@ var DurationSettings = []DurationSetting{
 		View:    func(v *monitoringapi.MonitoringConfig) *string { return &v.CollectorInterval },
 		Patch:   func(p *monitoringapi.MonitoringConfigPatch) *string { return p.CollectorInterval },
 		Default: DefaultCollectorInterval,
+		Min:     MinCollectorInterval,
 	},
 	{
 		Path:    "collector.smart_refresh_interval",
@@ -159,6 +163,8 @@ func (s DurationSetting) validate(cfg *Config) error {
 		return fmt.Errorf("%s must not be negative", s.Path)
 	case !s.AllowZero && value <= 0:
 		return fmt.Errorf("%s must be greater than zero", s.Path)
+	case value < s.Min:
+		return fmt.Errorf("%s must be at least %s", s.Path, s.Min)
 	}
 	return nil
 }
@@ -244,10 +250,26 @@ func Load(path string) (Config, bool, error) {
 	if err != nil {
 		return Config{}, true, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	raiseToMinimums(&cfg, path)
 	if err := Validate(cfg); err != nil {
 		return Config{}, true, fmt.Errorf("invalid config %s: %w", path, err)
 	}
 	return cfg, true, nil
+}
+
+// raiseToMinimums raises a positive setting below its minimum, which a file
+// saved before the minimum existed may hold, to the minimum. Failing instead
+// would stop the daemon at start and refuse every config.set, which loads the
+// file first, so the setting could not be fixed from the settings page. A save
+// writes the raised value; config.set itself still refuses a value below it.
+func raiseToMinimums(cfg *Config, path string) {
+	for _, setting := range DurationSettings {
+		field := setting.Field(cfg)
+		if value := field.Duration(); value > 0 && value < setting.Min {
+			slog.Warn("config setting below its minimum, using the minimum", "path", path, "setting", setting.Path, "value", value, "minimum", setting.Min)
+			*field = Duration(setting.Min)
+		}
+	}
 }
 
 func decodeStrict(data []byte) (Config, error) {

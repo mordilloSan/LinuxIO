@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WireGuardInterface } from "@/api";
 import * as core from "@/api/linuxio-core";
+import { testNetworkInterface } from "@/test/networkInterface";
 import { render, screen, waitFor } from "@/test/render";
 
 import EditInterfaceDialog from "./EditInterfaceDialog";
@@ -27,6 +28,7 @@ const wg0: WireGuardInterface = {
     PostDown: ["iptables -D FORWARD -i wg0 -j ACCEPT || true"],
   },
   host: "",
+  egressNic: "eth0",
   forwardingOff: false,
   isConnected: "Active",
   isEnabled: true,
@@ -37,6 +39,18 @@ const wg0: WireGuardInterface = {
 };
 
 function spyUpdates() {
+  vi.spyOn(core, "request").mockImplementation((_handler, command) =>
+    command === "get_network_info"
+      ? Promise.resolve([
+          testNetworkInterface({ ipv4: ["10.1.0.2/24"], name: "eth0" }),
+          testNetworkInterface({
+            gateway: "192.168.1.1",
+            ipv4: ["192.168.1.66/24"],
+            name: "br-lan",
+          }),
+        ])
+      : Promise.resolve(),
+  );
   const updates: unknown[] = [];
   vi.spyOn(core, "mutationRequest").mockImplementation(
     (_handler, command, request) => {
@@ -61,7 +75,9 @@ describe("EditInterfaceDialog", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(/Changing port, MTU or hooks restarts wg0/),
+        screen.getByText(
+          /Changing the address, NIC, port, MTU or hooks restarts wg0/,
+        ),
       ).toBeVisible(),
     );
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -146,5 +162,62 @@ describe("EditInterfaceDialog", () => {
     await view.user.type(mtu, "1000");
     expect(screen.getByText("Use 0 or 1280 to 65535")).toBeVisible();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("moves the address and says every device must import its configuration again", async () => {
+    const updates = spyUpdates();
+    const view = render(
+      <EditInterfaceDialog iface={wg0} onClose={vi.fn()} open />,
+    );
+
+    const address = screen.getByLabelText("Address");
+    expect(address).toHaveValue("10.0.0.1/24");
+    expect(screen.queryByText(/Every device gets a new address/)).toBeNull();
+
+    await view.user.clear(address);
+    await view.user.type(address, "10.0.5.5/24");
+    expect(
+      screen.getByText(/Use the first address of a \/24 to \/30 subnet/),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await view.user.clear(address);
+    await view.user.type(address, "10.0.5.0/24");
+    expect(screen.getByText(/Every device gets a new address/)).toBeVisible();
+    await view.user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toEqual({ name: "wg0", address: "10.0.5.0/24" });
+  });
+
+  it("moves the NAT lines to another network card", async () => {
+    const updates = spyUpdates();
+    const view = render(
+      <EditInterfaceDialog iface={wg0} onClose={vi.fn()} open />,
+    );
+
+    const nic = screen.getByRole("combobox", { name: "NIC" });
+    await waitFor(() => expect(nic).toHaveTextContent("eth0 (10.1.0.2/24)"));
+    await view.user.click(nic);
+    await view.user.click(
+      await screen.findByRole("option", { name: "br-lan (192.168.1.66/24)" }),
+    );
+    await view.user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toEqual({ name: "wg0", egressNic: "br-lan" });
+  });
+
+  it("offers no NIC where the hooks hold no NAT lines of LinuxIO's", () => {
+    spyUpdates();
+    render(
+      <EditInterfaceDialog
+        iface={{ ...wg0, egressNic: "" }}
+        onClose={vi.fn()}
+        open
+      />,
+    );
+
+    expect(screen.queryByRole("combobox", { name: "NIC" })).toBeNull();
   });
 });

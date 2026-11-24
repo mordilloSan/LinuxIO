@@ -102,8 +102,11 @@ func NewServer(opts Options) *Server {
 	}
 }
 
-// HandlerFor builds the mux for one listener. plugins is the per-listener
-// plugin allowlist; nil serves every plugin plus the cross-plugin summary.
+// HandlerFor builds the mux for one listener. apis names what it serves:
+// "metrics" (current samples and the live payload), "history" (the stored
+// history routes, which need "metrics") and "commands". plugins is the
+// per-listener plugin allowlist; nil serves every plugin plus the cross-plugin
+// summary.
 func (s *Server) HandlerFor(collectorInterval func() time.Duration, apis []string, plugins []string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(monitoringapi.RouteHealth, s.handleHealth(collectorInterval))
@@ -119,7 +122,7 @@ func (s *Server) HandlerFor(collectorInterval func() time.Duration, apis []strin
 		if !hasAPI(apis, "commands") {
 			refresher = nil
 		}
-		NewRegistry(s.current, s.metrics, refresher, plugins).Mount(mux, monitoringapi.RoutePrefix)
+		NewRegistry(s.current, s.metrics, refresher, plugins, hasAPI(apis, "history")).Mount(mux, monitoringapi.RoutePrefix)
 	}
 	if hasAPI(apis, "commands") {
 		mux.HandleFunc(monitoringapi.RouteCommand, s.handleCommand)

@@ -1,5 +1,6 @@
 import type { VMDeleteResult, VMPreflight, VirtualMachine } from "@/api";
 import { getDistroIcon } from "@/icons/distro";
+import { OS_BRAND_COLORS } from "@/theme/colors";
 
 export type VMAction =
   | "start"
@@ -212,4 +213,9 @@ export function vmOSIcon(os?: string): string {
   if (!os) return "mdi:monitor";
   if (os.startsWith("win")) return "mdi:microsoft-windows";
   return VM_OS_ICONS[os] ?? getDistroIcon(os);
+}
+
+/** The brand colour of a VM's OS logo, or `fallback` when it has none. */
+export function vmOSColor(os: string | undefined, fallback: string): string {
+  return OS_BRAND_COLORS[vmOSIcon(os)] ?? fallback;
 }

@@ -278,3 +278,35 @@ func TestHandleAssistantSessionRunsTheAgentInItsOwnProfile(t *testing.T) {
 	readData(t, client) // close
 	require.NoError(t, <-done)
 }
+
+func TestHandleAssistantSessionRunsAWorkInProfileAgentInItsProfile(t *testing.T) {
+	rt, userHome := testRuntime(t)
+	fakeAgent(t, "#!/bin/sh\nprintf '%s|%s\\n' \"$(pwd)\" \"$*\"\n", func(agent *acpagents.Agent) {
+		agent.Args = []string{"--acp"}
+		agent.ProfileEnv = "FAKE_CONFIG_DIR"
+		agent.WorkInProfile = true
+		agent.IncludeDirFlag = "--include-directories"
+	})
+	agentsHome, err := agentHome("")
+	require.NoError(t, err)
+	profile := acpagents.ProfileDir(agentsHome, "fake")
+
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- HandleAssistantSession(context.Background(), rt, server, apischema.AssistantOpenRequest{Agent: "fake"})
+	}()
+	var readyLine struct {
+		Cwd  string `json:"cwd"`
+		Home string `json:"home"`
+	}
+	require.NoError(t, json.Unmarshal(readData(t, client).Payload, &readyLine))
+	// The page starts its sessions where the agent runs and adds the home.
+	require.Equal(t, profile, readyLine.Cwd)
+	require.Equal(t, userHome, readyLine.Home)
+	require.Equal(t, profile+"|--acp --include-directories "+userHome, strings.TrimSpace(string(readData(t, client).Payload)))
+	readData(t, client) // exit
+	readData(t, client) // close
+	require.NoError(t, <-done)
+}

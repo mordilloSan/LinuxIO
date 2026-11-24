@@ -103,6 +103,9 @@ test-packaging-scripts: ## Run host-independent fixture tests of the packaging f
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running third-party notices fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/third-party-notices-fixtures.sh"
 	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running package changelog fixture tests...$(COLOR_RESET)"
+	@bash "$(packaging_scripts_dir)/tests/changelog-entry-fixtures.sh"
+	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running signed repository fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/repo-fixtures.sh"
 

@@ -191,7 +191,8 @@ The first stream of a connection is `jobs.hello`: the protocol number and the
 session facts (username, uid, gid, privileged, `session_ref`). The host has
 already read the peer's uid with `SO_PEERCRED` and closed the connection
 unless it is the host's own uid; a hello of another protocol is refused with
-`426`. The hello's facts name the job's owner for listing, history and
+`426`, and so is every hello once the host's own binary has been replaced
+([Updates](#updates)). The hello's facts name the job's owner for listing, history and
 alerts; they are not authorization. On the root host, whose only peers are
 root, the hello's user also decides who the handlers act for: the host builds
 one router per connection with that user's identity and config store, as
@@ -249,8 +250,10 @@ one.
 
 - **Stays up** while a bridge is connected or a job runs.
 - **Exits** 60 s after both reach zero, so a logout and a login within seconds
-  do not restart it. Deciding to exit closes it to new bridges under the same
-  lock, so none can join and start a job meanwhile.
+  do not restart it, and at once when both are zero after an update replaced
+  its binary, since it then refuses every new bridge ([Updates](#updates)).
+  Deciding to exit closes it to new bridges under the same lock, so none can
+  join and start a job meanwhile.
 - **Stops** on SIGTERM (`systemctl stop`, shutdown): it interrupts the running
   jobs ([Shutdown](#shutdown-and-interrupt)), lets the open job streams write
   their terminal frame for up to 5 s, then exits. The whole shutdown is
@@ -573,7 +576,9 @@ PackageKit gives for the pending update to the package `linuxio`
 nothing. A host without PackageKit, without that package, or whose PackageKit
 fails or takes more than 20 s gets the running build alone; the failure is
 logged at Debug when PackageKit is missing or does not answer in time, and at
-Warn otherwise. A `GetUpdates` that PackageKit ends with an error is such a
+Warn otherwise. A `GetUpdates` that PackageKit ends with an error, or with
+any exit but success (it ends some with no error: one cancelled for a
+higher-priority transaction such as a refresh, one skipped), is such a
 failure for both readers, whatever it listed first, so an empty list always
 means a list that was read: the Updates page shows the error, or keeps the
 list it had, where it would otherwise say the system is up to date. The footer
@@ -596,15 +601,30 @@ sign-in the job is in the task tray.
 
 The package replaces the binaries and restarts `linuxio.target`, but never
 stops or restarts a job host, which is outside the target: an old host
-finishes its jobs and exits under its normal rule, and the next connection
-starts the new binary. An update from a shell (`apt`, `dnf`) or an
+finishes its jobs and then exits at once, and the next connection starts the
+new binary. An update from a shell (`apt`, `dnf`) or an
 unattended upgrade ends the same way, and a LinuxIO that was stopped stays
 stopped.
 
 The hello carries `jobs.Protocol`. A host of another protocol refuses it, and
-to the bridge that is an older host an update waits for. A refused hello does
-not count as a connected bridge, so the older host exits 60 s after its last
-job and its last bridge of its own build, and the bridge's next attempt, at
+to the bridge that is an older host an update waits for. A host whose binary
+an update replaced refuses every new hello the same way, whatever its
+protocol: most updates keep the protocol and change handlers, and a host that
+went on serving the new build's bridges would run the old handlers for as
+long as someone stays signed in (an update installed from the Updates page
+ends with the administrator signing in again within the minute). The host
+compares the file it was started from (`/proc/self/exe`) with the file now at
+its path (`executableReplaced` in `backend/bridge/internal/jobshost`); a
+package writes the new file beside the old and renames it over, so the path
+names another file. A host of 0.57.0 has no such check and refuses only
+another protocol, so 0.58.0 raised `jobs.Protocol` from 2 to 3 once, with no
+frame or route changed, for those hosts to refuse its bridges; from 0.58.0
+on, the check covers an update that keeps the protocol.
+
+A refused hello does not count as a connected bridge, and a host whose binary
+was replaced does not wait out the 60 s of its idle exit: the older host exits
+within a second of having no job left, the last one's record and alerts
+written, and no bridge of its own build, and the bridge's next attempt, at
 most 30 s later, starts the new host. Until then:
 
 - New mutations the host would run are refused with `409` and a message that
@@ -959,7 +979,7 @@ own lines by `job_id` (journald fields `LINUXIO_TASK_ID` and
 | `job suspend failed` | Warn | A `Suspend` hook failed at shutdown; the job is interrupted without a checkpoint |
 | `job host stopped before a job ended` | Warn | The 100 s shutdown bound ran out with that job still running, or with the record and alerts of a job that had ended still being written |
 | `job resumed` / `interrupted job not resumed` | Info / Warn | A host start's resume or pick-up of a job, or why the host could not start it; a `Resume` that found nothing to follow logs `task interrupted` with why |
-| `job host refused a bridge hello` | Warn | `protocol N, want M`: an update waits for this host |
+| `job host refused a bridge hello` | Warn | `protocol N, want M`, or `binary replaced` when an update renamed a new binary over this host's: an update waits for this host |
 | `job host refused a connection` | Warn | A peer of another uid |
 | `job host refused a job` | Warn | The host is stopping (`503`) or full (`409`) |
 | `job record not created`, `job record not finished` | Error | The store could not be written; the job ran without its record |
@@ -974,7 +994,7 @@ The record itself is the quickest evidence: as root,
 | Level | Make target | Files | What |
 |---|---|---|---|
 | Go unit | `make test-go`, in `make check-backend-quiet` | `backend/common/jobs/store_test.go`, `backend/common/jobs/scheduled_test.go`, `backend/common/jobs/process_test.go` | Write policy, quick-job deletion, retention and prune, crash detection by pid and start time, history paging through equal end times, saved output chunks |
-| Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, a stop that waits for the end of a job to be recorded, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
+| Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid, protocol and replaced-binary refusal, idle exit, a replaced host's exit as soon as its jobs and bridges are gone, SIGTERM and `Suspend`, cancel during shutdown, a stop that waits for the end of a job to be recorded, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
 | Go unit | same | `backend/bridge/internal/jobshost/pickup_test.go` | The same-boot pick-up: a crash and a stop picked up before the host serves, a stop not picked up for a route that takes crashes only, none after a reboot, a cancel, a lost job or a crash of a picked-up run; resumes after a reboot started once the host serves, and left as they were by a stop during the start; a `Resume` that finds nothing left interrupted with its reason and alert and not tried again, and one during a stop counted as the stop's; a failed resume stamped, made unresumable only for a route that resumes in the boot; a checkpoint saved while a job runs |
 | Go unit | same | `backend/bridge/handlers/storage/smart_resume_test.go`, `backend/bridge/handlers/storage/smart_test.go` | Against a fake drive (smartctl's JSON report): the drive read and saved before the test starts, a test the drive still runs followed, an ended test read from the log (completed, failed, aborted, a reset), another drive, an unreadable one, no new test, more than one, a test of another kind or a log that does not continue never taken, an NVMe drive running the other kind, Cancel aborting the test after a pick-up and in the first run, and not on a host stop, once the name is another drive's, when `-t` was refused, or when the drive runs another kind or none |
 | Go unit | same | `backend/bridge/handlers/packages/package_update_resume_test.go`, `backend/bridge/handlers/packages/packagekit_test.go` | Against a fake PackageKit on a private bus: the checkpoint saved before each package's update, a transaction followed to its end, one that ended read from the history (succeeded, failed), one PackageKit cannot account for or of another role never taken, one dropped before its role is read taken from the history, the batch's counts in the error of a job left interrupted, a non-success exit with no ErrorCode as a failure (an update and an install), Cancel sent to PackageKit after a pick-up and in the first run, refused by PackageKit, not sent while its `AllowCancel` is false (a Debug line, where a refusal is a Warn line), and not on a host stop; a cancelled install's transaction cancelled and waited for to its `Finished`, also when the cancel lands during the `InstallPackages` call, when PackageKit cannot cancel, refuses or ignores the cancel, or ends it with an error (logged), up to the install's bound or until PackageKit no longer lists it (not for one it never listed), and not for a transaction never asked to run |
@@ -1005,20 +1025,20 @@ Run each VM spec file on a fresh install, with `login.spec.ts`
 its jobs run in the root host, except where a check creates a user without
 sudo. The evidence is the record, read over SSH, and the host's journal.
 
-The update checks update LinuxIO to an update build: this tree with
-`jobs.Protocol` one higher, so a host of the installed build is an older one
-to the new bridge, and with a version of its own (`GIT_VERSION` with
-`+update`), so `linuxio --version` tells the two apart.
-`make vm-update-build` makes it in `.cache/vm-update-build/build` without
-touching the tree: a copy of the plain build whose Go binaries are built
-again with a Go overlay of `backend/common/jobs/record.go`.
+The update checks update LinuxIO to an update build: this tree with a
+version of its own (`GIT_VERSION` with `+update`), so `linuxio --version`
+tells the two apart. It keeps `jobs.Protocol`, as most releases do, so a host
+of the installed build refuses the new bridge because the update replaced its
+binary, the refusal a release that keeps the protocol relies on.
+`make vm-update-build` makes it in `.cache/vm-update-build/build`: a copy of
+the plain build whose Go binaries are built again.
 `make test-vm-browser` builds it and passes it in `LINUXIO_VM_UPDATE_BUILD`;
 without it both checks are skipped. They publish it in the VM's signed
 repository as the next package version (`linuxio-vm.sh repo-publish`,
 [Development](./development.md#test-vm)) and install it from there, as an
 administrator does. The update banner check in `jobs-phase5a.spec.ts` does
 so with apt or dnf and leaves it installed for the files after it on that
-VM, a build that differs only in the protocol and the version. By hand:
+VM, a build that differs only in the version. By hand:
 
 ```sh
 make vm-reset vm-install vm-update-build
@@ -1092,10 +1112,10 @@ Covered at one level only:
   the `409`s of `tasks.cancel` and `tasks.watch` for a scheduled run, a stale
   or failed stop, `Load older`, and the long-job notice.
 - The update wait was run in the VM as an update from package A of this
-  tree to package B, a protocol-bumped build of the same tree, both from the
-  VM's signed repository and B installed on the Updates page
+  tree to package B, the same tree built again with a version of its own,
+  both from the VM's signed repository and B installed on the Updates page
   (`jobs-update.spec.ts`, Ubuntu 26.04 and Fedora 45), since no published
-  package has a higher `jobs.Protocol`. `tasks.watch` streaming a running job and a cancel taking
+  package is a later build of this tree. `tasks.watch` streaming a running job and a cancel taking
   effect during the wait were not run: nothing can cancel those jobs.
 - The fsync of `begin` is read from the source; the power-cut checks run
   `sync` first, because a job's first record write is not fsynced.
@@ -1123,13 +1143,18 @@ Covered at one level only:
   when the job ends.
 - On the root host a live snapshot's `owner.uid` is 0 while the record holds
   the admin's uid; clients read `owner.username`.
-- While an update waits, the bell lists none of the jobs waited for and nothing
-  can cancel them, the history reads as unavailable, `tasks.host` shows no
-  `cancel_requested`, and each 15 s poll rereads the store, so a corrupt
-  record logs a warning each time. After the older host exits, `tasks.host`
-  still reports the wait until the bridge's next attempt, at most 30 s later.
-- A job host of the same protocol built before a route was added answers that
-  route `route not found`; there is no fallback.
+- After an update, new jobs wait for the jobs the older host still runs, and
+  once those end the bridge's next attempt (its backoff reaches 30 s) can add
+  up to 30 s before a new job starts, during which `tasks.host` still reports
+  the wait; a bridge whose attempt the older host cut short by exiting reads
+  `503` for that time instead. While an update waits, the bell lists none of the jobs waited for
+  and nothing can cancel them, the history reads as unavailable, `tasks.host`
+  shows no `cancel_requested`, and each 15 s poll rereads the store, so a
+  corrupt record logs a warning each time.
+- A job host that could not compare its executable with the file at its path
+  when it started (it logs so at Debug) goes on serving after an update that
+  keeps the protocol, with its old handlers, and answers a route added since
+  `route not found`; there is no fallback.
 - With a job host that cannot start, the history page shows an error after
   10 s rather than an empty list.
 - A scheduled run shorter than one poll (2 s) may never show in the bell.

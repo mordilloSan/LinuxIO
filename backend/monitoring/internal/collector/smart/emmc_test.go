@@ -5,32 +5,28 @@ import (
 	"path/filepath"
 	"testing"
 
-	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestEmmcMockSysfsScanAndCollect(t *testing.T) {
+// fakeEmmcSysfs points the eMMC reader at a sysfs tree holding mmcblk0,
+// serial 01234567, whose pre-EOL info is a warning.
+func fakeEmmcSysfs(t *testing.T) {
+	t.Helper()
 	tmp := t.TempDir()
 	prev := emmcSysfsRoot
 	emmcSysfsRoot = tmp
 	t.Cleanup(func() { emmcSysfsRoot = prev })
 
-	// Fake: /sys/class/block/mmcblk0
 	mmcDeviceDir := filepath.Join(tmp, "class", "block", "mmcblk0", "device")
 	mmcQueueDir := filepath.Join(tmp, "class", "block", "mmcblk0", "queue")
-	if err := os.MkdirAll(mmcDeviceDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(mmcQueueDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(mmcDeviceDir, 0o755))
+	require.NoError(t, os.MkdirAll(mmcQueueDir, 0o755))
 
 	write := func(path, content string) {
 		t.Helper()
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 	}
-
 	write(filepath.Join(mmcDeviceDir, "pre_eol_info"), "0x02\n")
 	write(filepath.Join(mmcDeviceDir, "life_time"), "0x04 0x05\n")
 	write(filepath.Join(mmcDeviceDir, "name"), "H26M52103FMR\n")
@@ -38,42 +34,22 @@ func TestEmmcMockSysfsScanAndCollect(t *testing.T) {
 	write(filepath.Join(mmcDeviceDir, "prv"), "0x08\n")
 	write(filepath.Join(mmcQueueDir, "logical_block_size"), "4096\n")        // size is always 512-byte units
 	write(filepath.Join(tmp, "class", "block", "mmcblk0", "size"), "1024\n") // sectors
+}
+
+func TestEmmcMockSysfsScanAndCollect(t *testing.T) {
+	fakeEmmcSysfs(t)
 
 	devs := scanEmmcDevices()
-	if len(devs) != 1 {
-		t.Fatalf("scanEmmcDevices() = %d devices, want 1", len(devs))
-	}
-	if devs[0].Name != "/dev/mmcblk0" || devs[0].Type != "emmc" {
-		t.Fatalf("scanEmmcDevices()[0] = %+v, want Name=/dev/mmcblk0 Type=emmc", devs[0])
-	}
+	require.Equal(t, []string{"/dev/mmcblk0"}, devs)
 
-	sm := &Manager{SmartDataMap: map[string]*smartmodel.SmartData{}}
-	ok, err := sm.collectEmmcHealth(devs[0])
-	if err != nil || !ok {
-		t.Fatalf("collectEmmcHealth() = (ok=%v, err=%v), want (true,nil)", ok, err)
-	}
-	if len(sm.SmartDataMap) != 1 {
-		t.Fatalf("SmartDataMap len=%d, want 1", len(sm.SmartDataMap))
-	}
-	var got *smartmodel.SmartData
-	for _, v := range sm.SmartDataMap {
-		got = v
-		break
-	}
-	if got == nil {
-		t.Fatalf("SmartDataMap value nil")
-		return
-	}
-	if got.DiskType != "emmc" || got.DiskName != "/dev/mmcblk0" {
-		t.Fatalf("disk fields = (type=%q name=%q), want (emmc,/dev/mmcblk0)", got.DiskType, got.DiskName)
-	}
-	if got.SmartStatus != "WARNING" {
-		t.Fatalf("SmartStatus=%q, want WARNING", got.SmartStatus)
-	}
-	if got.SerialNumber != "01234567" || got.ModelName == "" || got.Capacity != 1024*512 {
-		t.Fatalf("identity fields = (model=%q serial=%q cap=%d), want non-empty model, serial 01234567, cap=1024*512", got.ModelName, got.SerialNumber, got.Capacity)
-	}
-	if len(got.Attributes) < 3 {
-		t.Fatalf("attributes len=%d, want >= 3", len(got.Attributes))
-	}
+	key, got, ok := readEmmcSmartData(devs[0])
+	require.True(t, ok)
+	assert.Equal(t, "01234567", key)
+	assert.Equal(t, "emmc", got.DiskType)
+	assert.Equal(t, "/dev/mmcblk0", got.DiskName)
+	assert.Equal(t, "WARNING", got.SmartStatus)
+	assert.Equal(t, "01234567", got.SerialNumber)
+	assert.NotEmpty(t, got.ModelName)
+	assert.Equal(t, uint64(1024*512), got.Capacity)
+	assert.GreaterOrEqual(t, len(got.Attributes), 3)
 }

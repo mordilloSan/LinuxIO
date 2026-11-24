@@ -121,8 +121,14 @@ async function startBalance(
   before: Set<string>,
 ) {
   await page.goto(`/storage?pool=${uuid}`);
-  await page.getByRole("button", { name: "Change profile" }).click();
-  const dialog = page.getByRole("dialog", { name: "Change profile" });
+  await page.getByRole("button", { name: "Balance", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Balance" });
+  await dialog
+    .getByRole("combobox", { name: "What to balance", exact: true })
+    .click();
+  await page
+    .getByRole("option", { name: "Change profile", exact: true })
+    .click();
   await dialog
     .getByRole("combobox", { name: "Data profile", exact: true })
     .click();

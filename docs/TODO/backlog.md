@@ -42,58 +42,49 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
+- On kernel 7.3 (Fedora 45's `7.3.4-300.fc45`, test VM, 2026-11-24) a pool
+  member whose disk is pulled off the bus is marked missing at once ("has
+  gone missing, continue as degraded"), and what was proven on 7.0 does not
+  all hold ([E2E testing](./e2e-testing.md#distributions)). With the target
+  pulled mid-rebuild the kernel finished the replace "from `<missing disk>`
+  (devid 2) to `<missing disk>`" rather than suspending it, so LinuxIO's
+  degraded mount found no replace to cancel (`TestBtrfsAutoRebuildIntegration`,
+  "dies again", replace state 2 at 100%), and the unmount before that mount
+  hit a kernel `WARNING` at `fs/btrfs/volumes.c:1208`
+  (`btrfs_close_one_device`). The rebuild proof
+  (`TestBtrfsRebuildProofIntegration`, `targetFailsMidReplace`) shows the
+  same finish and then a new replace onto the returned disk succeeding, so
+  the plain mount its 7.0 legs expect refused succeeds; its later legs did
+  not run on 7.3. `btrfs-rebuild.spec.ts` passes its first dropout on 7.3 and
+  then, after the reboot, pulls the mount's source disk and plugs it back:
+  the health runs see it, but no automatic rebuild starts within five
+  minutes, and why was not read. Starts from what changed in `dev-replace.c`
+  and `volumes.c` between 7.0 and 7.3.
+
 ## Visible bugs
-
-- A scheduled script cannot run a tool that an AppArmor profile confines with
-  profile changes on exec. LinuxIO writes `NoNewPrivileges=yes` into every
-  generated schedule unit (`backend/bridge/handlers/schedules/native.go`,
-  documented in `docs/scheduled-scripts.md`), and under that flag the kernel
-  refuses the change: on Ubuntu 26.04 a script that calls `wg-quick` is
-  expected to fail with "Operation not permitted", as the root job host did
-  (2026-11-23, `docs/wireguard.md`). The same flag stops a script from using
-  `sudo`, `su` or any setuid program. Scripts should be able to
-  gain privileges: either drop the line from the generated unit, or make it a
-  choice per schedule that the dialog shows. Units already saved keep the old
-  line until they are rewritten. **not verified** with a real script
-
-- The Updates page can say "Your system is up to date" while the banner
-  names a LinuxIO update. Seen once in four runs of `jobs-update.spec.ts` on
-  Fedora 45 (2026-11-21), right after Refresh Sources; the list asks again by
-  itself after 50 s. The cause is not found. Ruled out in the test VM:
-  PackageKit asked on one connection the instant a refresh ends lists the
-  update (4 of 4), also while `dnf` runs beside it (18 of 18). A `GetUpdates`
-  that failed was an empty list until 2026-11-22 and is an error on the page
-  since, so the picture seen again means the list was read and was empty.
-  **not verified**
 
 ## Tests that are missing
 
 ## Needs the owner
 
-- Whether every start of the index timer should bring a full index. The
-  timer is monotonic (`packaging/systemd/linuxio-indexer-index.timer`), so a
-  boot, a restart of `linuxio.target`, a package upgrade and a saved interval
-  each start a scan 15 minutes later, whatever the age of the index. A scan
-  that finds little changed is cheap now (9 seconds and 19 rows on 963,000
-  entries), which may be enough. A calendar timer with `Persistent=true`
-  remembers its last run and runs at once only when one was missed, but it
-  turns the interval setting into a schedule. **checked**
-
-- Whether Gemini CLI and Codex get a LinuxIO profile as Claude Code has
-  (`ProfileEnv` in `backend/bridge/internal/acpagents`): today their sign-in,
-  settings and history are the ones the user's terminal uses. Codex reads
-  `CODEX_HOME`; neither variable has been tried through its ACP adapter, and
-  each needs a sign-in at its vendor to check.
-
 ## Needs a real machine or a measurement
+
+- The Gemini CLI and Codex profiles (`GEMINI_CLI_HOME`, `CODEX_HOME`,
+  [Assistant](../AI-assistant.md#profile)) were read from the pinned packages
+  and not run: a sign-in at each vendor from the Assistant should land in
+  `~/.local/share/linuxio/profiles/<id>` and leave `~/.gemini` and `~/.codex`
+  as they were. Neither has run in its profile folder either: whether its file
+  tools reach the home through `--include-directories` (Gemini CLI) and
+  `additionalDirectories` (Codex), and whether Codex reads no project settings
+  from a folder added that way.
 
 - The automatic btrfs rebuild onto a disk that comes back
   ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio
   disks, 7.0, whose serials the rig sets. A SATA or SAS disk pulled and
   reseated on a real machine (its WWN as udev reads it, `sd` naming while the
   pool holds the dead disk, a hot-plug that resets the link rather than
-  removing the disk), and a kernel with `btrfs_remove_bdev` (7.1), are not
-  run.
+  removing the disk) is not run. On the VM's 7.3 it differs from 7.0
+  ([Storage safety](#storage-safety)).
 
 - Docker's wait for published host IPs
   ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips))
@@ -104,17 +95,13 @@ after a change that issues ioctls).
   a bridge handoff by LinuxIO moved to a bridge (`systemd-analyze blame`
   must not show `docker.service` waiting 30 s).
 
-- The package's install, upgrade from the signed repository, removal and
-  kept configuration ran in the test VMs on Ubuntu 26.04, Ubuntu 24.04 and
-  Fedora 45 only. Not run: Debian stable and the previous Fedora release,
-  which have no test VM (the DEB takes its dependencies' names from Ubuntu,
-  and that Debian has them under the same names is expected, not seen).
-  **needs a host**
-- An update of LinuxIO by the distribution's unattended upgrade
-  (`unattended-upgrades`, `dnf-automatic`) with a job running is not run:
-  that LinuxIO then runs the new build with no `linuxio restart`, the job
-  goes on and a stopped LinuxIO stays stopped was seen from a shell and from
-  the Updates page only ([Upgrade](../packaging.md#upgrade)). **needs a host**
+- The monitoring daemon's NVIDIA paths, inherited from Beszel: the library is
+  called under the GPU manager's lock (whether a slow call holds readers up),
+  NVML memory is read only above 0% utilisation (kept so an idle laptop GPU
+  can stay in D3cold, so an idle GPU shows the memory of its last busy read),
+  an entry is never removed, and the size of the process list entry is
+  unchecked against the driver's header
+  (`backend/monitoring/internal/collector/gpu/nvml.go`). **needs a host**
 
 ## Later, no plan yet
 

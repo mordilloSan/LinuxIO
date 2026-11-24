@@ -164,6 +164,12 @@ The current runtime ownership check resolves NetworkManager and networkd per
 interface and refuses mixed or unknown ownership. An interface configured in
 `/etc/network/interfaces` is reported as ifupdown with the manual recipe below.
 
+After the move the member is a bridge port with no address of its own.
+`network.get_network_info` names a port's bridge or bond in `master`, read
+from the kernel's `/sys/class/net/<port>/master` link, and the dashboard's
+Network card, which hides bridges from its list, shows a port's addresses from
+that bridge under a "Port of" row.
+
 ### NetworkManager
 
 1. Read the member's active profile with `GetSettings` and refuse non-Ethernet,

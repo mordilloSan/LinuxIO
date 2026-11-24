@@ -148,11 +148,14 @@ installed, upgraded and removed, and what each check holds them to is in
 `make repo-apt` and `make repo-rpm` add the packages in `PACKAGES_DIR` to the
 signed repositories a release publishes, `build/repo/apt` and
 `build/repo/rpm` (`REPO_DIR`): `packaging/scripts/repo-apt.sh` (the pool,
-`apt-ftparchive` metadata with SHA-256 sums only and by-hash copies,
-`InRelease` and `Release.gpg`, and `linuxio.sources` with the public key in
-`Signed-By`) and `packaging/scripts/repo-rpm.sh` (each RPM signed with
-`rpmsign`, `createrepo_c` metadata, `repomd.xml.asc`, `RPM-GPG-KEY-linuxio`
-and `linuxio.repo` with `gpgcheck=1` and `repo_gpgcheck=1`). A package
+`apt-ftparchive` metadata with SHA-256 sums only and by-hash copies, each
+package's changelog under `changelogs/` and the `Changelogs` field that
+names it, `InRelease` and `Release.gpg`, and `linuxio.sources` with the
+public key in `Signed-By`) and `packaging/scripts/repo-rpm.sh` (each RPM
+signed with `rpmsign`, `createrepo_c` metadata with an `updateinfo` advisory
+per package, `repomd.xml.asc`, `RPM-GPG-KEY-linuxio` and `linuxio.repo` with
+`gpgcheck=1` and `repo_gpgcheck=1`); the changelogs are the packages' own
+([Packages](./packaging.md#changelog)). A package
 already there stays, the metadata is made again over all of them, and a
 version already published with other contents is refused. They sign with
 `REPO_SIGNING_KEY`, a key the caller's GnuPG keyring already holds, and never
@@ -183,6 +186,11 @@ A VM created before the disks had serials gets them at its next
 `make vm-reset`, which every test target without `VM` runs, since the revert
 to `clean` brings back the definition the snapshot kept; `make vm-update`
 takes the snapshot again with them.
+
+The domain also carries LinuxIO's own libvirt metadata, `os="ubuntu"` or
+`os="fedora"`, the element a VM created in LinuxIO has, so the dashboard and
+VM pages show the distribution's logo and not a plain screen. A VM created
+before it existed gets it at its next `make vm-reset`, in the same way.
 
 `make test-vm-browser` is the whole browser run in one command. It builds
 LinuxIO and the update build the update checks publish (`vm-update-build`,
@@ -248,7 +256,8 @@ has run; in a log or a pipe the results come alone. The
 run ends with a table for each VM (tests, passed, failed, skipped, when it
 finished), a timeline of which file ran on which VM, and each failure with
 its error, its code and its trace. Every line, without colour, is also in
-`.cache/test-logs/test-vm-browser.log`.
+`.cache/test-logs/test-vm-browser.log`. `LINUXIO_VM_LOG_DIR` moves these logs
+to another folder; `test-vm-all` gives each of its four runs one.
 
 Each VM has a lock, `~/.cache/linuxio-vm/locks/DOMAIN`. A target takes the
 locks of the VMs it acts on, without waiting, as its recipe begins: after
@@ -390,6 +399,21 @@ the scheduled-script specs and `package-repository.spec.ts` were run on it,
 and the DEB's removal, purge and install again were checked there by hand
 ([Packages](./packaging.md#removal)).
 
+Two more VMs are there for the package on the releases it names besides the
+default ones: `DISTRO=fedora VM_RELEASE=44` selects Fedora 44, the previous
+Fedora release (the domain `linuxio-e2e-fedora44`, the
+`Fedora-Cloud-Base-Generic-44-1.7` image), and `DISTRO=debian` selects
+Debian 13 (`linuxio-e2e-debian`, Debian's `debian-13-generic-amd64.qcow2`
+from `cloud.debian.org`, checked against the SHA-512 in its `SHA512SUMS`,
+and the Ubuntu seed with Debian's `docker-compose` for Ubuntu's
+`docker-compose-v2`). The Debian VM has a VGA card with no display: its
+GRUB draws on `gfxterm`, and without a video device the VM resets at every
+"Booting `Debian GNU/Linux'". Debian is in the apt family for the rig and the
+specs.
+`package-repository.spec.ts` and the DEB's or RPM's removal, purge and
+install again are what was run there; no other suite or spec is written for
+them, so name one with `SUITES` or `PLAYWRIGHT_ARGS`.
+
 `DISTRO=fedora` on a `vm-*` or `test-vm-*` target selects the Fedora VMs
 instead of Ubuntu's: the domain `linuxio-e2e-fedora` (`linuxio-e2e-fedora-2`
 and so on), its `linuxio-e2e-fedora-*` volumes and
@@ -408,27 +432,45 @@ and the packages they install. Fedora's is:
   it ships, so a new release is a new version in the profile.
 - `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
   passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
-  `docker-compose` and `docker-buildx`, `btrfs-progs`, the RPM tools
+  `docker-compose` and `docker-buildx`, `btrfs-progs`, `mdadm` (in Ubuntu's
+  image already; the btrfs suite's md tests skip without it), `jq` (which
+  the specs read job records with; Fedora 44's image lacks it), the RPM tools
   above, `pam`, `polkit` and `PackageKit` (what the RPM requires), every
   package upgraded, and
   `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
   filesystem is btrfs.
 - `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
+- The test binaries the suites copy into the VM user's home are labelled
+  `bin_t` where SELinux is on (`push_test`): a test that starts its own
+  binary as a systemd unit, as `TestBtrfsReplicateIntegration` does, fails
+  with `203/EXEC` on a file labelled `user_home_t`.
 
 Only part of the tests is written for Fedora, and `mk/vm.mk` holds the two
-lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `packagekit`,
-`relay`, `userconfig` and `filebrowser`; `docs/TODO/e2e-testing.md`,
-"Distributions", has their results) and `vm_fedora_specs` (`login.spec.ts`,
+lists: `vm_fedora_suites` (the root suites `memory`, `indexer`, `docker`,
+`packagekit`, `relay`, `userconfig`, `filebrowser` and `network`; `btrfs`
+passes there but for two tests written for kernel 7.0;
+`docs/TODO/e2e-testing.md`, "Distributions", has their results) and
+`vm_fedora_specs` (`login.spec.ts`,
 `capability-install.spec.ts`, `package-repository.spec.ts`,
-`indexer.spec.ts` and `wireguard.spec.ts`). With
+`indexer.spec.ts`, `wireguard.spec.ts`, `docker-host-ip-wait.spec.ts`,
+`jobs-phase3.spec.ts`, `jobs-phase4b.spec.ts` and `jobs-journal.spec.ts`;
+`btrfs-rebuild.spec.ts` fails there on the same kernel difference). With
 `DISTRO=fedora`, `test-vm-backend` given no `SUITES` runs the first list, and
 `test-vm-browser` given no `PLAYWRIGHT_ARGS` runs the second and then the
 release-update spec, which is written for both distributions. The other
 suites and specs do things with `apt` packages or were never run there; one
 that passes on Fedora is added to its list. `capability-install.spec.ts`
 skips its cancel test on Fedora. `make test-vm-all` runs the four in turn:
-Ubuntu's root suites and browser specs, then Fedora's. It ends at the first
-failure and takes no `SUITES`, `PLAYWRIGHT_ARGS` or `DISTRO`.
+Ubuntu's root suites and browser specs, then Fedora's. A failure does not
+stop it, since none of the four needs another (each reverts its VMs, and
+Fedora's VMs are not Ubuntu's). Each writes its logs to a folder of its own,
+`.cache/test-logs/test-vm-all/DISTRO-backend` or `DISTRO-browser`, emptied as
+it starts, so Fedora's logs do not overwrite Ubuntu's. The run ends with a
+recap of the four: each one's result and time, the folder of each one that
+failed, and the totals line of each browser run (the specs and the
+release-update spec). It fails when one of the four failed. Ctrl-C ends it
+once the target running stops, and the recap shows the rest as not run. It
+takes no `SUITES`, `PLAYWRIGHT_ARGS` or `DISTRO`.
 
 ```sh
 make test-vm-browser        # everything below that a browser run needs, in one go
@@ -443,7 +485,7 @@ make vm-test-btrfs-integration
 make vm-stop                # shut the VMs down; what is installed stays
 make vm-reset               # revert every disk to "clean" and stop the VMs
 make vm-update              # upgrade the packages in "clean" and take the snapshot again
-make vm-update-build        # this tree with jobs.Protocol one higher and a version of its own, for the update checks
+make vm-update-build        # this tree again with a version of its own, for the update checks
 make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 
@@ -452,7 +494,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   into the VM, which
   assembles the profile's package from them, as a release's image does: the
   DEB with `package-deb.sh` on Ubuntu, the RPM with `package-rpm.sh` on
-  Fedora, at `PACKAGE_VERSION`. It runs `package-contents.sh` on it, fails
+  Fedora, at `PACKAGE_VERSION`, its changelog the fixture release notes
+  `packaging/scripts/tests/release-notes.md`, which the update spec reads on
+  the Updates page. It runs `package-contents.sh` on it, fails
   there when the check does, and installs it with `apt-get install
   --reinstall` or `dnf install` (`dnf reinstall` for the version installed),
   over a LinuxIO package of the same or an older version; then it starts
@@ -470,7 +514,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `~/.linuxio-repository-gnupg` of the VM's user; it never leaves the VM and
   goes with `vm-reset`. apt, dnf and PackageKit read the repository in place
   through `file://`, PackageKit's apt and dnf backends included (seen on
-  Ubuntu 26.04 and Fedora 45), so no server runs. The publish copies the
+  Ubuntu 26.04 and Fedora 45), so no server runs; the apt changelogs alone
+  are named `copy://`, since apt's `file:` method leaves a fetched changelog
+  where `apt changelog` and PackageKit do not look. The publish copies the
   repository's `linuxio.sources` or `linuxio.repo`, which carries the public
   key and turns every signature check on, to `/etc/apt/sources.list.d` or
   `/etc/yum.repos.d`; it installs nothing. NOTE is appended as a comment to
@@ -488,7 +534,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
   Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
   `btrfs-progs`, the tools that assemble and publish the package, and what
-  the DEB depends on (`libpam0g`, `packagekit`, `polkitd`), so an install of
+  the DEB depends on (`libnss-systemd`, `libpam0g`, `packagekit`, `polkitd`),
+  and `jq`, which the specs read job records with, so an install of
   the package needs no download, and upgrades every package. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
   to the seed's packages reaches a VM only when it is created again
@@ -759,6 +806,7 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `CACHE_DIR` | `$(REPO_ROOT)/.cache` | Make caches, logs, and analysis artifacts. |
 | `BIN_DIR` | `$(REPO_ROOT)/build` | Built binary output directory. |
 | `PACKAGES_DIR` | `$(BIN_DIR)/packages` | Where `package-deb`, `package-rpm` and `localinstall` put the packages, and where `test-packages`, `repo-apt` and `repo-rpm` read them; `make clean` removes the LinuxIO packages in it. |
+| `RELEASE_NOTES` | none | The release notes (Markdown) `package-deb` and `package-rpm` write into the packages' changelog; without them it names the version alone. |
 | `REPO_DIR` | `$(BIN_DIR)/repo` | The signed repositories `repo-apt` and `repo-rpm` add to, `apt/` and `rpm/`. |
 | `REPO_SIGNING_KEY` | none | The key in the GnuPG keyring that `repo-apt` and `repo-rpm` sign with; required by both. |
 | `REPO_BASE_URL` | none | Where `REPO_DIR` is published; the repository files point apt and dnf at it. Required by `repo-apt` and `repo-rpm`. |
@@ -963,7 +1011,17 @@ The existing icon generator bundles the literal IDs in
 `frontend/src/icons/distro.ts`, including distro aliases and a Linux fallback.
 It also picks up WireGuard's existing capability icon. The Simple Icons package
 is a development dependency; only selected logos enter the generated bundle.
-Keep distro IDs explicit so the scanner can discover them.
+Keep distro IDs explicit so the scanner can discover them. Ubuntu is the one
+distro drawn from Material Design Icons (`mdi:ubuntu`): a filled disc with the
+circle of friends cut out, so it reads like Fedora's filled logo instead of
+Simple Icons' bare symbol.
+
+The VM pages tint these one-colour logos with the brand colour from
+`OS_BRAND_COLORS` (`frontend/src/theme/colors.ts`, keyed by Iconify id, the
+Simple Icons hex). A brand that is black or dark navy (AlmaLinux, Alpine,
+CentOS, Slackware, SUSE) has no entry and keeps the text colour, since it would
+vanish on a dark card. System Overview's avatar stays in the card's primary
+colour, as every dashboard card's does.
 
 ## Target index
 

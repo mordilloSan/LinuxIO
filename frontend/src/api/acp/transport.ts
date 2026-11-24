@@ -4,7 +4,10 @@ import { bindStreamHandlers } from "../stream-helpers";
 import type { Stream } from "../StreamMultiplexer";
 
 export interface AssistantReady {
+  /** The folder the agent runs in, where its sessions work. */
   cwd: string;
+  /** The user's home, when the bridge sent it. */
+  home?: string;
 }
 
 export interface AssistantExit {
@@ -76,6 +79,7 @@ export function createAcpTransport(
     let parsed: {
       linuxio?: string;
       cwd?: string;
+      home?: string;
       code?: number;
       stderr?: string;
       conn?: unknown;
@@ -94,7 +98,10 @@ export function createAcpTransport(
       return false;
     }
     if (parsed.linuxio === "ready" && typeof parsed.cwd === "string") {
-      resolveReady({ cwd: parsed.cwd });
+      resolveReady({
+        cwd: parsed.cwd,
+        ...(typeof parsed.home === "string" ? { home: parsed.home } : {}),
+      });
     } else if (parsed.linuxio === "exit") {
       exitSeen = true;
       resolveExit({ code: parsed.code ?? -1, stderr: parsed.stderr ?? "" });

@@ -39,7 +39,9 @@ func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error)
 			forwardingOff = notForwarding(name, cfg)
 		}
 
+		egressNic, _, _ := natRules(cfg)
 		interfaces = append(interfaces, apischema.WireGuardInterface{
+			EgressNic:   egressNic,
 			Name:        name,
 			IsConnected: status,
 			// Up, and its peers reach nothing behind the server.

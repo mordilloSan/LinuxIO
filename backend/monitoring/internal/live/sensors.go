@@ -193,26 +193,55 @@ func sensorUnitForPath(path []string) string {
 	return ""
 }
 
-// CPUTemperatures picks the package and per-core readings out of the sensor groups.
+// cpuTemperature is one CPU temperature reading under its name on its chip.
+type cpuTemperature struct {
+	name  string
+	value float64
+}
+
+// CPUTemperatures picks the package and per-core readings out of the sensor
+// groups, one group per chip. With one chip they are "package" and "coreN";
+// with several, each socket reports its own package and core numbers, so the
+// names carry the chip's position: "package1" and "package1core3".
 func CPUTemperatures(groups []monitoringapi.SensorGroup) map[string]float64 {
-	temps := make(map[string]float64)
-	core := 0
+	var chips [][]cpuTemperature
 	for _, group := range groups {
-		for _, reading := range group.Readings {
-			if !isCPUTemperature(reading) {
-				continue
+		if readings := chipCPUTemperatures(group); len(readings) > 0 {
+			chips = append(chips, readings)
+		}
+	}
+	temps := make(map[string]float64)
+	for chip, readings := range chips {
+		for _, reading := range readings {
+			name := reading.name
+			if len(chips) > 1 {
+				name = fmt.Sprintf("package%d%s", chip, strings.TrimPrefix(name, "package"))
 			}
-			name, isCore := cpuTemperatureName(reading.Label, core)
-			if name == "" {
-				continue
-			}
-			temps[name] = reading.Value
-			if isCore {
-				core++
-			}
+			temps[name] = reading.value
 		}
 	}
 	return temps
+}
+
+// chipCPUTemperatures names one chip's package and core readings; a core
+// label without a number takes the next one.
+func chipCPUTemperatures(group monitoringapi.SensorGroup) []cpuTemperature {
+	var readings []cpuTemperature
+	core := 0
+	for _, reading := range group.Readings {
+		if !isCPUTemperature(reading) {
+			continue
+		}
+		name, isCore := cpuTemperatureName(reading.Label, core)
+		if name == "" {
+			continue
+		}
+		readings = append(readings, cpuTemperature{name: name, value: reading.Value})
+		if isCore {
+			core++
+		}
+	}
+	return readings
 }
 
 func isCPUTemperature(reading monitoringapi.SensorReading) bool {

@@ -171,7 +171,7 @@ beforeEach(() => {
 });
 
 const openBalance = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.click(screen.getByRole("button", { name: "Change profile" }));
+  await user.click(screen.getByRole("button", { name: "Balance" }));
   return screen.findByRole("dialog");
 };
 
@@ -185,11 +185,17 @@ const pick = async (
   await user.click(await screen.findByRole("option", { name: option }));
 };
 
+const openConvert = async (user: ReturnType<typeof userEvent.setup>) => {
+  const dialog = await openBalance(user);
+  await pick(user, dialog, "What to balance", "Change profile");
+  return dialog;
+};
+
 describe("BtrfsDevicesCard actions", () => {
   it("offers raid10 only with at least four devices", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
-    const dialog = await openBalance(user);
+    const dialog = await openConvert(user);
     await user.click(
       within(dialog).getByRole("combobox", { name: "Data profile" }),
     );
@@ -203,7 +209,7 @@ describe("BtrfsDevicesCard actions", () => {
     unmount();
 
     render(<BtrfsDevicesCard filesystem={filesystem(4)} />);
-    const wide = await openBalance(user);
+    const wide = await openConvert(user);
     await user.click(
       within(wide).getByRole("combobox", { name: "Data profile" }),
     );
@@ -214,7 +220,7 @@ describe("BtrfsDevicesCard actions", () => {
     const user = userEvent.setup();
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
-    const dialog = await openBalance(user);
+    const dialog = await openConvert(user);
     await pick(user, dialog, "Data profile", "raid1");
     await pick(user, dialog, "Metadata profile", "raid1");
     await user.click(within(dialog).getByRole("button", { name: "Balance" }));
@@ -230,7 +236,7 @@ describe("BtrfsDevicesCard actions", () => {
     const user = userEvent.setup();
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
-    const dialog = await openBalance(user);
+    const dialog = await openConvert(user);
     await pick(user, dialog, "Metadata profile", "raid1");
     await user.click(within(dialog).getByRole("button", { name: "Balance" }));
 
@@ -245,7 +251,7 @@ describe("BtrfsDevicesCard actions", () => {
     const user = userEvent.setup();
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
-    const dialog = await openBalance(user);
+    const dialog = await openConvert(user);
     await pick(user, dialog, "Data profile", "raid1");
     const metadata = within(dialog).getByRole("combobox", {
       name: "Metadata profile",
@@ -275,7 +281,7 @@ describe("BtrfsDevicesCard actions", () => {
     degraded.devices[3].missing = true;
     render(<BtrfsDevicesCard filesystem={degraded} />);
 
-    const dialog = await openBalance(user);
+    const dialog = await openConvert(user);
     await user.click(
       within(dialog).getByRole("combobox", { name: "Data profile" }),
     );
@@ -288,13 +294,93 @@ describe("BtrfsDevicesCard actions", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("balances lightly used data chunks by default", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    const dialog = await openBalance(user);
+    await user.click(within(dialog).getByRole("button", { name: "Balance" }));
+
+    expect(mocks.submit).toHaveBeenCalledWith("btrfs_balance", {
+      uuid: "uuid-1",
+      dataUsage: 50,
+    });
+  });
+
+  it("submits the chosen fill limit", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    const dialog = await openBalance(user);
+    await pick(user, dialog, "Fill limit", "Chunks up to 10% full");
+    await user.click(within(dialog).getByRole("button", { name: "Balance" }));
+
+    expect(mocks.submit).toHaveBeenCalledWith("btrfs_balance", {
+      uuid: "uuid-1",
+      dataUsage: 10,
+    });
+  });
+
+  it("balances everything with no filter", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    const dialog = await openBalance(user);
+    await pick(user, dialog, "What to balance", "Everything");
+    await user.click(within(dialog).getByRole("button", { name: "Balance" }));
+
+    expect(mocks.submit.mock.calls[0][1]).toEqual({ uuid: "uuid-1" });
+  });
+
+  it("offers a pool missing a disk only a profile change", async () => {
+    const user = userEvent.setup();
+    const degraded = filesystem(3);
+    degraded.devices[2].missing = true;
+    degraded.degraded = true;
+    render(<BtrfsDevicesCard filesystem={degraded} />);
+
+    const dialog = await openBalance(user);
+    await user.click(
+      within(dialog).getByRole("combobox", { name: "What to balance" }),
+    );
+    expect(
+      screen.getByRole("option", { name: "Change profile" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Everything" }),
+    ).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(
+      within(dialog).getByRole("button", { name: "Balance" }),
+    ).toBeDisabled();
+    await pick(user, dialog, "Data profile", "raid1");
+    await user.click(within(dialog).getByRole("button", { name: "Balance" }));
+
+    expect(mocks.submit.mock.calls[0][1]).toMatchObject({
+      uuid: "uuid-1",
+      dataProfile: "raid1",
+    });
+    expect(mocks.submit.mock.calls[0][1]).not.toHaveProperty("dataUsage");
+  });
+
+  it("changes a profile only when one is chosen", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    const dialog = await openConvert(user);
+
+    expect(
+      within(dialog).getByRole("button", { name: "Balance" }),
+    ).toBeDisabled();
+  });
+
   it("shows progress and locks the actions while a balance runs", async () => {
     mocks.pending.add("btrfs_balance");
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
     expect(screen.getAllByRole("progressbar").length).toBeGreaterThan(0);
     expect(screen.getByText("Working...")).toBeInTheDocument();
-    for (const name of ["Add device", "Change profile"]) {
+    for (const name of ["Add device", "Balance"]) {
       expect(screen.getByRole("button", { name })).toBeDisabled();
     }
     for (const name of ["Remove", "Replace"]) {
@@ -302,6 +388,77 @@ describe("BtrfsDevicesCard actions", () => {
         expect(button).toBeDisabled();
       }
     }
+  });
+
+  it("shows a balance started elsewhere and cancels it in the kernel", async () => {
+    const user = userEvent.setup();
+    render(
+      <BtrfsDevicesCard
+        filesystem={{
+          ...filesystem(2),
+          balance: { state: "running", percent: 42.5 },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Balancing: 42.5% complete")).toBeInTheDocument();
+    for (const name of ["Add device", "Balance"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    for (const name of ["Remove", "Replace"]) {
+      for (const button of await screen.findAllByRole("button", { name })) {
+        expect(button).toBeDisabled();
+      }
+    }
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(route("btrfs_balance_cancel")).toHaveBeenCalledWith({
+        uuid: "uuid-1",
+      }),
+    );
+  });
+
+  it("says a paused balance holds the pool", async () => {
+    render(
+      <BtrfsDevicesCard
+        filesystem={{
+          ...filesystem(2),
+          balance: { state: "paused", percent: 30 },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/A balance of this pool is paused at 30\.0%/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+    for (const name of ["Add device", "Balance"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    for (const button of await screen.findAllByRole("button", {
+      name: "Remove",
+    })) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  it("follows its own balance rather than the kernel's copy of it", () => {
+    mocks.pending.add("btrfs_balance");
+    render(
+      <BtrfsDevicesCard
+        filesystem={{
+          ...filesystem(2),
+          balance: { state: "running", percent: 10 },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Working...")).toBeInTheDocument();
+    expect(screen.queryByText(/^Balancing:/)).not.toBeInTheDocument();
   });
 
   const balanceJob = (id: string, uuid: string, state = "running") => ({

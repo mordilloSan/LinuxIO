@@ -163,11 +163,14 @@ func TestAddInterfaceRejectsInvalidRequestsBeforeWriting(t *testing.T) {
 		{"MTU below minimum", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24", ListenPort: "51821", MTU: &badMTU}},
 		{"address without prefix", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1", ListenPort: "51821"}},
 		{"garbage address", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24,nope", ListenPort: "51821"}},
+		{"card with a line break", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24", ListenPort: "51821", EgressNic: "eth0\nPostUp = x"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.req.Name = "wgtest"
-			tc.req.EgressNic = "eth0"
+			if tc.req.EgressNic == "" {
+				tc.req.EgressNic = "eth0"
+			}
 			if _, err := AddInterface(context.Background(), tc.req); err == nil {
 				t.Fatal("AddInterface returned nil error")
 			}

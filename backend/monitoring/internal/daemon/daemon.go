@@ -12,17 +12,21 @@ import (
 )
 
 // Listeners returns the two fixed LinuxIO sockets followed by the configured
-// read-only listeners. Only the root-only control socket serves commands.
+// read-only listeners. Only the root-only control socket serves commands, and
+// the world-connectable api.sock serves no history: the bridge reads history
+// over control.sock from a privileged session.
 func Listeners(cfg config.Config) []app.ListenerOptions {
 	out := []app.ListenerOptions{
 		{Name: "api", Address: "unix:" + monitoringapi.APISocketPath, APIs: []string{"metrics"}, Mode: config.APISocketMode},
-		{Name: "control", Address: "unix:" + monitoringapi.ControlSocketPath, APIs: []string{"metrics", "commands"}, Mode: config.ControlSocketMode, RootOnly: true},
+		{Name: "control", Address: "unix:" + monitoringapi.ControlSocketPath, APIs: []string{"metrics", "history", "commands"}, Mode: config.ControlSocketMode, RootOnly: true},
 	}
 	for _, listener := range cfg.Listeners {
 		out = append(out, app.ListenerOptions{
 			Name:    listener.Name,
 			Address: config.GetAddress(listener.Address),
-			APIs:    []string{"metrics"},
+			// A configured listener serves history too: one that names no
+			// plugins serves everything, unauthenticated (see docs/monitoring.md).
+			APIs: []string{"metrics", "history"},
 			// An empty plugin list stays nil, which the server reads as
 			// "all metrics plugins".
 			Plugins: append([]string(nil), listener.Plugins...),

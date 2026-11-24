@@ -427,6 +427,28 @@ func TestScheduledRunReadsTheScheduleName(t *testing.T) {
 	}
 }
 
+// A schedule's unit has no NoNewPrivileges=, so a script can use sudo or a
+// tool AppArmor confines, and the packages delete the line earlier releases
+// wrote from the saved units: ensureInstalled compares the unit on disk with
+// renderService, so a unit that kept it would refuse Run now.
+func TestScheduleUnitLetsTheScriptGainPrivileges(t *testing.T) {
+	m, _ := testManager(t)
+	def := apischema.ScheduleDefinition{ID: testID, Options: testOptions()}
+	if unit := string(m.store.renderService(def, &user.User{Uid: "0", Gid: "0"})); strings.Contains(unit, "NoNewPrivileges") {
+		t.Errorf("rendered unit sets NoNewPrivileges:\n%s", unit)
+	}
+	const rewrite = `sed -i '/^NoNewPrivileges=yes$/d' "$unit"`
+	for _, script := range []string{"debian/postinst", "rpm/linuxio.spec"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packaging", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "/systemd/system/linuxio-schedule-*.service") || !strings.Contains(string(data), rewrite) {
+			t.Errorf("packaging/%s does not delete NoNewPrivileges=yes from the saved schedule units", script)
+		}
+	}
+}
+
 // The run-record hooks are a packaged drop-in (packaging/systemd/
 // linuxio-run-record.conf), never part of the rendered unit: ensureInstalled
 // compares the unit on disk with renderService, so a hook line there would

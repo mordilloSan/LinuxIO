@@ -32,6 +32,22 @@ func validateInterfaceName(name string) error {
 	return nil
 }
 
+// validNICName matches the network cards the NAT lines may name: a kernel
+// interface name such as enp2s0, br-lan or the VLAN eth0.100, without what a
+// hook line cannot carry.
+var validNICName = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$`)
+
+// validateNICName checks the network card a NAT line names.
+func validateNICName(name string) error {
+	if len(name) > 15 { // Linux interface name limit
+		return fmt.Errorf("network card name too long (max 15 characters)")
+	}
+	if !validNICName.MatchString(name) {
+		return fmt.Errorf("network card name %q contains invalid characters (allowed: a-z, A-Z, 0-9, _, and . or - after the first character)", name)
+	}
+	return nil
+}
+
 const maxPeerNameLength = 64
 
 // validatePeerName checks a display name: it is written as a comment line, so

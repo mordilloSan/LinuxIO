@@ -95,6 +95,15 @@ func TestValidateRejectsBadListeners(t *testing.T) {
 	if err := Validate(cfg); err == nil {
 		t.Fatal("zero interval must fail")
 	}
+	// Every tick writes a history row, so an interval has a lower bound.
+	cfg.Collector.Interval = Duration(MinCollectorInterval - time.Millisecond)
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "collector.interval must be at least 15s") {
+		t.Fatalf("an interval below the bound must fail: %v", err)
+	}
+	cfg.Collector.Interval = Duration(MinCollectorInterval)
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("the bound itself is valid: %v", err)
+	}
 }
 
 func TestSaveRoundTrips(t *testing.T) {
@@ -204,5 +213,21 @@ func TestDurationsWithDefaults(t *testing.T) {
 func TestIntervalDefaults(t *testing.T) {
 	if DefaultCollectorInterval != time.Minute || DefaultSmartRefreshInterval != time.Hour {
 		t.Fatalf("collector=%v smart=%v", DefaultCollectorInterval, DefaultSmartRefreshInterval)
+	}
+}
+
+// A file saved before collector.interval had a minimum still loads, at the
+// minimum, so the daemon starts and the settings page can save a fix.
+func TestLoadRaisesAnIntervalBelowTheMinimum(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("version: 1\ncollector:\n  interval: 5s\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, loaded, err := Load(path)
+	if err != nil || !loaded {
+		t.Fatalf("Load = %v, %v", loaded, err)
+	}
+	if cfg.Collector.Interval != Duration(MinCollectorInterval) {
+		t.Fatalf("interval = %s, want %s", cfg.Collector.Interval.Duration(), MinCollectorInterval)
 	}
 }

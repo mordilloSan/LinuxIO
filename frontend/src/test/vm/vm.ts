@@ -65,7 +65,7 @@ export const vmSsh = (command: string, input?: string | Buffer) =>
  */
 export async function stopAptRuns() {
   // Fedora has no unattended runs: its seed switches dnf-makecache.timer off.
-  if (vmDistro !== "ubuntu") return;
+  if (vmDistro === "fedora") return;
   await vmSsh("sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer");
   await expect
     .poll(
@@ -681,7 +681,7 @@ export const PACKAGE_REPO = `/srv/linuxio-repo/${vmDistro === "fedora" ? "rpm" :
 
 /** The build make made, which `make vm-install` installs (mk/vm.mk). */
 export const plainBuild = () => process.env.LINUXIO_VM_BUILD_DIR ?? "";
-/** This tree with jobs.Protocol one higher and a version of its own (make vm-update-build). */
+/** This tree with a version of its own (make vm-update-build). */
 export const updateBuild = () => process.env.LINUXIO_VM_UPDATE_BUILD ?? "";
 
 /**
