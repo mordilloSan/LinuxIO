@@ -45,6 +45,17 @@ type Agent struct {
 	// others keep it in the folder itself. Empty for an agent LinuxIO gives
 	// no profile, which keeps its usual folder in the user's home.
 	ProfileEnv string
+	// WorkInProfile runs the agent's chats in its profile folder rather than
+	// in the user's home. An agent that reads a .gemini or .codex folder in
+	// the folder it works in as project settings would otherwise read the
+	// user's own ~/.gemini or ~/.codex there, the folder its profile keeps it
+	// away from. The home is then given to the agent as a further folder of
+	// its workspace: through IncludeDirFlag, or by the page on each session
+	// (additionalDirectories) for an agent that advertises it.
+	WorkInProfile bool
+	// IncludeDirFlag is the flag that adds a folder to the agent's workspace
+	// on its command line.
+	IncludeDirFlag string
 	// Panes marks a CLI that serves plugin panes over stream-JSON control
 	// requests. The assistant then runs linuxio-claude-relay in its place, so
 	// the browser can reach them.
@@ -83,18 +94,24 @@ var (
 			Panes:       true,
 		},
 		"gemini": {
-			Package:    "@google/gemini-cli",
-			Version:    "0.67.0",
-			Bin:        "gemini",
-			Args:       []string{"--acp"},
-			ProfileEnv: "GEMINI_CLI_HOME",
+			Package: "@google/gemini-cli",
+			Version: "0.67.0",
+			Bin:     "gemini",
+			// The folder it works in is its profile, which is the user's
+			// alone; untrusted, it would turn off MCP servers and every
+			// approval mode but the default.
+			Args:           []string{"--acp", "--skip-trust"},
+			ProfileEnv:     "GEMINI_CLI_HOME",
+			WorkInProfile:  true,
+			IncludeDirFlag: "--include-directories",
 		},
 		"codex": {
 			Package: "@agentclientprotocol/codex-acp",
 			Version: "2.6.0",
 			Bin:     "codex-acp",
 			// The adapter hands its environment on to the Codex it runs.
-			ProfileEnv: "CODEX_HOME",
+			ProfileEnv:    "CODEX_HOME",
+			WorkInProfile: true,
 		},
 	}
 )

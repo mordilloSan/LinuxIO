@@ -45,6 +45,16 @@ async function readAll(readable: ReadableStream<unknown>, count: number) {
 }
 
 describe("createAcpTransport", () => {
+  it("passes on the home the bridge sends beside the working folder", async () => {
+    const { feed, stream } = fakeStream();
+    const transport = createAcpTransport(stream);
+    feed('{"linuxio":"ready","cwd":"/p","home":"/home/alice"}\n');
+    await expect(transport.ready).resolves.toEqual({
+      cwd: "/p",
+      home: "/home/alice",
+    });
+  });
+
   it("resolves ready from the bridge line and hides it from the SDK", async () => {
     const { feed, stream } = fakeStream();
     const transport = createAcpTransport(stream);

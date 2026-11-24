@@ -75,8 +75,10 @@ after a change that issues ioctls).
   [Assistant](../AI-assistant.md#profile)) were read from the pinned packages
   and not run: a sign-in at each vendor from the Assistant should land in
   `~/.local/share/linuxio/profiles/<id>` and leave `~/.gemini` and `~/.codex`
-  as they were, and whether a chat in the home folder reads those two as
-  project settings is not known.
+  as they were. Neither has run in its profile folder either: whether its file
+  tools reach the home through `--include-directories` (Gemini CLI) and
+  `additionalDirectories` (Codex), and whether Codex reads no project settings
+  from a folder added that way.
 
 - The automatic btrfs rebuild onto a disk that comes back
   ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio
