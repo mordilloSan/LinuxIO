@@ -356,6 +356,11 @@ export interface BtrfsBalanceRequest {
   dataUsage?: number;
 }
 
+export interface BtrfsBalanceStatus {
+  state: string;
+  percent: number;
+}
+
 export interface BtrfsCompression {
   algorithm: string;
   level?: number;
@@ -422,6 +427,7 @@ export interface BtrfsFilesystem {
   spare?: BtrfsSpare;
   autoRebuild: boolean;
   rebuild?: BtrfsRebuild;
+  balance?: BtrfsBalanceStatus;
 }
 
 export interface BtrfsJobIDRequest {

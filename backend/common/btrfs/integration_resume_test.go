@@ -473,6 +473,7 @@ func (p *itPool) pauseBalance() {
 	ended := make(chan error, 1)
 	go func() { ended <- Balance(p.ctx, p.uuid, BalanceOptions{}, func(float64) {}) }()
 	p.waitExclusive("balance", ended)
+	p.listedBalance("running")
 	if paused, err := PauseBalance(p.ctx, p.uuid); err != nil || !paused {
 		p.t.Fatalf("pause balance: paused=%v err=%v", paused, err)
 	}
@@ -484,6 +485,18 @@ func (p *itPool) pauseBalance() {
 	}
 	if op := p.exclusiveOp(); op != "balance paused" {
 		p.t.Fatalf("exclusive operation = %q after the pause", op)
+	}
+	p.listedBalance("paused")
+}
+
+// listedBalance checks that the pool's inventory reports the kernel's
+// balance in state, as the Disks card shows it.
+func (p *itPool) listedBalance(state string) {
+	p.t.Helper()
+	fs, err := FindFilesystem(p.ctx, p.uuid)
+	p.must("find filesystem", err)
+	if fs.Balance == nil || fs.Balance.State != state || fs.Balance.Percent < 0 || fs.Balance.Percent > 100 {
+		p.t.Fatalf("listed balance = %+v, want %s", fs.Balance, state)
 	}
 }
 

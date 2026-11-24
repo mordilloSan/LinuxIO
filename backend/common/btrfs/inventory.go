@@ -40,6 +40,18 @@ type BtrfsFilesystem struct {
 	// the hot spare's, as it stands (see rebuild.go).
 	AutoRebuild bool          `json:"autoRebuild"`
 	Rebuild     *BtrfsRebuild `json:"rebuild,omitzero"`
+	// Balance is the kernel's balance of the pool, whoever started it (a
+	// job, the command line, btrfsmaintenance's timer); nil when there is
+	// none or the bridge is not root, since reading it needs CAP_SYS_ADMIN.
+	Balance *BtrfsBalanceStatus `json:"balance,omitzero"`
+}
+
+// BtrfsBalanceStatus is a balance the kernel holds: State is running or
+// paused (a paused one continues when the pool is mounted again), Percent
+// the share of the chunks it expects to move that it has moved.
+type BtrfsBalanceStatus struct {
+	State   string  `json:"state"`
+	Percent float64 `json:"percent"`
 }
 
 // BtrfsAllocation is one block-group type (data, metadata, system) with
@@ -195,6 +207,26 @@ func fillFilesystem(fs *BtrfsFilesystem) {
 	}
 
 	fs.Scrub = scrubStatus(mnt, fs.UUID, fs.Devices, fs.UsedBytes, warn)
+	fs.Balance = balanceStatus(mnt, warn)
+}
+
+// balanceStatus reads the kernel's balance on mnt, nil for none. A bridge
+// that is not root may not read it (EPERM) and shows none.
+func balanceStatus(mnt string, warn func(string, error)) *BtrfsBalanceStatus {
+	state, pct, err := balanceProgressOf(mnt)
+	switch {
+	case errors.Is(err, unix.ENOTCONN):
+		return nil
+	case errors.Is(err, unix.EPERM):
+		slog.Debug("btrfs balance progress not readable", "mountpoint", mnt, "error", err)
+		return nil
+	case err != nil:
+		warn("balance progress", err)
+		return nil
+	case state&balanceStateRunning == 0:
+		return &BtrfsBalanceStatus{State: "paused", Percent: pct}
+	}
+	return &BtrfsBalanceStatus{State: "running", Percent: pct}
 }
 
 // profileRatio is how many raw bytes one logical byte of a profile takes.

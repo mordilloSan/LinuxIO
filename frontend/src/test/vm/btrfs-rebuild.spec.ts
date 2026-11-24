@@ -251,7 +251,16 @@ async function dropAndRebuild(uuid: string, disk: string, page?: Page) {
     `sudo bash -c 'for i in $(seq -w 1 4); do head -c 16M /dev/urandom >${DIR}/out-${disk}-$i.bin; done; sync'`,
   );
   await healthRun();
-  if (page) await pageShows(page, uuid, "Disk dropped out");
+  if (page) {
+    // Since 7.1 the kernel marks the pulled member missing itself and the
+    // pool lists a missing disk with no path; before, LinuxIO tells that it
+    // dropped out (docs/btrfs.md, Missing disks).
+    const marked =
+      (
+        await vmSsh(`cat /sys/fs/btrfs/${uuid}/devinfo/${devid}/missing`)
+      ).trim() === "1";
+    await pageShows(page, uuid, marked ? "Degraded" : "Disk dropped out");
+  }
 
   const back = await plugBack(serial);
   // Under a new name while the pool holds the dead block device, as a

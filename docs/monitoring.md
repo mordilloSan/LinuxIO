@@ -268,7 +268,13 @@ again whenever it exits: after 5 seconds, doubled for each run in a row that
 gave no valid sample, up to 5 minutes; it never stops for good
 (`gpuCollector.start` in `backend/monitoring/internal/collector/gpu/manager.go`).
 A line the parser rejects is skipped, and the first one of a run is logged as a
-warning. Between two samples a GPU reports its last average; a GPU without
+warning. nvtop, used only when no vendor collector is, hands over to the
+collectors after it in `GPU_COLLECTOR` when it fails, and when none of them
+starts it is started again the same way. Each caller, told apart by its
+cache key, gets the average since its own last read; a caller's first
+read starts where the caller that read last stands, so it averages over a
+recent window rather than since the daemon started
+(`adoptNewestWindow`). Between two samples a caller gets its own last average; a GPU without
 engine readings whose temperature and memory read zero is taken as suspended
 and reports zeros, while an Intel GPU, which reports engines but no temperature
 or memory, keeps its last average.

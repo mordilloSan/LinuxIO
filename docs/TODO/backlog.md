@@ -49,18 +49,17 @@ after a change that issues ioctls).
   pulled mid-rebuild the kernel finished the replace "from `<missing disk>`
   (devid 2) to `<missing disk>`" rather than suspending it, so LinuxIO's
   degraded mount found no replace to cancel (`TestBtrfsAutoRebuildIntegration`,
-  "dies again", replace state 2 at 100%); whether a person's replace then
-  makes the pool whole was not reached, and the unmount before that mount hit
-  a kernel `WARNING` at `fs/btrfs/volumes.c:1208`
-  (`btrfs_close_one_device`). The rebuild proof's not-missing leg
-  (`TestBtrfsRebuildProofIntegration`) finds the `single` chunks written
-  while the member was missing still there after the replace alone; the
-  automatic rebuild's resync converts them and passes the same leg.
-  `btrfs-rebuild.spec.ts` never shows "Disk dropped out", not looked into.
-  Each starts from what changed in the kernel between 7.0 and 7.3.
-
-  - have the chance to run btrfs balance from the UI with feedback (running the command from cli gives no progress indication
-  )
+  "dies again", replace state 2 at 100%), and the unmount before that mount
+  hit a kernel `WARNING` at `fs/btrfs/volumes.c:1208`
+  (`btrfs_close_one_device`). The rebuild proof
+  (`TestBtrfsRebuildProofIntegration`, `targetFailsMidReplace`) shows the
+  same finish and then a new replace onto the returned disk succeeding, so
+  the plain mount its 7.0 legs expect refused succeeds; its later legs did
+  not run on 7.3. `btrfs-rebuild.spec.ts` passes its first dropout on 7.3 and
+  then, after the reboot, pulls the mount's source disk and plugs it back:
+  the health runs see it, but no automatic rebuild starts within five
+  minutes, and why was not read. Starts from what changed in `dev-replace.c`
+  and `volumes.c` between 7.0 and 7.3.
 
 ## Visible bugs
 
@@ -97,12 +96,12 @@ after a change that issues ioctls).
   must not show `docker.service` waiting 30 s).
 
 - The monitoring daemon's NVIDIA paths, inherited from Beszel: the library is
-  called under the GPU manager's lock, averages are shared between callers, a
-  caller's first read is the mean since the daemon started, NVML memory is
-  read only above 0% utilisation, nvtop gives up after one failure when it is
-  the only collector, an entry is never removed, and the size of the process
-  list entry is unchecked against the driver's header
-  (`backend/monitoring/internal/collector/gpu`). **needs a host**
+  called under the GPU manager's lock (whether a slow call holds readers up),
+  NVML memory is read only above 0% utilisation (kept so an idle laptop GPU
+  can stay in D3cold, so an idle GPU shows the memory of its last busy read),
+  an entry is never removed, and the size of the process list entry is
+  unchecked against the driver's header
+  (`backend/monitoring/internal/collector/gpu/nvml.go`). **needs a host**
 
 ## Later, no plan yet
 

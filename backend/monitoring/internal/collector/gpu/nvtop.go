@@ -296,18 +296,16 @@ func (gm *Manager) collectNvtopStats(ctx context.Context, interval string, updat
 }
 
 // startNvtopCollector starts nvtop collection with retry or fallback callback handling.
-func (gm *Manager) startNvtopCollector(ctx context.Context, interval string, onFailure func()) {
+// onFailure starts the collectors to fall back to and reports whether one
+// started; nvtop stops only then, and otherwise is retried.
+func (gm *Manager) startNvtopCollector(ctx context.Context, interval string, onFailure func() bool) {
 	gm.startCollector(ctx, "nvtop", func() {
 		runRetryingCollector(ctx, retryWaitTime, func() error {
 			return gm.collectNvtopStats(ctx, interval, true)
 		}, func(err error) bool {
 			gm.clearGPUProcessSource(nvtopCmd)
 			slog.Warn("GPU data collection via nvtop failed", "error", err)
-			if onFailure != nil {
-				onFailure()
-				return false
-			}
-			return true
+			return onFailure == nil || !onFailure()
 		})
 	})
 }

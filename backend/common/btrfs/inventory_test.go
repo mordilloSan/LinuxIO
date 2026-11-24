@@ -287,6 +287,39 @@ func TestScrubStatusRunning(t *testing.T) {
 	}
 }
 
+// A balance shows whoever started it, running or paused, and a bridge that
+// may not read it (EPERM) shows none rather than failing the list.
+func TestBalanceStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		progress func() (balanceArgs, error)
+		want     *BtrfsBalanceStatus
+	}{
+		{"none", nil, nil},
+		{"running", func() (balanceArgs, error) {
+			return balanceArgs{State: balanceStateRunning, Stat: balanceProgress{Expected: 4, Completed: 1}}, nil
+		}, &BtrfsBalanceStatus{State: "running", Percent: 25}},
+		{"paused", func() (balanceArgs, error) {
+			return balanceArgs{Stat: balanceProgress{Expected: 4, Completed: 2}}, nil
+		}, &BtrfsBalanceStatus{State: "paused", Percent: 50}},
+		{"not root", func() (balanceArgs, error) { return balanceArgs{}, unix.EPERM }, nil},
+		{"failed", func() (balanceArgs, error) { return balanceArgs{}, unix.EIO }, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := raid1Kernel()
+			k.balanceProgress = tc.progress
+			stubKernel(t, k)
+			got, err := ListFilesystems(context.Background())
+			if err != nil || len(got) != 1 {
+				t.Fatalf("got=%+v err=%v", got, err)
+			}
+			if !reflect.DeepEqual(got[0].Balance, tc.want) {
+				t.Fatalf("balance = %+v, want %+v", got[0].Balance, tc.want)
+			}
+		})
+	}
+}
+
 // A crash mid-scrub leaves its record at "running"; with no device
 // scrubbing it reads as aborted, so Scrub is offered again and a resync is
 // not held back forever.

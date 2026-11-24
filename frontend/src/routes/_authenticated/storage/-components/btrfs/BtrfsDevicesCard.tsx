@@ -235,6 +235,16 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
 
   const pending =
     removeDevice.isPending || replaceDevice.isPending || balance.isPending;
+  // A balance this card is not following: started from the command line, by
+  // btrfsmaintenance's timer or by Reclaim space. While the kernel holds it,
+  // running or paused, it refuses another balance, a removal, a replace and
+  // a resize, and an addition before 5.17.
+  const otherBalance = pending ? undefined : filesystem.balance;
+  const busy = pending || otherBalance !== undefined;
+  const balanceRunning = otherBalance?.state === "running";
+  // Nothing left to cancel ends a cancel, also one of a balance this card
+  // does not follow, whose job's end it never sees.
+  if (canceling && !busy) setCanceling(false);
   // No profile can live on zero devices, so the last present one must stay.
   const lastDevice =
     filesystem.devices.filter((device) => !device.missing).length <= 1;
@@ -333,20 +343,20 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           {row.original.growable && (
             <AppActionIconButton
-              disabled={pending || isGrowing}
+              disabled={busy || isGrowing}
               icon="mdi:arrow-expand-horizontal"
               label="Grow to disk size"
               onClick={() => growDevice({ uuid, deviceId: row.original.id })}
             />
           )}
           <AppActionIconButton
-            disabled={pending}
+            disabled={busy}
             icon="mdi:swap-horizontal"
             label="Replace"
             onClick={() => setDialog({ kind: "replace", device: row.original })}
           />
           <AppActionIconButton
-            disabled={pending || lastDevice}
+            disabled={busy || lastDevice}
             icon="mdi:delete"
             label="Remove"
             onClick={() => setDialog({ kind: "remove", device: row.original })}
@@ -366,15 +376,15 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           right={
             <div style={{ display: "flex", gap: 4 }}>
               <AppActionIconButton
-                disabled={pending}
+                disabled={busy}
                 icon="mdi:plus"
                 label="Add device"
                 onClick={() => setDialog({ kind: "add" })}
               />
               <AppActionIconButton
-                disabled={pending}
-                icon="mdi:tune"
-                label="Change profile"
+                disabled={busy}
+                icon="mdi:scale-balance"
+                label="Balance"
                 onClick={() => setDialog({ kind: "balance" })}
               />
             </div>
@@ -382,6 +392,31 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           subtitle={`${filesystem.devices.length} disk(s) in this filesystem`}
           title="Disks"
         />
+        {otherBalance && (
+          <div>
+            {balanceRunning && (
+              <AppLinearProgress
+                value={otherBalance.percent}
+                variant="determinate"
+              />
+            )}
+            <AppTypography variant="body2">
+              {balanceRunning
+                ? `Balancing: ${otherBalance.percent.toFixed(1)}% complete`
+                : `A balance of this pool is paused${otherBalance.percent > 0 ? ` at ${otherBalance.percent.toFixed(1)}%` : ""}. Until it ends, disks cannot be added, removed or replaced, and the pool cannot be balanced: continue it with btrfs balance resume, or end it with btrfs balance cancel, on the pool's mountpoint.`}
+            </AppTypography>
+            {balanceRunning && (
+              <AppButton
+                disabled={canceling}
+                onClick={() => void cancelBalanceJob()}
+                size="small"
+                variant="outlined"
+              >
+                {canceling ? "Cancelling…" : "Cancel"}
+              </AppButton>
+            )}
+          </div>
+        )}
         {pending && (
           <div>
             <AppLinearProgress
@@ -458,8 +493,8 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
         <BtrfsBalanceDialog
           filesystem={filesystem}
           onClose={closeDialog}
-          onConfirm={(profiles) =>
-            start(() => balance.mutate({ uuid, ...profiles }))
+          onConfirm={(choice) =>
+            start(() => balance.mutate({ uuid, ...choice }))
           }
         />
       )}

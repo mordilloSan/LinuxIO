@@ -675,6 +675,12 @@ func Balance(ctx context.Context, uuid string, opts BalanceOptions, report func(
 	if opts.DataUsageMax != nil && (*opts.DataUsageMax < 0 || *opts.DataUsageMax > 100) {
 		return fmt.Errorf("usage filter %d is not a percentage", *opts.DataUsageMax)
 	}
+	// On a pool missing a disk the kernel writes every chunk it moves as
+	// single on the disks present (btrfs_reduce_alloc_profile), so only a
+	// convert, to a profile they hold, may run there.
+	if fs.Degraded && opts.DataProfile == nil && opts.MetadataProfile == nil {
+		return fmt.Errorf("pool %s is missing a disk: replace it before balancing, or change the profile to one the present disks hold: %w", uuid, errDiskMissing)
+	}
 	args := balanceArgsOf(opts)
 	err = runBalance(ctx, fs.Mountpoints[0].Mountpoint, &args, report)
 	if errors.Is(err, unix.EINPROGRESS) {
