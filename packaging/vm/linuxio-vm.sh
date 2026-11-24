@@ -551,6 +551,8 @@ package_tools() {
 # assemble_package VERSION assembles the package from ~/linuxio/build into
 # ~/linuxio/packages, alone there, and checks it against the build; the
 # assembler's own output goes to ~/linuxio/packages.log, shown when it fails.
+# Its changelog carries the fixture release notes
+# (packaging/scripts/tests/release-notes.md), which the Updates page shows.
 assemble_package() {
 	package_tools
 	say "assembling LinuxIO ${1} with ${PACKAGE_SCRIPT}"
@@ -559,7 +561,8 @@ set -euo pipefail
 script=$1 version=$2
 cd ~/linuxio
 rm -rf packages
-packaging/scripts/"$script" --build-dir build --version "$version" --out-dir packages >/dev/null 2>packages.log || {
+packaging/scripts/"$script" --build-dir build --version "$version" --out-dir packages \
+	--notes packaging/scripts/tests/release-notes.md >/dev/null 2>packages.log || {
 	tail -n 40 packages.log >&2
 	exit 1
 }

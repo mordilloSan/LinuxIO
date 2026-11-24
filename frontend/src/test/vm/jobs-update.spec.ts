@@ -429,13 +429,11 @@ test.describe
     );
     await offer.getByText("Open Updates", { exact: true }).click();
     await ui(page).toHaveURL(/\/updates$/);
+    // The card names the package; the version and the summary are below it.
     const card = page
       .locator("div")
-      .filter({
-        has: page.getByText(`linuxio · ${packageKitVersion(version)}`, {
-          exact: true,
-        }),
-      })
+      .filter({ has: page.getByText("linuxio", { exact: true }) })
+      .filter({ has: page.getByText(`${packageKitVersion(version)} · `) })
       .filter({
         has: page.getByRole("button", { name: "Update", exact: true }),
       })
@@ -444,6 +442,17 @@ test.describe
       name: "Update",
       exact: true,
     });
+    // docs/packaging.md (Changelog): B's changelog, the fixture release
+    // notes the VM packages carry, read by PackageKit from the repository:
+    // the apt Changelogs field on Ubuntu, updateinfo on Fedora.
+    await card.getByRole("button", { name: "View Changelog" }).click();
+    await ui(card).toContainText(
+      "updates: show the package's changes on the Updates page (abc1234)",
+      { timeout: 60_000 },
+    );
+    // As written: the spec's %changelog takes the text without expanding it.
+    await ui(card).toContainText("memory: keep 50% of %{name} free (def5678)");
+    await card.getByRole("button", { name: "View Changelog" }).click();
 
     // An update that does not go through leaves A installed and running, and
     // this session signed in: nothing but the package's own step restarts

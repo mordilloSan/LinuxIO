@@ -34,10 +34,9 @@ const UpdateCard = ({
 }: UpdateCardProps) => {
   const isDeferred = isDeferredUpdate(update);
   const packageName = update.package_id.split(";")[0] || update.package_id;
-  const title = update.summary.trim() || packageName;
-  const subtitle = update.version
-    ? `${packageName} · ${update.version}`
-    : packageName;
+  const subtitle = [update.version, update.summary.trim()]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <FrostedCard
@@ -67,11 +66,13 @@ const UpdateCard = ({
             style={{ lineHeight: 1.25 }}
             variant="subtitle1"
           >
-            {title}
+            {packageName}
           </AppTypography>
-          <AppTypography color="text.secondary" noWrap variant="caption">
-            {subtitle}
-          </AppTypography>
+          {subtitle ? (
+            <AppTypography color="text.secondary" noWrap variant="caption">
+              {subtitle}
+            </AppTypography>
+          ) : null}
         </div>
         {isDeferred ? (
           <Chip

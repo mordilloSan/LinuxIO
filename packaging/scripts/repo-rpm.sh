@@ -5,7 +5,7 @@
 #   OUT_DIR/linuxio.repo                       gpgcheck=1, repo_gpgcheck=1
 #   OUT_DIR/RPM-GPG-KEY-linuxio                the public key
 #   OUT_DIR/stable/x86_64/linuxio-<version>-1.x86_64.rpm, signed with rpmsign
-#   OUT_DIR/stable/x86_64/repodata/            createrepo_c, repomd.xml.asc
+#   OUT_DIR/stable/x86_64/repodata/            createrepo_c, updateinfo, repomd.xml.asc
 #
 # A package already in OUT_DIR stays, so publishing one more version keeps
 # the earlier ones; the metadata is generated again over all of them. A
@@ -56,6 +56,7 @@ base_url="${base_url%/}"
 command -v rpm >/dev/null || die "rpm is missing: install rpm"
 command -v rpmsign >/dev/null || die "rpmsign is missing: install rpm-sign"
 command -v createrepo_c >/dev/null || die "createrepo_c is missing: install createrepo_c"
+command -v modifyrepo_c >/dev/null || die "modifyrepo_c is missing: install createrepo_c"
 command -v gpg >/dev/null || die "gpg is missing: install gnupg2"
 gpg --batch --list-secret-keys -- "$key" >/dev/null 2>&1 ||
 	die "no secret key '${key}' in the GnuPG keyring${GNUPGHOME:+ ${GNUPGHOME}}"
@@ -104,16 +105,72 @@ for file in "${rpms[@]}"; do
 	echo "repo-rpm: added linuxio ${evr}" >&2
 done
 
-# 2. The metadata over every package in the folder, and its signature.
+# 2. The metadata over every package in the folder.
 createrepo_c --quiet --update --checksum sha256 "$arch_dir" >&2 || die "createrepo_c failed in ${arch_dir}"
 repomd="${arch_dir}/repodata/repomd.xml"
 [[ -s $repomd ]] || die "createrepo_c wrote no ${repomd}"
+
+# 3. One advisory per package in updateinfo, its %changelog text as the
+# description: PackageKit's dnf backend shows an update's notes from there
+# and reads no changelog of a package that is not installed. A package from
+# before the RPMs carried the notes has no %changelog and says its version
+# alone. The type follows the notes' headings: Security, then Bug Fixes, then
+# an enhancement.
+# The text as XML 1.0 holds it: escaped, and without the control characters
+# it forbids (a terminal's escape pasted into the notes would make the whole
+# file unreadable, every package's advisory with it).
+xml_text() {
+	LC_ALL=C tr -d '\000-\010\013\014\016-\037' |
+		sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'
+}
+{
+	echo '<?xml version="1.0" encoding="UTF-8"?>'
+	echo '<updates>'
+	for file in "${arch_dir}"/linuxio-*.rpm; do
+		fields="$(rpm -qp --nosignature --qf '%{NAME} %{EPOCHNUM} %{VERSION} %{RELEASE} %{ARCH} %{SOURCERPM} %{BUILDTIME}' "$file" 2>/dev/null)" ||
+			die "cannot read ${file}"
+		read -r name epoch version release arch source_rpm built <<<"$fields"
+		notes="$(rpm -qp --nosignature --qf '%{CHANGELOGTEXT}' "$file" 2>/dev/null)" || notes=""
+		[[ -n $notes && $notes != "(none)" ]] || notes="- LinuxIO ${version}."
+		type=enhancement
+		if grep -qx 'Security:' <<<"$notes"; then
+			type=security
+		elif grep -qx 'Bug Fixes:' <<<"$notes"; then
+			type=bugfix
+		fi
+		cat <<EOF
+  <update from="packages@engmariz.com" status="stable" type="${type}" version="2.0">
+    <id>linuxio-${version}-${release}</id>
+    <title>LinuxIO ${version}</title>
+    <issued date="$(date -u -d "@${built}" '+%Y-%m-%d %H:%M:%S')"/>
+    <severity>None</severity>
+    <description>$(xml_text <<<"$notes")</description>
+    <pkglist>
+      <collection short="linuxio">
+        <name>LinuxIO</name>
+        <package name="${name}" epoch="${epoch}" version="${version}" release="${release}" arch="${arch}" src="${source_rpm}">
+          <filename>${file##*/}</filename>
+          <sum type="sha256">$(sha256sum <"$file" | cut -d' ' -f1)</sum>
+        </package>
+      </collection>
+    </pkglist>
+  </update>
+EOF
+	done
+	echo '</updates>'
+} >"${work}/updateinfo.xml"
+rm -f "${arch_dir}"/repodata/*updateinfo*
+modifyrepo_c --mdtype=updateinfo --compress-type=gz "${work}/updateinfo.xml" "${arch_dir}/repodata" >&2 ||
+	die "modifyrepo_c could not add updateinfo to ${arch_dir}/repodata"
+grep -q 'type="updateinfo"' "$repomd" || die "repomd.xml lists no updateinfo"
+
+# 4. The signature of the metadata.
 rm -f "${repomd}.asc"
 gpg --batch --yes --quiet --local-user "$key" --digest-algo SHA512 --armor --detach-sign \
 	--output "${work}/repomd.xml.asc" "$repomd" || die "gpg could not sign ${repomd} with ${key}"
 mv -f -- "${work}/repomd.xml.asc" "${repomd}.asc"
 
-# 3. The public key, and the repository file administrators install.
+# 5. The public key, and the repository file administrators install.
 gpg --batch --armor --export --export-options export-minimal -- "$key" >"${work}/RPM-GPG-KEY-linuxio"
 grep -q -- '-----BEGIN PGP PUBLIC KEY BLOCK-----' "${work}/RPM-GPG-KEY-linuxio" || die "gpg exported no public key for ${key}"
 mv -f -- "${work}/RPM-GPG-KEY-linuxio" "${out_dir}/RPM-GPG-KEY-linuxio"

@@ -1,8 +1,9 @@
 # The RPM of LinuxIO, assembled by packaging/scripts/package-rpm.sh from
 # programs already built: nothing is compiled here. The script defines
 # linuxio_version, linuxio_build_dir (the programs and their
-# THIRD_PARTY_NOTICES.md), linuxio_packaging_dir (packaging/) and
-# linuxio_source_dir (the folder holding LICENSE).
+# THIRD_PARTY_NOTICES.md), linuxio_packaging_dir (packaging/),
+# linuxio_source_dir (the folder holding LICENSE) and linuxio_changelog (the
+# %%changelog text changelog-entry.sh wrote).
 #
 # The programs go in byte for byte as built: the webserver checks the SHA-256
 # of linuxio-bridge recorded at build time. So no debuginfo package (whose
@@ -11,7 +12,8 @@
 %global debug_package %{nil}
 %global _build_id_links none
 %global __os_install_post %{nil}
-# There is no %%changelog to take a build time from.
+# The build time is the build's, not the date of the %%changelog entry, which
+# has no time of day.
 %global source_date_epoch_from_changelog 0
 
 %global selinuxtype targeted
@@ -221,3 +223,8 @@ fi
 %license LICENSE
 %doc THIRD_PARTY_NOTICES.md
 %{_mandir}/man8/linuxio.8*
+
+# Read with %%(cat), whose output rpm takes as it is: an %%include'd line would
+# have its macros expanded (docs/packaging.md, "Changelog").
+%changelog
+%(cat %{linuxio_changelog})

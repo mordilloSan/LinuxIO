@@ -141,17 +141,19 @@ jobs:
           fi
 
   prepare:
-    name: Read the build pins
+    name: Read the build pins and the release notes
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read # the release PR's body is the notes
     outputs:
       compile_image: ${{ steps.pins.outputs.COMPILE_IMAGE }}
       rpm_image: ${{ steps.pins.outputs.RPM_IMAGE }}
       node_version: ${{ steps.pins.outputs.NODE_VERSION }}
       tag: ${{ steps.ref.outputs.tag }}
+      notes: ${{ steps.notes.outputs.notes }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -174,6 +176,35 @@ jobs:
             echo "::error::Only a vX.Y.Z tag is published; $GITHUB_REF is not one. Run without publish for a dry run."
             exit 1
           fi
+
+      # The notes are the body gh release-flow open-pr wrote on the release PR,
+      # as it stands when this job runs: the PR from dev/<tag> whose merge
+      # commit is the commit this run's tag points at. They are read once, so
+      # the packages' changelogs and the GitHub release carry the same text. A
+      # dry run without them builds packages whose changelog names the version
+      # alone.
+      - name: Read the release notes
+        id: notes
+        if: steps.ref.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ref.outputs.tag }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          notes="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=closed&base=main&head=$GITHUB_REPOSITORY_OWNER:dev/$TAG" \
+            --jq "[.[] | select(.merged_at != null and .merge_commit_sha == \"$GITHUB_SHA\") | .body // \"\"] | first // \"\"")" || notes=""
+          if [[ -z $(tr -d '[:space:]' <<<"$notes") ]]; then
+            if [[ $PUBLISH == true ]]; then
+              echo "::error::No merged pull request from dev/$TAG with merge commit $GITHUB_SHA could be read, or its body is empty"
+              exit 1
+            fi
+            echo "::warning::No release notes for $TAG; the packages' changelogs name the version alone"
+            exit 0
+          fi
+          delimiter="NOTES_$(openssl rand -hex 16)"
+          { echo "notes<<$delimiter"; printf '%s\n' "$notes"; echo "$delimiter"; } >>"$GITHUB_OUTPUT"
+          printf '%s\n' "$notes"
 
   compile:
     name: Compile and assemble the DEB
@@ -246,7 +277,11 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
 
       - name: Assemble the DEB
-        run: make package-deb PACKAGE_VERSION="${{ steps.version.outputs.version }}" PACKAGES_DIR=build/packages
+        env:
+          NOTES: ${{ needs.prepare.outputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" >"$RUNNER_TEMP/release-notes.md"
+          make package-deb PACKAGE_VERSION="${{ steps.version.outputs.version }}" PACKAGES_DIR=build/packages RELEASE_NOTES="$RUNNER_TEMP/release-notes.md"
 
       - name: Test the DEB
         run: make test-packages-quiet PACKAGE_VERSION="${{ steps.version.outputs.version }}" PACKAGES_DIR=build/packages
@@ -316,7 +351,11 @@ jobs:
           rm programs.tar
 
       - name: Assemble the RPM
-        run: make package-rpm PACKAGE_VERSION="${{ needs.compile.outputs.version }}" PACKAGES_DIR=build/packages
+        env:
+          NOTES: ${{ needs.prepare.outputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" >"$RUNNER_TEMP/release-notes.md"
+          make package-rpm PACKAGE_VERSION="${{ needs.compile.outputs.version }}" PACKAGES_DIR=build/packages RELEASE_NOTES="$RUNNER_TEMP/release-notes.md"
 
       - name: Test the RPM
         run: make test-packages-quiet PACKAGE_VERSION="${{ needs.compile.outputs.version }}" PACKAGES_DIR=build/packages
@@ -493,7 +532,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      pull-requests: read # the release PR's body is the notes
     env:
       GH_REPO: ${{ github.repository }}
     steps:
@@ -503,23 +541,18 @@ jobs:
           name: release-assets
           path: release-assets
 
-      # The notes are the body gh release-flow open-pr wrote on the release PR,
-      # as it stands when this job runs: the PR from dev/<tag> whose merge
-      # commit is the commit this run's tag points at.
-      - name: Read the release notes
+      # The notes prepare read from the release PR, the text the packages'
+      # changelogs carry.
+      - name: Write the release notes
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.prepare.outputs.tag }}
+          NOTES: ${{ needs.prepare.outputs.notes }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/pulls?state=closed&base=main&head=$GITHUB_REPOSITORY_OWNER:dev/$TAG" \
-            --jq "[.[] | select(.merged_at != null and .merge_commit_sha == \"$GITHUB_SHA\") | .body // \"\"] | first // \"\"" \
-            >RELEASE_NOTES.md
-          if [[ -z $(tr -d '[:space:]' <RELEASE_NOTES.md) ]]; then
-            echo "::error::No merged pull request from dev/$TAG with merge commit $GITHUB_SHA, or its body is empty"
+          if [[ -z $(tr -d '[:space:]' <<<"$NOTES") ]]; then
+            echo "::error::prepare read no release notes"
             exit 1
           fi
-          cat RELEASE_NOTES.md
+          printf '%s\n' "$NOTES" >RELEASE_NOTES.md
 
       # A draft first, with every asset, then published in one step: an
       # immutable release cannot gain assets once published.

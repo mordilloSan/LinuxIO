@@ -10,6 +10,11 @@ PACKAGE_VERSION := $(shell "$(packaging_scripts_dir)/package-version.sh" "$(repo
 endif
 packages_dir := $(if $(PACKAGES_DIR),$(PACKAGES_DIR),$(bin_dir)/packages)
 PACKAGES_DIR ?= $(packages_dir)
+# The release notes the packages' changelogs carry (Markdown, the release PR's
+# body); the release workflow passes them. Without them the changelog names
+# the version alone.
+RELEASE_NOTES ?=
+package_notes = $(if $(strip $(RELEASE_NOTES)),--notes "$(RELEASE_NOTES)")
 
 ##@ Build|yellow
 package-root: ## Stage the package file tree from @BIN@ into DESTDIR=<empty folder>
@@ -19,11 +24,11 @@ package-root: ## Stage the package file tree from @BIN@ into DESTDIR=<empty fold
 	fi
 	@"$(packaging_scripts_dir)/package-root.sh" --build-dir "$(bin_dir)" --destdir "$(DESTDIR)"
 
-package-deb: ## Assemble the DEB from @BIN@ into PACKAGES_DIR (needs debhelper)
-	@"$(packaging_scripts_dir)/package-deb.sh" --build-dir "$(bin_dir)" --version "$(PACKAGE_VERSION)" --out-dir "$(packages_dir)"
+package-deb: ## Assemble the DEB from @BIN@ into PACKAGES_DIR (needs debhelper; RELEASE_NOTES for its changelog)
+	@"$(packaging_scripts_dir)/package-deb.sh" --build-dir "$(bin_dir)" --version "$(PACKAGE_VERSION)" --out-dir "$(packages_dir)" $(package_notes)
 
-package-rpm: ## Assemble the RPM from @BIN@ into PACKAGES_DIR (needs rpm-build)
-	@"$(packaging_scripts_dir)/package-rpm.sh" --build-dir "$(bin_dir)" --version "$(PACKAGE_VERSION)" --out-dir "$(packages_dir)"
+package-rpm: ## Assemble the RPM from @BIN@ into PACKAGES_DIR (needs rpm-build; RELEASE_NOTES for its changelog)
+	@"$(packaging_scripts_dir)/package-rpm.sh" --build-dir "$(bin_dir)" --version "$(PACKAGE_VERSION)" --out-dir "$(packages_dir)" $(package_notes)
 
 # The signed repositories a release publishes (docs/releases.md,
 # "Repositories"), from the packages in PACKAGES_DIR:

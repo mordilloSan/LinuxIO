@@ -40,6 +40,7 @@ const wireguardInterface: WireGuardInterface = {
   hooks: { PreUp: [], PostUp: [], PreDown: [], PostDown: [] },
   host: "",
   mtu: 0,
+  egressNic: "eth0",
   forwardingOff: false,
   isConnected: "Active",
   isEnabled: true,

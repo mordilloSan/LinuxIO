@@ -448,11 +448,12 @@ or an RPM before it is installed: its files and links are exactly the tree
 `package-root.sh` stages from the build, at the same modes, with what that
 family adds, all owned by root; everything under `/etc` is a configuration
 file; nothing is under `/usr/local`; the nine programs have the build's
-SHA-256; and the third-party notices are the build's. `make test-packages` runs it on every package in `PACKAGES_DIR`.
+SHA-256; the third-party notices are the build's; and the changelog opens
+with an entry of the package's own version. `make test-packages` runs it on every package in `PACKAGES_DIR`.
 `make test-packaging-scripts`, part of `make test`, runs the host-independent
 fixtures: `package-root-fixtures.sh`, `package-version-fixtures.sh`,
-`third-party-notices-fixtures.sh`, `repo-fixtures.sh` and
-`package-files-fixtures.sh`, which checks the files both packages ship (how
+`third-party-notices-fixtures.sh`, `changelog-entry-fixtures.sh`,
+`repo-fixtures.sh` and `package-files-fixtures.sh`, which checks the files both packages ship (how
 the units relate to `linuxio.target`, the run-record drop-in, the needrestart
 override, the two PAM files, the SELinux policy's file contexts, the icon
 sets the notices name).
@@ -463,6 +464,50 @@ from a signed repository of their own
 ([Development](./development.md#initial-setup),
 [Test VM](./development.md#test-vm)). The indexer's smoke test installs and
 removes a package under a real systemd ([Indexer](./indexer.md)).
+
+## Changelog
+
+Each package's changelog is its release's notes, the body `gh release-flow
+open-pr` writes on the release PR ([Releases](./releases.md#release-notes)):
+the release workflow passes them as `RELEASE_NOTES`, and
+`packaging/scripts/changelog-entry.sh` writes them as plain text into
+`debian/changelog` (installed as `/usr/share/doc/linuxio/changelog.gz`) and
+into the spec's `%changelog`. Headings become `Heading:`, bold and links keep
+their text, and every list item is one line. A build without notes, a local
+one or a dry run, says `LinuxIO VERSION.` alone.
+
+rpm expands the macros of a `%changelog` line that comes through `%include`
+(`%{name}` in a note would become `linuxio`), so the spec reads the file with
+`%(cat)`, whose output rpm does not expand. It still drops a line whose
+first character other than a space is `#`, as a comment, starts a new entry
+at a line beginning with `*`, and reads a line beginning with `%` as a
+section or a conditional, so the RPM's text turns such a line into a list
+item.
+
+The Updates page shows the notes of an update before it is installed, which
+neither package manager reads from the package itself:
+
+- apt reads a changelog from where the repository's `Release` names it, in
+  its `Changelogs` field; without the field it knows where only for Debian's
+  and Ubuntu's own archives, and PackageKit's apt backend says "Changelog for
+  this version is not yet available". `repo-apt.sh` writes the field
+  (`apt-ftparchive` has no option for it) and publishes the changelog of
+  every package in the pool, taken from the package, at
+  `changelogs/main/l/linuxio/linuxio_<version>_changelog`, the path apt
+  makes of `@CHANGEPATH@`. `apt changelog linuxio` reads it too, and the
+  script refuses a DEB without a changelog before it reaches the pool.
+- PackageKit's dnf backend sends no changelog at all, only the text of the
+  update's advisory in the repository's `updateinfo` as the update text.
+  `repo-rpm.sh` writes one advisory per RPM, its `%changelog` text as the
+  description and its type from the notes' headings (`security` with a
+  Security section, `bugfix` with Bug Fixes, `enhancement` otherwise, which
+  `dnf upgrade --security` and `dnf updateinfo` go by), and adds it with
+  `modifyrepo_c` before `repomd.xml` is signed. The bridge shows the update
+  text where PackageKit sends no changelog (`buildUpdateDetail` in
+  `backend/bridge/handlers/packages`).
+
+The page shows the newest entry of the changelog. Its update card names the
+package, with the version and PackageKit's summary of it below.
 
 ## Third-party notices
 
@@ -549,3 +594,6 @@ to the build's.
 - The settings whose files removal deletes are switched on again by hand
   after a new install, and a script install's settings are made again after
   the package replaces it.
+- A package's changelog holds its own release's notes only, so an update
+  over several releases shows the newest one's; the packages of releases
+  before the notes were carried say `LinuxIO VERSION.` alone.

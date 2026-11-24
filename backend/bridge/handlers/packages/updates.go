@@ -275,6 +275,14 @@ func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetai
 	if err != nil {
 		return UpdateDetail{}, fmt.Errorf("invalid changelog for %q: %w", pkgID, err)
 	}
+	// PackageKit's dnf backend sends no changelog, only the advisory's text
+	// (the repository's updateinfo) as update_text.
+	if strings.TrimSpace(changelogRaw) == "" {
+		changelogRaw, err = dbusclient.AsString(body[7])
+		if err != nil {
+			return UpdateDetail{}, fmt.Errorf("invalid update text for %q: %w", pkgID, err)
+		}
+	}
 
 	restart, err := dbusclient.AsUint32(body[6])
 	if err != nil {

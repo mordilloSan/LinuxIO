@@ -148,11 +148,14 @@ installed, upgraded and removed, and what each check holds them to is in
 `make repo-apt` and `make repo-rpm` add the packages in `PACKAGES_DIR` to the
 signed repositories a release publishes, `build/repo/apt` and
 `build/repo/rpm` (`REPO_DIR`): `packaging/scripts/repo-apt.sh` (the pool,
-`apt-ftparchive` metadata with SHA-256 sums only and by-hash copies,
-`InRelease` and `Release.gpg`, and `linuxio.sources` with the public key in
-`Signed-By`) and `packaging/scripts/repo-rpm.sh` (each RPM signed with
-`rpmsign`, `createrepo_c` metadata, `repomd.xml.asc`, `RPM-GPG-KEY-linuxio`
-and `linuxio.repo` with `gpgcheck=1` and `repo_gpgcheck=1`). A package
+`apt-ftparchive` metadata with SHA-256 sums only and by-hash copies, each
+package's changelog under `changelogs/` and the `Changelogs` field that
+names it, `InRelease` and `Release.gpg`, and `linuxio.sources` with the
+public key in `Signed-By`) and `packaging/scripts/repo-rpm.sh` (each RPM
+signed with `rpmsign`, `createrepo_c` metadata with an `updateinfo` advisory
+per package, `repomd.xml.asc`, `RPM-GPG-KEY-linuxio` and `linuxio.repo` with
+`gpgcheck=1` and `repo_gpgcheck=1`); the changelogs are the packages' own
+([Packages](./packaging.md#changelog)). A package
 already there stays, the metadata is made again over all of them, and a
 version already published with other contents is refused. They sign with
 `REPO_SIGNING_KEY`, a key the caller's GnuPG keyring already holds, and never
@@ -452,7 +455,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   into the VM, which
   assembles the profile's package from them, as a release's image does: the
   DEB with `package-deb.sh` on Ubuntu, the RPM with `package-rpm.sh` on
-  Fedora, at `PACKAGE_VERSION`. It runs `package-contents.sh` on it, fails
+  Fedora, at `PACKAGE_VERSION`, its changelog the fixture release notes
+  `packaging/scripts/tests/release-notes.md`, which the update spec reads on
+  the Updates page. It runs `package-contents.sh` on it, fails
   there when the check does, and installs it with `apt-get install
   --reinstall` or `dnf install` (`dnf reinstall` for the version installed),
   over a LinuxIO package of the same or an older version; then it starts
@@ -470,7 +475,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `~/.linuxio-repository-gnupg` of the VM's user; it never leaves the VM and
   goes with `vm-reset`. apt, dnf and PackageKit read the repository in place
   through `file://`, PackageKit's apt and dnf backends included (seen on
-  Ubuntu 26.04 and Fedora 45), so no server runs. The publish copies the
+  Ubuntu 26.04 and Fedora 45), so no server runs; the apt changelogs alone
+  are named `copy://`, since apt's `file:` method leaves a fetched changelog
+  where `apt changelog` and PackageKit do not look. The publish copies the
   repository's `linuxio.sources` or `linuxio.repo`, which carries the public
   key and turns every signature check on, to `/etc/apt/sources.list.d` or
   `/etc/yum.repos.d`; it installs nothing. NOTE is appended as a comment to
@@ -759,6 +766,7 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `CACHE_DIR` | `$(REPO_ROOT)/.cache` | Make caches, logs, and analysis artifacts. |
 | `BIN_DIR` | `$(REPO_ROOT)/build` | Built binary output directory. |
 | `PACKAGES_DIR` | `$(BIN_DIR)/packages` | Where `package-deb`, `package-rpm` and `localinstall` put the packages, and where `test-packages`, `repo-apt` and `repo-rpm` read them; `make clean` removes the LinuxIO packages in it. |
+| `RELEASE_NOTES` | none | The release notes (Markdown) `package-deb` and `package-rpm` write into the packages' changelog; without them it names the version alone. |
 | `REPO_DIR` | `$(BIN_DIR)/repo` | The signed repositories `repo-apt` and `repo-rpm` add to, `apt/` and `rpm/`. |
 | `REPO_SIGNING_KEY` | none | The key in the GnuPG keyring that `repo-apt` and `repo-rpm` sign with; required by both. |
 | `REPO_BASE_URL` | none | Where `REPO_DIR` is published; the repository files point apt and dnf at it. Required by `repo-apt` and `repo-rpm`. |

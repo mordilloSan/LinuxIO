@@ -845,6 +845,24 @@ func TestGetSingleUpdateDetailIgnoresNonMatchingDetail(t *testing.T) {
 	}
 }
 
+func TestGetSingleUpdateDetailReadsUpdateTextWithoutChangelog(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	const packageID = "linuxio;0.58.0-1;x86_64;linuxio"
+	const notes = "Features:\n\n- updates: show the package's changes (abc1234)"
+	body := detailBody(packageID, "0.58.0-1")
+	body[7] = notes
+	body[8] = ""
+	service.setDetail(packageID, body)
+
+	got, err := getSingleUpdateDetail(context.Background(), packageID)
+	if err != nil {
+		t.Fatalf("getSingleUpdateDetail: %v", err)
+	}
+	if got.Changelog != notes {
+		t.Fatalf("Changelog = %q, want the update text %q", got.Changelog, notes)
+	}
+}
+
 func TestInstallPackageWithProgressCallsInstallPackagesAndWaits(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 
