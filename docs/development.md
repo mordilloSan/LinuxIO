@@ -187,6 +187,11 @@ A VM created before the disks had serials gets them at its next
 to `clean` brings back the definition the snapshot kept; `make vm-update`
 takes the snapshot again with them.
 
+The domain also carries LinuxIO's own libvirt metadata, `os="ubuntu"` or
+`os="fedora"`, the element a VM created in LinuxIO has, so the dashboard and
+VM pages show the distribution's logo and not a plain screen. A VM created
+before it existed gets it at its next `make vm-reset`, in the same way.
+
 `make test-vm-browser` is the whole browser run in one command. It builds
 LinuxIO and the update build the update checks publish (`vm-update-build`,
 [Jobs](./jobs.md#testing)), picks free VMs (below), creating the ones it

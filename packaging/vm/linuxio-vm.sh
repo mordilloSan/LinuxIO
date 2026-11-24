@@ -389,6 +389,11 @@ start_seed() {
 # the slot, not the volume, and is at most 20 bytes, virtio's limit.
 serial_of() { echo "linuxio-$1"; }
 
+# The OS id LinuxIO's VM pages read for a guest's logo (libvirt metadata, the
+# same element a VM created in LinuxIO carries), so the VM cards show Ubuntu's
+# or Fedora's mark instead of a plain screen.
+readonly OS_METADATA="<metadata><linuxio xmlns='https://linuxio.local/libvirt/v1' os='${DISTRO}'/></metadata>"
+
 define_domain() {
 	local disks="" path i serial
 	local -r vols=("$SYSTEM_VOL" "${DATA_VOLS[@]}") devs=(vda vdb vdc vdd vde)
@@ -401,6 +406,7 @@ define_domain() {
 	v define /dev/stdin >/dev/null <<EOF
 <domain type='kvm'>
   <name>${DOMAIN}</name>
+  ${OS_METADATA}
   <memory unit='GiB'>${VM_MEMORY_GIB}</memory>
   <vcpu>${VM_VCPUS}</vcpu>
   <sysinfo type='smbios'>
@@ -1279,6 +1285,7 @@ reset() {
 	if [[ "$(domain_state)" != "shut off" ]]; then v destroy "$DOMAIN" >/dev/null; fi
 	v snapshot-revert "$DOMAIN" "$SNAPSHOT"
 	disk_serials
+	guest_os
 	rm -f "${STATE}/installed"
 	say "${DOMAIN} reverted to ${SNAPSHOT} and stopped; the next VM target starts it"
 }
@@ -1336,6 +1343,19 @@ UPGRADE
 	v snapshot-delete "$DOMAIN" "$SNAPSHOT" >/dev/null
 	v snapshot-create-as "$DOMAIN" "$SNAPSHOT" --description "cloud-init done, packages upgraded $(date -u +%F), LinuxIO not installed" >/dev/null
 	say "${DOMAIN} is upgraded and stopped (snapshot ${SNAPSHOT} taken again); next: make vm-install"
+}
+
+# Gives the stopped domain its OS metadata (OS_METADATA) when its definition
+# has none: a VM created before it existed, whose clean snapshot keeps the
+# definition a revert brings back. make vm-update takes the snapshot again
+# with it.
+guest_os() {
+	local xml
+	xml="$(v dumpxml --inactive "$DOMAIN")" || die "cannot read the definition of ${DOMAIN}"
+	[[ $xml != *"https://linuxio.local/libvirt/v1"* ]] || return 0
+	xml="${xml/"</name>"/"</name>${OS_METADATA}"}"
+	v define /dev/stdin >/dev/null <<<"$xml" || die "cannot give ${DOMAIN} its OS metadata"
+	say "${DOMAIN}: the OS is ${DISTRO} now"
 }
 
 destroy() {
