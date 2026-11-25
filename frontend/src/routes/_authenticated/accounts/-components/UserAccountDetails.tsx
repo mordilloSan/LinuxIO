@@ -493,7 +493,6 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const sessions = details.activeSessions;
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");
-  const [flashingLoginKey, setFlashingLoginKey] = useState("");
   const { mutate: dismissFailedLoginAlert } =
     linuxio.system.dismiss_failed_login_alert.useMutation();
   const [pendingKillSession, setPendingKillSession] =
@@ -549,7 +548,6 @@ export const UserActivityCard = ({ username }: { username: string }) => {
       block: "center",
       inline: "nearest",
     });
-    setFlashingLoginKey(focusedLoginKey);
     if (
       autoDismissFailedLoginAlert &&
       failedLoginAlertId &&
@@ -558,14 +556,6 @@ export const UserActivityCard = ({ username }: { username: string }) => {
       dismissedAlertRef.current = failedLoginAlertId;
       dismissFailedLoginAlert({ alertId: failedLoginAlertId });
     }
-
-    const timeout = window.setTimeout(() => {
-      setFlashingLoginKey((current) =>
-        current === focusedLoginKey ? "" : current,
-      );
-    }, 2400);
-
-    return () => window.clearTimeout(timeout);
   }, [
     autoDismissFailedLoginAlert,
     dismissFailedLoginAlert,
@@ -680,7 +670,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
                 className={[
                   "account-events-grid",
                   "account-activity-row",
-                  flashingLoginKey === loginEventKey(login)
+                  focusedLoginKey === loginEventKey(login)
                     ? "account-activity-row--flash"
                     : "",
                 ]

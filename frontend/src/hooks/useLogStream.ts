@@ -99,14 +99,14 @@ export function useLogStream({
     }
   }, []);
 
-  const scheduleInitialLoadTimeout = useCallback(() => {
+  const scheduleInitialLoadTimeout = useEffectEvent(() => {
     clearInitialLoadTimeout();
     initialLoadTimeoutRef.current = window.setTimeout(() => {
       if (!hasReceivedData.current) {
         setIsLoading(false);
       }
     }, INITIAL_LOG_SILENCE_TIMEOUT_MS);
-  }, [clearInitialLoadTimeout]);
+  });
 
   const flushPendingLogs = useCallback(() => {
     if (logFlushFrameRef.current !== null) {
@@ -209,7 +209,7 @@ export function useLogStream({
     hasReceivedData.current = false;
     scheduleInitialLoadTimeout();
     startStream(initialTail);
-  }, [initialTail, open, muxIsOpen, streamRef, scheduleInitialLoadTimeout]);
+  }, [initialTail, open, muxIsOpen, streamRef]);
 
   // Handle live mode toggle.
   useEffect(() => {
