@@ -13,7 +13,7 @@ shares over SMB and NFS. There are two kinds:
   permissions of a folder it did not make.
 
 An existing folder cannot become a shared folder yet
-([plan](./TODO/storage-redesign.md), Phase 5).
+([backlog](./TODO/backlog.md#later-no-plan-yet)).
 
 ## A shared folder
 
