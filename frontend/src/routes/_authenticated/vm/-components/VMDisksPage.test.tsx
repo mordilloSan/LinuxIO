@@ -1,12 +1,16 @@
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { VMUnusedDisk } from "@/api";
 import { render, screen, within } from "@/test/render";
 
 import VMDisksPage from "./VMDisksPage";
+import { VMDisksPruneButton, VMDisksPruneDialog } from "./VMDisksPrune";
 
 const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
+  removeAsync: vi.fn(),
   list: vi.fn(),
   pools: vi.fn(),
   vms: vi.fn(),
@@ -26,7 +30,11 @@ vi.mock("@tanstack/react-virtual", async () =>
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   const { mockMutationHooks } = await import("@/test/mutationHooks");
-  const useCallMutation = () => ({ mutate: mocks.remove, isPending: false });
+  const useCallMutation = () => ({
+    mutate: mocks.remove,
+    mutateAsync: mocks.removeAsync,
+    isPending: false,
+  });
   return {
     ...actual,
     useCallMutation,
@@ -58,6 +66,7 @@ vi.mock("@/api", async (importOriginal) => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([mocks.disk]);
+  mocks.removeAsync.mockResolvedValue(undefined);
   mocks.pools.mockResolvedValue([
     {
       active: true,
@@ -145,5 +154,84 @@ describe("VM unused disks", () => {
     mocks.list.mockResolvedValue([]);
     render(<VMDisksPage />);
     expect(await screen.findByText("No unused disks.")).toBeInTheDocument();
+  });
+});
+
+// VMPage renders the broom in the header and its dialog beside the page.
+function Prune() {
+  const [prune, setPrune] = useState<{ disks: VMUnusedDisk[]; open: boolean }>({
+    disks: [],
+    open: false,
+  });
+  return (
+    <>
+      <VMDisksPruneButton
+        onClick={(disks) => setPrune({ disks, open: true })}
+      />
+      <VMDisksPruneDialog
+        disks={prune.disks}
+        onClose={() => setPrune((current) => ({ ...current, open: false }))}
+        open={prune.open}
+      />
+    </>
+  );
+}
+
+describe("VM unused disks prune", () => {
+  const seed = {
+    name: "linuxio-old.qcow2",
+    path: "/var/lib/libvirt/images/linuxio-old.qcow2",
+    vmName: "old",
+    sizeBytes: 1024 ** 3,
+    modifiedAt: "2026-08-20T10:00:00Z",
+  };
+
+  it("deletes every listed disk after one confirmation", async () => {
+    mocks.list.mockResolvedValue([mocks.disk, seed]);
+    const user = userEvent.setup();
+    render(<Prune />);
+    const broom = await screen.findByRole("button", {
+      name: "Prune unused disks",
+    });
+    await vi.waitFor(() => expect(broom).toBeEnabled());
+    await user.click(broom);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(mocks.disk.name)).toBeInTheDocument();
+    expect(within(dialog).getByText(seed.name)).toBeInTheDocument();
+    expect(within(dialog).getByText(/This frees 3 GB/)).toBeInTheDocument();
+    expect(mocks.removeAsync).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await vi.waitFor(() => expect(mocks.removeAsync).toHaveBeenCalledTimes(2));
+    expect(mocks.removeAsync).toHaveBeenCalledWith({ path: mocks.disk.path });
+    expect(mocks.removeAsync).toHaveBeenCalledWith({ path: seed.path });
+  });
+
+  it("keeps going past a disk that fails", async () => {
+    mocks.list.mockResolvedValue([mocks.disk, seed]);
+    mocks.removeAsync.mockRejectedValueOnce(new Error("disk is used by a VM"));
+    const user = userEvent.setup();
+    render(<Prune />);
+    const broom = await screen.findByRole("button", {
+      name: "Prune unused disks",
+    });
+    await vi.waitFor(() => expect(broom).toBeEnabled());
+    await user.click(broom);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(mocks.removeAsync).toHaveBeenLastCalledWith({ path: seed.path }),
+    );
+  });
+
+  it("is disabled when there is nothing to prune", async () => {
+    mocks.list.mockResolvedValue([]);
+    render(<Prune />);
+    await vi.waitFor(() => expect(mocks.list).toHaveBeenCalled());
+    expect(
+      screen.getByRole("button", { name: "Prune unused disks" }),
+    ).toBeDisabled();
   });
 });

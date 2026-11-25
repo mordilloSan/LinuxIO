@@ -1,8 +1,13 @@
 import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
-import { getRouteApi, Outlet } from "@tanstack/react-router";
+import { getRouteApi, Outlet, useMatchRoute } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
-import { getMutationErrorMessage, linuxio, type VMCreateProgress } from "@/api";
+import {
+  getMutationErrorMessage,
+  linuxio,
+  type VMCreateProgress,
+  type VMUnusedDisk,
+} from "@/api";
 import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -12,6 +17,7 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
 import CreateVMDialog from "./CreateVMDialog";
+import { VMDisksPruneButton, VMDisksPruneDialog } from "./VMDisksPrune";
 import { VM_TOAST, preflightReady } from "./vmShared";
 import { VM_TABS } from "./vmTabs";
 
@@ -24,6 +30,19 @@ interface VMPageProps {
 const VMPage = ({ children }: VMPageProps) => {
   const navigate = vmRouteApi.useNavigate();
   const search = vmRouteApi.useSearch();
+  const matchRoute = useMatchRoute();
+  // The layout owns the header so the Disks tab's broom sits in the shared
+  // slot order, left of Refresh and Create; a child's RoutedTabActions would
+  // append it after them.
+  const onDisksTab = Boolean(matchRoute({ to: "/vm/disks" }));
+  // The disks the broom showed when pressed are the ones the prune deletes.
+  const [prune, setPrune] = useState<{ disks: VMUnusedDisk[]; open: boolean }>({
+    disks: [],
+    open: false,
+  });
+  // Leaving the tab (a Back press) closes the prune instead of keeping it for
+  // the return.
+  if (prune.open && !onDisksTab) setPrune({ ...prune, open: false });
   const queryClient = useQueryClient();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
@@ -87,6 +106,13 @@ const VMPage = ({ children }: VMPageProps) => {
 
   const tabActions = (
     <HeaderActions
+      maintenance={
+        onDisksTab && (
+          <VMDisksPruneButton
+            onClick={(disks) => setPrune({ disks, open: true })}
+          />
+        )
+      }
       create={
         <AppActionIconButton
           ariaLabel="Create VM"
@@ -114,6 +140,13 @@ const VMPage = ({ children }: VMPageProps) => {
             void queryClient.refetchQueries({
               queryKey: linuxio.virt.templates.queryKey,
             });
+            // The Disks tab's pools and unused disks, while it is open.
+            for (const queryKey of [
+              linuxio.virt.pools.queryKey,
+              linuxio.virt.unused_disks.queryKey,
+            ]) {
+              void queryClient.refetchQueries({ queryKey, type: "active" });
+            }
           }}
         />
       }
@@ -162,6 +195,11 @@ const VMPage = ({ children }: VMPageProps) => {
           });
         }}
         open={createOpen || Boolean(search.handoffOperationId)}
+      />
+      <VMDisksPruneDialog
+        disks={prune.disks}
+        onClose={() => setPrune((current) => ({ ...current, open: false }))}
+        open={prune.open}
       />
     </>
   );

@@ -62,4 +62,30 @@ describe("BatchDeleteDialog", () => {
     expect(onDeleteOne).toHaveBeenCalledTimes(2);
     expect(onSuccess).toHaveBeenCalledTimes(1);
   });
+
+  it("stays open while it is deleting", async () => {
+    let finish = () => {};
+    const onClose = vi.fn();
+    const { user } = render(
+      <BatchDeleteDialog
+        items={[{ key: "a", label: "a" }]}
+        noun="disk"
+        onClose={onClose}
+        onDeleteOne={() =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          })
+        }
+        open
+        toastMeta={{ label: "Open VMs", to: "/vm" }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+
+    finish();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
 });

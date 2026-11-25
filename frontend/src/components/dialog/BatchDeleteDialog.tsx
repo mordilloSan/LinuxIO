@@ -31,7 +31,8 @@ export interface BatchDeleteDialogProps<T extends BatchDeleteItem> {
   /** Appended to the failure toast, e.g. "(likely in use)". */
   failureHint?: string;
   onClose: () => void;
-  onSuccess: () => void;
+  /** Runs after the last item, whether or not some failed. */
+  onSuccess?: () => void;
   open: boolean;
 }
 
@@ -81,7 +82,7 @@ const BatchDeleteDialog = <T extends BatchDeleteItem>({
           : `${items.length} ${noun}s deleted successfully`,
       );
     }
-    onSuccess();
+    onSuccess?.();
     onClose();
   };
 
@@ -89,7 +90,10 @@ const BatchDeleteDialog = <T extends BatchDeleteItem>({
     <GeneralDialog
       fullWidth
       maxWidth="sm"
-      onClose={onClose}
+      // Held while deleting: it closes, with the result, after the last item.
+      onClose={() => {
+        if (!isDeleting) onClose();
+      }}
       open={open}
       slotProps={{ transition: { onExited } }}
     >
