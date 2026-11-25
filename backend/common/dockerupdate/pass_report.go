@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
+	"unicode"
 
 	"github.com/moby/moby/api/types/container"
 
@@ -196,5 +197,37 @@ func lowerFirst(text string) string {
 
 // singleLine keeps an error that carries Compose output on one journal line.
 func singleLine(text string) string {
-	return strings.Join(strings.Fields(text), " ")
+	return strings.Join(strings.Fields(printableText(text)), " ")
+}
+
+// printableText drops, from text others write (an image's labels, the errors
+// of a registry, the daemon or Compose), the control characters other than a
+// line break or a tab and the invisible format characters, the bidirectional
+// controls among them: an escape sequence could change the terminal that
+// shows a run's output, and a bidirectional control make a line read as
+// another. Bytes that are not UTF-8 become U+FFFD.
+func printableText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(text, "\uFFFD"))
+}
+
+// maxVersionRunes bounds the version an image's label names in a report or
+// an alert; the image's author writes it.
+const maxVersionRunes = 64
+
+// printableVersion is an image's version label on one printable line, cut to
+// maxVersionRunes.
+func printableVersion(label string) string {
+	version := []rune(singleLine(label))
+	if len(version) > maxVersionRunes {
+		version = append(version[:maxVersionRunes-1], '…')
+	}
+	return string(version)
 }

@@ -50,7 +50,7 @@ func dockerUpdateAlertKey(containerName string) string {
 func raiseDockerUpdateAlert(ctx context.Context, containerName, imageRef string, err error) {
 	name := strings.TrimPrefix(containerName, "/")
 	sum := sha256.Sum256([]byte(err.Error()))
-	message := err.Error()
+	message := printableText(err.Error())
 	if imageRef != "" {
 		message += " (image " + imageRef + ")"
 	}

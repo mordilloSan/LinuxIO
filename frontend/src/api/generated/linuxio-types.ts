@@ -1275,6 +1275,7 @@ export interface DockerContainerAutoUpdateOptions {
   cleanup: boolean;
   container_names: string[];
   include_stopped: boolean;
+  min_free_gib: number;
   mode: DockerContainerAutoUpdateMode;
   revive_stopped: boolean;
   time: string;

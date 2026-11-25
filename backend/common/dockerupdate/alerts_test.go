@@ -57,6 +57,20 @@ func TestRaiseAndResolveDockerUpdateAlert(t *testing.T) {
 	}
 }
 
+// The reason comes from a registry, the daemon or Compose: its escape
+// sequences and bidirectional controls are dropped, its lines kept.
+func TestDockerUpdateAlertKeepsOnlyPrintableText(t *testing.T) {
+	useTempAlertStore(t)
+	raiseDockerUpdateAlert(t.Context(), "/web", "nginx", errors.New("pull failed:\n\x1b[31mdenied\u202e"))
+	doc, err := alerts.Load()
+	if err != nil || len(doc.Alerts) != 1 {
+		t.Fatalf("store = %+v err = %v", doc, err)
+	}
+	if got, want := doc.Alerts[0].Message, "pull failed:\n[31mdenied (image nginx)"; got != want {
+		t.Fatalf("message = %q, want %q", got, want)
+	}
+}
+
 func TestDockerUpdateAlertFailureDoesNotPanic(t *testing.T) {
 	old := alerts.Path
 	alerts.Path = t.TempDir() // a directory: reads and writes fail

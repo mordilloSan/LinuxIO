@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
@@ -31,6 +33,10 @@ type scheduledPassOperations struct {
 	// project right before it updates it, and returns the containers it
 	// replaced or failed to.
 	update func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(name string)) ([]ContainerOutcome, error)
+	// freeSpace refuses the updates when Docker's disk has less than the
+	// given GiB free (checkDockerFreeSpace). It is asked only when the
+	// settings set a minimum and the pass has containers to update.
+	freeSpace func(ctx context.Context, minGiB int) error
 }
 
 // RunScheduled executes one configured check or update pass. It is called by
@@ -83,7 +89,60 @@ func RunScheduled(ctx context.Context, configPath string, report func(message st
 		update: func(ctx context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions, announce func(string)) ([]ContainerOutcome, error) {
 			return runScheduledUpdates(ctx, cli, registry, summaries, all, opts, alertReport, announce)
 		},
+		freeSpace: func(ctx context.Context, minGiB int) error {
+			return checkDockerFreeSpace(ctx, cli, minGiB)
+		},
 	}, report)
+}
+
+// containerdRoot is where the containerd that Docker talks to keeps its data
+// unless its own configuration moves it. With the containerd image store,
+// the default of a new Docker 29 install, the images' layers are kept there
+// and not under Docker's root folder (Docker 29.1.3 on Ubuntu has its
+// snapshotters there and none under /var/lib/docker).
+const containerdRoot = "/var/lib/containerd"
+
+type dockerInfoClient interface {
+	Info(context.Context, client.InfoOptions) (client.SystemInfoResult, error)
+}
+
+// freeBytesAt is the room the filesystem of path has for a write; swapped by
+// tests.
+var freeBytesAt = func(path string) (uint64, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(path, &st); err != nil {
+		return 0, err
+	}
+	return st.Bavail * uint64(st.Bsize), nil
+}
+
+// checkDockerFreeSpace returns an error naming the folder when the filesystem
+// of Docker's root folder, or of containerdRoot, has less than minGiB GiB
+// free, before a pass pulls anything onto it. A containerd folder that does
+// not exist holds nothing and is not asked.
+func checkDockerFreeSpace(ctx context.Context, cli dockerInfoClient, minGiB int) error {
+	info, err := cli.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		return fmt.Errorf("read Docker's root folder: %w", err)
+	}
+	minimum := uint64(minGiB) << 30
+	for _, folder := range []string{info.Info.DockerRootDir, containerdRoot} {
+		if folder == "" {
+			continue
+		}
+		free, err := freeBytesAt(folder)
+		if folder == containerdRoot && errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("read the free space of %s: %w", folder, err)
+		}
+		if free < minimum {
+			return fmt.Errorf("no container was updated: the filesystem of %s has %.1f GiB free, less than the %d GiB the settings ask for",
+				folder, float64(free)/(1<<30), minGiB)
+		}
+	}
+	return nil
 }
 
 // acquirePassLock takes the update lock for a scheduled pass. busy is true
@@ -182,14 +241,27 @@ func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions
 		return pass, checkErr
 	}
 	var updateErr error
-	if len(selected) > 0 {
-		announce := func(name string) { report("Updating " + name) }
-		pass.Containers, updateErr = operations.update(ctx, selected, containers, opts, announce)
-	}
+	pass.Containers, updateErr = updateSelected(ctx, opts, operations, selected, containers, report)
 	updated, _, _ := pass.counts()
 	err = errors.Join(append(runErrs, checkErr, updateErr)...)
 	raisePassNotice(ctx, notify, err, checked, updated)
 	return pass, err
+}
+
+// updateSelected is the update step of a pass in update mode: it updates
+// selected, once the free space the settings ask for is there.
+func updateSelected(ctx context.Context, opts DockerContainerAutoUpdateOptions, operations scheduledPassOperations, selected, all []container.Summary, report func(message string)) ([]ContainerOutcome, error) {
+	if len(selected) == 0 {
+		return nil, nil
+	}
+	if opts.MinFreeGiB > 0 {
+		// No container alert names this, so it fails the run.
+		if err := operations.freeSpace(ctx, opts.MinFreeGiB); err != nil {
+			return nil, err
+		}
+	}
+	announce := func(name string) { report("Updating " + name) }
+	return operations.update(ctx, selected, all, opts, announce)
 }
 
 // raisePassNotice raises the pass notice when passNotice decides on one.

@@ -2,10 +2,12 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
@@ -50,7 +52,11 @@ func SetContainerAutoUpdate(ctx context.Context, opts apischema.DockerContainerA
 		return apischema.DockerContainerAutoUpdateState{}, fmt.Errorf("docker client error: %w", err)
 	}
 	defer dockerclient.Release(cli)
-	return dockerupdate.SetAutoUpdate(ctx, cli, opts)
+	state, err := dockerupdate.SetAutoUpdate(ctx, cli, opts)
+	if errors.Is(err, dockerupdate.ErrInvalidSettings) {
+		return state, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	return state, err
 }
 
 func applyContainerUpdateStatus(info *apischema.ContainerInfo, snap dockerupdate.StatusSnapshot) {

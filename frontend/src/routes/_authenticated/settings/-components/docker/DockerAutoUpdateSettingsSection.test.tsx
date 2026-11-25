@@ -28,6 +28,7 @@ const createController = (): DockerAutoUpdateController => {
       container_names: ["stopped"],
       enabled: true,
       include_stopped: false,
+      min_free_gib: 0,
       mode: "update",
       revive_stopped: false,
       time: "04:00",
@@ -188,6 +189,27 @@ describe("DockerAutoUpdateSettingsSection eligibility", () => {
         revive_stopped: true,
         update_stopped: true,
       }),
+    );
+  });
+
+  it("shows an unset minimum free space as empty and saves the one typed", async () => {
+    const autoUpdate = createController();
+    const { user } = renderDialog(autoUpdate);
+    const field = screen.getByRole("spinbutton", {
+      name: "Minimum free space in GiB",
+    });
+    expect(field).toHaveValue(null);
+
+    // The fixture's stopped target holds Save until every container is
+    // updated instead.
+    await user.click(
+      screen.getByRole("checkbox", { name: "Update all containers" }),
+    );
+    await user.type(field, "12");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(autoUpdate.saveOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ min_free_gib: 12 }),
     );
   });
 });

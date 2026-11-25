@@ -677,6 +677,9 @@ func inspectAndWaitForComposeContainer(
 
 func validateContainerUpdateState(inspect container.InspectResponse, allowStopped bool) error {
 	name := strings.TrimPrefix(inspect.Name, "/")
+	if inspect.Config != nil && dockerJobRun(inspect.Config.Labels) {
+		return fmt.Errorf("container %q is a run of a Docker job, which Docker replaces at the job's next run", name)
+	}
 	if inspect.State == nil || inspect.State.Paused || inspect.State.Restarting {
 		return fmt.Errorf("container %q must be stable before it can be updated", name)
 	}
@@ -687,4 +690,16 @@ func validateContainerUpdateState(inspect container.InspectResponse, allowStoppe
 		return nil
 	}
 	return fmt.Errorf("container %q must be running and stable before it can be updated", name)
+}
+
+// dockerJobLabel marks a container Docker Engine runs for a job (Engine 29.10;
+// Compose 5.8 schedules its jobs through it). The engine creates and removes
+// each run itself and keeps its exit status for the job's history, so a run is
+// not a service: it is never checked, counted as a replica or updated, which
+// would run the job again outside its schedule or lose that status.
+const dockerJobLabel = "com.docker.job.id"
+
+func dockerJobRun(labels map[string]string) bool {
+	_, ok := labels[dockerJobLabel]
+	return ok
 }

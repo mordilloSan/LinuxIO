@@ -205,6 +205,10 @@ func checkContainerImageUpdates(
 	if err := ctx.Err(); err != nil {
 		return nil, DockerUpdateCheckResult{}, err
 	}
+	// A run of a Docker job is the engine's to replace, and gone soon after.
+	targets = slices.DeleteFunc(slices.Clone(targets), func(target containerImageUpdateTarget) bool {
+		return dockerJobRun(target.Labels)
+	})
 
 	requests := make([]imageUpdateObservationRequest, 0, len(targets))
 	requestByKey := make(map[string]int, len(targets))
@@ -603,6 +607,11 @@ func waitRegistryBackoff(ctx context.Context, retry int) error {
 }
 
 func retryableRegistryInspectError(err error) bool {
+	// Engine 29.10 types a 429 as resource exhausted, Docker Hub's pull limit
+	// included.
+	if dockerHubPullLimit(err.Error()) {
+		return false
+	}
 	var networkError net.Error
 	if errdefs.IsResourceExhausted(err) || errdefs.IsDeadlineExceeded(err) ||
 		(errors.As(err, &networkError) && networkError.Timeout()) {
@@ -616,7 +625,7 @@ func retryableRegistryInspectError(err error) bool {
 // or tag, or no access to it) from one that throttled, timed out or could not
 // be reached.
 func registryRefusal(err error) bool {
-	if retryableRegistryInspectError(err) {
+	if retryableRegistryInspectError(err) || dockerHubPullLimit(err.Error()) {
 		return false
 	}
 	if errdefs.IsNotFound(err) || errdefs.IsUnauthorized(err) || errdefs.IsPermissionDenied(err) {
@@ -631,6 +640,9 @@ func registryRefusal(err error) bool {
 }
 
 func retryableRegistryMessage(message string) bool {
+	if dockerHubPullLimit(message) {
+		return false
+	}
 	message = strings.ToLower(message)
 	// GHCR throttles with "error from registry: retry-after: …" and no 429 text.
 	return strings.Contains(message, "retry-after:") ||
@@ -642,6 +654,16 @@ func retryableRegistryMessage(message string) bool {
 		strings.Contains(message, "i/o timeout") ||
 		strings.Contains(message, "connection refused") ||
 		strings.Contains(message, "connection reset")
+}
+
+// dockerHubPullLimit reports Docker Hub's pull rate limit, "You have reached
+// your pull rate limit", after "toomanyrequests:" or alone (Engine 29.10
+// with the containerd image store). Its quota is counted over hours, so the
+// few minutes of retries a short throttle gets would only spend it again: it
+// fails at once, and the next check or pass asks again. Like any throttling,
+// it is not a refusal.
+func dockerHubPullLimit(message string) bool {
+	return strings.Contains(strings.ToLower(message), "pull rate limit")
 }
 
 // NormalizeImageReference returns the canonical tagged reference for imageRef,

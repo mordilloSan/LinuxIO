@@ -74,7 +74,7 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 		Checked: DockerUpdateCheckResult{Checked: 14, Updates: 2},
 		Containers: []ContainerOutcome{
 			{Name: "nginx", Image: "nginx:1.27", OldImageID: "sha256:1a2b3c4d5e6f0000", NewImageID: "sha256:4d5e6f7081920000", OldVersion: "1.27.2", NewVersion: "1.27.3"},
-			{Name: "docker-proxy", Project: "infra", Image: "example/proxy:latest", OldImageID: "sha256:aaaa", Err: errors.New("update Compose project \"infra\":\n pull failed")},
+			{Name: "docker-proxy", Project: "infra", Image: "example/proxy:latest", OldImageID: "sha256:aaaa", Err: errors.New("update Compose project \"infra\":\n pull\x1b failed\u2066")},
 			{Name: "app", Project: "infra", Image: "example/app:1", OldImageID: "sha256:bbbb", Err: rolledBackError{err: errors.New("container health is \"unhealthy\""), to: "image bbbb"}},
 		},
 	}
@@ -90,7 +90,8 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 	if fields := strings.Join(strings.Fields(lines[1]), " "); fields != "updated nginx nginx:1.27 1.27.2 -> 1.27.3 (1a2b3c4d5e6f -> 4d5e6f708192)" {
 		t.Fatalf("updated line = %q", lines[1])
 	}
-	// An error that carries Compose output stays on one journal line.
+	// An error that carries Compose output stays on one journal line, without
+	// the control and bidirectional characters others wrote into it.
 	if fields := strings.Join(strings.Fields(lines[2]), " "); fields != `failed docker-proxy (infra) update Compose project "infra": pull failed` {
 		t.Fatalf("failed line = %q", lines[2])
 	}
@@ -167,8 +168,19 @@ func TestImageVersionOfReadsTheImagesLabel(t *testing.T) {
 	images := fakeImageInspector{
 		"sha256:labelled": {imageVersionLabel: "2.4.1"},
 		"sha256:plain":    {},
+		// The image's author writes the label: an escape sequence, a line
+		// break and a bidirectional override are dropped or joined.
+		"sha256:hostile": {imageVersionLabel: "1.0\x1b]0;owned\x07\nupdated: all\u202e"},
+		"sha256:long":    {imageVersionLabel: strings.Repeat("9", 100)},
 	}
-	for imageID, want := range map[string]string{"sha256:labelled": "2.4.1", "sha256:plain": "", "sha256:gone": "", "": ""} {
+	for imageID, want := range map[string]string{
+		"sha256:labelled": "2.4.1",
+		"sha256:plain":    "",
+		"sha256:gone":     "",
+		"":                "",
+		"sha256:hostile":  "1.0]0;owned updated: all",
+		"sha256:long":     strings.Repeat("9", maxVersionRunes-1) + "…",
+	} {
 		if got := imageVersionOf(t.Context(), images, imageID); got != want {
 			t.Errorf("imageVersionOf(%q) = %q, want %q", imageID, got, want)
 		}

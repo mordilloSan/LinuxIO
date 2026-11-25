@@ -34,6 +34,8 @@ func TestAutoUpdateStoreRoundTripPersistsEveryOption(t *testing.T) {
 			f.SetString("check_only")
 		case field.Name == "Time":
 			f.SetString("06:15")
+		case field.Name == "MinFreeGiB":
+			f.SetInt(20)
 		case f.Kind() == reflect.Bool:
 			f.SetBool(true)
 		case f.Type() == reflect.TypeFor[[]string]():
@@ -82,6 +84,7 @@ func TestNormalizeContainerAutoUpdateOptionsKeepsEveryOption(t *testing.T) {
 		Cleanup:        true,
 		ContainerNames: []string{"app"},
 		IncludeStopped: true,
+		MinFreeGiB:     20,
 		Mode:           "check_only",
 		ReviveStopped:  true,
 		Time:           "06:15",

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
       container_names: [],
       enabled: true,
       include_stopped: false,
+      min_free_gib: 0,
       mode: "update" as const,
       revive_stopped: false,
       time: "04:00",

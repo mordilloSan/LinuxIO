@@ -64,8 +64,9 @@ type imageInspector interface {
 	ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error)
 }
 
-// imageVersionOf reads the version label of an image; empty when it has none
-// or cannot be read, which only shortens what the pass reports.
+// imageVersionOf reads the version label of an image, as printableVersion
+// writes it; empty when it has none or cannot be read, which only shortens
+// what the pass reports.
 func imageVersionOf(ctx context.Context, cli imageInspector, imageID string) string {
 	if imageID == "" {
 		return ""
@@ -82,7 +83,7 @@ func imageVersionOf(ctx context.Context, cli imageInspector, imageID string) str
 	if result.Config == nil {
 		return ""
 	}
-	return result.Config.Labels[imageVersionLabel]
+	return printableVersion(result.Config.Labels[imageVersionLabel])
 }
 
 // replaced is the outcome of a container the pass replaced: its images and,

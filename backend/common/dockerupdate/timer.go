@@ -196,7 +196,7 @@ func composeReplicaCounts(containers []container.Summary) map[composeReplicaKey]
 	for _, ctr := range containers {
 		project := strings.TrimSpace(ctr.Labels["com.docker.compose.project"])
 		service := strings.TrimSpace(ctr.Labels["com.docker.compose.service"])
-		if project == "" || service == "" {
+		if project == "" || service == "" || dockerJobRun(ctr.Labels) {
 			continue
 		}
 		counts[composeReplicaKey{project: project, service: service}]++
@@ -208,6 +208,10 @@ func containerMutationEligibility(
 	ctr container.Summary,
 	replicas map[composeReplicaKey]int,
 ) (bool, *string) {
+	if dockerJobRun(ctr.Labels) {
+		reason := "Docker runs this container for a job and replaces it at the job's next run."
+		return false, &reason
+	}
 	state := strings.ToLower(strings.TrimSpace(string(ctr.State)))
 	if state != "running" && state != "exited" {
 		reason := fmt.Sprintf("Container state %q cannot be updated automatically.", state)

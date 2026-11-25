@@ -22,6 +22,17 @@ A container has an update when the digest the registry gives for its
 reference (`DistributionInspect`) is not one of its image's repository
 digests. A reference pinned by digest is never updated. A registry that
 throttles or does not answer is asked again five times over 155 seconds.
+Docker Hub's pull rate limit ("You have reached your pull rate limit",
+typed as resource exhausted since Engine 29.10) is not: its quota is
+counted over hours, so a retry within minutes would only spend it again.
+The check records the error, and the next check asks again.
+
+A container Docker Engine runs for a job (label `com.docker.job.id`, Engine
+29.10; Compose 5.8 schedules its jobs through it) is not checked, counted as
+a replica of its service, offered as a target in the settings, or updated:
+the engine creates and removes each run itself and keeps its exit status for
+the job's history, and an update would run the job again outside its
+schedule. An update that names one is refused.
 
 An image built or loaded on the host cannot be compared with a registry, and
 how that shows depends on Docker's image store. The classic store gives it no
@@ -182,7 +193,7 @@ A Compose service is updated with the project its labels name: its
 configuration files in order, its environment files and its working folder,
 with the environment of the `docker compose` process reduced to a fixed
 list. The update runs `config --quiet`, `pull <service>` (retried while the
-registry throttles) and `up -d --no-deps --no-build --force-recreate <service>`,
+registry throttles, not on Docker Hub's pull rate limit) and `up -d --no-deps --no-build --force-recreate <service>`,
 which builds nothing whatever the service's pull policy says and recreates
 the container even when Compose 5 sees no change (a tag moved to an index
 that differs only in its attestations or its other platforms; step 4 of the
@@ -379,7 +390,20 @@ The service runs
 with `ProtectSystem=strict`, writing only `/var/lib/linuxio` and `/run`. The
 settings choose the mode (update, or check only), which containers to update
 (all, or those named), whether stopped containers are checked, updated and
-started, and whether old images no container uses are removed afterwards.
+started, whether old images no container uses are removed afterwards, and
+the free space a pass needs before it updates anything.
+
+That minimum (*Minimum free space*, `min_free_gib`, whole GiB, 0 or empty for
+none, at most 1 PiB) is asked after the check, only by a pass in update mode
+with containers to update. The pass reads Docker's root folder from the
+daemon (`DockerRootDir`) and measures the room for a write on its
+filesystem and on that of `/var/lib/containerd`, where the containerd image
+store keeps the layers (in the test VM's Docker 29.1.3 that folder holds the
+snapshotters and `/var/lib/docker` none); a containerd folder that does not
+exist is passed over. When either has less, the pass updates nothing and fails, naming the
+folder and its free space, so the run's own alert reports it; the check's
+result stays in the report and the status file. An update from the
+Containers page does not ask.
 
 A pass checks every container in its scope, then updates the standalone
 containers one by one, then the Compose projects. Its output ends with a
@@ -390,6 +414,14 @@ updated (the image, the versions when both images carry
 or the original container). The history shows the summary of the run, such as
 *1 updated, 1 failed, 1 rolled back*; the messages and the exit status are in
 [Jobs](./jobs.md#scheduled-runs).
+
+Text that others wrote reaches the report and the alerts without its control
+characters (a line break and a tab excepted) and invisible format
+characters, the bidirectional controls among them (`printableText`): the
+version label, which the image's author sets, and the reason a registry, the
+daemon or Compose gave for a failure. An escape sequence could change the
+terminal that shows a run's output, and a bidirectional control make a line
+read as another. A version is also put on one line and cut to 64 characters.
 
 The log lines of the pass about one container end their message with the
 container's name, as well as carrying it as the `container` attribute: the
@@ -504,6 +536,14 @@ check that finds no newer base, or a rebuild, clears it.
   an earlier LinuxIO replaced still carries the values of the image it had
   then where they have changed since; recreating it from its image clears
   them.
+- The free-space minimum measures `/var/lib/containerd` by that path: a
+  containerd whose own configuration keeps its data elsewhere has that
+  folder's filesystem unmeasured. The minimum is the scheduled pass's; an
+  update or a rebuild from the Containers page pulls whatever room is left.
+- A Docker job's run is never updated by LinuxIO: which image the job's next
+  run starts is the engine's. The label and the engine's behaviour are as
+  Watchtower describes Engine 29.10 and Compose 5.8 (its pull request 3892);
+  no job has run in the test VM, whose Docker is 29.1.3.
 - The job host that runs an update from the page has its own stop timeout (2
   minutes), shorter than a Compose rollback's bound: a stop of it during a
   rollback can end the rollback's `docker compose up`.

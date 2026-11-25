@@ -38,7 +38,7 @@ func validateComposeServiceScopes(
 	replicas := make(map[string]int, len(selected))
 	for _, summary := range containers.Items {
 		service := summary.Labels["com.docker.compose.service"]
-		if summary.Labels["com.docker.compose.project"] == projectName {
+		if summary.Labels["com.docker.compose.project"] == projectName && !dockerJobRun(summary.Labels) {
 			if _, ok := selected[service]; ok {
 				replicas[service]++
 			}

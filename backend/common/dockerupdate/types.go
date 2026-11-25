@@ -22,11 +22,14 @@ const (
 
 // DockerContainerAutoUpdateSettings is every saved scheduled-update option.
 // It is embedded in the wire type below and in the on-disk document, so a new
-// saved option is one field here.
+// saved option is one field here. MinFreeGiB is the free space, in GiB, a
+// pass in update mode needs on the filesystems of Docker's images before it
+// updates anything; 0 asks for none.
 type DockerContainerAutoUpdateSettings struct {
 	Cleanup        bool                          `json:"cleanup"`
 	ContainerNames []string                      `json:"container_names"`
 	IncludeStopped bool                          `json:"include_stopped"`
+	MinFreeGiB     int                           `json:"min_free_gib"`
 	Mode           DockerContainerAutoUpdateMode `json:"mode"`
 	ReviveStopped  bool                          `json:"revive_stopped"`
 	Time           string                        `json:"time"`

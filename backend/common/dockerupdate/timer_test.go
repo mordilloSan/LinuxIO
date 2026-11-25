@@ -103,6 +103,16 @@ func TestNormalizeContainerAutoUpdateOptionsRejectsInvalidValues(t *testing.T) {
 	if _, err := normalizeContainerAutoUpdateOptions(DockerContainerAutoUpdateOptions{Mode: "update", Time: "04:00", ReviveStopped: true}); err == nil {
 		t.Fatal("accepted revive-stopped without stopped-container updates")
 	}
+	for _, minFree := range []int{-1, maxMinFreeGiB + 1} {
+		settings := DockerContainerAutoUpdateSettings{Mode: "update", Time: "04:00", MinFreeGiB: minFree}
+		_, err := normalizeContainerAutoUpdateOptions(DockerContainerAutoUpdateOptions{DockerContainerAutoUpdateSettings: settings})
+		if !errors.Is(err, ErrInvalidSettings) {
+			t.Fatalf("free-space minimum %d: error = %v, want ErrInvalidSettings", minFree, err)
+		}
+	}
+	if _, err := normalizeContainerAutoUpdateOptions(DockerContainerAutoUpdateOptions{Mode: "daemon"}); !errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("invalid mode error = %v, want ErrInvalidSettings", err)
+	}
 }
 
 func TestBuildContainerAutoUpdateTargetsPreservesMissingNames(t *testing.T) {
@@ -161,6 +171,34 @@ func TestBuildContainerAutoUpdateTargetsMarksMutationEligibility(t *testing.T) {
 	}
 	if target := byName["standalone"]; !target.MutationAllowed || target.MutationReason != nil {
 		t.Fatalf("standalone target eligibility = %+v", target)
+	}
+}
+
+// A run of a Docker job is never a target, and is no replica of the service
+// whose labels it carries.
+func TestBuildContainerAutoUpdateTargetsRefusesDockerJobRuns(t *testing.T) {
+	labels := map[string]string{
+		"com.docker.compose.project": "media",
+		"com.docker.compose.service": "web",
+	}
+	jobRun := map[string]string{
+		"com.docker.compose.project": "media",
+		"com.docker.compose.service": "web",
+		dockerJobLabel:               "nightly",
+	}
+	targets := buildContainerAutoUpdateTargets([]container.Summary{
+		{ID: "web", Names: []string{"/web"}, State: "running", Labels: labels},
+		{ID: "run", Names: []string{"/media-nightly-1"}, State: "running", Labels: jobRun},
+	}, nil)
+	byName := make(map[string]DockerContainerAutoUpdateTarget, len(targets))
+	for _, target := range targets {
+		byName[target.Name] = target
+	}
+	if target := byName["web"]; !target.MutationAllowed {
+		t.Fatalf("service eligibility = %+v, want allowed beside a job run", target)
+	}
+	if target := byName["media-nightly-1"]; target.MutationAllowed || target.MutationReason == nil || !strings.Contains(*target.MutationReason, "job") {
+		t.Fatalf("job run eligibility = %+v, want refused", target)
 	}
 }
 

@@ -8,12 +8,16 @@ export const DEFAULT_AUTO_UPDATE_OPTIONS: DockerContainerAutoUpdateOptions = {
   container_names: [],
   enabled: false,
   include_stopped: false,
+  min_free_gib: 0,
   mode: "update",
   revive_stopped: false,
   time: "04:00",
   update_all: false,
   update_stopped: false,
 };
+
+/** The backend's bound on `min_free_gib` (`maxMinFreeGiB`), 1 PiB. */
+export const MAX_MIN_FREE_GIB = 1 << 20;
 
 const uniqueNames = (names: string[]) => [...new Set(names)].sort();
 
