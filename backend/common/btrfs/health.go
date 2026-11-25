@@ -122,7 +122,7 @@ func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Obser
 		case len(dropped) > 0:
 			// The kernel keeps the dropped disk's block device until the pool
 			// is unmounted, whether the disk is back or not (markDroppedOut).
-			obs.Message = strings.Join(dropped, ", ") + " dropped out while the pool was mounted. Its data is available from the other disks, but with less redundancy, and the pool takes the disk back only when it is mounted again: reconnect it, then unmount the pool and mount it again from the Storage overview, or reboot; LinuxIO then resyncs the pool. Or replace the disk from the pool details."
+			obs.Message = strings.Join(dropped, ", ") + " dropped out while the pool was mounted. Its data is available from the other disks, but with less redundancy, and the pool takes the disk back only when it is mounted again: reconnect it, then unmount the pool and mount it again from the Disks page (Storage → Advanced), or reboot; LinuxIO then resyncs the pool. Or replace the disk from the pool details."
 		case returned && fs.AutoRebuild:
 			obs.Message = "A missing disk is connected again, but it gets no writes until the pool is mounted again. Once two health checks in a row have seen it back, LinuxIO erases it and rebuilds the pool onto it, then resyncs the pool."
 		case returned:
@@ -151,7 +151,7 @@ func raiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked, wayO
 	obs := alerts.Observation{
 		Key: "offline-" + pool.UUID, Severity: alerts.SeverityWarning,
 		Title:   "Pool " + name + " is not mounted",
-		Message: "The pool is complete but not mounted. Mount it from the Storage overview.",
+		Message: "The pool is complete but not mounted. Mount it from the Disks page (Storage → Advanced).",
 		Link:    "/storage", OccurrenceID: strconv.Itoa(missing),
 	}
 	switch {
@@ -175,7 +175,7 @@ func raiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked, wayO
 		}
 	case blocked != "":
 		obs.Severity = alerts.SeverityError
-		obs.Message = "LinuxIO did not mount the pool because " + blocked + ". " + cmp.Or(wayOut, "Check the disks before you mount the pool from the Storage overview.")
+		obs.Message = "LinuxIO did not mount the pool because " + blocked + ". " + cmp.Or(wayOut, "Check the disks before you mount the pool from the Disks page (Storage → Advanced).")
 	}
 	if blocked != "" {
 		sum := sha256.Sum256([]byte(blocked))

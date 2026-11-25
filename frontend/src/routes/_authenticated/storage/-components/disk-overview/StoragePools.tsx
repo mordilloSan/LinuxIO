@@ -5,7 +5,6 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   linuxio,
   type BtrfsOfflinePool,
-  type BtrfsOpProgress,
   type FilesystemInfo,
   type NFSMount,
   type StorageBlockDevice,
@@ -20,7 +19,7 @@ import { useCapability } from "@/hooks/useCapabilities";
 import useContainerWidth from "@/hooks/useContainerWidth";
 import { formatFileSize, formatThroughput } from "@/utils/formatters";
 
-import BtrfsCreatePoolDialog from "../btrfs/BtrfsCreatePoolDialog";
+import CreatePoolButton from "../pools/CreatePoolButton";
 import DestroyPoolDialog, {
   type DestroyTarget,
 } from "../pools/DestroyPoolDialog";
@@ -552,7 +551,7 @@ const Edges = ({
   );
 };
 
-type PoolDialog = { kind: "create" } | ({ kind: "destroy" } & DestroyTarget);
+type PoolDialog = { kind: "destroy" } & DestroyTarget;
 
 interface StoragePoolsProps {
   drives: DriveInfo[];
@@ -605,15 +604,6 @@ const StoragePools = ({
   const [paused, setPaused] = useState(false);
   const { ref: graphRef, width } = useContainerWidth(FALLBACK_WIDTH);
   const closeDialog = () => setDialog(null);
-  // A task, not a call: the bridge trims every disk before mkfs, which can
-  // outlast any request timeout on large SSDs.
-  const [createStep, setCreateStep] = useState<BtrfsOpProgress | null>(null);
-  const createPool = linuxio.storage.btrfs_pool_create.useMutation({
-    onProgress: (progress) => setCreateStep(progress.detail ?? null),
-    success: "Pool created",
-    error: "Failed to create pool",
-    options: { onSettled: () => setCreateStep(null) },
-  });
   const { mutate: mountPool, isPending: isMounting } =
     linuxio.storage.btrfs_pool_mount.useMutation({
       success: "Pool mounted",
@@ -736,13 +726,11 @@ const StoragePools = ({
             {paused ? "Resume animation" : "Pause animation"}
           </AppButton>
           {poolsEnabled && (
-            <AppButton
-              onClick={() => setDialog({ kind: "create" })}
-              size="small"
-              variant="outlined"
-            >
-              Create pool
-            </AppButton>
+            <CreatePoolButton
+              pooledDevices={btrfs.flatMap((fs) =>
+                fs.devices.map(({ path }) => path),
+              )}
+            />
           )}
         </div>
       </div>
@@ -804,19 +792,6 @@ const StoragePools = ({
       </div>
       {selectedArray && (
         <MdRaidDetails array={selectedArray} key={selectedArray.name} />
-      )}
-      {dialog?.kind === "create" && (
-        <BtrfsCreatePoolDialog
-          isPending={createPool.isPending}
-          onClose={closeDialog}
-          onConfirm={(request) =>
-            createPool.mutate(request, { onSuccess: closeDialog })
-          }
-          progress={createStep}
-          pooledDevices={btrfs.flatMap((fs) =>
-            fs.devices.map(({ path }) => path),
-          )}
-        />
       )}
       <DestroyPoolDialog
         onClose={closeDialog}

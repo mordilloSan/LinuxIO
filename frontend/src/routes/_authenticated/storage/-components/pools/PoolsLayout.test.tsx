@@ -88,8 +88,8 @@ describe("PoolsLayout", () => {
     await user.click(screen.getByRole("button", { name: "Back to pools" }));
     expect(onSelect).toHaveBeenCalledWith(null);
     expect(
-      screen.getByRole("link", { name: "Mount it from the Disks tab" }),
-    ).toHaveAttribute("href", "/storage");
+      screen.getByRole("link", { name: "Mount it from the Disks page" }),
+    ).toHaveAttribute("href", "/storage/disks");
   });
 
   it("reads the pools again every ten seconds", async () => {

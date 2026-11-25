@@ -6,7 +6,7 @@ const views = [
     path: "/docker/topology",
     edges: ".docker-topology__edges",
   },
-  { name: "storage", path: "/storage", edges: ".storage-pools__edges" },
+  { name: "storage", path: "/storage/disks", edges: ".storage-pools__edges" },
 ];
 
 for (const view of views)

@@ -5,4 +5,8 @@ export {
   RoutedTabSearch,
 } from "./RoutedTabContainer";
 export { makeTabLayout } from "./tabLayoutFactory";
-export type { RoutedTab } from "./RoutedTabContainer";
+export type {
+  RoutedTab,
+  RoutedTabEntry,
+  RoutedTabGroup,
+} from "./RoutedTabContainer";

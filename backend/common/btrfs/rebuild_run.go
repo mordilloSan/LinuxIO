@@ -732,7 +732,7 @@ func settleNeverErased(ctx context.Context, fs BtrfsFilesystem, rec rebuildRecor
 // untrustedReason is why a rebuild the kernel finished at a mount LinuxIO
 // did not make, after a reboot, is not trusted.
 func untrustedReason(rec rebuildRecord) string {
-	return fmt.Sprintf("the pool was mounted with %s, the disk LinuxIO was rebuilding device %d onto, before LinuxIO could check it, and the kernel finished that rebuild from where it was cut; if the disk failed during the rebuild, it holds stale copies the scrub cannot all find (files without checksums), so LinuxIO does not call the pool whole. Unmount the pool and mount it again from the Storage overview: LinuxIO then erases that disk and mounts the pool degraded; then replace device %d", rec.Device, rec.ID, rec.ID)
+	return fmt.Sprintf("the pool was mounted with %s, the disk LinuxIO was rebuilding device %d onto, before LinuxIO could check it, and the kernel finished that rebuild from where it was cut; if the disk failed during the rebuild, it holds stale copies the scrub cannot all find (files without checksums), so LinuxIO does not call the pool whole. Unmount the pool and mount it again from the Disks page (Storage → Advanced): LinuxIO then erases that disk and mounts the pool degraded; then replace device %d", rec.Device, rec.ID, rec.ID)
 }
 
 // restartRebuild starts the rebuild rec again onto the same disk, found by
@@ -893,7 +893,7 @@ func rebuildDevicesOf(pool BtrfsOfflinePool, rec rebuildRecord, disks []spareCan
 	for _, d := range []BtrfsSpareDisk{rec.Disk, rec.Untrusted} {
 		if _, n := findDisk(d, disks); n > 1 {
 			found.reason = fmt.Sprintf("%d connected disks have the WWN, serial number and size of a disk of %s, so LinuxIO cannot tell which one to erase first", n, record)
-			found.wayOut = "Disconnect the disks with that serial number that are not the pool's, then mount the pool from the Storage overview."
+			found.wayOut = "Disconnect the disks with that serial number that are not the pool's, then mount the pool from the Disks page (Storage → Advanced)."
 			return found
 		}
 	}

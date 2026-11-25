@@ -45,9 +45,9 @@ export function scheduledRunLink(task: TaskSnapshot): BackgroundTaskLink {
     case SCHEDULED_BTRFS_REBUILD:
       return id ? { to: "/storage", search: { pool: id } } : { to: "/storage" };
     case SCHEDULED_BTRFS_SNAPSHOT:
-      return { to: "/storage/subvolumes", search: { view: "snapshots" } };
+      return { to: "/storage/snapshots" };
     case SCHEDULED_BTRFS_REPLICATE:
-      return { to: "/storage/subvolumes", search: { view: "replication" } };
+      return { to: "/storage/snapshots", search: { view: "replication" } };
     case SCHEDULED_DOCKER_UPDATE:
       return { to: "/docker/containers" };
     case SCHEDULED_SYSTEM_UPDATE:

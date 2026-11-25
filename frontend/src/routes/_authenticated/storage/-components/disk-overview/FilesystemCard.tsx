@@ -202,7 +202,11 @@ const FilesystemCardDetails = ({
             </AppButton>
           )}
           {isBtrfs && (
-            <AppRouterLinkButton to="/storage/subvolumes" variant="outlined">
+            <AppRouterLinkButton
+              search={{ view: "subvolumes" }}
+              to="/storage/snapshots"
+              variant="outlined"
+            >
               Manage subvolumes
             </AppRouterLinkButton>
           )}

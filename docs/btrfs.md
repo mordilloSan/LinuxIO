@@ -1,9 +1,11 @@
 # Btrfs management
 
-The **Storage → Subvolumes** tab (`/storage/subvolumes`) manages subvolumes,
-and, under its Snapshots and Replication views (`?view=snapshots`,
-`?view=replication`), snapshots with rollback, automatic snapshots and
-replication to another filesystem or host. Each pool's page on the
+The **Storage → Snapshots** tab (`/storage/snapshots`) holds snapshots with
+rollback and automatic snapshots, and, under its Replication and Subvolumes
+views (`?view=replication`, `?view=subvolumes`), replication to another
+filesystem or host and the subvolumes themselves; `/storage/subvolumes`,
+which alerts and saved runs link to, redirects there with its view and pool.
+Each pool's page on the
 **Storage → Pools** tab (`/storage/pools/<uuid>`, see [Pool page](#pool-page))
 holds the rest: health, what protects its data, snapshots, devices and
 profiles, space, quotas, compression and maintenance timers.
@@ -49,12 +51,12 @@ verification.
 ## Capability and privileges
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
-gates the Pools and Subvolumes tabs and the pools on the Disks overview; see
+gates the Pools and Snapshots tabs and the pools on the Overview and the Disks page; see
 [Capabilities](./capabilities.md#btrfs-tools). All are
 **administrator-only**: they require a privileged session, reads run
 `btrfs` as root and the configuration files are root `0600`. The Pools and
-Subvolumes tabs are listed only while a btrfs filesystem is mounted; pools are
-created from the Disks overview.
+Snapshots tabs are listed only while a btrfs filesystem is mounted; pools are
+created from the Overview or the Disks page.
 
 ## Pool page
 
@@ -65,8 +67,9 @@ and about how much is free, and a chip per disk. Opening one goes to
 `/storage/pools/<uuid>`, built as the VM page is: the list folds into that
 pool's card beside a panel, Escape or the close button goes back, and a pool
 that is not mounted says so. `/storage?pool=<uuid>`, which the alerts link to,
-redirects there. A pool found on disk but not mounted stays on the Disks
-overview with **Mount** and **Destroy**.
+redirects there. A pool found on disk but not mounted is listed on the
+Overview's *Worth a look* and stays on the Disks page with **Mount** and
+**Destroy**.
 
 The panel leads with the health banner, then four tabs (`?tab=`):
 
@@ -101,7 +104,7 @@ out coming before the errors its failed writes count, and the error counters
 of a missing disk (since 7.1 the kernel marks a pulled disk missing, with the
 writes it failed counted) reading as degraded, not errors; **Reclaim space** when
 metadata is nearly full. Health, scrub and space alerts link to those details;
-snapshot and replication alerts link to the Subvolumes tab's Snapshots and
+snapshot and replication alerts link to the Snapshots tab's Snapshots and
 Replication views.
 
 Alerts are updated whenever the list is loaded and, independently of the
@@ -376,7 +379,7 @@ health is unknown when they disagree. The next health run therefore opens
 the episode while the pool runs on the others, with the disk's counters as
 the pool was last seen whole, and the health alert and the pool's details
 say the disk dropped out and that the pool takes it back only when it is
-mounted again: unmounted and mounted from the Storage overview, which
+mounted again: unmounted and mounted from the Disks page, which
 registers the pool's disks first, or a reboot; with the automatic rebuild on
 (below), that LinuxIO rebuilds the pool onto the disk once it is back. Until then no resync starts,
 and one started anyway stops without counting a failed attempt; the mount
@@ -1251,7 +1254,7 @@ Manual `apt` or `dnf` runs are not hooked.
 ## Pools
 
 A pool is one btrfs filesystem over one or more whole disks. **Create pool**
-on the Storage overview formats free disks with `mkfs.btrfs`, with the data
+on the Overview or the Disks page formats free disks with `mkfs.btrfs`, with the data
 and metadata profiles chosen from `single`, `dup`, `raid0`, `raid1`,
 `raid1c3`, `raid1c4` and `raid10` (`raid5` and `raid6` are refused),
 registers the disks with the kernel, mounts the pool and records it in
@@ -1989,7 +1992,7 @@ key fails the job.
 ## Space
 
 The pool page's **Space** card, the pool's card on the Pools tab and its card
-on the Disks overview give two figures, each byte counted once however many copies the profiles
+on the Disks page give two figures, each byte counted once however many copies the profiles
 keep (`StoredBytes` and `FreeBytes` in `inventory.go`):
 
 - **stored**: the used bytes of every data, metadata and system row, as the
@@ -2008,7 +2011,7 @@ out** opens the rows behind them: each kind and profile with what is used of
 what is set aside, the space not set aside yet, and the UUID. A disk's row
 on the Disks card says how much of it is **allocated** to the pool. When the
 space cannot be read, the Space card says so and shows no figures, and the
-pool's card on the Disks overview says **Space unknown**.
+pool's card on the Disks page says **Space unknown**.
 
 ### Known limits
 

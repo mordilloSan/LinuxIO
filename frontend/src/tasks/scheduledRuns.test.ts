@@ -161,7 +161,7 @@ describe("scheduledRunLink", () => {
           metadata: { label: "Snapshots" },
         }),
       ),
-    ).toEqual({ to: "/storage/subvolumes", search: { view: "snapshots" } });
+    ).toEqual({ to: "/storage/snapshots" });
   });
 
   it("opens the replication view for a replication run", () => {
@@ -171,7 +171,7 @@ describe("scheduledRunLink", () => {
           metadata: { label: "Replication" },
         }),
       ),
-    ).toEqual({ to: "/storage/subvolumes", search: { view: "replication" } });
+    ).toEqual({ to: "/storage/snapshots", search: { view: "replication" } });
   });
 
   it("opens the containers page for a Docker update", () => {

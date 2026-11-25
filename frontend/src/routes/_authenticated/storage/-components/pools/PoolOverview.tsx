@@ -17,22 +17,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize, formatRelativeAge } from "@/utils/formatters";
 
 import { periodLabel } from "../btrfs/BtrfsMaintenanceControls";
+import { disksItSurvives } from "../btrfs/btrfsShared";
 import type { PoolTab } from "./poolTabs";
 
 type Tone = keyof typeof STATUS_COLOR;
-
-/** How many disks each profile can lose and keep its data. */
-const DISKS_IT_SURVIVES: Record<string, number> = {
-  single: 0,
-  dup: 0,
-  raid0: 0,
-  raid1: 1,
-  raid10: 1,
-  raid1c3: 2,
-  raid1c4: 3,
-  raid5: 1,
-  raid6: 2,
-};
 
 const COUNT = ["", "one", "two", "three"];
 
@@ -56,11 +44,10 @@ interface Row {
  * the disks it already runs without.
  */
 const diskFailureRow = (fs: BtrfsFilesystem): Row => {
-  const survives = fs.allocation.map((a) => DISKS_IT_SURVIVES[a.profile] ?? 0);
-  if (survives.length === 0)
+  const n = disksItSurvives(fs.allocation);
+  if (n === null)
     return { key: "disks", tone: "muted", title: "Copies unknown" };
   const missing = fs.devices.filter((d) => d.missing).length;
-  const n = Math.min(...survives);
   if (missing > 0) {
     const left = Math.max(n - missing, 0);
     return left === 0

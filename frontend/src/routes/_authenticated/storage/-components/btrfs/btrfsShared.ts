@@ -1,11 +1,12 @@
 import type { BtrfsSnapshotRule } from "@/api";
 
 export const BTRFS_TOAST_META = {
-  label: "Open subvolumes",
-  to: "/storage/subvolumes",
+  label: "Open snapshots",
+  to: "/storage/snapshots",
 } as const;
 
-// Devices, health and settings live with the pool on the Disks tab.
+// Devices, health and settings live on the pool's page; the link is hidden
+// anywhere under Storage, where the toast was raised.
 export const BTRFS_POOL_TOAST_META = {
   label: "Open storage",
   to: "/storage",
@@ -141,3 +142,27 @@ const KEPT_COPIES: Record<string, string> = {
 
 /** How a profile keeps data, in words; the profile's name when it has none. */
 export const keptCopies = (profile: string) => KEPT_COPIES[profile] ?? profile;
+
+/** How many disks each profile can lose and keep its data. */
+const DISKS_IT_SURVIVES: Record<string, number> = {
+  single: 0,
+  dup: 0,
+  raid0: 0,
+  raid1: 1,
+  raid10: 1,
+  raid1c3: 2,
+  raid1c4: 3,
+  raid5: 1,
+  raid6: 2,
+};
+
+/**
+ * How many disks a pool can lose, by the weakest profile it keeps; null when
+ * its space could not be read.
+ */
+export const disksItSurvives = (
+  allocation: readonly { profile: string }[],
+): number | null =>
+  allocation.length === 0
+    ? null
+    : Math.min(...allocation.map((a) => DISKS_IT_SURVIVES[a.profile] ?? 0));

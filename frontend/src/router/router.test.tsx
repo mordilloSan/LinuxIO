@@ -12,6 +12,9 @@ const applicationRoutes = Object.values(router.routesById).filter(
   (route) => route.id !== "__root__" && route.id !== "/_authenticated",
 );
 
+// Routes whose beforeLoad always redirects an old path elsewhere.
+const REDIRECT_ONLY_ROUTES = new Set(["/_authenticated/storage/subvolumes"]);
+
 function routeOrAncestorHasLoader(route: AnyRoute): boolean {
   let current: AnyRoute | undefined = route;
   while (current) {
@@ -144,6 +147,7 @@ describe("generated application router", () => {
         "/sign-in",
         "/storage",
         "/storage/",
+        "/storage/disks",
         "/storage/lvm",
         "/storage/mounts",
         "/storage/pools",
@@ -151,6 +155,7 @@ describe("generated application router", () => {
         "/storage/pools/$uuid",
         "/storage/rsync",
         "/storage/shares",
+        "/storage/snapshots",
         "/storage/subvolumes",
         "/terminal",
         "/updates",
@@ -171,7 +176,9 @@ describe("generated application router", () => {
   it("gives every protected leaf page a loader in its route branch", () => {
     const protectedLeafRoutes = Object.values(router.routesById)
       .filter((route) => route.id.startsWith("/_authenticated"))
-      .filter((route) => !route.children);
+      .filter((route) => !route.children)
+      // A route that only redirects an old path renders nothing to load for.
+      .filter((route) => !REDIRECT_ONLY_ROUTES.has(route.id));
 
     expect(
       protectedLeafRoutes

@@ -55,7 +55,7 @@ const PoolsLayout = ({
           severity="info"
         >
           This pool is not mounted, or no longer exists.{" "}
-          <Link to="/storage">Mount it from the Disks tab</Link>
+          <Link to="/storage/disks">Mount it from the Disks page</Link>
         </AppAlert>
       );
     }
@@ -78,8 +78,8 @@ const PoolsLayout = ({
   if (!isPending && pools.length === 0) {
     return (
       <AppTypography color="text.secondary">
-        No btrfs pool is mounted. Create one on the{" "}
-        <Link to="/storage">Disks</Link> tab.
+        No btrfs pool is mounted. Create one from the{" "}
+        <Link to="/storage">Overview</Link>.
       </AppTypography>
     );
   }

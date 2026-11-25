@@ -6,7 +6,7 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +18,7 @@ import {
   RoutedTabLayout,
   RoutedTabSearch,
   type RoutedTab,
+  type RoutedTabEntry,
 } from "./RoutedTabContainer";
 import { makeTabLayout } from "./tabLayoutFactory";
 
@@ -190,6 +191,66 @@ describe("RoutedTabContainer", () => {
     );
     expect(groups).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Route content")).toBeInTheDocument();
+  });
+
+  it("opens a group's routes from a menu and names the one open", async () => {
+    const groupTabs = [
+      { label: "Disks", to: "/storage" },
+      {
+        label: "Advanced",
+        items: [
+          { label: "LVM", to: "/storage/lvm" },
+          { label: "Mounts", to: "/storage/mounts" },
+        ],
+      },
+    ] as const satisfies readonly RoutedTabEntry[];
+    const rootRoute = createRootRoute({ component: Outlet });
+    const storageRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={groupTabs}>
+          <div>Route content</div>
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "storage",
+    });
+    const lvmRoute = createRoute({
+      getParentRoute: () => storageRoute,
+      path: "lvm",
+    });
+    const mountsRoute = createRoute({
+      getParentRoute: () => storageRoute,
+      path: "mounts",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/storage"] }),
+      routeTree: rootRoute.addChildren([
+        storageRoute.addChildren([lvmRoute, mountsRoute]),
+      ]),
+    });
+    await router.load();
+    const { user } = render(<RouterProvider router={router} />);
+
+    const more = await screen.findByRole("tab", { name: "Advanced" });
+    expect(more).toHaveAttribute("aria-haspopup", "menu");
+    expect(more).toHaveAttribute("aria-selected", "false");
+
+    await user.click(more);
+    await user.click(await screen.findByRole("menuitem", { name: "Mounts" }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/storage/mounts"),
+    );
+    const open = await screen.findByRole("tab", { name: "Advanced: Mounts" });
+    expect(open).toHaveAttribute("aria-selected", "true");
+    // Focus comes back to the pill, as with a plain tab.
+    expect(open).toHaveFocus();
+
+    await user.click(open);
+    const menu = await screen.findByRole("menu", { name: "Advanced" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "Mounts" }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("keeps a matchChildren tab selected while a nested detail route is open", async () => {

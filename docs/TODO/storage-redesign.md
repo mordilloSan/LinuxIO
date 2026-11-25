@@ -176,7 +176,34 @@ The pool details leave the Disks overview for a **Pools** tab built as the VM pa
 
 ## Phase 3: Storage by what you manage (C, frontend)
 
-Storage tabs become Overview, Pools, Shared folders, Snapshots and Advanced (All disks, md arrays, LVM, Mounts, rsync), with today's routes kept under Advanced and old paths redirected. Overview: one health line, "Worth a look" items derived from pool state (one disk, nothing replicated, a degraded pool), pool cards, and shared folders. Shared folders shows today's shares as one list, with the panel of mockup C2 limited to what the backend supports until phase 4. Detailed tasks are written when phase 2 lands.
+Storage tabs become **Overview** (`/storage`), **Pools**, **Shared folders** (today's `/storage/shares`), **Snapshots** (`/storage/snapshots`, today's Subvolumes page opening on its Snapshots view) and **Advanced ▾**, a menu of **Disks** (`/storage/disks`, today's overview graph), **LVM**, **Mounts** and **rsync**. Old links keep working: `/storage?drive=|fs=|raid=` redirect to `/storage/disks`, `/storage?pool=` to the pool page, and `/storage/subvolumes` to `/storage/snapshots` with its `view` and `fs`. The Shared folders panel of mockup C2 comes with phase 4, which builds what it shows, so it is not built twice.
+
+### Task 3.1: A menu tab in the shared tab bar
+
+**Files:** Modify `frontend/src/components/tabbar/RoutedTabContainer.tsx` (and `index.ts`), `tabLayoutFactory.ts` if it types tabs; Test `RoutedTabContainer.test.tsx`; Docs `docs/tanstack-router.md` (Page Tabs).
+
+**Interfaces:** Produces `interface RoutedTabGroup { label: string; items: readonly RoutedTab[] }` and `type RoutedTabEntry = RoutedTab | RoutedTabGroup`; `RoutedTabLayout`, `makeTabLayout` and the strip take `readonly RoutedTabEntry[]`.
+
+- [x] Failing tests: a group renders one pill named by its label with `aria-haspopup="menu"`; opening it lists its items as menu items that navigate; while one of its routes is open the pill is selected and reads "Advanced: Disks".
+- [x] Implement with `AppMenu` and `AppMenuItem`, no new memoization.
+
+### Task 3.2: The routes move
+
+**Files:** Create `storage/disks.tsx` (the overview graph, its search and loader, from `index.tsx`), `storage/snapshots.tsx` (from `subvolumes.tsx`, default view Snapshots, views ordered Snapshots, Replication, Subvolumes); Modify `storage/index.tsx` (Overview; redirects), `storage/subvolumes.tsx` (redirect), `storageTabs.ts`, `storage/route.tsx` (gating per tab and group item), `disk-overview/DiskOverview.tsx` (its route API and navigations), `btrfs/btrfsViews.ts`, `tasks/scheduledRuns.ts`, `pools/PoolsLayout.tsx` (its Disks link), the browser fixture and specs (`test/browser/fixture/main.tsx`, `storage-disks.spec.ts`, `topology-flow.spec.ts`), the VM spec opening Subvolumes (`jobs-phase4.spec.ts`); Tests `storageTabs.test.tsx`, redirect tests beside `pools/poolRedirect.test.ts`, `router.test.tsx`.
+
+- [x] Failing tests: the tab strip reads Overview, Pools, Shared folders, Snapshots, Advanced (Pools and Snapshots only with btrfs, privilege and a mounted pool); each old link lands where it should, search kept; the Disks overview's own navigations stay on `/storage/disks`.
+- [x] Implement.
+
+### Task 3.3: The Overview
+
+**Files:** Create `storage/-components/overview/StorageOverview.tsx`, `storage/-components/pools/CreatePoolButton.tsx` (the create dialog and its task, lifted from `StoragePools.tsx`, which uses it too); Tests beside them.
+
+- [x] Failing tests: one health line ("All disks and pools are healthy", or how many need a look); *Worth a look* lists a pool that is degraded or not healthy (its banner title), a pool found on disk but not mounted, a pool of one disk ("a disk failure loses it"), a pool no enabled replication job copies, an md array running degraded; each links to where it is fixed; pool cards link to their pages; shared folders (SMB and NFS, from today's lists) with a link to the tab; **Create pool** opens the create dialog; without btrfs or privilege the pool parts are left out and the page says what it can.
+- [x] Implement with `PoolSummaryCard`, `FrostedCard`, `CardIconHeader`, `KeyValues`.
+
+### Task 3.4: Docs and the phase check
+
+- [x] `docs/storage-disks.md` (its paths), `docs/btrfs.md` (tab names), `docs/tanstack-router.md` (route tables, guards, the menu tab), `docs/README.md` rows; `make check-docs-quiet`, `make format-frontend`, `make test-quiet`, the browser fixture specs (`make test-frontend-browser-quiet`), a fresh review, fixes.
 
 ## Phase 4: shared folders backend
 

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("storage disks clear the drive, volume and RAID selection with Escape", async ({
   page,
 }) => {
-  await page.goto("/storage");
+  await page.goto("/storage/disks");
   // nvme0n1 holds /boot/efi and, through LVM, / and /srv/appdata.
   await page
     .getByRole("button", { name: "Drive details nvme0n1" })
@@ -14,22 +14,22 @@ test("storage disks clear the drive, volume and RAID selection with Escape", asy
   await expect(card).toHaveAttribute("aria-expanded", "true");
   await page.getByRole("tab").nth(1).click();
   await page.keyboard.press("Escape");
-  await expect(page).toHaveURL(/\/storage$/);
+  await expect(page).toHaveURL(/\/storage\/disks$/);
 
   await page.getByRole("button", { name: "Volume /srv/media" }).click();
   await expect(page).toHaveURL(/\?fs=/);
   await page.keyboard.press("Escape");
-  await expect(page).toHaveURL(/\/storage$/);
+  await expect(page).toHaveURL(/\/storage\/disks$/);
   await expect(
     page.getByRole("button", { name: "Drive details nvme0n1" }).first(),
   ).toBeVisible();
 
-  await page.goto("/storage?raid=md127");
+  await page.goto("/storage/disks?raid=md127");
   await expect(
     page.getByRole("button", { name: "Drive details nvme0n1" }).first(),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page).toHaveURL(/\/storage$/);
+  await expect(page).toHaveURL(/\/storage\/disks$/);
 });
 
 test("storage disks carry live reads and writes on their lines", async ({
@@ -37,7 +37,7 @@ test("storage disks carry live reads and writes on their lines", async ({
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.goto("/storage");
+  await page.goto("/storage/disks");
   const sda = page.getByRole("button", { name: "Drive details sda" }).first();
   await expect(sda).toContainText("Read 13 MB/s · Write 82 kB/s");
   // A partition nothing uses is a line on its drive's card.
@@ -91,12 +91,12 @@ test("storage disks carry live reads and writes on their lines", async ({
 test("storage disks list partitions and offer unmount from fstab", async ({
   page,
 }) => {
-  await page.goto("/storage?drive=sda");
+  await page.goto("/storage/disks?drive=sda");
   await page.getByRole("tab", { name: "Partitions" }).click();
   await expect(page.getByText("No partition table")).toBeVisible();
   await expect(page.getByText("sda2", { exact: true })).toBeVisible();
 
-  await page.goto("/storage?fs=%2Fsrv%2Fmedia");
+  await page.goto("/storage/disks?fs=%2Fsrv%2Fmedia");
   await page.getByRole("button", { name: "Unmount", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Unmount filesystem" });
   await expect(

@@ -1,6 +1,37 @@
 # Storage disks
 
-Storage → Disks (`/storage`) lists the physical drives with their SMART
+## The Storage tabs
+
+Storage is organised by what an administrator manages: **Overview**
+(`/storage`), **Pools** ([Btrfs, Pool page](./btrfs.md#pool-page)),
+**Shared folders** (`/storage/shares`), **Snapshots**
+([Btrfs](./btrfs.md)) and **Advanced ▾**, a menu of **Disks**, **LVM**,
+**Mounts** and **rsync**. Pools and Snapshots are listed only for a session
+with administrator rights and the btrfs tools while a pool is mounted.
+
+The **Overview** leads with one line: "Checking…" until the lists are read,
+then how many problems need a look, "Could not read …" for a list that failed,
+or "All pools and arrays are healthy" ("All arrays are healthy" for a session
+that cannot read pools). *Worth a look* lists each thing with a link to where
+it is fixed. Problems come first and count against the line: a pool whose
+health is not Healthy (the health banner's own verdict), a pool found on disk
+but not mounted, and an md array running without a disk. Advice follows and
+does not: a pool that keeps one copy ("has one disk: a disk failure loses
+it") and a pool no enabled replication job copies. Then the pools as cards,
+with **Create pool**, and the shared folders with the protocols that share
+each, a path counted once whatever its trailing slash. Pools, pools not
+mounted and md arrays are read every ten seconds while the page is open.
+Without the btrfs tools or administrator rights it says that pools need them.
+It does not read SMART; a failing disk is the
+[watched conditions](./TODO/watched-conditions.md)' to raise, and only pool
+health also reaches the bell on its own (`linuxio-btrfs-health.timer`).
+
+Old links still land: `/storage?drive=`, `?fs=` and `?raid=` redirect to the
+Disks page with their selection, and `?pool=` to the pool's page.
+
+## Disks
+
+Storage → Advanced → Disks (`/storage/disks`) lists the physical drives with their SMART
 details and, under **Storage space**, how they are used, as one graph in
 three columns: every drive once on the left; what the drives build in the
 middle (btrfs pools, md arrays, LVM and dm-crypt devices, the EFI boot set,

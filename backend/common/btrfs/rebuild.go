@@ -504,7 +504,7 @@ func poolAllows(in rebuildInput, p rebuildPlan, returned bool) rebuildPlan {
 	for _, d := range in.fs.Devices {
 		if e := d.Errors; !d.Missing && e.Read+e.Corruption+e.Generation > 0 {
 			refused := refuse(fmt.Sprintf("device %d counts %d read, %d corruption and %d generation errors, so the copy on the disk that came back may be the only good one of some blocks, and LinuxIO does not erase it", d.ID, e.Read, e.Corruption, e.Generation),
-				fmt.Sprintf("Unmount the pool and mount it again from the Storage overview so btrfs takes the disk back; the resync then repairs both disks. Then reset the error counters, which LinuxIO does not do for you: btrfs device stats --reset %s.", in.fs.Mountpoints[0].Mountpoint))
+				fmt.Sprintf("Unmount the pool and mount it again from the Disks page (Storage → Advanced) so btrfs takes the disk back; the resync then repairs both disks. Then reset the error counters, which LinuxIO does not do for you: btrfs device stats --reset %s.", in.fs.Mountpoints[0].Mountpoint))
 			refused.key = fmt.Sprintf("errors/%d", d.ID)
 			return refused
 		}
@@ -540,7 +540,7 @@ func beyondTolerance(in rebuildInput) (reason, advice string) {
 		return "", ""
 	}
 	return fmt.Sprintf("devices %s are missing, and %s keeps %d copies of a chunk: what those disks held together has no copy on the disks that stayed, so LinuxIO erases none of them and replaces none", andList(missing), weakest, profiles[weakest].copies),
-		"Reconnect the other missing disks too, then unmount the pool and mount it again from the Storage overview so btrfs takes them back; the resync then repairs them."
+		"Reconnect the other missing disks too, then unmount the pool and mount it again from the Disks page (Storage → Advanced) so btrfs takes them back; the resync then repairs them."
 }
 
 // decideOnRecord decides on the pool's rebuild on record, rec: a rebuild in

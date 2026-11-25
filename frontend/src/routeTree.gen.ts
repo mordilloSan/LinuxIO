@@ -45,11 +45,13 @@ import { Route as AuthenticatedServicesSchedulesRouteImport } from './routes/_au
 import { Route as AuthenticatedServicesSocketsRouteImport } from './routes/_authenticated/services/sockets'
 import { Route as AuthenticatedServicesTimersRouteImport } from './routes/_authenticated/services/timers'
 import { Route as AuthenticatedStorageIndexRouteImport } from './routes/_authenticated/storage/index'
+import { Route as AuthenticatedStorageDisksRouteImport } from './routes/_authenticated/storage/disks'
 import { Route as AuthenticatedStorageLvmRouteImport } from './routes/_authenticated/storage/lvm'
 import { Route as AuthenticatedStorageMountsRouteImport } from './routes/_authenticated/storage/mounts'
 import { Route as AuthenticatedStoragePoolsRouteRouteImport } from './routes/_authenticated/storage/pools/route'
 import { Route as AuthenticatedStorageRsyncRouteImport } from './routes/_authenticated/storage/rsync'
 import { Route as AuthenticatedStorageSharesRouteImport } from './routes/_authenticated/storage/shares'
+import { Route as AuthenticatedStorageSnapshotsRouteImport } from './routes/_authenticated/storage/snapshots'
 import { Route as AuthenticatedStorageSubvolumesRouteImport } from './routes/_authenticated/storage/subvolumes'
 import { Route as AuthenticatedUpdatesIndexRouteImport } from './routes/_authenticated/updates/index'
 import { Route as AuthenticatedUpdatesHistoryRouteImport } from './routes/_authenticated/updates/history'
@@ -272,6 +274,12 @@ const AuthenticatedStorageIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedStorageRouteRoute,
   } as any)
+const AuthenticatedStorageDisksRoute =
+  AuthenticatedStorageDisksRouteImport.update({
+    id: '/disks',
+    path: '/disks',
+    getParentRoute: () => AuthenticatedStorageRouteRoute,
+  } as any)
 const AuthenticatedStorageLvmRoute = AuthenticatedStorageLvmRouteImport.update({
   id: '/lvm',
   path: '/lvm',
@@ -299,6 +307,12 @@ const AuthenticatedStorageSharesRoute =
   AuthenticatedStorageSharesRouteImport.update({
     id: '/shares',
     path: '/shares',
+    getParentRoute: () => AuthenticatedStorageRouteRoute,
+  } as any)
+const AuthenticatedStorageSnapshotsRoute =
+  AuthenticatedStorageSnapshotsRouteImport.update({
+    id: '/snapshots',
+    path: '/snapshots',
     getParentRoute: () => AuthenticatedStorageRouteRoute,
   } as any)
 const AuthenticatedStorageSubvolumesRoute =
@@ -403,10 +417,12 @@ export interface FileRoutesByFullPath {
   '/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
   '/services/timers': typeof AuthenticatedServicesTimersRoute
+  '/storage/disks': typeof AuthenticatedStorageDisksRoute
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/storage/mounts': typeof AuthenticatedStorageMountsRoute
   '/storage/rsync': typeof AuthenticatedStorageRsyncRoute
   '/storage/shares': typeof AuthenticatedStorageSharesRoute
+  '/storage/snapshots': typeof AuthenticatedStorageSnapshotsRoute
   '/storage/subvolumes': typeof AuthenticatedStorageSubvolumesRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/vm/disks': typeof AuthenticatedVmDisksRoute
@@ -448,10 +464,12 @@ export interface FileRoutesByTo {
   '/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
   '/services/timers': typeof AuthenticatedServicesTimersRoute
+  '/storage/disks': typeof AuthenticatedStorageDisksRoute
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/storage/mounts': typeof AuthenticatedStorageMountsRoute
   '/storage/rsync': typeof AuthenticatedStorageRsyncRoute
   '/storage/shares': typeof AuthenticatedStorageSharesRoute
+  '/storage/snapshots': typeof AuthenticatedStorageSnapshotsRoute
   '/storage/subvolumes': typeof AuthenticatedStorageSubvolumesRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/vm/disks': typeof AuthenticatedVmDisksRoute
@@ -504,10 +522,12 @@ export interface FileRoutesById {
   '/_authenticated/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/_authenticated/services/sockets': typeof AuthenticatedServicesSocketsRoute
   '/_authenticated/services/timers': typeof AuthenticatedServicesTimersRoute
+  '/_authenticated/storage/disks': typeof AuthenticatedStorageDisksRoute
   '/_authenticated/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/_authenticated/storage/mounts': typeof AuthenticatedStorageMountsRoute
   '/_authenticated/storage/rsync': typeof AuthenticatedStorageRsyncRoute
   '/_authenticated/storage/shares': typeof AuthenticatedStorageSharesRoute
+  '/_authenticated/storage/snapshots': typeof AuthenticatedStorageSnapshotsRoute
   '/_authenticated/storage/subvolumes': typeof AuthenticatedStorageSubvolumesRoute
   '/_authenticated/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/_authenticated/vm/disks': typeof AuthenticatedVmDisksRoute
@@ -560,10 +580,12 @@ export interface FileRouteTypes {
     | '/services/schedules'
     | '/services/sockets'
     | '/services/timers'
+    | '/storage/disks'
     | '/storage/lvm'
     | '/storage/mounts'
     | '/storage/rsync'
     | '/storage/shares'
+    | '/storage/snapshots'
     | '/storage/subvolumes'
     | '/updates/history'
     | '/vm/disks'
@@ -605,10 +627,12 @@ export interface FileRouteTypes {
     | '/services/schedules'
     | '/services/sockets'
     | '/services/timers'
+    | '/storage/disks'
     | '/storage/lvm'
     | '/storage/mounts'
     | '/storage/rsync'
     | '/storage/shares'
+    | '/storage/snapshots'
     | '/storage/subvolumes'
     | '/updates/history'
     | '/vm/disks'
@@ -660,10 +684,12 @@ export interface FileRouteTypes {
     | '/_authenticated/services/schedules'
     | '/_authenticated/services/sockets'
     | '/_authenticated/services/timers'
+    | '/_authenticated/storage/disks'
     | '/_authenticated/storage/lvm'
     | '/_authenticated/storage/mounts'
     | '/_authenticated/storage/rsync'
     | '/_authenticated/storage/shares'
+    | '/_authenticated/storage/snapshots'
     | '/_authenticated/storage/subvolumes'
     | '/_authenticated/updates/history'
     | '/_authenticated/vm/disks'
@@ -941,6 +967,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStorageIndexRouteImport
       parentRoute: typeof AuthenticatedStorageRouteRoute
     }
+    '/_authenticated/storage/disks': {
+      id: '/_authenticated/storage/disks'
+      path: '/disks'
+      fullPath: '/storage/disks'
+      preLoaderRoute: typeof AuthenticatedStorageDisksRouteImport
+      parentRoute: typeof AuthenticatedStorageRouteRoute
+    }
     '/_authenticated/storage/lvm': {
       id: '/_authenticated/storage/lvm'
       path: '/lvm'
@@ -974,6 +1007,13 @@ declare module '@tanstack/react-router' {
       path: '/shares'
       fullPath: '/storage/shares'
       preLoaderRoute: typeof AuthenticatedStorageSharesRouteImport
+      parentRoute: typeof AuthenticatedStorageRouteRoute
+    }
+    '/_authenticated/storage/snapshots': {
+      id: '/_authenticated/storage/snapshots'
+      path: '/snapshots'
+      fullPath: '/storage/snapshots'
+      preLoaderRoute: typeof AuthenticatedStorageSnapshotsRouteImport
       parentRoute: typeof AuthenticatedStorageRouteRoute
     }
     '/_authenticated/storage/subvolumes': {
@@ -1165,10 +1205,12 @@ const AuthenticatedStoragePoolsRouteRouteWithChildren =
 
 interface AuthenticatedStorageRouteRouteChildren {
   AuthenticatedStoragePoolsRouteRoute: typeof AuthenticatedStoragePoolsRouteRouteWithChildren
+  AuthenticatedStorageDisksRoute: typeof AuthenticatedStorageDisksRoute
   AuthenticatedStorageLvmRoute: typeof AuthenticatedStorageLvmRoute
   AuthenticatedStorageMountsRoute: typeof AuthenticatedStorageMountsRoute
   AuthenticatedStorageRsyncRoute: typeof AuthenticatedStorageRsyncRoute
   AuthenticatedStorageSharesRoute: typeof AuthenticatedStorageSharesRoute
+  AuthenticatedStorageSnapshotsRoute: typeof AuthenticatedStorageSnapshotsRoute
   AuthenticatedStorageSubvolumesRoute: typeof AuthenticatedStorageSubvolumesRoute
   AuthenticatedStorageIndexRoute: typeof AuthenticatedStorageIndexRoute
 }
@@ -1177,10 +1219,12 @@ const AuthenticatedStorageRouteRouteChildren: AuthenticatedStorageRouteRouteChil
   {
     AuthenticatedStoragePoolsRouteRoute:
       AuthenticatedStoragePoolsRouteRouteWithChildren,
+    AuthenticatedStorageDisksRoute: AuthenticatedStorageDisksRoute,
     AuthenticatedStorageLvmRoute: AuthenticatedStorageLvmRoute,
     AuthenticatedStorageMountsRoute: AuthenticatedStorageMountsRoute,
     AuthenticatedStorageRsyncRoute: AuthenticatedStorageRsyncRoute,
     AuthenticatedStorageSharesRoute: AuthenticatedStorageSharesRoute,
+    AuthenticatedStorageSnapshotsRoute: AuthenticatedStorageSnapshotsRoute,
     AuthenticatedStorageSubvolumesRoute: AuthenticatedStorageSubvolumesRoute,
     AuthenticatedStorageIndexRoute: AuthenticatedStorageIndexRoute,
   }

@@ -934,7 +934,7 @@ func resyncScrub(ctx context.Context, uuid, run string, report func(percent floa
 	if err != nil {
 		return err
 	}
-	// A scrub canceled from the Storage overview checked only part of the
+	// A scrub canceled from the pool page checked only part of the
 	// pool; the next resync continues it.
 	if status.Status != "finished" {
 		return fmt.Errorf("the scrub of pool %s was %s before it checked every copy", uuid, status.Status)

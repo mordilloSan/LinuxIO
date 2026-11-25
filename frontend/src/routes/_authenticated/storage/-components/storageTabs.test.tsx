@@ -34,49 +34,47 @@ const renderLayout = (privileged: boolean) =>
   });
 
 describe("storage tabs", () => {
-  it("offers Subvolumes once a btrfs filesystem is mounted", async () => {
+  it("offers Snapshots once a btrfs filesystem is mounted", async () => {
     mocks.btrfsList.mockResolvedValue([{ uuid: "pool" } as BtrfsFilesystem]);
     renderLayout(true);
     expect(
-      await screen.findByRole("tab", { name: "Subvolumes" }),
+      await screen.findByRole("tab", { name: "Snapshots" }),
     ).toBeInTheDocument();
   });
 
-  it("offers Pools once a btrfs pool is mounted, after Disks", async () => {
+  it("organises storage by what is managed, the rest under Advanced", async () => {
     mocks.btrfsList.mockResolvedValue([{ uuid: "pool" } as BtrfsFilesystem]);
     renderLayout(true);
     await screen.findByRole("tab", { name: "Pools" });
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Disks",
+      "Overview",
       "Pools",
-      "LVM",
-      "Subvolumes",
-      "Shares",
-      "Mounts",
-      "rsync",
+      "Shared folders",
+      "Snapshots",
+      "Advanced",
     ]);
   });
 
-  it("hides Subvolumes without a mounted btrfs filesystem", async () => {
+  it("hides Snapshots without a mounted btrfs filesystem", async () => {
     mocks.btrfsList.mockResolvedValue([]);
     renderLayout(true);
     expect(
-      await screen.findByRole("tab", { name: "Disks" }),
+      await screen.findByRole("tab", { name: "Overview" }),
     ).toBeInTheDocument();
     await waitFor(() => expect(mocks.btrfsList).toHaveBeenCalled());
     expect(
-      screen.queryByRole("tab", { name: "Subvolumes" }),
+      screen.queryByRole("tab", { name: "Snapshots" }),
     ).not.toBeInTheDocument();
   });
 
-  it("hides Subvolumes from unprivileged sessions without asking", async () => {
+  it("hides Pools and Snapshots from unprivileged sessions without asking", async () => {
     mocks.btrfsList.mockClear();
     renderLayout(false);
     expect(
-      await screen.findByRole("tab", { name: "Disks" }),
+      await screen.findByRole("tab", { name: "Overview" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("tab", { name: "Subvolumes" }),
+      screen.queryByRole("tab", { name: "Snapshots" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("tab", { name: "Pools" }),

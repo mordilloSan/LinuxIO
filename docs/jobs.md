@@ -670,7 +670,7 @@ middle of an update, when no host is sure to be up or of the same build,
 while a file write needs nothing else running. The same holds for the timer
 jobs, which also keep their own unit, limits and journal that way. The units:
 
-| Record `route` | Unit | Label | Page |
+| Record `route` | Unit | Label | Page (the record's link; old storage paths redirect, and the task tray opens the snapshot runs at `/storage/snapshots`) |
 |---|---|---|---|
 | `scheduled.script` | `linuxio-schedule-<id>.service` | the schedule's name | `/services/schedules?schedule=<id>` |
 | `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | Snapshots | `/storage/subvolumes?view=snapshots` |
