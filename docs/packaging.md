@@ -102,11 +102,12 @@ which matters most for the libvirt hook ([below](#the-libvirt-hook)).
 On removal the two families differ. `apt remove` leaves every configuration
 file in place, and `apt purge` removes them. An RPM erase removes the ones
 nobody edited and keeps an edited one as `.rpmsave`. Files LinuxIO writes
-under `/etc/linuxio` at run time (scheduled scripts, the rsync module's
-configuration and the like) are not package files and stay on both.
-`/var/lib/linuxio`, LinuxIO's data, stays on removal and on a purge, the
-memory page's swap file and its `/etc/fstab` line with it
-([Removal](#removal)).
+under `/etc/linuxio` at run time (snapshot rules, scheduled scripts, the
+rsync module's configuration and the like) are not package files, and stay
+on a removal with `/var/lib/linuxio`, LinuxIO's data. A DEB purge deletes
+both folders, all but what a setup that outlives LinuxIO reads there, the
+memory page's swap file among it; rpm has no purge, so after an erase both
+stay ([Removal](#removal)).
 
 ## First install
 
@@ -202,8 +203,8 @@ the Docker shutdown unit, whose stop leaves the containers running and whose
 disable takes its link out of `docker.service.wants`
 ([Docker Shutdown](./docker-shutdown.md#removal)).
 
-The DEB's `postrm` and the RPM's `%postun` then delete what LinuxIO itself
-wrote under `/etc/systemd/system` while it ran, by exact path, the two lists
+The DEB's `postrm` and the RPM's `%postun` then delete the files LinuxIO
+itself wrote for its own settings while it ran, by exact path, the two lists
 kept equal:
 
 - the two timers, `linuxio-btrfs-snapshot.timer` and
@@ -217,11 +218,25 @@ kept equal:
   services: left behind, their `ExecStopPost=` names a program that is gone
   and the nightly upgrade is marked failed;
 - the schedule drop-ins `linuxio.conf` on the distribution's update timers,
-  so the distribution's own schedule returns.
+  so the distribution's own schedule returns;
+- LinuxIO's own APT files, `/etc/apt/apt.conf.d/52linuxio-periodic` and
+  `52linuxio-unattended-upgrades`, so the distribution's automatic-update
+  settings return with its schedule, on Ubuntu unattended security upgrades
+  even where LinuxIO had them off
+  ([Automatic updates](./automatic-updates.md#configuration-ownership));
+- the time servers' file, `/etc/systemd/timesyncd.conf.d/linuxio.conf`, or
+  chrony's `/etc/chrony/sources.d/linuxio.sources` on Debian and Ubuntu, so
+  the distribution's servers replace the ones set in LinuxIO when the service
+  next starts; until then, or a reboot, it keeps using LinuxIO's.
 
-A drop-in folder goes too when nothing else is in it. A test of each writer
-holds both lists to the paths it writes (`TestPackageRemovalDeletes*`). The
-banner's links go while they are still LinuxIO's, and systemd reloads. On the
+A drop-in folder under `/etc/systemd/system` goes too when nothing else is in
+it. `apt.conf.d`, `timesyncd.conf.d` and `sources.d` stay, even empty: a
+package may own them, as apt does `apt.conf.d`. A test of each writer holds
+both lists to the paths it writes (`TestPackageRemovalDeletes*`). What
+LinuxIO wrote inside another package's own file stays: the time servers in a
+`chrony.conf` that names no folder under `/etc` (Fedora's), and the keys of
+dnf's `automatic.conf` and of Mint's update files. The banner's links go
+while they are still LinuxIO's, and systemd reloads. On the
 RPM the SELinux module goes last, after the files: removed while
 `linuxio-auth` is still there, it would leave the file `unlabeled_t`.
 
@@ -236,18 +251,42 @@ the mounts its data needs and the addresses it waits for). A new install finds
 them with their definitions under `/etc/linuxio`. The WireGuard interfaces
 stay too, being wg-quick's own files, and with them
 `/etc/sysctl.d/90-linuxio-wireguard.conf`, which keeps IPv4 forwarding on at
-boot for those with NAT ([Forwarding](./wireguard.md#forwarding)). The memory page writes no
+boot for those with NAT ([Forwarding](./wireguard.md#forwarding)). So do the
+memory page's files, `/etc/sysctl.d/90-linuxio-memory.conf`,
+`/etc/tmpfiles.d/linuxio-zswap.conf` and the zram configuration
+(`/etc/systemd/zram-generator.conf` or `/etc/default/zramswap`, which are
+zram's own files): with the swap file below they are one setup of the host,
+and deleting part of it would leave a mix the memory page never makes, such
+as zswap back in front of zram at the next boot. The memory page writes no
 unit or drop-in under `/etc/systemd/system`; a hold-off drop-in on a swap unit
 (`90-linuxio-memory.conf`) that an older LinuxIO left stays as well
 ([Upgrading](./memory.md#upgrading-from-an-older-linuxio)). The settings whose files the
-removal deleted (snapshot rules, replication, Docker updates, verbose
-logging, the indexer's interval, the automatic-update schedule and its
-alerts) are switched on again by hand after a new install.
+removal deleted (snapshot rules, replication, Docker updates, the Docker
+shutdown unit, verbose logging, the indexer's interval, the automatic-update
+options on APT, the schedule and its alerts, the time servers) are switched
+on again by hand after a new install.
+
+A DEB purge (`apt purge`) also deletes `/etc/linuxio` and `/var/lib/linuxio`,
+once dpkg has deleted the configuration files it installed: the settings and
+rules, the TLS certificate, the job records, the file index, the metrics
+history, the replication keys and the rest. It keeps what a setup that stays
+reads there, the postrm's `admin_state` list: `/etc/linuxio/schedules` (the
+scheduled scripts' units run the scripts in it), `/etc/linuxio/rsyncd.conf`
+and `rsyncd.secrets` (the rsync service), `/var/lib/linuxio/cifs-credentials`
+(named by the CIFS lines in `/etc/fstab`) and `/var/lib/linuxio/swap`. A
+test of each writer holds the list to its path (`TestPackagePurgeKeeps*`). A
+kept folder goes when it is empty, and so does each of the two folders once
+nothing kept is left in it. A top-level entry that is another filesystem (a
+btrfs subvolume, a mount) or holds a mount, a bind mount of the same
+filesystem included (`/proc/self/mountinfo`), is named and left whole, and
+so is a path the purge cannot delete, so the purge still completes. rpm has
+no purge: after `dnf remove` both folders stay, and an administrator who
+wants them gone deletes them by hand, but for the same paths.
 
 The swap file the memory page makes, `/var/lib/linuxio/swap/swapfile`, and
-its `/etc/fstab` line stay too, on a removal and on a purge, as the rest of
-`/var/lib/linuxio` does: systemd turns it on at boot from the line, without
-LinuxIO, so the host keeps its swap. Neither package script touches either.
+its `/etc/fstab` line stay too, on a removal and on a purge: systemd turns it
+on at boot from the line, without LinuxIO, so the host keeps its swap.
+Neither package script touches either.
 An administrator who wants them gone turns the file off, removes the line
 and deletes the folder, in that order (the kernel refuses to delete a swap
 file that is on, and a line left without its file fails its swap unit at
@@ -636,6 +675,17 @@ to the build's.
 - The settings whose files removal deletes are switched on again by hand
   after a new install, and a script install's settings are made again after
   the package replaces it.
+- A purge keeps the paths of `admin_state` whether or not a setup still uses
+  them, so the secrets of an rsync service or a CIFS mount that was deleted
+  by hand rather than from LinuxIO stay until deleted by hand.
+- `/var/lib/linuxio/icons` and its folders are writable by every user (the
+  Docker icon cache), so a local user who mounts something in one, with
+  FUSE say, keeps a purge from deleting `icons` and with it
+  `/var/lib/linuxio`; the purge names it and deletes the rest.
+- The removal deletes chrony's time server file only in
+  `/etc/chrony/sources.d`, Debian's and Ubuntu's folder: on a `chrony.conf`
+  edited to name another folder under `/etc`, the `linuxio.sources` or
+  `linuxio.conf` LinuxIO wrote there stays.
 - A package's changelog holds its own release's notes only, so an update
   over several releases shows the newest one's; the packages of releases
   before the notes were carried say `LinuxIO VERSION.` alone.

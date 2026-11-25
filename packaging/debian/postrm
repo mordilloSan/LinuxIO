@@ -1,17 +1,20 @@
 #!/bin/sh
-# After removal: delete what LinuxIO itself wrote under /etc/systemd/system
-# while it ran, and the login banner's links while they are still LinuxIO's,
-# then systemd forgets the units that went. /var/lib/linuxio, the
-# application's data, stays even on a purge; dpkg purges the configuration
-# files under /etc it installed. The RPM's %postun does the same
-# (packaging/rpm/linuxio.spec).
+# After removal: delete what LinuxIO itself wrote while it ran for its own
+# settings (units and drop-ins under /etc/systemd/system, its APT and time
+# server files) and the login banner's links while they are still LinuxIO's,
+# then systemd forgets the units that went. A purge also deletes
+# /etc/linuxio and /var/lib/linuxio, all but what an administrator's setup
+# that stays still uses; dpkg purges the configuration files under /etc it
+# installed. The RPM's %postun does the same on removal
+# (packaging/rpm/linuxio.spec); rpm has no purge.
 set -e
 
 # Exact paths, kept equal to the RPM's list; a test of each writer holds both
 # lists to the paths it writes. The prerm stopped and disabled the two
 # timers and the Docker shutdown unit. What LinuxIO writes for something an
 # administrator set up stays, since it works without LinuxIO: scheduled
-# scripts (linuxio-schedule-*), the rsync service and Docker's drop-ins.
+# scripts (linuxio-schedule-*), the rsync service, Docker's drop-ins and the
+# memory page's files.
 written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer
 /etc/systemd/system/linuxio-docker-update.timer
@@ -30,16 +33,56 @@ written_files="
 /etc/systemd/system/dnf-automatic.timer.d/linuxio.conf
 /etc/systemd/system/dnf5-automatic.timer.d/linuxio.conf
 /etc/systemd/system/mintupdate-automation-upgrade.timer.d/linuxio.conf
+/etc/apt/apt.conf.d/52linuxio-periodic
+/etc/apt/apt.conf.d/52linuxio-unattended-upgrades
+/etc/systemd/timesyncd.conf.d/linuxio.conf
+/etc/chrony/sources.d/linuxio.sources
 "
+
+# What a purge keeps of /etc/linuxio and /var/lib/linuxio, since a setup
+# that stays uses it: the scheduled scripts' units run the scripts under
+# schedules/, the rsync service reads rsyncd.conf and the secrets it names,
+# a CIFS line in /etc/fstab names its credentials file, and /etc/fstab
+# names the swap file, which the kernel refuses to delete while it is on. A
+# test of each writer holds this list to the path it uses.
+admin_state="
+/etc/linuxio/schedules
+/etc/linuxio/rsyncd.conf
+/etc/linuxio/rsyncd.secrets
+/var/lib/linuxio/cifs-credentials
+/var/lib/linuxio/swap
+"
+
+is_admin_state() {
+	for kept in $admin_state; do
+		[ "$1" != "$kept" ] || return 0
+	done
+	return 1
+}
+
+# Whether something is mounted at the path or below it, a bind mount from the
+# same filesystem among them, which neither the device check nor rm can
+# tell. A name that /proc/self/mountinfo would escape counts as mounted.
+mounted_at_or_below() {
+	case "$1" in
+	*[[:space:]\\]*) return 0 ;;
+	esac
+	MOUNT_PATH=$1 awk '
+		BEGIN { p = ENVIRON["MOUNT_PATH"] }
+		$5 == p || index($5, p "/") == 1 { found = 1 }
+		END { exit !found }
+	' /proc/self/mountinfo
+}
 
 case "$1" in
 remove)
 	for path in $written_files; do
 		if [ -e "$path" ] || [ -L "$path" ]; then
 			rm -f "$path"
-			# The drop-in folder too, while nothing else is in it.
+			# A drop-in folder under /etc/systemd/system too, while nothing
+			# else is in it; the folders elsewhere are their packages'.
 			case "${path%/*}" in
-			*.d) rmdir "${path%/*}" 2>/dev/null || true ;;
+			/etc/systemd/system/*.d) rmdir "${path%/*}" 2>/dev/null || true ;;
 			esac
 		fi
 	done
@@ -48,6 +91,34 @@ remove)
 			rm -f "$link"
 		fi
 	done
+	;;
+purge)
+	for dir in /etc/linuxio /var/lib/linuxio; do
+		[ -d "$dir" ] || continue
+		# The folder's own device and real path, through a link an
+		# administrator put in its place to move it to another disk.
+		dev=$(stat -L -c %d "$dir")
+		real=$(readlink -f "$dir")
+		for path in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
+			if { [ -e "$path" ] || [ -L "$path" ]; } && ! is_admin_state "$path"; then
+				# Never into another filesystem (a mount, a bind mount, a btrfs
+				# subvolume), at the path or below it.
+				if [ "$(stat -c %d "$path")" != "$dev" ] || mounted_at_or_below "$real/${path##*/}"; then
+					echo "linuxio: $path is or holds another filesystem, left as it is" >&2
+				elif ! rm -rf --one-file-system "$path"; then
+					echo "linuxio: could not delete all of $path" >&2
+				fi
+			fi
+		done
+	done
+	# The folders of what was kept that hold nothing, then the two folders
+	# while nothing is left in them.
+	for kept in $admin_state; do
+		if [ -d "$kept" ] && [ ! -L "$kept" ]; then
+			find "$kept" -xdev -depth -type d -empty -delete 2>/dev/null || true
+		fi
+	done
+	rmdir /etc/linuxio /var/lib/linuxio 2>/dev/null || true
 	;;
 esac
 

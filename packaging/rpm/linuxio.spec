@@ -184,13 +184,15 @@ fi
 # the job hosts (linuxio-jobs@*) are outside linuxio.target and run on, the
 # update that started this among them (docs/jobs.md, Updates).
 %systemd_postun_with_restart %{started_units}
-# On removal, what LinuxIO itself wrote under /etc/systemd/system while it
-# ran, and the login banner's links while they are still LinuxIO's: rpm
+# On removal, what LinuxIO itself wrote while it ran for its own settings
+# (units and drop-ins under /etc/systemd/system, its APT and time server
+# files), and the login banner's links while they are still LinuxIO's: rpm
 # removes only the files it installed. Exact paths, kept equal to the DEB's
 # list (packaging/debian/postrm); a test of each writer holds both lists to
 # the paths it writes. What LinuxIO writes for something an administrator set
 # up stays, since it works without LinuxIO: scheduled scripts
-# (linuxio-schedule-*), the rsync service and Docker's drop-ins.
+# (linuxio-schedule-*), the rsync service, Docker's drop-ins and the memory
+# page's files. rpm has no purge, so /etc/linuxio and /var/lib/linuxio stay.
 if [ "$1" -eq 0 ]; then
 	written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer
@@ -210,13 +212,18 @@ if [ "$1" -eq 0 ]; then
 /etc/systemd/system/dnf-automatic.timer.d/linuxio.conf
 /etc/systemd/system/dnf5-automatic.timer.d/linuxio.conf
 /etc/systemd/system/mintupdate-automation-upgrade.timer.d/linuxio.conf
+/etc/apt/apt.conf.d/52linuxio-periodic
+/etc/apt/apt.conf.d/52linuxio-unattended-upgrades
+/etc/systemd/timesyncd.conf.d/linuxio.conf
+/etc/chrony/sources.d/linuxio.sources
 "
 	for path in $written_files; do
 		if [ -e "$path" ] || [ -L "$path" ]; then
 			rm -f "$path"
-			# The drop-in folder too, while nothing else is in it.
+			# A drop-in folder under /etc/systemd/system too, while nothing
+			# else is in it; the folders elsewhere are their packages'.
 			case "$(dirname "$path")" in
-			*.d) rmdir "$(dirname "$path")" 2>/dev/null || : ;;
+			/etc/systemd/system/*.d) rmdir "$(dirname "$path")" 2>/dev/null || : ;;
 			esac
 		fi
 	done
