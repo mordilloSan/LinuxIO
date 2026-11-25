@@ -12,9 +12,10 @@ setup-frontend: $(frontend_install_stamp) ## Install frontend dependencies (npm 
 	@:
 
 $(frontend_install_stamp): $(frontend_dir)/package.json $(frontend_dir)/package-lock.json
-	@echo ""
-	@echo "📦 Installing frontend dependencies..."
-	@cd "$(frontend_dir)" && npm install --silent
+	@set -e
+	echo ""
+	echo "📦 Installing frontend dependencies..."
+	cd "$(frontend_dir)" && npm install --silent
 	@test -f "$@"
 	@echo "✅ Frontend dependencies installed!"
 

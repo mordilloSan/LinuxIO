@@ -58,7 +58,7 @@ if cmp -s "$before" package.json; then
 fi
 echo ""
 echo "🔄 Refreshing lockfile + node_modules (npm install)..."
-npm install --no-audit --no-fund
+npm install --prefer-online --no-audit --no-fund
 echo ""
 echo "🛡️  Checking for npm vulnerabilities..."
 audit_fixed=0
