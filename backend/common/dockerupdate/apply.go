@@ -345,13 +345,14 @@ func updateComposeContainer(
 		ctx context.Context,
 		target ComposeTarget,
 		service string,
+		dependents []string,
 		emitter ComposeLineEmitter,
 	) error {
 		if err := validateComposeUpdateInputs(ctx, target, emitter); err != nil {
 			return err
 		}
 		reportProgress(report, "pulling", fmt.Sprintf("Pulling the image for Compose service %s", service))
-		err := composePullAndUpServicesValidated(ctx, target, []string{service}, emitter)
+		err := composePullAndUpServicesValidated(ctx, target, []string{service}, dependents, emitter)
 		if err == nil {
 			reportProgress(report, "verifying", fmt.Sprintf("Verifying Compose service %s", service))
 		}
@@ -370,7 +371,7 @@ func updateComposeContainerWithRunner(
 	target ComposeTarget,
 	service string,
 	result DockerContainerUpdateResult,
-	run func(context.Context, ComposeTarget, string, ComposeLineEmitter) error,
+	run func(ctx context.Context, target ComposeTarget, service string, dependents []string, emitter ComposeLineEmitter) error,
 	report progressReporter,
 ) (DockerContainerUpdateResult, error) {
 	result, after, err := replaceComposeContainer(ctx, cli, rollback, before, target, service, result, run, report)
@@ -393,14 +394,19 @@ func replaceComposeContainer(
 	target ComposeTarget,
 	service string,
 	result DockerContainerUpdateResult,
-	run func(context.Context, ComposeTarget, string, ComposeLineEmitter) error,
+	run func(ctx context.Context, target ComposeTarget, service string, dependents []string, emitter ComposeLineEmitter) error,
 	report progressReporter,
 ) (DockerContainerUpdateResult, container.InspectResponse, error) {
 	if err := validateComposeServiceScope(ctx, cli, target.Name, service); err != nil {
 		return result, container.InspectResponse{}, err
 	}
+	joins, err := composeServiceJoins(ctx, cli, target.Name, []string{service})
+	if err != nil {
+		return result, container.InspectResponse{}, err
+	}
+	dependents := joins.of([]string{service})
 	collector := &ComposeMessageCollector{}
-	if err := run(ctx, target, service, collector.Emit); err != nil {
+	if err = run(ctx, target, service, dependents, collector.Emit); err != nil {
 		if output := collector.String(); output != "" {
 			return result, container.InspectResponse{}, fmt.Errorf("update Compose project %q service %q: %w: %s", target.Name, service, err, output)
 		}
@@ -422,7 +428,7 @@ func replaceComposeContainer(
 		imageRef := normalizedReference(configImage(before))
 		pulledImageID, rollbackErr := rollback.taggedImage(ctx, imageRef)
 		if rollbackErr == nil {
-			_, rollbackErr = rollback.run(ctx, target, imageRef, before.Image, pulledImageID, []composeRollbackService{{Service: service, Container: result.ContainerName}})
+			_, rollbackErr = rollback.run(ctx, target, imageRef, before.Image, pulledImageID, []composeRollbackService{{Service: service, Container: result.ContainerName}}, dependents)
 		}
 		return result, container.InspectResponse{}, composeUpdateFailure(verifyErr, before.Image, rollbackErr)
 	}
@@ -551,10 +557,11 @@ func rebuildComposeContainer(
 		ctx context.Context,
 		target ComposeTarget,
 		service string,
+		dependents []string,
 		emitter ComposeLineEmitter,
 	) error {
 		reportProgress(report, "starting", fmt.Sprintf("Starting Compose service %s on the rebuilt image", service))
-		if upErr := composeUpFromLocalImages(ctx, target, []string{service}, emitter); upErr != nil {
+		if upErr := composeUpFromLocalImages(ctx, target, append([]string{service}, dependents...), emitter); upErr != nil {
 			return upErr
 		}
 		reportProgress(report, "verifying", fmt.Sprintf("Verifying Compose service %s", service))

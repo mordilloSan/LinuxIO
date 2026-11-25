@@ -138,7 +138,9 @@ func composeUpdateFixture() (before container.InspectResponse, fake *fakeNativeU
 
 var composeTestTarget = ComposeTarget{Name: "media", ConfigFiles: []string{"compose.yml"}}
 
-func pulledAndUp(context.Context, ComposeTarget, string, ComposeLineEmitter) error { return nil }
+func pulledAndUp(context.Context, ComposeTarget, string, []string, ComposeLineEmitter) error {
+	return nil
+}
 
 func TestUpdateComposeContainerRollsBackAServiceThatIsNotReady(t *testing.T) {
 	withTempUpdateStatusPath(t)

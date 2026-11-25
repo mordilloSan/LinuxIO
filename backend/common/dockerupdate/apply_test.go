@@ -187,7 +187,7 @@ func TestUpdateComposeContainerTreatsSameImageAsCurrent(t *testing.T) {
 		context.Background(), fake, composeRollback{}, before,
 		ComposeTarget{Name: "project", ConfigFiles: []string{"compose.yml"}},
 		"web", updateResultFor(before),
-		func(context.Context, ComposeTarget, string, ComposeLineEmitter) error { return nil },
+		func(context.Context, ComposeTarget, string, []string, ComposeLineEmitter) error { return nil },
 		nil,
 	)
 	if err != nil {
@@ -2195,12 +2195,12 @@ func TestRebuildComposeContainerLetsGoOfTheHold(t *testing.T) {
 func TestComposePullAndUpServicesBuildsNothing(t *testing.T) {
 	args := fakeComposeCLI(t, builtWebConfig, 0, 0)
 
-	if err := composePullAndUpServicesValidated(t.Context(), composeTestTarget, []string{"web", "worker"}, nil); err != nil {
+	if err := composePullAndUpServicesValidated(t.Context(), composeTestTarget, []string{"web", "worker"}, []string{"sidecar"}, nil); err != nil {
 		t.Fatalf("composePullAndUpServicesValidated: %v", err)
 	}
 	want := []string{
 		"compose --progress=json --project-name media --file compose.yml pull web worker",
-		"compose --progress=json --project-name media --file compose.yml up -d --no-deps --no-build --force-recreate web worker",
+		"compose --progress=json --project-name media --file compose.yml up -d --no-deps --no-build --force-recreate web worker sidecar",
 	}
 	if commands := composeCommandsRun(t, args); !slices.Equal(commands, want) {
 		t.Fatalf("commands = %q, want %q", commands, want)

@@ -107,23 +107,6 @@ after a change that issues ioctls).
   folder LinuxIO made, the table could also be applied to its contents, as
   a job, or as a choice when saving; the owner decides which. **checked**
 
-- Updating a Compose service that other services join with
-  `network_mode: service:<it>` (a VPN container such as Gluetun and the
-  services that route through it) breaks them: the update runs
-  `up -d --no-deps --force-recreate <service>`
-  ([Docker Updates](../docker-updates.md#compose-services)), Compose leaves
-  the others alone, and Docker recorded the joined container by its ID. In
-  the test VMs (Docker 29.10.1 with Compose 5.8.0 on Ubuntu, Docker 29.9.3
-  on Fedora) the other service kept running with `lo` alone, still joined to
-  the removed container's ID, and its restart failed with "No such
-  container". `TestDockerUpdateComposeNetworkDependentsIntegration` (the
-  docker suite) shows it and fails until this is fixed. Either refuse the
-  update while another container joins the service, as
-  `validateStandaloneDependents` does for a standalone one, or recreate
-  those services with it in the same `up`, which the rollback's `up` must
-  then name too; the owner decides which. Watchtower recreates them (its
-  v1.24.2, pull request 3991). **checked**
-
 ## Needs a real machine or a measurement
 
 - A shared folder or a plain SMB share on Fedora with SELinux enforcing:

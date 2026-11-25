@@ -222,7 +222,7 @@ func TestDockerUpdateComposeRollbackIntegration(t *testing.T) {
 	}
 	// The update: the tag moves to the new image, as a pull moves it, and
 	// the service is brought up on it.
-	pullAndUp := func(ctx context.Context, target ComposeTarget, service string, emitter ComposeLineEmitter) error {
+	pullAndUp := func(ctx context.Context, target ComposeTarget, service string, _ []string, emitter ComposeLineEmitter) error {
 		if _, tagErr := cli.ImageTag(ctx, client.ImageTagOptions{Source: newImage, Target: tag}); tagErr != nil {
 			return tagErr
 		}

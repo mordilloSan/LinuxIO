@@ -130,7 +130,7 @@ func tagCallError(ctx context.Context, operation string, err error) error {
 // changed: the rollback was not possible (errNotRolledBack) or failed before
 // the tag moved. When `up` fails, the tag is put back on pulledImageID; both
 // errors are returned.
-func (r composeRollback) run(ctx context.Context, target ComposeTarget, imageRef, oldImageID, pulledImageID string, services []composeRollbackService) (changed bool, err error) {
+func (r composeRollback) run(ctx context.Context, target ComposeTarget, imageRef, oldImageID, pulledImageID string, services []composeRollbackService, dependents []string) (changed bool, err error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), composeRollbackTimeout)
 	defer cancel()
 	if checkErr := r.check(ctx, target, imageRef, services); checkErr != nil {
@@ -147,6 +147,8 @@ func (r composeRollback) run(ctx context.Context, target ComposeTarget, imageRef
 	for _, service := range services {
 		names = append(names, service.Service)
 	}
+	// The services that join one of them lose its namespace again.
+	names = append(names, dependents...)
 	collector := &ComposeMessageCollector{}
 	if restoreErr := r.restore(ctx, target, names, collector.Emit); restoreErr != nil {
 		upErr := fmt.Errorf("bring up Compose services %q on image %s: %w", names, shortImageID(oldImageID), restoreErr)

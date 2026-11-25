@@ -22,6 +22,9 @@ type scheduledComposeTarget struct {
 	target   ComposeTarget
 	services []string
 	before   []container.InspectResponse
+	// joins is the services that join one of services (composeJoins), read
+	// before the update.
+	joins composeJoins
 }
 
 type scheduledPassOperations struct {

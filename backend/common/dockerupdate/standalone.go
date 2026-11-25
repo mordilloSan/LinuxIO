@@ -383,6 +383,8 @@ type standaloneDependent struct {
 	id         string
 	name       string
 	hostConfig *container.HostConfig
+	labels     map[string]string
+	running    bool
 }
 
 type standaloneDependencyIndex struct {
@@ -397,6 +399,10 @@ func buildStandaloneDependencyIndex(
 	index := &standaloneDependencyIndex{dependents: make([]standaloneDependent, 0, len(containers))}
 	for _, summary := range containers {
 		dependentResult, inspectErr := cli.ContainerInspect(ctx, summary.ID, client.ContainerInspectOptions{})
+		if errdefs.IsNotFound(inspectErr) {
+			// Removed since it was listed: it depends on nothing.
+			continue
+		}
 		if inspectErr != nil {
 			return nil, fmt.Errorf("inspect potential dependent container %q: %w", PrimaryContainerName(summary), inspectErr)
 		}
@@ -405,11 +411,12 @@ func buildStandaloneDependencyIndex(
 		if name == "" {
 			name = PrimaryContainerName(summary)
 		}
-		index.dependents = append(index.dependents, standaloneDependent{
-			id:         dependent.ID,
-			name:       name,
-			hostConfig: dependent.HostConfig,
-		})
+		entry := standaloneDependent{id: dependent.ID, name: name, hostConfig: dependent.HostConfig}
+		if dependent.Config != nil {
+			entry.labels = dependent.Config.Labels
+		}
+		entry.running = dependent.State != nil && dependent.State.Running
+		index.dependents = append(index.dependents, entry)
 	}
 	return index, nil
 }

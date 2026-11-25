@@ -31,7 +31,7 @@ type scheduledUpdateState struct {
 	errs          []error
 	updateStopped bool
 	reviveStopped bool
-	composeUpdate func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error
+	composeUpdate func(ctx context.Context, target ComposeTarget, services, dependents []string, emitter ComposeLineEmitter) error
 	announce      func(name string)
 	alertReport   string // the Docker updates' alerts.ReportFor
 	// outcomes is each container this pass replaced or failed to, in the
@@ -336,13 +336,24 @@ func (s *scheduledUpdateState) validateComposeGroup(group *scheduledComposeTarge
 		s.recordComposeGroupError(group, err)
 		return false, nil
 	}
+	index, err := s.standaloneDependencies()
+	if err == nil {
+		group.joins, err = index.composeJoins(group.target.Name, group.services)
+	}
+	if err != nil {
+		if ctxErr := s.ctx.Err(); ctxErr != nil {
+			return false, ctxErr
+		}
+		s.recordComposeGroupError(group, err)
+		return false, nil
+	}
 	return true, nil
 }
 
 func (s *scheduledUpdateState) runComposeUpdate(group *scheduledComposeTarget) (bool, error) {
 	s.announceUpdate(group.target.Name)
 	collector := &ComposeMessageCollector{}
-	if err := s.composeUpdate(s.ctx, group.target, group.services, collector.Emit); err != nil {
+	if err := s.composeUpdate(s.ctx, group.target, group.services, group.joins.of(group.services), collector.Emit); err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
 			return false, ctxErr
 		}
@@ -502,7 +513,11 @@ func (s *scheduledUpdateState) rollBackTag(group *scheduledComposeTarget, failur
 	case len(images) > 1:
 		rollbackErr = fmt.Errorf("%w: the services under tag %q ran different images (%s)", errNotRolledBack, ref, strings.Join(images, ", "))
 	default:
-		changed, rollbackErr = s.rollback.run(s.ctx, group.target, ref, oldImageID, pulledImageID, services)
+		names := make([]string, 0, len(services))
+		for _, service := range services {
+			names = append(names, service.Service)
+		}
+		changed, rollbackErr = s.rollback.run(s.ctx, group.target, ref, oldImageID, pulledImageID, services, group.joins.of(names))
 	}
 	for _, i := range members {
 		cause := failures[i]

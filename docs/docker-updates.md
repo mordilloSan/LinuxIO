@@ -207,6 +207,21 @@ refused, and a scheduled pass does not update a stopped service. A container
 whose service label starts with a dash, which `docker compose` would read as
 an option, is refused before any Compose command runs, by the check too.
 
+A service that others join with `network_mode: service:<it>`, or `ipc:` or
+`pid:` in the same form (a VPN container such as Gluetun and the services
+that route through it), takes them with it: Docker records the joined
+container by its ID, so recreating the service alone left the others running
+in a namespace that was gone, with the loopback interface only, and unable
+to start again ("No such container"). The running services of the project
+that join an updated one, read from the engine before the update, are named
+after it in the same `up`, in a rebuild's `up` and in a rollback's, and so
+recreated on the image they have; they are not pulled by the update, not
+waited for and not reported. A container that joins the service and is no
+service of its project (a standalone container, another project's, one
+`docker compose run` started) cannot be recreated by that `up`, so the
+update is refused and names it, as a standalone container's is
+([Standalone containers](#standalone-containers)).
+
 `up` removes the old container, so there is nothing to park. The old image
 stays on the host, untagged, and that is what a rollback uses: a pull that
 moves a tag keeps the image the tag named, with no name, when no container
@@ -236,8 +251,8 @@ error says so. When it failed:
    (`<project>-<service>`), the tag its container was created from.
 3. The tag goes back on the old image (`docker image tag <old id> <image>`).
 4. `up -d --no-deps --pull never --no-build --force-recreate` brings the
-   services up on it, pulling and building nothing whatever their pull
-   policy says. The recreate is forced because Compose 5 decides whether a
+   services up on it, and the services that join one of them, pulling and
+   building nothing whatever their pull policy says. The recreate is forced because Compose 5 decides whether a
    container is out of date by the digest of the image's platform manifest,
    not its ID: two images whose indexes differ only in their attestations
    share that digest, and Compose 5.7 left the container on the image it ran
@@ -479,6 +494,13 @@ check that finds no newer base, or a rebuild, clears it.
   place), files that now name another image than the one it ran, or services
   under the same tag that ran different images. The update is reported as
   failed with the reason, and the service stays on the new image.
+- A stopped service that joins an updated one is not recreated with it,
+  since `up` would start it: it stays joined to the removed container and
+  does not start until it is recreated
+  (`docker compose up -d --force-recreate <service>`).
+- A service recreated because it joins an updated one is pulled by that `up`
+  when it has `pull_policy: always`, as any `up` of it would; a rebuild's
+  `up` and a rollback's pull nothing.
 - The scheduled pass never builds an image: a built service is rebuilt only
   when an administrator asks from the Containers page and watches it (why is
   under Rejected in the [backlog](./TODO/backlog.md)). The pass reports a

@@ -423,7 +423,7 @@ func TestScheduledComposeGroupsContinueAfterIndependentFailures(t *testing.T) {
 	state := newScheduledUpdateState(context.Background(), nil)
 	calls := 0
 	composeErr := errors.New("compose failed")
-	state.composeUpdate = func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error {
+	state.composeUpdate = func(context.Context, ComposeTarget, []string, []string, ComposeLineEmitter) error {
 		calls++
 		return composeErr
 	}
@@ -472,7 +472,7 @@ func TestScheduledComposeGroupErrorRecordsEveryCandidate(t *testing.T) {
 	useTempAlertStore(t)
 	state := newScheduledUpdateState(context.Background(), nil)
 	composeErr := errors.New("compose failed")
-	state.composeUpdate = func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error {
+	state.composeUpdate = func(context.Context, ComposeTarget, []string, []string, ComposeLineEmitter) error {
 		return composeErr
 	}
 	target := ComposeTarget{Name: "media", ConfigFiles: []string{"compose.yml"}}

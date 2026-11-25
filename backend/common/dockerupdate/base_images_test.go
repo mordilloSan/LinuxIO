@@ -508,7 +508,7 @@ func TestScheduledPassNeverUpdatesOrBuildsABuiltContainerWithANewerBase(t *testi
 	state := newScheduledUpdateState(ctx, inspectingDockerClient(t, inspect))
 	state.registry, state.classify = registry, classify
 	updated := false
-	state.composeUpdate = func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error {
+	state.composeUpdate = func(context.Context, ComposeTarget, []string, []string, ComposeLineEmitter) error {
 		updated = true
 		return nil
 	}
