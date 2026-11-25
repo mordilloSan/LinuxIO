@@ -821,14 +821,17 @@ func (r *rebuildRig) smallerTargetIsRefused() {
 // once wiped, replaces member 2 onto it, throttled, and pulls it again while
 // the copy runs. The kernel copies on to the end without the target (the
 // replace's num_write_errors, which would stop it, is read in scrub.c but
-// raised nowhere in 6.8, 7.0 or 7.1) and installs the dead target; the
-// commit that finishes cannot write a superblock to either dead disk, so
+// raised nowhere in 6.8, 7.0 or 7.1) and installs the dead target. On 7.0
+// the commit that finishes cannot write a superblock to either dead disk, so
 // the transaction aborts and the pool goes read-only, but the surviving
 // disk's superblock of that commit is written first, with the replace
-// cursor past every extent. The disk comes back still carrying the replace
-// target's superblock (devid 0). It returns when the replace started and
-// the disk's path.
-func (r *rebuildRig) pullTargetMidReplace(prefix string) (time.Time, string) {
+// cursor past every extent; a new replace is then refused. Since 7.1 the
+// kernel marks the pulled target missing (btrfs_remove_bdev), the commit
+// skips it, and the replace finishes "to <missing disk>" with the pool
+// writable and member 2 missing. The disk comes back still carrying the
+// replace target's superblock (devid 0). It returns when the replace
+// started, the disk's path, and whether the commit aborted (7.0).
+func (r *rebuildRig) pullTargetMidReplace(prefix string) (time.Time, string, bool) {
 	t := r.t
 	vdd := r.disks["vdd"]
 	devUUID, returned := r.dropout(vdd, 2, prefix)
@@ -858,35 +861,48 @@ func (r *rebuildRig) pullTargetMidReplace(prefix string) (time.Time, string) {
 	state, pct, _, _ = replaceStatusOf(r.mnt)
 	var st unix.Statfs_t
 	r.must("statfs", unix.Statfs(r.mnt, &st))
+	aborted := st.Flags&unix.ST_RDONLY != 0
 	t.Logf("%s: replace with its target pulled returned %v; status state %d (1 started, 2 finished, 3 canceled) at %.1f%%; pool read-only %v",
-		prefix, replaceErr, state, pct, st.Flags&unix.ST_RDONLY != 0)
+		prefix, replaceErr, state, pct, aborted)
 	r.kernelLog(prefix + ": target pulled mid-replace")
 	r.observe(prefix + ": after the target failed mid-replace")
+	if !aborted {
+		missing := slices.ContainsFunc(r.filesystem().Devices, func(d BtrfsDevice) bool { return d.ID == 2 && d.Missing })
+		if state != replaceStateFinished || !missing {
+			t.Fatalf("%s: writable pool after the target was pulled with replace state %d and member 2 missing %v, want finished onto the missing disk", prefix, state, missing)
+		}
+	}
 	again := vdd.plug()
 	id, err := readIdentity(again)
 	t.Logf("%s: the twice-returned disk is %s (devt %s): superblock %+v, %v", prefix, again, devt(again), id, err)
 	r.kernelLog(prefix + ": twice-returned disk plugged")
-	err = r.replaceRaw(2, again, replaceReadAvoid)
-	t.Logf("%s: a new replace onto %s on the pool as it is: %v", prefix, again, err)
+	if aborted {
+		err = r.replaceRaw(2, again, replaceReadAvoid)
+		t.Logf("%s: a new replace onto %s on the read-only pool: %v", prefix, again, err)
+	}
 	r.unmount()
 	survivor, err := readIdentity(r.disks["vdc"].dev)
 	t.Logf("%s: after the unmount the surviving disk's superblock is at generation %d (%v); the failed target's at %d",
 		prefix, survivor.Generation, err, id.Generation)
-	return start, again
+	return start, again, aborted
 }
 
 // targetFailsMidReplace: after the failed finish, mounted again with the
-// failed target present. The source is gone, so only a degraded mount is
-// allowed; it resumes the replace from the cursor the last commit wrote,
-// which is past every extent, so the replace finishes at once and the
-// target keeps whatever it had: here, the disk's content from before this
-// dropout. A scrub finds the stale copies of checksummed data; those of
-// nodatacow data it cannot see. The stale member is then erased and the
-// pool rebuilt onto it from the start.
+// failed target present. The source is gone (7.0), or the member the finish
+// installed is (since 7.1), so only a degraded mount is allowed. On 7.0 it
+// resumes the replace from the cursor the last commit wrote, which is past
+// every extent, so the replace finishes at once and the target keeps
+// whatever it had: here, the disk's content from before this dropout. A
+// scrub finds the stale copies of checksummed data; those of nodatacow data
+// it cannot see. Since 7.1 the replace had finished onto the missing disk:
+// the kernel refuses even the degraded mount while it knows the disk with
+// the target's superblock, mounts once it forgets it, and nothing resumes.
+// The stale member, or the target's superblock, is then
+// erased and the pool rebuilt onto the disk from the start.
 func (r *rebuildRig) targetFailsMidReplace() {
 	t := r.t
 	vdc := r.disks["vdc"]
-	start, again := r.pullTargetMidReplace("dropout2")
+	start, again, aborted := r.pullTargetMidReplace("dropout2")
 	r.must("register "+vdc.dev, RegisterDevice(vdc.dev))
 	err := RegisterDevice(again)
 	t.Logf("RegisterDevice(%s), the replace target on disk: %v", again, err)
@@ -896,19 +912,36 @@ func (r *rebuildRig) targetFailsMidReplace() {
 	if err == nil {
 		t.Fatal("the pool mounted whole with its replace source gone")
 	}
+	if !aborted {
+		// The replace item says finished, and the kernel refuses any mount
+		// while a device of the pool carries the target's devid 0
+		// (btrfs_init_dev_replace: "replace without active item"), until
+		// it forgets that device; LinuxIO's erase of the disk forgets it.
+		err = MountPool(r.ctx, vdc.dev, r.mnt, []string{"noatime"}, true)
+		t.Logf("degraded mount with the finished replace's target registered: %v", err)
+		r.kernelLog("degraded mount with the target registered")
+		if !errors.Is(err, unix.EUCLEAN) {
+			t.Fatalf("degraded mount with the finished replace's target registered = %v, want EUCLEAN", err)
+		}
+		r.must("forget "+again, controlIoctl(iocForgetDev, again))
+	}
 	r.must("degraded mount", MountPool(r.ctx, vdc.dev, r.mnt, []string{"noatime"}, true))
 	r.kernelLog("degraded mount after the failed finish")
 	r.observe("mounted degraded after the failed finish")
-	err = ResumeReplace(r.ctx, r.uuid, 2, start, func(float64) {})
-	t.Logf("ResumeReplace after the failed finish: %v", err)
-	r.kernelLog("resumed replace")
-	r.must("resumed replace", err)
-	s := r.scrubReadOnly()
-	t.Logf("after the resumed replace, read-only scrub: %+v", s)
-	if s.CsumErrors != 0 {
-		t.Logf("TRAP: the resumed replace finished with %d stale checksummed sectors on the target; nodatacow sectors are unchecked", s.CsumErrors)
+	if aborted {
+		err = ResumeReplace(r.ctx, r.uuid, 2, start, func(float64) {})
+		t.Logf("ResumeReplace after the failed finish: %v", err)
+		r.kernelLog("resumed replace")
+		r.must("resumed replace", err)
+		s := r.scrubReadOnly()
+		t.Logf("after the resumed replace, read-only scrub: %+v", s)
+		if s.CsumErrors != 0 {
+			t.Logf("TRAP: the resumed replace finished with %d stale checksummed sectors on the target; nodatacow sectors are unchecked", s.CsumErrors)
+		}
+		r.observe("after the resumed replace")
+	} else {
+		r.finishedOntoMissing("degraded mount after the finish onto the missing disk")
 	}
-	r.observe("after the resumed replace")
 
 	r.unmount()
 	wiped, err := WipePoolSuperblocks(again, r.uuid)
@@ -927,28 +960,46 @@ func (r *rebuildRig) targetFailsMidReplace() {
 	r.checkWhole("the rebuild onto the erased member after an unmount and mount", []int{1, 2}, raid1)
 }
 
+// finishedOntoMissing checks the pool as 7.1 and later leave it after a
+// replace whose target was pulled: the replace finished, so nothing is left
+// to resume or cancel, and member 2 is missing.
+func (r *rebuildRig) finishedOntoMissing(label string) {
+	r.t.Helper()
+	state, pct, _, err := replaceStatusOf(r.mnt)
+	r.t.Logf("%s: replace state %d at %.1f%%, %v", label, state, pct, err)
+	missing := slices.ContainsFunc(r.filesystem().Devices, func(d BtrfsDevice) bool { return d.ID == 2 && d.Missing })
+	if err != nil || state != replaceStateFinished || !missing {
+		r.t.Fatalf("%s: replace state %d (%v) and member 2 missing %v, want the replace finished and the member missing", label, state, err, missing)
+	}
+}
+
 // targetFailsThenWiped: the same failure, but the failed target is wiped
-// before the pool is mounted again. The degraded mount then finds no target
-// and leaves the replace suspended; a cancel ends it and a new replace
-// copies everything from the start.
+// before the pool is mounted again. On 7.0 the degraded mount then finds no
+// target and leaves the replace suspended; a cancel ends it. Since 7.1 the
+// replace had finished onto the missing disk and there is none to cancel.
+// A new replace copies everything from the start.
 func (r *rebuildRig) targetFailsThenWiped() {
 	t := r.t
 	vdc := r.disks["vdc"]
-	_, again := r.pullTargetMidReplace("dropout3")
+	_, again, aborted := r.pullTargetMidReplace("dropout3")
 	wiped, err := WipePoolSuperblocks(again, r.uuid)
 	t.Logf("WipePoolSuperblocks(%s), the failed target: wiped %v, %v", again, wiped, err)
 	r.must("wipe the failed target", err)
 	r.must("register "+vdc.dev, RegisterDevice(vdc.dev))
 	r.must("degraded mount", MountPool(r.ctx, vdc.dev, r.mnt, []string{"noatime"}, true))
 	r.kernelLog("degraded mount without the failed target")
-	state, pct, _, err := replaceStatusOf(r.mnt)
-	t.Logf("replace status after the degraded mount without the target: state %d (4 suspended) at %.1f%%, %v", state, pct, err)
 	r.observe("mounted degraded without the failed target")
-	err = CancelReplace(r.ctx, r.uuid, 2)
-	state, pct, _, _ = replaceStatusOf(r.mnt)
-	t.Logf("CancelReplace: %v; status state %d at %.1f%%", err, state, pct)
-	r.kernelLog("cancel")
-	r.must("cancel the suspended replace", err)
+	if aborted {
+		state, pct, _, err := replaceStatusOf(r.mnt)
+		t.Logf("replace status after the degraded mount without the target: state %d (4 suspended) at %.1f%%, %v", state, pct, err)
+		err = CancelReplace(r.ctx, r.uuid, 2)
+		state, pct, _, _ = replaceStatusOf(r.mnt)
+		t.Logf("CancelReplace: %v; status state %d at %.1f%%", err, state, pct)
+		r.kernelLog("cancel")
+		r.must("cancel the suspended replace", err)
+	} else {
+		r.finishedOntoMissing("degraded mount without the target the replace finished onto")
+	}
 	r.must("rebuild from the start", Replace(r.ctx, r.uuid, 2, again, func(float64) {}))
 	r.kernelLog("rebuild after the cancel")
 	r.convertIfMixed()
@@ -960,18 +1011,23 @@ func (r *rebuildRig) targetFailsThenWiped() {
 	r.checkWhole("the rebuild that followed the cancel after an unmount and mount", []int{1, 2}, raid1)
 }
 
-// convertIfMixed converts the chunks a degraded mount allocated with one
-// copy back to raid1, as the resync does, logging the allocation before.
-func (r *rebuildRig) convertIfMixed() {
+// convertIfMixed converts the chunks a degraded mount, or the kernel with a
+// member missing, allocated with one copy back to raid1, as the resync does,
+// logging the allocation before.
+func (r *rebuildRig) convertIfMixed() { r.convertTo(raid1) }
+
+// convertTo converts every chunk not in want's profile for its kind back to
+// it, soft, as the resync does.
+func (r *rebuildRig) convertTo(want map[string]string) {
 	r.t.Helper()
 	fs := r.filesystem()
-	if !slices.ContainsFunc(fs.Allocation, func(a BtrfsAllocation) bool { return a.Profile != "raid1" }) {
+	if !slices.ContainsFunc(fs.Allocation, func(a BtrfsAllocation) bool { return a.Profile != want[a.Kind] }) {
 		r.t.Logf("no chunk to convert: %+v", fs.Allocation)
 		return
 	}
-	r.t.Logf("converting: %+v", fs.Allocation)
-	p := "raid1"
-	r.must("convert", Balance(r.ctx, r.uuid, BalanceOptions{DataProfile: &p, MetadataProfile: &p, Soft: true}, func(float64) {}))
+	r.t.Logf("converting to %v: %+v", want, fs.Allocation)
+	data, meta := want["data"], want["metadata"]
+	r.must("convert", Balance(r.ctx, r.uuid, BalanceOptions{DataProfile: &data, MetadataProfile: &meta, Soft: true}, func(float64) {}))
 }
 
 // rebuiltDiskAlone: the rebuilt disk alone, its partner forgotten, mounts
@@ -1070,6 +1126,9 @@ func (r *rebuildRig) threeMembers() {
 	t.Logf("three: replace(devid 3 -> %s, not wiped, source avoided) took %v: %v", returned, time.Since(start).Round(time.Millisecond), err)
 	r.kernelLog("three: rebuild")
 	r.must("three: rebuild", err)
+	// Since 7.1 what was written while the member was out went to single
+	// chunks, which the resync converts.
+	r.convertTo(want)
 	r.checkWhole("three: after the rebuild", []int{1, 2, 3}, want)
 	r.unmount()
 	for _, d := range []*pciDisk{vdc, vdd, vde} {

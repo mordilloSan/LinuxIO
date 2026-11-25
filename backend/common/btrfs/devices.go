@@ -444,7 +444,10 @@ func ReplaceResult(ctx context.Context, uuid string, id int, newDevice string) (
 // the commit that installs the dead target cannot write its superblock and
 // aborts, forcing a pool of two disks read-only, and the ioctl still returns
 // success with the replace FINISHED and DEV_INFO naming the dead target (seen
-// in the test VM on 7.0, docs/btrfs.md). So: the kernel says the last
+// in the test VM on 7.0, docs/btrfs.md). Since 7.1 a target whose disk is
+// pulled is marked missing (btrfs_remove_bdev), the commit skips it, and the
+// replace finishes onto "<missing disk>" with the pool writable (seen on
+// 7.3). So: the kernel says the last
 // replace finished, the device is in the pool at target's path, in use and
 // not dropped out (markDroppedOut, markUnopened), the pool is still
 // writable, and the pool holds the target's block device: an exclusive open

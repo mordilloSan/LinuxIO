@@ -40,6 +40,7 @@ func TestBtrfsAutoRebuildIntegration(t *testing.T) {
 	t.Cleanup(func() { SparePath = oldSpares })
 	a.requireSerials()
 	a.notMissing()
+	a.sourcePulled()
 	a.missingState()
 	a.refusesWhatIsNotTheMember()
 	a.ontoTheSpare()
@@ -197,6 +198,38 @@ func (a *autoRig) notMissing() {
 	a.resyncWhole("not missing", []int{1, 2}, raid1)
 }
 
+// sourcePulled: the disk the mount names as its source drops out. Since 7.1
+// the kernel shows that source as "<missing disk>" (btrfs_show_devname), and
+// LinuxIO still finds the pool's mount, by asking the mount, and a member to
+// mount its top level by; then it rebuilds devid 1 onto the disk once back.
+func (a *autoRig) sourcePulled() {
+	vdc, vdd := a.disks["vdc"], a.disks["vdd"]
+	a.fresh()
+	a.createPool("raid1", vdc, vdd)
+	a.write("before", 4, 32<<20)
+	a.writeNocow("nocow.bin", 64<<20)
+	a.health("whole")
+	source := vdc.dev
+	_, returned := a.dropout(vdc, 1, "source pulled")
+	mounts, err := ListMounts(a.ctx)
+	a.must("mounts", err)
+	i := slices.IndexFunc(mounts, func(m Mount) bool { return m.Mountpoint == a.mnt })
+	if i < 0 || mounts[i].UUID != a.uuid {
+		a.t.Fatalf("mounts after %s, the mount's source, was pulled = %+v, want pool %s at %s", source, mounts, a.uuid, a.mnt)
+	}
+	a.t.Logf("source pulled: %s came back as %s; the mount shows its source as %q", source, returned, mounts[i].Device)
+	if mounts[i].Device == missingDiskName {
+		device, err := deviceOf(mounts, a.uuid)
+		a.must("a member to mount the pool by", err)
+		if device != vdd.dev {
+			a.t.Fatalf("member to mount the pool by = %s, want %s", device, vdd.dev)
+		}
+	}
+	a.rebuildStarts("source pulled")
+	a.rebuild("source pulled")
+	a.resyncWhole("source pulled", []int{1, 2}, raid1)
+}
+
 // missingState: a degraded mount without the disk, which every kernel calls
 // missing; the disk returns and udev's scan names the member by its path.
 // The rebuild's forget of the erased disk is refused (EBUSY) and accepted,
@@ -326,13 +359,16 @@ func (a *autoRig) ontoTheSpare() {
 }
 
 // targetDiesMidRebuild: the returned disk drops out again while the rebuild
-// copies onto it. The kernel copies on, installs the dead target and forces
-// the pool read-only, and reports success: the rebuild's check refuses it,
-// keeps the record as failed and raises an error. LinuxIO's mount, degraded,
-// then erases the disk, back with the replace target's superblock, before
-// the kernel could resume the replace past every extent, and cancels the
-// replace the kernel suspends. No rebuild is tried onto that disk again; a
-// person's replace makes the pool whole, and clears the record.
+// copies onto it. The kernel copies on and reports success: 7.0 installs the
+// dead target and forces the pool read-only; since 7.1, which marks the
+// pulled target missing (btrfs_remove_bdev), the commit skips it, the replace
+// finishes "to <missing disk>" and the pool stays writable with the member
+// missing. The rebuild's check refuses either, keeps the record as failed
+// and raises an error. LinuxIO's mount, degraded, then erases the disk, back
+// with the replace target's superblock, before 7.0 could resume the replace
+// past every extent, and cancels the replace 7.0 suspends; after 7.1's finish
+// there is none. No rebuild is tried onto that disk again; a person's replace
+// makes the pool whole, and clears the record.
 func (a *autoRig) targetDiesMidRebuild() {
 	vdc, vdd := a.disks["vdc"], a.disks["vdd"]
 	a.fresh()
@@ -358,6 +394,10 @@ func (a *autoRig) targetDiesMidRebuild() {
 	}
 	a.kernelLog("dies again: target pulled")
 	a.t.Logf("dies again: Rebuild = %v", err)
+	// 7.0's commit that installs the dead target aborts; 7.1's skips it.
+	aborted, roErr := poolReadOnly(a.mnt)
+	a.must("statfs", roErr)
+	a.t.Logf("dies again: pool read-only after the pull: %v", aborted)
 	if !scheduledrun.AllReported(err) {
 		a.t.Fatalf("Rebuild with its target pulled = %v, want a reported failure", err)
 	}
@@ -390,8 +430,15 @@ func (a *autoRig) targetDiesMidRebuild() {
 	}
 	state, pct, _, err := replaceStatusOf(a.mnt)
 	a.t.Logf("dies again: replace status after the mount: state %d at %.1f%%, %v", state, pct, err)
-	if err != nil || state != replaceStateCanceled {
-		a.t.Fatalf("replace state %d after LinuxIO's mount (%v), want it canceled", state, err)
+	want := uint64(replaceStateCanceled)
+	if !aborted {
+		want = replaceStateFinished // onto the missing disk, before the unmount
+	}
+	if err != nil || state != want {
+		a.t.Fatalf("replace state %d after LinuxIO's mount (%v), want %s", state, err, replaceStateName(want))
+	}
+	if fs := a.filesystem(); !slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == 2 && d.Missing }) {
+		a.t.Fatalf("devices after LinuxIO's mount = %+v, want device 2 missing", fs.Devices)
 	}
 	if st := a.poolState(); st.Rebuild == nil || st.Rebuild.Failed == "" {
 		a.t.Fatalf("record after the mount = %+v, want it still failed", st.Rebuild)

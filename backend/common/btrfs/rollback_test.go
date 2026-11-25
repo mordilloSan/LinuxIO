@@ -131,6 +131,7 @@ type rollbackStub struct {
 func stubRollback(t *testing.T, mounts []Mount, fail map[string]error) *rollbackStub {
 	t.Helper()
 	s := &rollbackStub{top: t.TempDir()}
+	stubBlockDevices(t)
 	stubMounts(t, append([]Mount{{Mountpoint: s.top, Device: "/dev/root", UUID: rootUUID, SubvolID: 5}}, mounts...))
 	stubSubvolumes(t, []subvolumeRow{
 		{ID: 400, ParentID: 5, Path: "@", UUID: localUUID(400)},

@@ -42,24 +42,20 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
-- On kernel 7.3 (Fedora 45's `7.3.4-300.fc45`, test VM, 2026-11-24) a pool
-  member whose disk is pulled off the bus is marked missing at once ("has
-  gone missing, continue as degraded"), and what was proven on 7.0 does not
-  all hold ([E2E testing](./e2e-testing.md#distributions)). With the target
-  pulled mid-rebuild the kernel finished the replace "from `<missing disk>`
-  (devid 2) to `<missing disk>`" rather than suspending it, so LinuxIO's
-  degraded mount found no replace to cancel (`TestBtrfsAutoRebuildIntegration`,
-  "dies again", replace state 2 at 100%), and the unmount before that mount
-  hit a kernel `WARNING` at `fs/btrfs/volumes.c:1208`
-  (`btrfs_close_one_device`). The rebuild proof
-  (`TestBtrfsRebuildProofIntegration`, `targetFailsMidReplace`) shows the
-  same finish and then a new replace onto the returned disk succeeding, so
-  the plain mount its 7.0 legs expect refused succeeds; its later legs did
-  not run on 7.3. `btrfs-rebuild.spec.ts` passes its first dropout on 7.3 and
-  then, after the reboot, pulls the mount's source disk and plugs it back:
-  the health runs see it, but no automatic rebuild starts within five
-  minutes, and why was not read. Starts from what changed in `dev-replace.c`
-  and `volumes.c` between 7.0 and 7.3.
+- A replace from the pool details whose target disk drops out mid-copy
+  fails its check ([Btrfs](../btrfs.md#devices-and-profiles), Replace
+  device) but, unlike the automatic rebuild, leaves no record, so nothing
+  handles that disk when it comes back carrying the replace target's
+  superblock (devid 0). Since 7.1 the kernel has finished the replace onto
+  the missing disk, and while that disk is connected every later mount of
+  the pool fails with `EUCLEAN` ("replace without active item, run 'device
+  scan --forget' on the target device", `btrfs_init_dev_replace`), LinuxIO's
+  boot check and **Mount degraded** included; 7.0 instead takes the replace
+  up at the next mount past every extent, leaving the disk's stale copies in
+  the member. Both are shown by `TestBtrfsRebuildProofIntegration`
+  (`targetFailsMidReplace`) in the test VM, on 7.0 and on Fedora's 7.3.4.
+  Whether such a replace gets a record the next mount acts on, as the
+  rebuild's does, is the owner's decision.
 
 ## Visible bugs
 
@@ -80,11 +76,10 @@ after a change that issues ioctls).
 
 - The automatic btrfs rebuild onto a disk that comes back
   ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio
-  disks, 7.0, whose serials the rig sets. A SATA or SAS disk pulled and
-  reseated on a real machine (its WWN as udev reads it, `sd` naming while the
-  pool holds the dead disk, a hot-plug that resets the link rather than
-  removing the disk) is not run. On the VM's 7.3 it differs from 7.0
-  ([Storage safety](#storage-safety)).
+  disks, on 7.0 and 7.3, whose serials the rig sets. A SATA or SAS disk
+  pulled and reseated on a real machine (its WWN as udev reads it, `sd`
+  naming while the pool holds the dead disk, a hot-plug that resets the link
+  rather than removing the disk) is not run.
 
 - Docker's wait for published host IPs
   ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips))

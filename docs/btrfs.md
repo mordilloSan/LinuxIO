@@ -304,7 +304,23 @@ itself (`btrfs_remove_bdev` in `super.c`, also in 6.19 and 7.0 built with
 `CONFIG_BTRFS_EXPERIMENTAL`, which Ubuntu's 7.0 is not), and continues
 degraded, or shuts the filesystem down when the remaining disks cannot keep
 it read-write; DEV_INFO names that disk `<missing disk>`, which LinuxIO
-lists as a missing disk with no path. An older kernel keeps the member with
+lists as a missing disk with no path. When it is the disk the mount names as
+its source, mountinfo shows that source as `<missing disk>` too
+(`btrfs_show_devname`), and keeps it after the disk comes back, which the
+mounted pool refuses as a duplicate. LinuxIO tells a pool's mounts by their
+source, so for such a mount it asks the mount itself (`ListMounts`): FS_INFO
+through an open of the mountpoint that must reach that mount, by the mount
+ID mountinfo gives it, so a mount over it or a parent folder renamed since
+is not taken for it; a source that is not a path is never looked up as a
+device, which would read a file of that name in the working directory.
+Mounting the top level, which subvolumes, snapshots, settings and
+replication need when no mount of it exists, and the remount of a rollback
+then name the mount's source while that block device exists, else a member
+DEV_INFO gives a path that exists (`deviceOf`), asked through one open of a
+mount that must still be that pool's by its FS_INFO; an older kernel names a
+source that dropped out by its old path, which no longer exists. Without
+all this the pool read as unmounted while the disk was gone, and no rebuild
+started once it was back. An older kernel keeps the member with
 its dead block device until the pool is unmounted: DEV_INFO still names it
 by its path (`btrfs_ioctl_dev_info`), sysfs calls it neither missing nor
 unwriteable, chunks are still allocated on it, and every write to it fails
@@ -492,7 +508,12 @@ kernel: `num_write_errors` is read in `scrub.c` but raised nowhere (6.8, 7.0,
 7.1), so the copy ran to the end, the commit that installed the dead target
 could write neither its superblock nor the dead source's, aborted, and forced
 the two-disk pool read-only, and the ioctl still returned success with the
-replace finished and `DEV_INFO` naming the dead target. So the runner, and a
+replace finished and `DEV_INFO` naming the dead target. Since 7.1 the kernel
+marks the pulled target missing (`btrfs_remove_bdev`), so the commit that
+installs it skips it rather than failing (`write_all_supers` writes no
+superblock to a device that is not writeable), and the replace finishes "from
+`<missing disk>` (devid 2) to `<missing disk>`" with the pool writable and
+the member missing (test VM, Fedora's 7.3.4). So the runner, and a
 replace started from the pool details (`ReplaceResult`, `ResumeReplace`),
 check that the kernel reports the replace finished, that the devid is in use
 at the new disk's path and not dropped out, that the pool is not read-only
@@ -597,12 +618,14 @@ spare replaces that member at once, reading the other mirror.
 `make vm-test-btrfs-integration` runs this path on the test VM's kernel
 (`TestBtrfsAutoRebuildIntegration`; it skips on a host, since it pulls the
 VM's virtio disks off the PCI bus): a rebuild onto the returned disk with the
-member dropped out and with the member missing after a degraded mount, a
+member dropped out, the same with the disk the mount names as its source,
+and with the member missing after a degraded mount, a
 clone of the member on another disk refused by its identity and left as it
 was, two disks claiming the member refused, a replace onto the hot spare, and
 the returned disk pulled again mid-rebuild, after which the rebuild fails with
 its record kept, LinuxIO's degraded mount erases the disk and cancels the
-suspended replace, and a replace from the pool details makes the pool whole;
+replace 7.0 suspends (after 7.1's finish onto the missing disk there is none),
+and a replace from the pool details makes the pool whole;
 each ends whole by the same checks as the proof.
 
 A disk whose writes fail while it stays attached, as when its cable comes
@@ -830,11 +853,16 @@ once it is fixed repairs what it missed.
   as one missing since before the first health run of a release that
   records identities, are never rebuilt onto automatically; the alert says
   why.
-- The rebuild was run on 7.0 only (the test VM). On 6.8 and 7.1 it rests on
-  their source: 7.1 marks a dropped member missing itself
-  (`btrfs_remove_bdev`) and a target that dies mid-replace may then be
-  installed without the pool going read-only, which the check after the
-  replace still refuses, as the target is gone.
+- The rebuild was run in the test VM on Ubuntu's 7.0 and Fedora's 7.3.4;
+  on 6.8 it rests on its source.
+- Since 7.1 a replace whose target is pulled mid-copy finishes onto the
+  missing disk, and the kernel puts that disk back on its allocation list
+  and counts it writable (`btrfs_dev_replace_finishing`): chunk allocations
+  then log `read-only device in alloc_list` and the unmount a `WARNING` in
+  `btrfs_close_one_device` (`volumes.c`), as does a failed mount that
+  opened a replace target's disk. An upstream bug; nothing is written to the
+  missing disk, and LinuxIO's check refuses the finish as for any target
+  gone.
 - A pool unmounted by hand while its rebuild copies fails that rebuild, and
   when the pool is then mounted by systemd at boot, where the kernel takes
   the copy up and ends it, the record still says failed: LinuxIO did not
