@@ -63,10 +63,7 @@ describe("AssistantPage", () => {
     const root = container.querySelector<HTMLElement>(".assistant")!;
     expect(root.style.getPropertyValue("--app-font-size-body")).toBe("15px");
 
-    // The size lives in the composer's menu, not in the page header.
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Attach" }),
-    );
+    // The size buttons are in the page header, like the terminal's.
     await userEvent.click(
       await screen.findByRole("button", { name: /increase font size/i }),
     );
@@ -257,12 +254,13 @@ describe("AssistantPage", () => {
     setState({ status: "ready", sessionId: "s", canListSessions: true });
     const actions = document.querySelector<HTMLElement>(".assistant__actions");
     expect(actions).not.toBeNull();
-    // New chat is the page's one action; chats and panes are on the dock.
+    // The text size and New chat are the page's actions; chats and panes are
+    // on the dock.
     expect(
       (await within(actions!).findAllByRole("button")).map((button) =>
         button.getAttribute("aria-label"),
       ),
-    ).toEqual(["New chat"]);
+    ).toEqual(["Decrease font size", "Increase font size", "New chat"]);
     expect(
       within(screen.getByTestId("header-host")).queryAllByRole("button"),
     ).toHaveLength(0);

@@ -198,9 +198,9 @@ export default function AssistantPage({
     );
   }
 
-  // New chat is the page's one action. The previous chats, the activity map
-  // and a plugin's pane are tabs on the chat's edge (dock/AssistantDock), and the text size is in
-  // the composer's menu.
+  // The page's actions, like the terminal's: the text size and a new chat. The
+  // previous chats, the activity map and a plugin's pane are tabs on the
+  // chat's edge (dock/AssistantDock).
   const actions = (
     <HeaderActions
       create={
@@ -213,41 +213,33 @@ export default function AssistantPage({
           onClick={() => void assistantStore.newSession()}
         />
       }
+      options={
+        <>
+          <AppActionIconButton
+            disabled={fontSize <= MIN_FONT}
+            icon="mdi:format-font-size-decrease"
+            iconSize={20}
+            label="Decrease font size"
+            onClick={() => adjustFontSize(-1)}
+          />
+          <AppTypography
+            align="center"
+            color="text.secondary"
+            style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
+            variant="body2"
+          >
+            {fontSize}
+          </AppTypography>
+          <AppActionIconButton
+            disabled={fontSize >= MAX_FONT}
+            icon="mdi:format-font-size-increase"
+            iconSize={20}
+            label="Increase font size"
+            onClick={() => adjustFontSize(1)}
+          />
+        </>
+      }
     />
-  );
-
-  const textSize = (
-    <div className="assistant__text-size">
-      <AppTypography
-        className="assistant__text-size-label"
-        color="text.secondary"
-        variant="body2"
-      >
-        Text size
-      </AppTypography>
-      <AppActionIconButton
-        disabled={fontSize <= MIN_FONT}
-        icon="mdi:format-font-size-decrease"
-        iconSize={20}
-        label="Decrease font size"
-        onClick={() => adjustFontSize(-1)}
-      />
-      <AppTypography
-        align="center"
-        color="text.secondary"
-        style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
-        variant="body2"
-      >
-        {fontSize}
-      </AppTypography>
-      <AppActionIconButton
-        disabled={fontSize >= MAX_FONT}
-        icon="mdi:format-font-size-increase"
-        iconSize={20}
-        label="Increase font size"
-        onClick={() => adjustFontSize(1)}
-      />
-    </div>
   );
 
   // The plugin manager stays reachable when the composer is disabled: a
@@ -427,7 +419,6 @@ export default function AssistantPage({
             connecting={status === "connecting"}
             modes={state.modes}
             disabled={state.status !== "ready" && state.status !== "running"}
-            menuExtra={textSize}
             onBtw={(text) => void assistantStore.openSide(text || undefined)}
             onPlugins={
               agentEntry?.plugins ? () => setPluginsOpen(true) : undefined

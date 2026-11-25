@@ -5,7 +5,6 @@ import {
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
-  type ReactNode,
   useLayoutEffect,
   useRef,
   useState,
@@ -49,8 +48,6 @@ export interface ComposerProps {
   onBtw: (text: string) => void;
   /** Opens the plugin manager; absent when the agent's plugins cannot be managed. */
   onPlugins?: () => void;
-  /** Rows the page adds under the attach menu's own, e.g. the text size. */
-  menuExtra?: ReactNode;
   onSetConfigOption: (configId: string, value: string | boolean) => void;
   onSetMode: (modeId: string) => void;
   onSend: (blocks: acp.ContentBlock[], display: MessageDisplay) => void;
@@ -140,7 +137,6 @@ export default function Composer({
   usage,
   onBtw,
   onPlugins,
-  menuExtra,
   onSetConfigOption,
   onSetMode,
   onSend,
@@ -524,7 +520,6 @@ export default function Composer({
         >
           Attach file…
         </AppMenuItem>
-        {menuExtra}
       </AppMenu>
       <AppMenu
         anchorEl={commandsAnchor ?? anchor}
