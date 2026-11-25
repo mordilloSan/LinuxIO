@@ -21,6 +21,20 @@ make check-backend-quiet
 make test-quiet quiet_failure_lines=80
 ```
 
+`make test` is the whole check of the tree on this machine: lint, types, the
+frontend and backend unit tests, the C auth tests, deadcode, the packaging
+fixtures, and `check-docs`, `check-actions` (actionlint) and `check-systemd`
+(`systemd-analyze verify` of the units). It leaves out what needs a browser,
+the network or the test VMs. `make test-full` runs everything: `make test`,
+`test-frontend-browser`, `test-assistant-agent-integration` and
+`test-vm-all`, one after another. Like `test-vm-all`, a failure does not stop
+it, it ends with each one's result and time and fails when one failed, Ctrl-C
+ends it once the target running stops, and it takes no `SUITES`,
+`PLAYWRIGHT_ARGS` or `DISTRO`. It runs as long as `test-vm-all` and a few
+minutes more, and it is the owner's to run.
+`test-packages` is not in it, since it checks packages a release build
+assembles.
+
 Do not invoke `go test`, Vitest, TypeScript, linters, or formatters directly;
 use the corresponding Make target.
 
@@ -1066,7 +1080,7 @@ The full index groups the supported targets as follows:
   `test-assistant-agent-integration`,
   `test-filebrowser-root`, `check-c-build-deps`
 - analysis: `bundle-metrics`, `compiler-coverage`, `analyze`, `analyze-auth`
-- builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,
+- builds and development: `test`, `test-full`, `build`, `build-nocheck`, `fastbuild`,
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `third-party-notices`,
   `generate`, `dev-prep`, `dev`, `dev-stop`, `dev-status-install`,

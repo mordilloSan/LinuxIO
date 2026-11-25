@@ -49,8 +49,41 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 
 ##@ Tests|green
 # See scripts/lanes.sh for the lane layout and why it is scheduled this way.
-test: setup dev-prep test-packaging-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
+test: setup dev-prep test-packaging-scripts check-docs check-actions check-systemd ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan + docs, workflow and unit checks
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" test "$(test_timer_start)"
+
+# Everything there is to run, on this machine and in the test VMs: make test,
+# the router browser specs, the real npm install of the assistant agents (needs
+# the network) and test-vm-all, one after another, so no two Make runs share
+# the tree. It is the owner's run, too long for an agent. A failure does not
+# end it, since none of the four needs another; it ends with each one's result
+# and time, and fails when one failed. Ctrl-C ends it once the target running
+# stops, and the rest are shown as not run.
+test-full: ## Run make test, the browser tests, the assistant agent install test and test-vm-all in turn, and end with the result of each
+	@$(if $(filter command line environment,$(origin SUITES) $(origin PLAYWRIGHT_ARGS))$(strip $(DISTRO)),echo "❌ test-full takes no SUITES or PLAYWRIGHT_ARGS or DISTRO: run the target you want narrowed on its own" >&2; exit 1)
+	@failed=0 stopped=0 recap=()
+	@if [[ -t 1 && -z $${NO_COLOR:-} ]]; then ok=$$'\e[32m✓\e[0m' bad=$$'\e[31m✘\e[0m'; else ok=✓ bad=✘; fi
+	@trap 'stopped=1' INT
+	@for target in test test-frontend-browser test-assistant-agent-integration test-vm-all; do
+	  name="$$(printf '%-33s' "$$target")"
+	  if ((stopped)); then
+	    recap+=("  – $$name not run")
+	    continue
+	  fi
+	  begun=$$EPOCHSECONDS code=0
+	  $(MAKE) --no-print-directory "$$target" || code=$$?
+	  took=$$((EPOCHSECONDS - begun))
+	  line="$$name $$(printf '%3dm %02ds' $$((took / 60)) $$((took % 60)))"
+	  if ((code == 0)); then
+	    recap+=("  $$ok $$line")
+	  else
+	    failed=1
+	    recap+=("  $$bad $$line")
+	  fi
+	done
+	@printf '%s\n' "" "test-full" "$${recap[@]}"
+	@((stopped == 0)) || exit 130
+	@exit "$$failed"
 
 ##@ Quality checks|green
 check-frontend: ensure-node setup-frontend ## Run frontend lint + typecheck + unit tests
