@@ -89,13 +89,22 @@ func peerDeviceConfig(ctx context.Context, peer PeerConfig) (wgtypes.PeerConfig,
 	if err != nil {
 		return wgtypes.PeerConfig{}, fmt.Errorf("parse peer public key: %w", err)
 	}
-	pc := wgtypes.PeerConfig{PublicKey: publicKey, ReplaceAllowedIPs: true}
+	// wgctrl leaves a peer's preshared key and keepalive alone unless given a
+	// value, so one the config dropped is sent as zero: a device that keeps a
+	// preshared key its peer's file lost completes no handshake with it.
+	var psk wgtypes.Key
+	keepalive := time.Duration(max(peer.PersistentKeepalive, 0)) * time.Second
+	pc := wgtypes.PeerConfig{
+		PublicKey:                   publicKey,
+		ReplaceAllowedIPs:           true,
+		PresharedKey:                &psk,
+		PersistentKeepaliveInterval: &keepalive,
+	}
 	if peer.PresharedKey != "" {
-		psk, err := wgtypes.ParseKey(peer.PresharedKey)
+		psk, err = wgtypes.ParseKey(peer.PresharedKey)
 		if err != nil {
 			return wgtypes.PeerConfig{}, fmt.Errorf("parse preshared key for %s: %w", peer.PublicKey, err)
 		}
-		pc.PresharedKey = &psk
 	}
 	for _, allowed := range peer.AllowedIPs {
 		ipNet, err := parseAllowedIP(allowed)
@@ -110,10 +119,6 @@ func peerDeviceConfig(ctx context.Context, peer PeerConfig) (wgtypes.PeerConfig,
 			return wgtypes.PeerConfig{}, fmt.Errorf("resolve endpoint %q for %s: %w", peer.Endpoint, peer.PublicKey, err)
 		}
 		pc.Endpoint = endpoint
-	}
-	if peer.PersistentKeepalive > 0 {
-		keepalive := time.Duration(peer.PersistentKeepalive) * time.Second
-		pc.PersistentKeepaliveInterval = &keepalive
 	}
 	return pc, nil
 }

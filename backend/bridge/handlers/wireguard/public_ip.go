@@ -45,9 +45,14 @@ func resolveEndpointHost(ctx context.Context, cfg WireGuardConfig, logPrefix str
 	if cfg.Host != "" {
 		return cfg.Host
 	}
-	publicIP, _ := getPublicIPFunc(ctx)
+	publicIP, err := getPublicIPFunc(ctx)
 	if publicIP == "" {
-		slog.Warn("public IP lookup returned empty string", "operation", logPrefix)
+		// The client configs are then written without an Endpoint line.
+		attrs := []any{"operation", logPrefix}
+		if err != nil {
+			attrs = append(attrs, "error", err)
+		}
+		slog.Warn("public IP lookup found no address for the clients' endpoint", attrs...)
 	}
 	return publicIP
 }

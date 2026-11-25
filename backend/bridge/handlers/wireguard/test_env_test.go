@@ -45,6 +45,7 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 	oldIsInterfaceUp := isInterfaceUpFunc
 	oldUnits := units
 	oldInterfaceGone := interfaceGoneFunc
+	oldDeviceRunsConfig := deviceRunsConfigFunc
 	oldPublicIP := getPublicIPFunc
 	oldDefaultGateway := getDefaultGatewayIPv4Func
 	oldInterfaceGateway := getGatewayForInterfaceIPv4Func
@@ -81,6 +82,8 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 	interfaceGoneFunc = func(string) bool {
 		return !env.interfaceUp
 	}
+	// No test reaches the kernel: an interface that is up runs its config.
+	deviceRunsConfigFunc = func(string) bool { return true }
 	units = unitControl{
 		disable: func(_ context.Context, unit string) error {
 			env.disabled = append(env.disabled, unit)
@@ -111,6 +114,7 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 		isInterfaceUpFunc = oldIsInterfaceUp
 		units = oldUnits
 		interfaceGoneFunc = oldInterfaceGone
+		deviceRunsConfigFunc = oldDeviceRunsConfig
 		getPublicIPFunc = oldPublicIP
 		getDefaultGatewayIPv4Func = oldDefaultGateway
 		getGatewayForInterfaceIPv4Func = oldInterfaceGateway
