@@ -609,6 +609,7 @@ export interface BtrfsSnapshot {
   referencedBytes?: number;
   exclusiveBytes?: number;
   maxReferencedBytes?: number;
+  keptBy?: KeptReason;
 }
 
 export interface BtrfsSnapshotRequest {
@@ -1969,6 +1970,8 @@ export interface JobSettings {
   progressMinBytesMB: number;
   progressMinIntervalMs: number;
 }
+
+export type KeptReason = string;
 
 export interface LiveCPU {
   percent: number;

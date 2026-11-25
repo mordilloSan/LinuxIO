@@ -112,7 +112,14 @@ const sentence = (clause: string) =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}${clause.endsWith(".") ? "" : "."}`;
 
 /** The worst condition first: it is the one to act on. */
-const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
+/**
+ * A pool's health: the worst condition, with the one action that fixes it.
+ * The banner and the pool cards both read it, so they never disagree.
+ */
+export const poolHealth = (
+  filesystem: BtrfsFilesystem,
+  name: string,
+): Health => {
   const rebuild = rebuildHealth(filesystem, name);
   if (rebuild) return rebuild;
   // A disk that dropped out counts the writes that failed as it went, so it
@@ -163,7 +170,7 @@ const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
       action: "reclaim",
       color: STATUS_COLOR.warning,
       icon: "mdi:shield-half-full",
-      text: `${name} is nearly out of metadata space, so writes will start failing. Reclaim space by balancing lightly used data chunks.`,
+      text: `${name} is nearly out of metadata space, so writes will start failing. Reclaim space by repacking nearly empty data areas.`,
       title: "Low space",
     };
   return {
@@ -182,7 +189,7 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   const name = filesystem.label
     ? `${filesystem.label}${mountpoint ? ` at ${mountpoint}` : ""}`
     : `The filesystem${mountpoint ? ` at ${mountpoint}` : ""}`;
-  const health = healthOf(filesystem, name);
+  const health = poolHealth(filesystem, name);
   const scrubRunning = filesystem.scrub.status === "running";
   // The scrub being stopped, named by its start: it runs on until its job's
   // handler returns, and a later scrub is another one to stop.

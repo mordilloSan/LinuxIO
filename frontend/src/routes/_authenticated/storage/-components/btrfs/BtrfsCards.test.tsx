@@ -6,7 +6,7 @@ import { render, screen } from "@/test/render";
 import { formatFileSize } from "@/utils/formatters";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
-import BtrfsHealthBanner from "./BtrfsHealthBanner";
+import BtrfsHealthBanner, { poolHealth } from "./BtrfsHealthBanner";
 import BtrfsSpaceCard from "./BtrfsSpaceCard";
 
 vi.mock("@tanstack/react-virtual", async () =>
@@ -539,5 +539,37 @@ describe("BtrfsSpaceCard", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/free of/)).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+});
+
+describe("poolHealth", () => {
+  it("gives the banner's verdict", () => {
+    const errors = { ...noErrors, write: 1 };
+    expect(
+      [
+        healthy,
+        { ...healthy, degraded: true },
+        {
+          ...healthy,
+          devices: [{ ...healthy.devices[0], errors }],
+        },
+        {
+          ...healthy,
+          scrub: { ...healthy.scrub, uncorrectableErrors: 2 },
+        },
+        { ...healthy, lowMetadataSpace: true },
+      ].map((fs) => poolHealth(fs, "data").title),
+    ).toEqual(["Healthy", "Degraded", "Errors", "Data errors", "Low space"]);
+  });
+});
+
+describe("plain words", () => {
+  it("says how to reclaim metadata space without chunks", () => {
+    render(
+      <BtrfsHealthBanner filesystem={{ ...healthy, lowMetadataSpace: true }} />,
+    );
+    expect(
+      screen.getByText(/nearly out of metadata space/),
+    ).not.toHaveTextContent(/chunk/i);
   });
 });

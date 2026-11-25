@@ -296,11 +296,12 @@ describe("BtrfsDevicesCard actions", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("balances lightly used data chunks by default", async () => {
+  it("balances lightly used areas by default", async () => {
     const user = userEvent.setup();
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
     const dialog = await openBalance(user);
+    expect(dialog).not.toHaveTextContent(/chunk/i);
     await user.click(within(dialog).getByRole("button", { name: "Balance" }));
 
     expect(mocks.submit).toHaveBeenCalledWith("btrfs_balance", {
@@ -314,7 +315,7 @@ describe("BtrfsDevicesCard actions", () => {
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
     const dialog = await openBalance(user);
-    await pick(user, dialog, "Fill limit", "Chunks up to 10% full");
+    await pick(user, dialog, "Fill limit", "Areas up to 10% full");
     await user.click(within(dialog).getByRole("button", { name: "Balance" }));
 
     expect(mocks.submit).toHaveBeenCalledWith("btrfs_balance", {
@@ -940,7 +941,12 @@ describe("BtrfsDevicesCard hot spare", () => {
           ...filesystem(2),
           allocation: [
             { kind: "data", profile: "raid1", totalBytes: GiB, usedBytes: GiB },
-            { kind: "metadata", profile: "dup", totalBytes: GiB, usedBytes: GiB },
+            {
+              kind: "metadata",
+              profile: "dup",
+              totalBytes: GiB,
+              usedBytes: GiB,
+            },
           ],
         }}
       />,

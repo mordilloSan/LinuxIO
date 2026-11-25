@@ -133,7 +133,12 @@ func handleBtrfsSubvolumeDelete(ctx context.Context, req apischema.BtrfsSubvolum
 }
 
 func handleBtrfsSnapshots(ctx context.Context, req apischema.BtrfsSnapshotsRequest) ([]btrfs.BtrfsSnapshot, error) {
-	return btrfs.ListSnapshots(ctx, req.UUID, req.Path)
+	snaps, err := btrfs.ListSnapshots(ctx, req.UUID, req.Path)
+	if err != nil {
+		return nil, err
+	}
+	btrfs.ExplainKept(snaps, req.UUID)
+	return snaps, nil
 }
 
 func handleBtrfsSnapshotCreate(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (btrfs.BtrfsSnapshot, error) {

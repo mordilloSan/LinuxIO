@@ -47,6 +47,7 @@ import { Route as AuthenticatedServicesTimersRouteImport } from './routes/_authe
 import { Route as AuthenticatedStorageIndexRouteImport } from './routes/_authenticated/storage/index'
 import { Route as AuthenticatedStorageLvmRouteImport } from './routes/_authenticated/storage/lvm'
 import { Route as AuthenticatedStorageMountsRouteImport } from './routes/_authenticated/storage/mounts'
+import { Route as AuthenticatedStoragePoolsRouteRouteImport } from './routes/_authenticated/storage/pools/route'
 import { Route as AuthenticatedStorageRsyncRouteImport } from './routes/_authenticated/storage/rsync'
 import { Route as AuthenticatedStorageSharesRouteImport } from './routes/_authenticated/storage/shares'
 import { Route as AuthenticatedStorageSubvolumesRouteImport } from './routes/_authenticated/storage/subvolumes'
@@ -57,6 +58,8 @@ import { Route as AuthenticatedVmDisksRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedVmImagesRouteImport } from './routes/_authenticated/vm/images'
 import { Route as AuthenticatedVmMachinesRouteRouteImport } from './routes/_authenticated/vm/machines/route'
 import { Route as AuthenticatedVmNetworksRouteImport } from './routes/_authenticated/vm/networks'
+import { Route as AuthenticatedStoragePoolsIndexRouteImport } from './routes/_authenticated/storage/pools/index'
+import { Route as AuthenticatedStoragePoolsUuidRouteImport } from './routes/_authenticated/storage/pools/$uuid'
 import { Route as AuthenticatedVmMachinesIndexRouteImport } from './routes/_authenticated/vm/machines/index'
 import { Route as AuthenticatedVmMachinesNameRouteImport } from './routes/_authenticated/vm/machines/$name'
 
@@ -280,6 +283,12 @@ const AuthenticatedStorageMountsRoute =
     path: '/mounts',
     getParentRoute: () => AuthenticatedStorageRouteRoute,
   } as any)
+const AuthenticatedStoragePoolsRouteRoute =
+  AuthenticatedStoragePoolsRouteRouteImport.update({
+    id: '/pools',
+    path: '/pools',
+    getParentRoute: () => AuthenticatedStorageRouteRoute,
+  } as any)
 const AuthenticatedStorageRsyncRoute =
   AuthenticatedStorageRsyncRouteImport.update({
     id: '/rsync',
@@ -336,6 +345,18 @@ const AuthenticatedVmNetworksRoute = AuthenticatedVmNetworksRouteImport.update({
   path: '/networks',
   getParentRoute: () => AuthenticatedVmRouteRoute,
 } as any)
+const AuthenticatedStoragePoolsIndexRoute =
+  AuthenticatedStoragePoolsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedStoragePoolsRouteRoute,
+  } as any)
+const AuthenticatedStoragePoolsUuidRoute =
+  AuthenticatedStoragePoolsUuidRouteImport.update({
+    id: '/$uuid',
+    path: '/$uuid',
+    getParentRoute: () => AuthenticatedStoragePoolsRouteRoute,
+  } as any)
 const AuthenticatedVmMachinesIndexRoute =
   AuthenticatedVmMachinesIndexRouteImport.update({
     id: '/',
@@ -365,6 +386,7 @@ export interface FileRoutesByFullPath {
   '/terminal': typeof AuthenticatedTerminalRouteRoute
   '/updates': typeof AuthenticatedUpdatesRouteRouteWithChildren
   '/vm': typeof AuthenticatedVmRouteRouteWithChildren
+  '/storage/pools': typeof AuthenticatedStoragePoolsRouteRouteWithChildren
   '/vm/machines': typeof AuthenticatedVmMachinesRouteRouteWithChildren
   '/accounts/groups': typeof AuthenticatedAccountsGroupsRoute
   '/docker/compose': typeof AuthenticatedDockerComposeRoute
@@ -397,7 +419,9 @@ export interface FileRoutesByFullPath {
   '/storage/': typeof AuthenticatedStorageIndexRoute
   '/updates/': typeof AuthenticatedUpdatesIndexRoute
   '/vm/': typeof AuthenticatedVmIndexRoute
+  '/storage/pools/$uuid': typeof AuthenticatedStoragePoolsUuidRoute
   '/vm/machines/$name': typeof AuthenticatedVmMachinesNameRoute
+  '/storage/pools/': typeof AuthenticatedStoragePoolsIndexRoute
   '/vm/machines/': typeof AuthenticatedVmMachinesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -440,7 +464,9 @@ export interface FileRoutesByTo {
   '/storage': typeof AuthenticatedStorageIndexRoute
   '/updates': typeof AuthenticatedUpdatesIndexRoute
   '/vm': typeof AuthenticatedVmIndexRoute
+  '/storage/pools/$uuid': typeof AuthenticatedStoragePoolsUuidRoute
   '/vm/machines/$name': typeof AuthenticatedVmMachinesNameRoute
+  '/storage/pools': typeof AuthenticatedStoragePoolsIndexRoute
   '/vm/machines': typeof AuthenticatedVmMachinesIndexRoute
 }
 export interface FileRoutesById {
@@ -461,6 +487,7 @@ export interface FileRoutesById {
   '/_authenticated/updates': typeof AuthenticatedUpdatesRouteRouteWithChildren
   '/_authenticated/vm': typeof AuthenticatedVmRouteRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/storage/pools': typeof AuthenticatedStoragePoolsRouteRouteWithChildren
   '/_authenticated/vm/machines': typeof AuthenticatedVmMachinesRouteRouteWithChildren
   '/_authenticated/accounts/groups': typeof AuthenticatedAccountsGroupsRoute
   '/_authenticated/docker/compose': typeof AuthenticatedDockerComposeRoute
@@ -493,7 +520,9 @@ export interface FileRoutesById {
   '/_authenticated/storage/': typeof AuthenticatedStorageIndexRoute
   '/_authenticated/updates/': typeof AuthenticatedUpdatesIndexRoute
   '/_authenticated/vm/': typeof AuthenticatedVmIndexRoute
+  '/_authenticated/storage/pools/$uuid': typeof AuthenticatedStoragePoolsUuidRoute
   '/_authenticated/vm/machines/$name': typeof AuthenticatedVmMachinesNameRoute
+  '/_authenticated/storage/pools/': typeof AuthenticatedStoragePoolsIndexRoute
   '/_authenticated/vm/machines/': typeof AuthenticatedVmMachinesIndexRoute
 }
 export interface FileRouteTypes {
@@ -514,6 +543,7 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/updates'
     | '/vm'
+    | '/storage/pools'
     | '/vm/machines'
     | '/accounts/groups'
     | '/docker/compose'
@@ -546,7 +576,9 @@ export interface FileRouteTypes {
     | '/storage/'
     | '/updates/'
     | '/vm/'
+    | '/storage/pools/$uuid'
     | '/vm/machines/$name'
+    | '/storage/pools/'
     | '/vm/machines/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -589,7 +621,9 @@ export interface FileRouteTypes {
     | '/storage'
     | '/updates'
     | '/vm'
+    | '/storage/pools/$uuid'
     | '/vm/machines/$name'
+    | '/storage/pools'
     | '/vm/machines'
   id:
     | '__root__'
@@ -609,6 +643,7 @@ export interface FileRouteTypes {
     | '/_authenticated/updates'
     | '/_authenticated/vm'
     | '/_authenticated/'
+    | '/_authenticated/storage/pools'
     | '/_authenticated/vm/machines'
     | '/_authenticated/accounts/groups'
     | '/_authenticated/docker/compose'
@@ -641,7 +676,9 @@ export interface FileRouteTypes {
     | '/_authenticated/storage/'
     | '/_authenticated/updates/'
     | '/_authenticated/vm/'
+    | '/_authenticated/storage/pools/$uuid'
     | '/_authenticated/vm/machines/$name'
+    | '/_authenticated/storage/pools/'
     | '/_authenticated/vm/machines/'
   fileRoutesById: FileRoutesById
 }
@@ -918,6 +955,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStorageMountsRouteImport
       parentRoute: typeof AuthenticatedStorageRouteRoute
     }
+    '/_authenticated/storage/pools': {
+      id: '/_authenticated/storage/pools'
+      path: '/pools'
+      fullPath: '/storage/pools'
+      preLoaderRoute: typeof AuthenticatedStoragePoolsRouteRouteImport
+      parentRoute: typeof AuthenticatedStorageRouteRoute
+    }
     '/_authenticated/storage/rsync': {
       id: '/_authenticated/storage/rsync'
       path: '/rsync'
@@ -987,6 +1031,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/vm/networks'
       preLoaderRoute: typeof AuthenticatedVmNetworksRouteImport
       parentRoute: typeof AuthenticatedVmRouteRoute
+    }
+    '/_authenticated/storage/pools/': {
+      id: '/_authenticated/storage/pools/'
+      path: '/'
+      fullPath: '/storage/pools/'
+      preLoaderRoute: typeof AuthenticatedStoragePoolsIndexRouteImport
+      parentRoute: typeof AuthenticatedStoragePoolsRouteRoute
+    }
+    '/_authenticated/storage/pools/$uuid': {
+      id: '/_authenticated/storage/pools/$uuid'
+      path: '/$uuid'
+      fullPath: '/storage/pools/$uuid'
+      preLoaderRoute: typeof AuthenticatedStoragePoolsUuidRouteImport
+      parentRoute: typeof AuthenticatedStoragePoolsRouteRoute
     }
     '/_authenticated/vm/machines/': {
       id: '/_authenticated/vm/machines/'
@@ -1089,7 +1147,24 @@ const AuthenticatedServicesRouteRouteWithChildren =
     AuthenticatedServicesRouteRouteChildren,
   )
 
+interface AuthenticatedStoragePoolsRouteRouteChildren {
+  AuthenticatedStoragePoolsUuidRoute: typeof AuthenticatedStoragePoolsUuidRoute
+  AuthenticatedStoragePoolsIndexRoute: typeof AuthenticatedStoragePoolsIndexRoute
+}
+
+const AuthenticatedStoragePoolsRouteRouteChildren: AuthenticatedStoragePoolsRouteRouteChildren =
+  {
+    AuthenticatedStoragePoolsUuidRoute: AuthenticatedStoragePoolsUuidRoute,
+    AuthenticatedStoragePoolsIndexRoute: AuthenticatedStoragePoolsIndexRoute,
+  }
+
+const AuthenticatedStoragePoolsRouteRouteWithChildren =
+  AuthenticatedStoragePoolsRouteRoute._addFileChildren(
+    AuthenticatedStoragePoolsRouteRouteChildren,
+  )
+
 interface AuthenticatedStorageRouteRouteChildren {
+  AuthenticatedStoragePoolsRouteRoute: typeof AuthenticatedStoragePoolsRouteRouteWithChildren
   AuthenticatedStorageLvmRoute: typeof AuthenticatedStorageLvmRoute
   AuthenticatedStorageMountsRoute: typeof AuthenticatedStorageMountsRoute
   AuthenticatedStorageRsyncRoute: typeof AuthenticatedStorageRsyncRoute
@@ -1100,6 +1175,8 @@ interface AuthenticatedStorageRouteRouteChildren {
 
 const AuthenticatedStorageRouteRouteChildren: AuthenticatedStorageRouteRouteChildren =
   {
+    AuthenticatedStoragePoolsRouteRoute:
+      AuthenticatedStoragePoolsRouteRouteWithChildren,
     AuthenticatedStorageLvmRoute: AuthenticatedStorageLvmRoute,
     AuthenticatedStorageMountsRoute: AuthenticatedStorageMountsRoute,
     AuthenticatedStorageRsyncRoute: AuthenticatedStorageRsyncRoute,

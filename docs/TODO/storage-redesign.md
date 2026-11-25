@@ -119,7 +119,60 @@
 
 ## Phase 2: the pool page (B)
 
-A route `/storage/pools/$uuid`, laid out with `ResourceDetailsLayout` like the VM and Docker details, with tabs Overview, Snapshots, Disks and Settings (`?tab=`), replacing the pool details on the Disks overview (`/storage?pool=`, which redirects). The header carries the name, a health chip from the health banner's own condition, and one line (disks, how data is kept, stored and free). Overview: the capacity card, disks as tiles with an Add-a-disk tile, a Protection card that says plainly what a disk failure does for this profile, whether a scrub found errors and when, the newest snapshot, and whether anything replicates. The Snapshots tab is the timeline of mockup B2 with a detail panel; "Kept as" needs the backend to say which retention bucket keeps each snapshot (`linuxio-worker` prune logic shared with the list), added here. Disks and Settings reuse today's cards. Detailed tasks are written when phase 1 lands.
+The pool details leave the Disks overview for a **Pools** tab built as the VM page is: `/storage/pools` lists the pools as cards, and `/storage/pools/$uuid` folds the list into the selected pool's card beside a details panel (`ResourceDetailsLayout`) whose tabs (`?tab=overview|snapshots|disks|settings`) hold the rest. `/storage?pool=<uuid>`, which the alerts link to, redirects there; the alert links stay as they are. Mounted pools only; a pool found on disk but not mounted stays on the Disks overview until phase 3.
+
+### Task 2.1: Why each snapshot is kept
+
+**Files:** Modify `backend/common/btrfs/retention.go`, `backend/common/btrfs/snapshots.go` (`BtrfsSnapshot.KeptBy`), the bridge handler serving `storage.btrfs_snapshots`; Test `backend/common/btrfs/retention_test.go`; Generated through `make generate`.
+
+**Interfaces:** Produces `type KeptReason string` with `KeptManual`, `KeptUnscheduled` (no rule for its source), `KeptScheduleOff` (a disabled rule leaves its timeline), `KeptRecent` (one of the newest 3 of its kind), `KeptHourly`, `KeptDaily`, `KeptWeekly`, `KeptMonthly`, `KeptReplication` (the replication parent), `KeptUntilNextPass` (the next pass deletes it); `func KeptBy(snaps []BtrfsSnapshot, rule *BtrfsSnapshotRule, protectsParent bool) map[string]KeptReason` keyed by path; `BtrfsSnapshot.KeptBy KeptReason` (`json:"keptBy,omitempty"`); TypeScript `keptBy?: KeptReason`.
+
+- [x] Failing tests: `TestKeptBy` (one case per reason, the smallest bucket that keeps a timeline snapshot named, a disabled rule keeping its timeline but not its fourth pre-update snapshot); `TestKeptByAgreesWithPrune` (over generated snapshot sets with an enabled rule and no replication, a snapshot is `KeptUntilNextPass` exactly when `Prune` returns it). `Prune` is not changed.
+- [x] Implement `KeptBy` from `keep.buckets()` and `keepNewestPerKind`; the list route loads the rules and replication jobs once and sets `KeptBy` per source, leaving it empty when they cannot be read.
+- [x] `make test-go-quiet GO_TEST_PKGS='./common/btrfs/... ./bridge/handlers/storage/...'`, then `make generate`.
+
+### Task 2.2: One health verdict for a pool
+
+**Files:** Modify `btrfs/BtrfsHealthBanner.tsx` (export `poolHealth`, today's `healthOf`), Test `btrfs/BtrfsCards.test.tsx`.
+
+**Interfaces:** Produces `poolHealth(filesystem: BtrfsFilesystem, name: string): { title: string; color: string; icon: string; text: string; action?: … }`, and `keptCopies(profile: string): string` in `btrfs/btrfsShared.ts`: "data stored once" (single), "two copies on one disk" (dup), "two copies on different disks" (raid1), "three copies" (raid1c3), "four copies" (raid1c4), "two copies, striped" (raid10), "striped, no second copy" (raid0).
+
+- [x] Failing tests: `poolHealth` gives "Healthy", "Degraded", "Errors", "Data errors", "Low space" as the banner does; `keptCopies` per profile.
+- [x] Implement by moving, not rewriting, the banner's logic.
+
+### Task 2.3: The Pools tab and its routes
+
+**Files:** Create `storage/pools/route.tsx` (layout: list or details), `storage/pools/index.tsx`, `storage/pools/$uuid.tsx` (`validateSearch` for `tab`), `storage/-components/pools/PoolCard.tsx`, `storage/-components/pools/PoolsLayout.tsx`; Modify `storage/-components/storageTabs.ts` (Pools after Disks, `matchChildren`), `storage/index.tsx` (`pool` redirects to `/storage/pools/$uuid`), `disk-overview/StoragePools.tsx` (a pool card navigates to its page; the details, rename and destroy leave this file); Tests beside each, `storageTabs.test.tsx`, `StoragePools.test.tsx`.
+
+**Interfaces:** Consumes `poolHealth`, `keptCopies`, `PoolSpace` (`storageGraph.ts`). Produces `PoolCard({ fs, selected, onSelect })`: name, health chip, "N disks · <keptCopies>", capacity bar with "<stored> stored · about <free> free" or "Space unknown", a chip per disk.
+
+- [x] Failing tests: the Pools tab lists one card per mounted pool; selecting one goes to `/storage/pools/<uuid>` and shows its card beside the panel; closing returns to `/storage/pools`; an unknown `tab` falls back to Overview; `/storage?pool=<uuid>` lands on the pool page; a pool card on the Disks overview links to the pool page.
+- [x] Implement as `vm/machines` does (`VMMachinesLayout`), Escape clearing the selection.
+
+### Task 2.4: The pool page panel and its Overview tab
+
+**Files:** Create `storage/-components/pools/PoolDetails.tsx` (health banner, tab selector, rename and destroy under a ⋯ menu, moved from `StoragePools.tsx` with their dialogs), `storage/-components/pools/PoolOverview.tsx` (Protection, disks, maintenance); Tests beside them.
+
+- [x] Failing tests: Protection says "A disk failure loses this pool" for single, raid0 and dup and "Survives one disk failing" for raid1 and raid10 ("two" for raid1c3, "three" for raid1c4); the last scrub's date and result or "Never checked"; the newest snapshot's age or "No snapshots"; "No copy anywhere else" without an enabled replication job of this pool, otherwise the job's target and last run; disks as tiles from the pool's own device list (not `DriveCard`, which needs the drive inventory only the overview graph maps) with an Add-a-disk tile that opens the Disks tab; maintenance periods with a link to the Settings tab.
+- [x] Implement with `FrostedCard`, `CardIconHeader`, `KeyValues`, `AppLinearProgress`, `AppButton`.
+
+### Task 2.5: Snapshots as a timeline with a detail panel
+
+**Files:** Modify `btrfs/BtrfsSnapshotsCard.tsx` (used by the pool page's Snapshots tab and the Subvolumes tab), `btrfs/BtrfsSnapshotsCard.test.tsx`.
+
+- [x] Failing tests: kind filter chips (All, Scheduled, Before updates, By hand) narrow the list; a row is a button that selects its snapshot; the detail panel shows kind, full date, source, the Kept as reason in words and the size when quotas give one, with Browse files, Roll back (saying a snapshot of the current state is taken first) and Delete, acting on the selected snapshot; the ⋯ menu is gone.
+- [x] Implement; the panel sits beside the list from the `md` breakpoint and below it under.
+
+### Task 2.6: Disks and Settings tabs, and the words left over
+
+**Files:** Modify `pools/PoolDetails.tsx` (Disks: `BtrfsDevicesCard` and `BtrfsSpaceCard`; Settings: `BtrfsSettingsCard`; the snapshot schedule sits on the Snapshots tab beside the list, as mockup B2 has it), and the visible text of `disk-overview/StoragePools.tsx` (offline pool card, destroy dialog), `btrfs/BtrfsCreatePoolDialog.tsx`, `btrfs/BtrfsBalanceDialog.tsx`, `btrfs/BtrfsHealthBanner.tsx`; their tests.
+
+- [x] Failing tests where a string is pinned; no "fstab" or "chunk" in those texts.
+- [x] Implement.
+
+### Task 2.7: Docs and the phase check
+
+- [x] `docs/btrfs.md` (the pool page, Kept as), `docs/storage-disks.md` (pool cards link to the pool page), `docs/tanstack-router.md` if the Pools tab adds a pattern; `make check-docs-quiet`, `make test-quiet`, a fresh review, fixes, `make test-quiet` again.
 
 ## Phase 3: Storage by what you manage (C, frontend)
 

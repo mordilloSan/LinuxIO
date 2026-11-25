@@ -319,7 +319,7 @@ const DiskOverview = () => {
       toast: STORAGE_TOAST_META,
     });
   useClearSelectionOnEscape(
-    Boolean(expanded || selectedMountpoint || search.pool || search.raid),
+    Boolean(expanded || selectedMountpoint || search.raid),
     () => {
       void navigate({
         to: "/storage",
@@ -504,12 +504,8 @@ const DiskOverview = () => {
           nfsMounts={nfsMounts}
           onInspectDrive={handleInspectDrive}
           onOpenVolume={handleOpenVolume}
-          onSelectPool={(pool) =>
-            void navigate({
-              to: "/storage",
-              search: (previous) => ({ ...previous, pool, raid: undefined }),
-              resetScroll: false,
-            })
+          onSelectPool={(uuid) =>
+            void navigate({ params: { uuid }, to: "/storage/pools/$uuid" })
           }
           onSelectRaid={(raid) =>
             void navigate({
@@ -518,7 +514,6 @@ const DiskOverview = () => {
               resetScroll: false,
             })
           }
-          selectedPool={search.pool}
           selectedRaid={search.raid}
         />
       )}

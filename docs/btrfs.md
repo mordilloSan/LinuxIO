@@ -3,9 +3,10 @@
 The **Storage → Subvolumes** tab (`/storage/subvolumes`) manages subvolumes,
 and, under its Snapshots and Replication views (`?view=snapshots`,
 `?view=replication`), snapshots with rollback, automatic snapshots and
-replication to another filesystem or host. Each pool's details on the **Storage → Disks** overview
-(`/storage?pool=<uuid>`) hold the rest: health, devices and profiles, space,
-quotas, compression and maintenance timers.
+replication to another filesystem or host. Each pool's page on the
+**Storage → Pools** tab (`/storage/pools/<uuid>`, see [Pool page](#pool-page))
+holds the rest: health, what protects its data, snapshots, devices and
+profiles, space, quotas, compression and maintenance timers.
 Everything on the host is read and driven through the kernel's btrfs ioctls,
 `mount(2)`, `/proc/self/mountinfo` and the disks' superblocks: devices,
 profiles, balance, scrub, space, health, pools and partition tables,
@@ -48,12 +49,42 @@ verification.
 ## Capability and privileges
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
-gates the Subvolumes tab and the pools on the Disks overview; see
-[Capabilities](./capabilities.md#btrfs-tools). Both are
+gates the Pools and Subvolumes tabs and the pools on the Disks overview; see
+[Capabilities](./capabilities.md#btrfs-tools). All are
 **administrator-only**: they require a privileged session, reads run
-`btrfs` as root and the configuration files are root `0600`. The Subvolumes
-tab is listed only while a btrfs filesystem is mounted; pools are created
-from the Disks overview.
+`btrfs` as root and the configuration files are root `0600`. The Pools and
+Subvolumes tabs are listed only while a btrfs filesystem is mounted; pools are
+created from the Disks overview.
+
+## Pool page
+
+The **Pools** tab (`/storage/pools`) lists the mounted pools as cards: the
+pool's name, its health (the health banner's own verdict, `poolHealth`), its
+disks and how it keeps data ("two copies on different disks"), what it stores
+and about how much is free, and a chip per disk. Opening one goes to
+`/storage/pools/<uuid>`, built as the VM page is: the list folds into that
+pool's card beside a panel, Escape or the close button goes back, and a pool
+that is not mounted says so. `/storage?pool=<uuid>`, which the alerts link to,
+redirects there. A pool found on disk but not mounted stays on the Disks
+overview with **Mount** and **Destroy**.
+
+The panel leads with the health banner, then four tabs (`?tab=`):
+
+- **Overview**: *Protection* says what a disk failure costs, from the weakest
+  profile the pool keeps (single, dup and raid0 lose the pool; raid1 and
+  raid10 survive one disk, raid1c3 two, raid1c4 three), the last check's
+  result or that it was never checked, the newest snapshot or that there is
+  none, and whether an enabled replication job copies the pool elsewhere and
+  how its last copy went. *Disks* shows each device with its allocation and an
+  **Add a disk** tile that opens the Disks tab. *Maintenance* lists the scrub,
+  balance, trim and defrag periods of the pool's mountpoint.
+- **Snapshots**: the snapshot list with its schedule (see
+  [Snapshots](#snapshots)).
+- **Disks**: the devices card and the Space card.
+- **Settings**: quotas, compression and maintenance.
+
+**Rename…** and **Destroy…** are in the panel's menu; destroying names every
+disk it erases and returns to the list.
 
 Docker's btrfs storage-driver subvolumes are hidden from every list.
 
@@ -1079,15 +1110,27 @@ Layout under the top level:
 `<kind>` is `manual`, `timeline`, `pre-update` or `pre-rollback`. Snapshots
 are read-only. Nested subvolumes are not included in a snapshot.
 
-The Snapshots view lists them under the local day they were taken (Today,
-Yesterday, then the date), newest first, with a legend for the kinds
-present: *Scheduled* (`timeline`), *Before an update*, *Taken by hand*
-(`manual`, never pruned) and *Before a rollback*. A row gives the time, with
-its age today and yesterday, and names its subvolume only when the pool has
-snapshots of more than one. **Browse** opens the file browser at
-`/run/linuxio/btrfs/<uuid>/linuxio-snapshots/...`; **Roll back to this
-snapshot…** and **Delete…** are in the row's ⋯ menu. **Restore files** is a
-copy in the file browser; there is no separate restore operation.
+The snapshot list, on the pool page's Snapshots tab and in the Subvolumes
+tab's Snapshots view, groups them under the local day they were taken (Today,
+Yesterday, then the date), newest first. Chips narrow it to one kind present:
+*Scheduled* (`timeline`), *Before updates*, *By hand* (`manual`, never pruned)
+and *Before rollbacks*. A row gives the time, with its age today and
+yesterday, and names its subvolume only when the pool has snapshots of more
+than one; selecting it opens a panel with its date, its subvolume, why it is
+kept, its size when quotas give one, and **Browse files** (the file browser
+at `/run/linuxio/btrfs/<uuid>/linuxio-snapshots/...`), **Roll back…** and
+**Delete…**. **Restore files** is a copy in the file browser; there is no
+separate restore operation.
+
+**Why it is kept** (`KeptBy` in `retention.go`, set by the list route with
+`ExplainKept`) mirrors the snapshot pass: taken by hand and never pruned; no
+rule covers its subvolume; its rule is off, which leaves its scheduled
+snapshots (a rule off with **Snapshot before updates** still prunes those);
+one of the newest three before updates or rollbacks; the newest of an hour,
+day, week or month the rule keeps, the smallest named; the parent the next
+incremental replication needs; or removed at the next pass.
+`TestKeptByAgreesWithPrune` holds it to `Prune`, which it does not change.
+When the rules or replication jobs cannot be read the reason is left out.
 
 ## Rollback
 
@@ -1446,8 +1489,8 @@ primary superblock at 64 KiB.
 | Replace device | Replaces one member with a free, blank device, or with the pool's own [hot spare](#hot-spare). A missing member, one that dropped out included, is copied from the other mirrors (`cont_reading_from_srcdev_mode` AVOID), and so is one whose disk an automatic rebuild left unverified (a rebuild of that device on record), which may hold stale copies no checksum finds; a present one is read first, as `btrfs replace start` does. The result is checked as the automatic rebuild's is: finished, the new disk in use and held by the pool, the pool writable ([Missing disks](#missing-disks)); a replace the kernel reports done that fails this check fails the job. A bigger replacement disk is grown into automatically. |
 | Hot spare | Sets, changes the delay of, or removes the pool's hot spare (see [Hot spare](#hot-spare)). |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
-| Rename | Sets the filesystem label from the pool details. |
-| Balance | **Balance** on the pool's Disks card asks what to balance. *Lightly used data chunks* (the default) balances data chunks at most 10, 25, 50 (the default) or 75% full, which turns slack into unallocated space. *Everything* balances every chunk with no filter, which spreads data and metadata over all disks, as after adding one. *Change profile* converts: see the next row. On a pool missing a disk only *Change profile* is offered, and `Balance` refuses any balance that is not a convert: the kernel writes every chunk it moves as `single` on the disks present (`btrfs_reduce_alloc_profile`), which the resync would then have to convert back. |
+| Rename | Sets the filesystem label from the pool page's menu. |
+| Balance | **Balance** on the pool's Disks card asks what to balance. *Lightly used areas* (the default) balances data chunks at most 10, 25, 50 (the default) or 75% full, which turns slack into unallocated space. *Everything* balances every chunk with no filter, which spreads data and metadata over all disks, as after adding one. *Change profile* converts: see the next row. On a pool missing a disk only *Change profile* is offered, and `Balance` refuses any balance that is not a convert: the kernel writes every chunk it moves as `single` on the disks present (`btrfs_reduce_alloc_profile`), which the resync would then have to convert back. |
 | Change profile | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
 | Reclaim space | The health banner's action when metadata is nearly full: a balance of data chunks at most 50% full. |
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`, with a running scrub's progress (see [Scrub progress](#scrub-progress)); scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. A scrub is refused while the kernel already scrubs the pool, for another scrub or a device replace, while LinuxIO's own scrub of it still runs, and when a device could not be read. |
@@ -1914,8 +1957,8 @@ key fails the job.
 
 ## Space
 
-The pool details' **Space** card and the pool's card on the Disks overview
-give two figures, each byte counted once however many copies the profiles
+The pool page's **Space** card, the pool's card on the Pools tab and its card
+on the Disks overview give two figures, each byte counted once however many copies the profiles
 keep (`StoredBytes` and `FreeBytes` in `inventory.go`):
 
 - **stored**: the used bytes of every data, metadata and system row, as the

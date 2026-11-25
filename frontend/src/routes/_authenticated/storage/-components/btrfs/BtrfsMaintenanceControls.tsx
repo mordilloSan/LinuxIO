@@ -50,7 +50,8 @@ const TASK_INFO: Record<string, TaskInfo> = {
   },
 };
 
-const periodLabel = (period: string) =>
+/** A period as the page names it: "Off" for none, else capitalised. */
+export const periodLabel = (period: string) =>
   period === "none" ? "Off" : period.charAt(0).toUpperCase() + period.slice(1);
 
 interface BtrfsMaintenanceProps {

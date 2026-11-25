@@ -45,6 +45,9 @@ type BtrfsSnapshot struct {
 	ExclusiveBytes  *uint64      `json:"exclusiveBytes,omitzero"`
 	// MaxReferencedBytes is the qgroup size limit, nil when unlimited.
 	MaxReferencedBytes *uint64 `json:"maxReferencedBytes,omitzero"`
+	// KeptBy says why the snapshot is still there (ExplainKept); empty when
+	// the rules could not be read.
+	KeptBy KeptReason `json:"keptBy,omitempty"`
 }
 
 var (

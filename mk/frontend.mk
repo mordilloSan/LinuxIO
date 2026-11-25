@@ -41,6 +41,9 @@ lint-only: ## Run frontend lint without setup prerequisites
 	@$(PRINTC) "$(COLOR_CYAN)🔎 Running Oxlint + Oxfmt (auto-fix)...$(COLOR_RESET)"
 	@"$(scripts_dir)/lint-frontend.sh" fix "$(frontend_dir)"
 
+format-frontend: ensure-node setup-frontend ## Run Oxfmt alone (frontend), even while Oxlint fails
+	@"$(scripts_dir)/lint-frontend.sh" format "$(frontend_dir)"
+
 lint-ci: ci-frontend-deps ## Install locked frontend deps and run read-only lint
 	@$(MAKE) --no-print-directory lint-ci-only
 

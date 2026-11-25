@@ -128,3 +128,16 @@ export const usableBytes = (profile: string, sizes: number[]): number => {
     usable += (width / layout.copies) * step;
   }
 };
+
+const KEPT_COPIES: Record<string, string> = {
+  single: "data stored once",
+  dup: "two copies on one disk",
+  raid0: "striped, no second copy",
+  raid1: "two copies on different disks",
+  raid1c3: "three copies",
+  raid1c4: "four copies",
+  raid10: "two copies, striped",
+};
+
+/** How a profile keeps data, in words; the profile's name when it has none. */
+export const keptCopies = (profile: string) => KEPT_COPIES[profile] ?? profile;

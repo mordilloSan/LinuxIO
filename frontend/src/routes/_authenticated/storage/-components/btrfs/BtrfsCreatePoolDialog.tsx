@@ -155,7 +155,7 @@ const BtrfsCreatePoolDialog = ({
           />
           <AppTextField
             fullWidth
-            helperText="Mounted here and added to /etc/fstab"
+            helperText="Mounted here now and at every startup"
             label="Mount point"
             onChange={(event) => setMountpoint(event.target.value)}
             value={target}

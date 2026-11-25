@@ -81,7 +81,7 @@ func RaiseAlerts(ctx context.Context, fs BtrfsFilesystem) {
 		raise(ctx, alerts.Observation{
 			Key: "space-" + fs.UUID, Severity: alerts.SeverityWarning,
 			Title:   name + " is nearly out of metadata space",
-			Message: "Metadata is over 90% full and less than 1 GiB is unallocated, so writes will start failing. Balance data chunks to reclaim space.",
+			Message: "Metadata is over 90% full and less than 1 GiB is unallocated, so writes will start failing. Reclaim space from the pool's page, which repacks nearly empty data areas.",
 			// One occurrence while it lasts: every health check sees it again.
 			Link: link, OccurrenceID: "low",
 		})

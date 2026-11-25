@@ -616,9 +616,12 @@ inherits its ancestor's.
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
 | `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | `tab` | — |
 | `/storage` | `storage/route.tsx` | — | — | — | — |
-| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `pool` | — |
+| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `pool` | redirects `pool` to `/storage/pools/$uuid` when the session may open pools |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
 | `/storage/mounts` | `storage/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
+| `/storage/pools` | `storage/pools/route.tsx` | `loadRouteQueries` ×1 | — | — | `requireAccess` btrfs, privileged |
+| `/storage/pools/` | `storage/pools/index.tsx` | — | — | — | — |
+| `/storage/pools/$uuid` | `storage/pools/$uuid.tsx` | — | `uuid` | `tab` | — |
 | `/storage/rsync` | `storage/rsync.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` privileged |
 | `/storage/shares` | `storage/shares.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/storage/subvolumes` | `storage/subvolumes.tsx` | `loadRouteQueries` ×1 | — | `fs`, `view` | `requireAccess` btrfs |
@@ -671,8 +674,9 @@ wrappers that only hide an observer.
 
 ## Guards And Access
 
-All guarding goes through `routes/-auth.ts`. There are ten `beforeLoad` hooks in
-the whole tree:
+All guarding goes through `routes/-auth.ts`. There are twelve `beforeLoad` hooks
+in the whole tree; eleven guard, and `storage/index.tsx` only redirects an old
+`?pool=` link to the pool's page:
 
 | Route | Guard | Policy |
 |-------|-------|--------|
@@ -680,6 +684,7 @@ the whole tree:
 | `sign-in/route.tsx` | `requireGuest` | signed **out** |
 | `docker/route.tsx` | `requireAccess` | `dockerAvailable` |
 | `storage/subvolumes.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
+| `storage/pools/route.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
 | `hardware/route.tsx` | `requireAccess` | `lmSensorsAvailable` |
 | `vm/route.tsx` | `requireAccess` | `libvirtAvailable` + privileged |
 | `network/wireguard.tsx` | `requireAccess` | `wireguardAvailable` + privileged |

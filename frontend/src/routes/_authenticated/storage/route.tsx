@@ -6,6 +6,7 @@ import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import { hasAccessPolicy, useAccessContext } from "@/hooks/useCapabilities";
 import { HardDriveIcon } from "@/icons/svg";
 
+import { POOLS_ACCESS } from "./-components/pools/poolsAccess";
 import { STORAGE_TABS } from "./-components/storageTabs";
 import { Route as SubvolumesRoute } from "./subvolumes";
 
@@ -15,15 +16,18 @@ function StorageLayout() {
     SubvolumesRoute.options.staticData?.access,
     access,
   );
-  // Subvolumes works on mounted btrfs filesystems; without one it is empty.
+  const poolsAllowed = hasAccessPolicy(POOLS_ACCESS, access);
+  // Pools and Subvolumes work on mounted btrfs filesystems; without one they are empty.
   const { data: filesystems = [] } = useQuery({
     ...linuxio.storage.btrfs_list,
-    enabled: subvolumesAllowed,
+    enabled: subvolumesAllowed || poolsAllowed,
   });
-  const tabs: readonly RoutedTab[] =
-    subvolumesAllowed && filesystems.length > 0
-      ? STORAGE_TABS
-      : STORAGE_TABS.filter((tab) => tab.to !== "/storage/subvolumes");
+  const mounted = filesystems.length > 0;
+  const tabs: readonly RoutedTab[] = STORAGE_TABS.filter((tab) => {
+    if (tab.to === "/storage/pools") return poolsAllowed && mounted;
+    if (tab.to === "/storage/subvolumes") return subvolumesAllowed && mounted;
+    return true;
+  });
   return (
     <RoutedTabLayout tabs={tabs}>
       <Outlet />

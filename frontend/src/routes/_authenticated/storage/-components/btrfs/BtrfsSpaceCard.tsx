@@ -75,44 +75,44 @@ const BtrfsSpaceCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           </AppTypography>
         )}
         {known && (
-        <div style={{ marginTop: "var(--app-space-12)" }}>
-          <AppButton
-            aria-controls={detailsId}
-            aria-expanded={showDetails}
-            keepTextOnMobile
-            onClick={() => setShowDetails((open) => !open)}
-            size="small"
-            startIcon={
-              <Icon
-                height={18}
-                icon={showDetails ? "mdi:chevron-down" : "mdi:chevron-right"}
-                width={18}
-              />
-            }
-            variant="text"
-          >
-            Details: how the disk is laid out
-          </AppButton>
-          <div id={detailsId}>
-            <AppCollapse in={showDetails} unmountOnExit>
-              {filesystem.allocation.map((a) => (
-                <InfoRow
-                  key={`${a.kind}-${a.profile}`}
-                  label={`${kindLabel(a.kind)} · ${a.profile}`}
-                  noBorder
-                >
-                  {`${formatFileSize(a.usedBytes)} used of ${formatFileSize(a.totalBytes)} set aside`}
+          <div style={{ marginTop: "var(--app-space-12)" }}>
+            <AppButton
+              aria-controls={detailsId}
+              aria-expanded={showDetails}
+              keepTextOnMobile
+              onClick={() => setShowDetails((open) => !open)}
+              size="small"
+              startIcon={
+                <Icon
+                  height={18}
+                  icon={showDetails ? "mdi:chevron-down" : "mdi:chevron-right"}
+                  width={18}
+                />
+              }
+              variant="text"
+            >
+              Details: how the disk is laid out
+            </AppButton>
+            <div id={detailsId}>
+              <AppCollapse in={showDetails} unmountOnExit>
+                {filesystem.allocation.map((a) => (
+                  <InfoRow
+                    key={`${a.kind}-${a.profile}`}
+                    label={`${kindLabel(a.kind)} · ${a.profile}`}
+                    noBorder
+                  >
+                    {`${formatFileSize(a.usedBytes)} used of ${formatFileSize(a.totalBytes)} set aside`}
+                  </InfoRow>
+                ))}
+                <InfoRow label="Not set aside yet" noBorder>
+                  {formatFileSize(filesystem.unallocatedBytes)}
                 </InfoRow>
-              ))}
-              <InfoRow label="Not set aside yet" noBorder>
-                {formatFileSize(filesystem.unallocatedBytes)}
-              </InfoRow>
-              <InfoRow label="UUID" noBorder>
-                {filesystem.uuid}
-              </InfoRow>
-            </AppCollapse>
+                <InfoRow label="UUID" noBorder>
+                  {filesystem.uuid}
+                </InfoRow>
+              </AppCollapse>
+            </div>
           </div>
-        </div>
         )}
       </AppCardContent>
     </FrostedCard>

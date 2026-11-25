@@ -335,7 +335,7 @@ test("a disk pulled from a mounted pool and put back is rebuilt and resynced, al
   test.setTimeout(1_800_000);
   await signIn(page);
   const uuid = await ensurePool(page);
-  await page.goto(`/storage?pool=${uuid}`);
+  await page.goto(`/storage/pools/${uuid}?tab=disks`);
   // A session's listing enables and starts the health timer.
   await expect
     .poll(

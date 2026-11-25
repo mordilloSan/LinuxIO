@@ -10,32 +10,20 @@ import {
   type NFSMount,
   type StorageBlockDevice,
 } from "@/api";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogContentText,
-  AppDialogTitle,
-} from "@/components/ui/AppDialog";
-import AppGrid from "@/components/ui/AppGrid";
-import AppTextField from "@/components/ui/AppTextField";
 import AppTopologyEdge from "@/components/ui/AppTopologyEdge";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
 import useContainerWidth from "@/hooks/useContainerWidth";
-import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize, formatThroughput } from "@/utils/formatters";
 
 import BtrfsCreatePoolDialog from "../btrfs/BtrfsCreatePoolDialog";
-import BtrfsDevicesCard from "../btrfs/BtrfsDevicesCard";
-import BtrfsHealthBanner from "../btrfs/BtrfsHealthBanner";
-import BtrfsSettingsCard from "../btrfs/BtrfsSettingsCard";
-import BtrfsSpaceCard from "../btrfs/BtrfsSpaceCard";
+import DestroyPoolDialog, {
+  type DestroyTarget,
+} from "../pools/DestroyPoolDialog";
 import { driveIcon } from "./DriveCard";
 import MdRaidDetails from "./MdRaidDetails";
 import {
@@ -219,22 +207,19 @@ const VolumeCard = ({
   </AppButton>
 );
 
-/** A btrfs pool; opens its details below the graph. */
+/** A btrfs pool; opens its page on the Pools tab. */
 const PoolCard = ({
   pool,
-  selected,
   onSelectPool,
 }: {
   pool: PoolSummary;
-  selected: boolean;
-  onSelectPool: (uuid?: string) => void;
+  onSelectPool: (uuid: string) => void;
 }) => (
   <AppButton
     aria-label={pool.name}
-    aria-pressed={selected}
     className="storage-pools__card storage-pools__pool"
     color="inherit"
-    onClick={() => onSelectPool(selected ? undefined : pool.uuid)}
+    onClick={() => onSelectPool(pool.uuid)}
   >
     <Icon
       className="storage-pools__icon"
@@ -292,7 +277,9 @@ const OfflinePoolCard = ({
       variant="soft"
     />
     <AppTypography color="text.secondary" variant="caption">
-      {pool.mountpoint ? `fstab: ${pool.mountpoint}` : "Not in /etc/fstab"}
+      {pool.mountpoint
+        ? `Set to mount at ${pool.mountpoint}`
+        : "Not mounted at startup"}
     </AppTypography>
     <div style={{ display: "flex", gap: 4 }}>
       <AppButton
@@ -565,10 +552,7 @@ const Edges = ({
   );
 };
 
-type PoolDialog =
-  | { kind: "create" }
-  | { kind: "destroy"; uuid: string; name: string; disks: string[] }
-  | { kind: "rename"; uuid: string; label: string };
+type PoolDialog = { kind: "create" } | ({ kind: "destroy" } & DestroyTarget);
 
 interface StoragePoolsProps {
   drives: DriveInfo[];
@@ -576,9 +560,8 @@ interface StoragePoolsProps {
   nfsMounts: NFSMount[];
   onInspectDrive: (name: string) => void;
   onOpenVolume: (mountpoint: string) => void;
-  /** UUID of the pool whose details are open; kept in the URL for alert links. */
-  selectedPool?: string;
-  onSelectPool: (uuid?: string) => void;
+  /** Opens a pool's page on the Pools tab. */
+  onSelectPool: (uuid: string) => void;
   /** Kernel name of the md RAID array whose details are open, e.g. md127. */
   selectedRaid?: string;
   onSelectRaid: (name?: string) => void;
@@ -598,7 +581,6 @@ const StoragePools = ({
   nfsMounts,
   onInspectDrive,
   onOpenVolume,
-  selectedPool,
   onSelectPool,
   selectedRaid,
   onSelectRaid,
@@ -637,16 +619,6 @@ const StoragePools = ({
       success: "Pool mounted",
       error: "Failed to mount pool",
     });
-  const { mutate: destroyPool, isPending: isDestroying } =
-    linuxio.storage.btrfs_pool_destroy.useMutation({
-      success: "Pool destroyed",
-      error: "Failed to destroy pool",
-    });
-  const { mutate: renamePool, isPending: isRenaming } =
-    linuxio.storage.btrfs_set_label.useMutation({
-      success: "Pool renamed",
-      error: "Failed to rename pool",
-    });
   const hasArrays = (topology?.devices ?? []).some((device) =>
     device.type.startsWith("raid"),
   );
@@ -666,17 +638,12 @@ const StoragePools = ({
     nfsMounts,
     offline,
   });
-  const selected = graph.nodes.find(
-    (node): node is Extract<GraphNode, { kind: "pool" }> =>
-      node.kind === "pool" && node.fs.uuid === selectedPool,
-  );
   const selectedArray = arrays.find(({ name }) => name === selectedRaid);
   const columnWidth = (width - 2 * GAP) / 3;
   const columnX = (column: 0 | 1 | 2) => column * (columnWidth + GAP);
   const hasBoot = graph.nodes.some((node) => node.kind === "boot");
   const highlight = (node: GraphNode) =>
-    (node.kind === "pool" && node.fs.uuid === selectedPool) ||
-    (node.kind === "device" && node.array?.name === selectedRaid);
+    node.kind === "device" && node.array?.name === selectedRaid;
 
   // Until the pools and block-device tree load, volumes would sit under the
   // wrong drive or source and then jump; draw nothing rather than that flicker.
@@ -707,13 +674,7 @@ const StoragePools = ({
       case "missing":
         return <MissingCard count={node.count} />;
       case "pool":
-        return (
-          <PoolCard
-            onSelectPool={onSelectPool}
-            pool={node.pool}
-            selected={node.fs.uuid === selectedPool}
-          />
-        );
+        return <PoolCard onSelectPool={onSelectPool} pool={node.pool} />;
       case "offlinePool":
         return (
           <OfflinePoolCard
@@ -725,6 +686,7 @@ const StoragePools = ({
                 uuid: node.pool.uuid,
                 name: node.pool.label || node.pool.uuid,
                 disks: node.pool.devices,
+                mounted: false,
               })
             }
             onMount={() =>
@@ -840,80 +802,6 @@ const StoragePools = ({
           </div>
         ))}
       </div>
-      {selected && (
-        <>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 8,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <AppTypography style={{ fontWeight: 600 }} variant="h6">
-                Details · {selected.pool.name}
-              </AppTypography>
-              <AppActionIconButton
-                icon="mdi:pencil"
-                label="Rename pool"
-                onClick={() =>
-                  setDialog({
-                    kind: "rename",
-                    uuid: selected.fs.uuid,
-                    label: selected.fs.label,
-                  })
-                }
-              />
-            </div>
-            <AppButton
-              color="error"
-              onClick={() =>
-                setDialog({
-                  kind: "destroy",
-                  uuid: selected.fs.uuid,
-                  name: selected.pool.name,
-                  disks: selected.fs.devices
-                    .map(({ path }) => path)
-                    .filter(Boolean),
-                })
-              }
-              size="small"
-              variant="outlined"
-            >
-              Destroy pool
-            </AppButton>
-          </div>
-          <AppGrid
-            container
-            spacing={DASHBOARD_CARD_SPACING}
-            style={{ marginBottom: 16 }}
-          >
-            <AppGrid size={12}>
-              <BtrfsHealthBanner
-                filesystem={selected.fs}
-                key={selected.fs.uuid}
-              />
-            </AppGrid>
-            <AppGrid size={{ xs: 12, md: 7 }}>
-              <BtrfsDevicesCard
-                filesystem={selected.fs}
-                key={selected.fs.uuid}
-              />
-            </AppGrid>
-            <AppGrid size={{ xs: 12, md: 5 }}>
-              <BtrfsSpaceCard filesystem={selected.fs} />
-            </AppGrid>
-            <AppGrid size={12}>
-              <BtrfsSettingsCard
-                key={selected.fs.uuid}
-                mountpoint={selected.fs.mountpoints[0]?.mountpoint}
-                uuid={selected.fs.uuid}
-              />
-            </AppGrid>
-          </AppGrid>
-        </>
-      )}
       {selectedArray && (
         <MdRaidDetails array={selectedArray} key={selectedArray.name} />
       )}
@@ -930,73 +818,10 @@ const StoragePools = ({
           )}
         />
       )}
-      {dialog?.kind === "rename" && (
-        <GeneralDialog fullWidth maxWidth="sm" onClose={closeDialog} open>
-          <AppDialogTitle>Rename pool</AppDialogTitle>
-          <AppDialogContent>
-            <AppTextField
-              autoFocus
-              fullWidth
-              label="Name"
-              onChange={(event) =>
-                setDialog({ ...dialog, label: event.target.value })
-              }
-              value={dialog.label}
-            />
-          </AppDialogContent>
-          <AppDialogActions>
-            <AppButton onClick={closeDialog}>Cancel</AppButton>
-            <AppButton
-              disabled={isRenaming || dialog.label.trim() === ""}
-              onClick={() =>
-                renamePool(
-                  { uuid: dialog.uuid, label: dialog.label.trim() },
-                  { onSuccess: closeDialog },
-                )
-              }
-              variant="contained"
-            >
-              Rename
-            </AppButton>
-          </AppDialogActions>
-        </GeneralDialog>
-      )}
-      <GeneralDialog
-        fullWidth
-        maxWidth="sm"
+      <DestroyPoolDialog
         onClose={closeDialog}
-        open={dialog?.kind === "destroy"}
-      >
-        <AppDialogTitle>Destroy pool</AppDialogTitle>
-        <AppDialogContent>
-          <AppDialogContentText>
-            {dialog?.kind === "destroy" &&
-              `Destroy ${dialog.name}? It is unmounted, removed from /etc/fstab and the btrfs signature is erased from ${dialog.disks.join(", ")}. Everything on it is lost.`}
-          </AppDialogContentText>
-        </AppDialogContent>
-        <AppDialogActions>
-          <AppButton onClick={closeDialog}>Cancel</AppButton>
-          <AppButton
-            color="error"
-            disabled={isDestroying}
-            onClick={() => {
-              if (dialog?.kind !== "destroy") return;
-              destroyPool(
-                { uuid: dialog.uuid },
-                {
-                  onSuccess: () => {
-                    closeDialog();
-                    onSelectPool(undefined);
-                  },
-                },
-              );
-            }}
-            variant="contained"
-          >
-            Destroy
-          </AppButton>
-        </AppDialogActions>
-      </GeneralDialog>
+        target={dialog?.kind === "destroy" ? dialog : null}
+      />
     </>
   );
 };

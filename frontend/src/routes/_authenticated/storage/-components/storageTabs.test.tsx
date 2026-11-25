@@ -42,6 +42,21 @@ describe("storage tabs", () => {
     ).toBeInTheDocument();
   });
 
+  it("offers Pools once a btrfs pool is mounted, after Disks", async () => {
+    mocks.btrfsList.mockResolvedValue([{ uuid: "pool" } as BtrfsFilesystem]);
+    renderLayout(true);
+    await screen.findByRole("tab", { name: "Pools" });
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Disks",
+      "Pools",
+      "LVM",
+      "Subvolumes",
+      "Shares",
+      "Mounts",
+      "rsync",
+    ]);
+  });
+
   it("hides Subvolumes without a mounted btrfs filesystem", async () => {
     mocks.btrfsList.mockResolvedValue([]);
     renderLayout(true);
@@ -62,6 +77,9 @@ describe("storage tabs", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("tab", { name: "Subvolumes" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: "Pools" }),
     ).not.toBeInTheDocument();
     expect(mocks.btrfsList).not.toHaveBeenCalled();
   });

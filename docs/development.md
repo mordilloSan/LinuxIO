@@ -1040,7 +1040,8 @@ The full index groups the supported targets as follows:
 - setup: `setup`, `setup-frontend`, `ensure-node`, `ensure-go`,
   `ensure-golint`, `ensure-modernize`, `ensure-deadcode`, `ensure-govulncheck`,
   `update-deps`, `update-go-deps`, `update-build-pins`
-- frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
+- frontend checks: `lint`, `lint-only`, `format-frontend` (Oxfmt alone, for
+  when Oxlint fails on files you are not changing), `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
   `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,
   `update-frontend-screenshots`

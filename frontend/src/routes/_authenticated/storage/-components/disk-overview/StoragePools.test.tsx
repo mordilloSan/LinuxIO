@@ -178,9 +178,8 @@ const capabilities = { btrfsAvailable: true };
 
 type PoolsProps = Partial<React.ComponentProps<typeof StoragePools>>;
 
-// Holds the selected pool and array the way the route's search params do.
+// Holds the selected array the way the route's search params do.
 const Pools = (props: PoolsProps) => {
-  const [pool, setPool] = useState<string>();
   const [raid, setRaid] = useState<string>();
   return (
     <StoragePools
@@ -189,9 +188,8 @@ const Pools = (props: PoolsProps) => {
       nfsMounts={[]}
       onInspectDrive={vi.fn()}
       onOpenVolume={vi.fn()}
-      onSelectPool={setPool}
+      onSelectPool={vi.fn()}
       onSelectRaid={setRaid}
-      selectedPool={pool}
       selectedRaid={raid}
       {...props}
     />
@@ -552,39 +550,16 @@ describe("StoragePools", () => {
     expect(onOpenVolume).toHaveBeenCalledWith("/mnt/tank");
   });
 
-  it("shows the details of the selected pool", async () => {
-    const user = userEvent.setup();
-    renderPools();
-
-    await screen.findByRole("button", { name: "tank" });
-    expect(screen.queryByText(/^Details · /)).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Storage pool 2" }));
-    expect(screen.getByText("Details · Storage pool 2")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Storage pool 2" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: "Storage pool 2" }));
-    expect(screen.queryByText(/^Details · /)).toBeNull();
-  });
-
-  it("shows the health and settings of the selected pool", async () => {
-    const user = userEvent.setup();
-    renderPools();
-
-    await user.click(await screen.findByRole("button", { name: "tank" }));
-    expect(screen.getByRole("heading", { name: "Healthy" })).toBeVisible();
-    expect(screen.getByText("Never checked for errors")).toBeVisible();
-    expect(screen.getByText("Settings")).toBeVisible();
-  });
-
-  it("opens the pool named by the URL and reports a new choice", async () => {
+  it("opens a pool's page", async () => {
     const user = userEvent.setup();
     const onSelectPool = vi.fn();
-    renderPools({ onSelectPool, selectedPool: "uuid-raid" });
+    renderPools({ onSelectPool });
 
-    expect(await screen.findByText("Details · tank")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Storage pool 2" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Storage pool 2" }),
+    );
     expect(onSelectPool).toHaveBeenCalledWith("uuid-root");
+    expect(screen.queryByText(/^Details · /)).toBeNull();
   });
 
   it("still lists the drives without btrfs or without privilege", async () => {
@@ -637,7 +612,7 @@ describe("StoragePools", () => {
     expect(await screen.findByText("cold")).toBeInTheDocument();
     expect(screen.getByText("Degraded")).toBeInTheDocument();
     expect(screen.getByText("1 missing disk")).toBeInTheDocument();
-    expect(screen.getByText("fstab: /mnt/cold")).toBeInTheDocument();
+    expect(screen.getByText("Set to mount at /mnt/cold")).toBeInTheDocument();
     // sdb belongs to the cold pool now, so it is no longer idle.
     expect(screen.queryByText("Nothing on it")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Mount degraded" }));
@@ -647,36 +622,21 @@ describe("StoragePools", () => {
     });
   });
 
-  it("destroys the selected pool after confirmation", async () => {
+  it("destroys a pool that is not mounted after confirmation", async () => {
     const user = userEvent.setup();
+    mocks.offline.mockResolvedValue([cold]);
     renderPools();
 
-    await user.click(await screen.findByRole("button", { name: "tank" }));
-    await user.click(screen.getByRole("button", { name: "Destroy pool" }));
+    await screen.findByText("cold");
+    await user.click(screen.getByRole("button", { name: "Destroy" }));
     const dialog = screen.getByRole("dialog", { name: "Destroy pool" });
-    expect(dialog).toHaveTextContent("/dev/nvme0n1, /dev/nvme1n1");
+    expect(dialog).toHaveTextContent("/dev/sdb");
+    expect(dialog).not.toHaveTextContent("fstab");
+    expect(dialog).not.toHaveTextContent("unmounted");
     await user.click(within(dialog).getByRole("button", { name: "Destroy" }));
-    expect(mocks.mutations["storage.btrfs_pool_destroy"]).toHaveBeenCalledWith(
-      { uuid: "uuid-raid" },
-      expect.anything(),
-    );
-  });
-
-  it("renames the selected pool", async () => {
-    const user = userEvent.setup();
-    renderPools();
-
-    await user.click(await screen.findByRole("button", { name: "tank" }));
-    await user.click(screen.getByRole("button", { name: "Rename pool" }));
-    const name = screen.getByLabelText("Name");
-    expect(name).toHaveValue("tank");
-    await user.clear(name);
-    await user.type(name, "media");
-    await user.click(screen.getByRole("button", { name: "Rename" }));
-    expect(mocks.mutations["storage.btrfs_set_label"]).toHaveBeenCalledWith(
-      { uuid: "uuid-raid", label: "media" },
-      expect.anything(),
-    );
+    expect(mocks.mutations["storage.btrfs_pool_destroy"]).toHaveBeenCalledWith({
+      uuid: "uuid-cold",
+    });
   });
 
   it("opens the create pool dialog for privileged users with btrfs", async () => {
