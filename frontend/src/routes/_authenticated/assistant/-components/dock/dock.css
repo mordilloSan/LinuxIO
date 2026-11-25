@@ -6,6 +6,9 @@
    a face the transcript shows through when a card overlaps it. */
 
 .assistant-dock {
+  /* The page scales --app-font-size-body with the chat's text size; the dock
+     is navigation and keeps the app's own body size (theme/variables.css). */
+  --app-font-size-body: 0.8125rem;
   /* dockLayout.ts mirrors these two for the code that sizes the cards. */
   --assistant-dock-tab: var(--app-space-32);
   --assistant-dock-gap: var(--app-space-8);

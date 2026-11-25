@@ -53,12 +53,12 @@ describe("AssistantPage", () => {
     expect(connectSpy).not.toHaveBeenCalled();
   });
 
-  it("starts at the terminal font size and lets the user resize the chat", async () => {
+  it("starts at the app body size and lets the user resize the chat", async () => {
     window.localStorage.removeItem("linuxio.assistant.fontSize");
     const { container } = render(<AssistantPage agent="claude" />);
     setState({ status: "ready", sessionId: "s" });
     const root = container.querySelector<HTMLElement>(".assistant")!;
-    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("16px");
+    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("13px");
 
     // The size lives in the composer's menu, not in the page header.
     await userEvent.click(
@@ -67,9 +67,9 @@ describe("AssistantPage", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /increase font size/i }),
     );
-    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("17px");
+    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("14px");
     expect(window.localStorage.getItem("linuxio.assistant.fontSize")).toBe(
-      "17",
+      "14",
     );
     window.localStorage.removeItem("linuxio.assistant.fontSize");
   });

@@ -741,9 +741,10 @@ advertises the matching capability.
   running turn, Shift+Tab cycles the mode, Ctrl/Cmd+Shift+O starts a new chat.
   The header tooltips show them.
 - **Text size.** The transcript and composer use the app body size, and code
-  uses a smaller monospace size. The chat starts at the terminal's font size;
-  the Text size row at the foot of the composer's `+` menu changes it, and
-  the choice is kept in the browser.
+  uses a smaller monospace size. The chat starts at the app's
+  body size (13px); the Text size row at the foot of the composer's `+` menu
+  changes it, and the choice is kept in the browser. The dock (its tabs and
+  cards) keeps the app's body size whatever the chat's text size is.
 - **Titles.** A `session_info_update` title renames the chat on the Chats
   card; untitled chats show their session id.
 
