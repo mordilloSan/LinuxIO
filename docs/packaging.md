@@ -229,7 +229,10 @@ their user; the run-record drop-in that hooks them goes with the package), the
 rsync service (`linuxio-rsync.service`, `rsync --daemon` on
 `/etc/linuxio/rsyncd.conf`) and Docker's drop-ins (`docker.service.d/linuxio-*.conf`:
 the mounts its data needs and the addresses it waits for). A new install finds
-them with their definitions under `/etc/linuxio`. The WireGuard interfaces
+them with their definitions under `/etc/linuxio`. So does
+`linuxio-docker-shutdown.service`, which stops containers through Docker
+before a shutdown and needs nothing of LinuxIO
+([Docker Shutdown](./docker-shutdown.md#removal)). The WireGuard interfaces
 stay too, being wg-quick's own files, and with them
 `/etc/sysctl.d/90-linuxio-wireguard.conf`, which keeps IPv4 forwarding on at
 boot for those with NAT ([Forwarding](./wireguard.md#forwarding)). The memory page writes no

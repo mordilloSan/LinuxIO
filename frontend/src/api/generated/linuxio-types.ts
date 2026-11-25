@@ -1328,6 +1328,7 @@ export interface DockerDaemonConfig {
   live_restore: boolean;
   log_max_file: string;
   log_max_size: string;
+  stop_before_shutdown: boolean;
   storage_driver: string;
   userland_proxy: boolean;
 }

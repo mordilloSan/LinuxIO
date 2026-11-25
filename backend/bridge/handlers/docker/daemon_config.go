@@ -76,16 +76,22 @@ var wrongImageStoreDrivers = map[string][]string{
 	"containerd": {"overlay2", "vfs"},
 }
 
-func (h dockerHandlers) handleGetDaemonConfig(_ context.Context, _ apischema.NoRequest) (apischema.DockerDaemonConfig, error) {
+func (h dockerHandlers) handleGetDaemonConfig(ctx context.Context, _ apischema.NoRequest) (apischema.DockerDaemonConfig, error) {
 	raw, err := readDaemonConfigFile(dockerDaemonConfigPath)
 	if err != nil {
 		return apischema.DockerDaemonConfig{}, err
 	}
-	return daemonConfigFromMap(raw), nil
+	cfg := daemonConfigFromMap(raw)
+	if cfg.StopBeforeShutdown, err = dockerShutdownStopEnabled(ctx); err != nil {
+		return apischema.DockerDaemonConfig{}, err
+	}
+	return cfg, nil
 }
 
 func (h dockerHandlers) handleSetDaemonConfig(ctx context.Context, req apischema.DockerDaemonConfig) (apischema.DockerDaemonConfigSetResult, error) {
-	return setDaemonConfig(ctx, dockerDaemonConfigPath, req)
+	return withDockerShutdownStop(ctx, req, func() (apischema.DockerDaemonConfigSetResult, error) {
+		return setDaemonConfig(ctx, dockerDaemonConfigPath, req)
+	})
 }
 
 func setDaemonConfig(ctx context.Context, path string, req apischema.DockerDaemonConfig) (apischema.DockerDaemonConfigSetResult, error) {

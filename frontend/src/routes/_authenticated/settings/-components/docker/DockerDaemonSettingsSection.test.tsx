@@ -82,6 +82,7 @@ const config: DockerDaemonConfig = {
   live_restore: false,
   log_max_file: "",
   log_max_size: "",
+  stop_before_shutdown: false,
   storage_driver: "",
   userland_proxy: true,
 };
@@ -132,6 +133,57 @@ describe("DockerDaemonSettingsSection", () => {
       }),
     );
     expect(screen.queryByText("Restart required")).not.toBeInTheDocument();
+  });
+
+  it("offers stopping containers before shutdown only with live restore on", async () => {
+    const { user } = renderSection();
+    const stop = screen.getByRole("checkbox", {
+      name: "Stop containers before shutdown",
+    });
+    expect(stop).toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "Live restore" }));
+    expect(stop).toBeEnabled();
+    await user.click(stop);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.save).toHaveBeenCalledWith({
+        ...config,
+        live_restore: true,
+        stop_before_shutdown: true,
+      }),
+    );
+  });
+
+  it("turns stopping before shutdown off with live restore", async () => {
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(linuxio.docker.get_daemon_config.queryKey, {
+      ...config,
+      live_restore: true,
+      stop_before_shutdown: true,
+    });
+    const { user } = render(<DockerDaemonSettingsSection />, {
+      auth: { privileged: true },
+      queryClient,
+    });
+    const stop = screen.getByRole("checkbox", {
+      name: "Stop containers before shutdown",
+    });
+    expect(stop).toBeChecked();
+
+    await user.click(screen.getByRole("checkbox", { name: "Live restore" }));
+    expect(stop).not.toBeChecked();
+    expect(stop).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.save).toHaveBeenCalledWith({
+        ...config,
+        live_restore: false,
+        stop_before_shutdown: false,
+      }),
+    );
   });
 
   it("shows the restart action after a restart-only change and restarts docker", async () => {

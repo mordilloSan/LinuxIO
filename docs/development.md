@@ -620,6 +620,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   and container and leaves the setting off; a run that stops between its
   save and its last test leaves it on, with addresses the VM no longer has,
   and the next run switches it off first.
+  `docker-shutdown.spec.ts` is the reboot test of stopping containers before
+  shutdown ([Docker Shutdown](./docker-shutdown.md)). It turns live restore
+  and the setting on from the page, runs three busybox containers (an
+  `unless-stopped` one that ignores SIGTERM and records the stop signal
+  Docker sends it, an `always` one and one without a policy) and reboots the
+  VM once, then turns the setting off. It puts back the `daemon.json` it
+  found and removes the unit and the containers.
   `capability-install.spec.ts` installs zram from Capabilities
   ([Capabilities](./capabilities.md#zram)), and on Ubuntu cancels a second
   install while apt holds dpkg back for 30 s, through an apt drop-in it
