@@ -27,6 +27,12 @@ const (
 	// moves a container's key onto another kind's or onto this one, whose
 	// first word, "linuxio", is none of the three.
 	dockerUpdatePassAlertKey = "linuxio-update-pass"
+	// dockerUpdateLowSpaceAlertKey is the key of the warning that a pass
+	// updated nothing for want of free space; its first word is "linuxio"
+	// for the same reason.
+	dockerUpdateLowSpaceAlertKey = "linuxio-low-free-space"
+	// dockerUpdateSettingsLink is where the free-space minimum is set.
+	dockerUpdateSettingsLink = "/settings?tab=docker"
 
 	dockerUpdateFailedKeyPrefix    = "failed-"
 	dockerUpdateUpdatedKeyPrefix   = "updated-"
@@ -114,6 +120,36 @@ func raiseDockerPassAlert(ctx context.Context, now time.Time, waiting int) {
 	}
 	if err := alerts.Raise(ctx, obs); err != nil {
 		slog.Warn("failed to record Docker update run notice", "component", "docker", "error", err)
+	}
+}
+
+// raiseLowFreeSpaceAlert records a pass that updated nothing for want of free
+// space, whatever the notification settings say. Its occurrence is the folder
+// short of room and the minimum, so passes that keep finding the same are one
+// occurrence, delivered once. Best effort: failures are logged, never
+// returned.
+func raiseLowFreeSpaceAlert(ctx context.Context, low lowFreeSpaceError) {
+	reason := low.Error()
+	obs := alerts.Observation{
+		Source:       dockerUpdateAlertSource,
+		Key:          dockerUpdateLowSpaceAlertKey,
+		Severity:     alerts.SeverityWarning,
+		Title:        "Docker updates skipped: low free space",
+		Message:      strings.ToUpper(reason[:1]) + reason[1:] + ".",
+		Link:         dockerUpdateSettingsLink,
+		OccurrenceID: fmt.Sprintf("%s:%d", low.folder, low.minGiB),
+	}
+	if err := alerts.Raise(ctx, obs); err != nil {
+		slog.Warn("failed to record Docker updates low free space alert", "component", "docker", "folder", low.folder, "error", err)
+	}
+}
+
+// resolveLowFreeSpaceAlert clears the low free space warning of a pass that
+// found room or was set no minimum. Best effort: failures are logged, never
+// returned.
+func resolveLowFreeSpaceAlert(ctx context.Context) {
+	if err := alerts.Resolve(ctx, dockerUpdateAlertSource, dockerUpdateLowSpaceAlertKey); err != nil {
+		slog.Debug("failed to clear Docker updates low free space alert", "component", "docker", "error", err)
 	}
 }
 

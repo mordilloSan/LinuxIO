@@ -107,9 +107,14 @@ Docker 29.1.3 and the containerd image store, in two setups:
   through which Compose builds with Bake: `#5 [1/2] FROM …` and
   `#6 [builder 1/2] FROM …`, with no service in the bracket.
 
+Docker's own packages, Docker 29.10.1 with Compose 5.8.0 and buildx 0.39.1
+(the Ubuntu test VMs), write the Bake form too, and the Docker suite's
+rebuild records the base from it.
+
 Only a whole line of either form counts, and its reference must parse. The
-test VM's Docker suite builds with buildx through Bake (`docker-buildx` is in
-its snapshot, [Development](./development.md#test-vm)); the form without
+test VM's Docker suite builds with buildx through Bake (Docker's own buildx
+plugin on the Ubuntu VMs, `docker-buildx` on Debian and Fedora,
+[Development](./development.md#test-vm)); the form without
 buildx is covered by the unit tests' recorded build output only. A step's
 own output is written behind its number and the seconds since it began
 (`#5 0.183 …`), so nothing a `RUN` step prints can add a base or hide one. A
@@ -398,15 +403,23 @@ none, at most 1 PiB) is asked after the check, only by a pass in update mode
 with containers to update. The pass reads Docker's root folder from the
 daemon (`DockerRootDir`) and measures the room for a write on its
 filesystem and on that of `/var/lib/containerd`, where the containerd image
-store keeps the layers (in the test VM's Docker 29.1.3 that folder holds the
-snapshotters and `/var/lib/docker` none); a containerd folder that does not
-exist is passed over. When either has less, the pass updates nothing and fails, naming the
-folder and its free space, so the run's own alert reports it; the check's
-result stays in the report and the status file, and the history's summary
-reads *Updates skipped for low free space*, followed by what waits (*2
-waiting*). A free space that cannot be read fails the pass the same way,
-with its own error and no such summary. An update from the
-Containers page does not ask.
+store keeps the layers (in the test VMs, Docker 29.1.3 and 29.10.1, that
+folder holds the snapshotters and `/var/lib/docker` none, and a pull of
+`alpine` adds to it); a containerd folder that does not
+exist is passed over. When either has less, the pass updates nothing and
+raises the warning *Docker updates skipped: low free space*
+(`docker-update/linuxio-low-free-space`, linking to the Docker settings),
+which names the folder, its free space and the minimum; a pass that keeps
+finding the same folder short of the same minimum is one occurrence,
+delivered once. The run completes: the check's result stays in the report
+and the status file, and the history's summary reads *Updates skipped for
+low free space*, followed by what waits (*2 waiting*), with the amber marker
+of a run whose failures raised alerts of their own. The next pass in update
+mode with containers to update that finds room, or has no minimum set,
+clears the warning. A free space that cannot be read (the daemon does not
+answer, the folder cannot be measured) fails the run, which raises the run's
+own alert, and leaves the warning as it is. An update from the Containers
+page does not ask.
 
 A pass checks every container in its scope, then updates the standalone
 containers one by one, then the Compose projects. Its output ends with a
@@ -546,7 +559,7 @@ check that finds no newer base, or a rebuild, clears it.
 - A Docker job's run is never updated by LinuxIO: which image the job's next
   run starts is the engine's. The label and the engine's behaviour are as
   Watchtower describes Engine 29.10 and Compose 5.8 (its pull request 3892);
-  no job has run in the test VM, whose Docker is 29.1.3.
+  the Ubuntu test VMs run that Docker, but no test runs a job yet.
 - The job host that runs an update from the page has its own stop timeout (2
   minutes), shorter than a Compose rollback's bound: a stop of it during a
   rollback can end the rollback's `docker compose up`.

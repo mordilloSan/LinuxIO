@@ -70,7 +70,11 @@ ubuntu)
 	readonly SEED_TEMPLATE=user-data.yaml.in PKG=apt
 	# zram-tools is LinuxIO's first choice where it exists.
 	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator
-	readonly COMPOSE_PACKAGE=docker-compose-v2 BUILDX_PACKAGE=docker-buildx
+	# Docker's own packages, as LinuxIO's Capability Manager installs them
+	# (use_docker_packages); the Debian and Fedora VMs keep their
+	# distribution's Docker, so both are run.
+	readonly DOCKER_SOURCE=docker
+	readonly COMPOSE_PACKAGE=docker-compose-plugin BUILDX_PACKAGE=docker-buildx-plugin
 	readonly PACKAGE_SCRIPT=package-deb.sh PACKAGE_TOOLS="debhelper apt-utils gnupg"
 	readonly REPO_SCRIPT=repo-apt.sh REPO_FAMILY=apt REPO_SOURCE=linuxio.sources
 	readonly REPO_SOURCE_DEST=/etc/apt/sources.list.d/linuxio.sources
@@ -87,6 +91,7 @@ debian)
 	VIDEO_DEVICE="<video><model type='vga'/></video>"
 	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator
 	# Debian's docker-compose is Compose v2, the plugin included.
+	readonly DOCKER_SOURCE=distribution
 	readonly COMPOSE_PACKAGE=docker-compose BUILDX_PACKAGE=docker-buildx
 	readonly PACKAGE_SCRIPT=package-deb.sh PACKAGE_TOOLS="debhelper apt-utils gnupg"
 	readonly REPO_SCRIPT=repo-apt.sh REPO_FAMILY=apt REPO_SOURCE=linuxio.sources
@@ -99,6 +104,7 @@ fedora)
 	readonly SEED_TEMPLATE=user-data-fedora.yaml.in PKG=dnf
 	# Fedora has no zram-tools; the image comes with zram-generator.
 	readonly ZRAM_DEFAULT=zram-generator GENERATOR_PACKAGE=zram-generator
+	readonly DOCKER_SOURCE=distribution
 	readonly COMPOSE_PACKAGE=docker-compose BUILDX_PACKAGE=docker-buildx
 	# The spec's systemd and SELinux macros, and what its %selinux_requires_min
 	# asks rpmbuild for; then what signs the package and the repository.
@@ -213,6 +219,24 @@ vol_exists() { v vol-info --pool "$POOL" "$1" >/dev/null 2>&1; }
 
 # shellcheck disable=SC2029 # the caller's command is meant for the VM's shell
 vm_ssh() { ssh "${SSH_OPTS[@]}" "${VM_USER}@${IP}" "$@"; }
+
+# use_docker_packages gives a VM whose profile runs Docker's own packages
+# (DOCKER_SOURCE=docker) and whose Docker is still the distribution's, one
+# created before the seed installed them, Docker's: docker-ce with its
+# Compose and buildx plugins, from Docker's convenience script as LinuxIO's
+# Capability Manager installs them. The distribution's packages go first, so
+# the script finds no Docker to warn about.
+use_docker_packages() {
+	[[ $DOCKER_SOURCE == docker ]] || return 0
+	vm_ssh dpkg -s docker-ce >/dev/null 2>&1 </dev/null && return 0
+	say "${DOMAIN}: replacing the distribution's Docker with Docker's own packages"
+	vm_ssh sudo bash -s <<'DOCKER'
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get -o DPkg::Lock::Timeout=600 -y -qq remove docker.io docker-compose-v2 docker-buildx containerd runc
+curl -fsSL https://get.docker.com | sh
+DOCKER
+}
 
 # vm_install PACKAGE... installs packages in the VM with the profile's
 # package manager.
@@ -403,8 +427,12 @@ write_seed() {
 	rm -rf "$seed"
 	mkdir -p "$seed"
 	printf 'instance-id: %s\nlocal-hostname: %s\n' "$DOMAIN" "$DOMAIN" >"${seed}/meta-data"
+	# The seed's Docker lines end with the source they belong to: the
+	# profile's are kept, the other's dropped.
+	local drop="# distribution Docker"
+	[[ $DOCKER_SOURCE == docker ]] || drop="# Docker's own packages"
 	sed -e "s|@PASSWORD_HASH@|${hash}|" -e "s|@SSH_KEY@|${key}|" -e "s|@SEED_URL@|${SEED_URL}|" \
-		-e "s|@COMPOSE_PACKAGE@|${COMPOSE_PACKAGE}|" \
+		-e "s|@COMPOSE_PACKAGE@|${COMPOSE_PACKAGE}|" -e "/${drop}\$/d" \
 		"${REPO_ROOT}/packaging/vm/${SEED_TEMPLATE}" >"${seed}/user-data"
 }
 
@@ -1198,12 +1226,15 @@ suite_relay() {
 }
 
 # The Docker update's real Compose runs (test-docker-update-integration),
-# which pull alpine images from Docker Hub. Ubuntu's docker.io and Fedora's
-# moby-engine come without the Compose and buildx plugins, which the seed
-# installs (docker-compose-v2 or docker-compose, and docker-buildx); a VM
-# created before the seed did gets them here, so every VM builds through
-# Bake, as Compose does on a host that has buildx.
+# which pull alpine images from Docker Hub. The Ubuntu VMs run Docker's own
+# packages, which bring the Compose and buildx plugins; Debian's docker.io
+# and Fedora's moby-engine come without them, which the seed installs
+# (docker-compose, and docker-buildx). A VM created before the seed did gets
+# them here, and an Ubuntu VM still on docker.io gets Docker's packages
+# (use_docker_packages) until make vm-update takes its snapshot again, so
+# every VM builds through Bake, as Compose does on a host that has buildx.
 suite_docker() {
+	use_docker_packages
 	vm_ssh sudo docker compose version >/dev/null 2>&1 </dev/null || vm_install "$COMPOSE_PACKAGE"
 	vm_ssh sudo docker buildx version >/dev/null 2>&1 </dev/null || vm_install "$BUILDX_PACKAGE"
 	push_test "$1" dockerupdate
@@ -1353,7 +1384,9 @@ disk_serials() {
 # created before it did still has them on) and take the snapshot again. An
 # unattended upgrade that a power-cut check interrupts leaves dpkg broken, and
 # a long list of waiting updates slows the Updates page the specs open. Fedora
-# upgrades nothing by itself; its seed switches dnf-makecache.timer off.
+# upgrades nothing by itself; its seed switches dnf-makecache.timer off. An
+# Ubuntu VM created with the distribution's docker.io gets Docker's own
+# packages here (use_docker_packages), and keeps them in the new snapshot.
 update() {
 	reset
 	connect
@@ -1376,6 +1409,7 @@ apt-get -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -y -qq dis
 apt-get -o DPkg::Lock::Timeout=600 -y -qq install $1
 sync
 UPGRADE
+		use_docker_packages
 		;;
 	dnf) vm_ssh "sudo dnf upgrade -y -q --refresh && sudo dnf install -y -q ${PACKAGE_TOOLS} && sync" </dev/null ;;
 	esac

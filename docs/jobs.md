@@ -786,7 +786,7 @@ What the run did is in two places:
 
   | Worker | Messages |
   |---|---|
-  | Docker updates | *1 updated, 1 failed, 1 rolled back*, *2 waiting*, *Nothing to update*, *Skipped: another Docker update was running* |
+  | Docker updates | *1 updated, 1 failed, 1 rolled back*, *2 waiting*, *Nothing to update*, *Updates skipped for low free space* (one failure, with its own alert), *Skipped: another Docker update was running* |
   | Snapshots (the timer's pass) | *2 taken, 3 pruned, 1 failed*, *Nothing to do* |
   | Replication | *1 sent, 1 failed*, *Nothing to do*, *Skipped: another run held every job* |
   | Pool resync | *Resynced*, *Resync failed* (the pool's alerts say why, and the health run retries it) |

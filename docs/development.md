@@ -405,8 +405,9 @@ Fedora release (the domain `linuxio-e2e-fedora44`, the
 `Fedora-Cloud-Base-Generic-44-1.7` image), and `DISTRO=debian` selects
 Debian 13 (`linuxio-e2e-debian`, Debian's `debian-13-generic-amd64.qcow2`
 from `cloud.debian.org`, checked against the SHA-512 in its `SHA512SUMS`,
-and the Ubuntu seed with Debian's `docker-compose` for Ubuntu's
-`docker-compose-v2`). The Debian VM has a VGA card with no display: its
+and the Ubuntu seed with the distribution's Docker, `docker.io` with
+Debian's `docker-compose` and `docker-buildx`, where the Ubuntu VMs run
+Docker's own packages). The Debian VM has a VGA card with no display: its
 GRUB draws on `gfxterm`, and without a video device the VM resets at every
 "Booting `Debian GNU/Linux'". Debian is in the apt family for the rig and the
 specs.
@@ -531,16 +532,24 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `192.168.122.1:8399` (8400 for VM 2, and so on; from 8409 for
   `VM_RELEASE=noble` and 8419 for Fedora, so that first boots of any VMs can
   run at once) that runs only during that boot. It creates the user
-  `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
-  Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
+  `linuxio-e2e` with passwordless sudo and installs
   `btrfs-progs`, the tools that assemble and publish the package, and what
   the DEB depends on (`libnss-systemd`, `libpam0g`, `packagekit`, `polkitd`),
   and `jq`, which the specs read job records with, so an install of
-  the package needs no download, and upgrades every package. The
+  the package needs no download, and upgrades every package. Docker is
+  Docker's own packages (`docker-ce` with `docker-compose-plugin` and
+  `docker-buildx-plugin`), from Docker's convenience script
+  (`get.docker.com`) as LinuxIO's Capability Manager installs it, so the
+  Ubuntu VMs run the Docker a host that installed it through LinuxIO has,
+  where the Debian and Fedora VMs keep their distribution's; the seed's
+  Docker lines end with the source they belong to, and `write_seed` keeps
+  the profile's (`DOCKER_SOURCE`). Docker's packages are whatever Docker
+  published when the VM was created or last updated, not a pinned version. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
   to the seed's packages reaches a VM only when it is created again
   (`vm-destroy`, then `vm-create`); `vm-update` upgrades what `clean` already
-  has.
+  has, and gives an Ubuntu VM created with the distribution's `docker.io`
+  Docker's packages in its place.
 - Every target that needs the VM starts it if it is stopped and shuts it
   down when it ends, passed or failed (`vm-install`, `vm-ssh`, the
   `test-vm-*` and the `vm-test-*` ones), so no VM runs unused. What was
@@ -696,13 +705,16 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
     or dnf, checks socket activation, idle exit and the index timer, and
     removes it again.
   - `docker` is `test-docker-update-integration`: real Compose replacements,
-    which pull alpine images from Docker Hub. Ubuntu's `docker.io` and
-    Fedora's `moby-engine` come without the Compose and buildx plugins, so
-    the seed installs them (`docker-compose-v2`, `docker-compose` on Fedora,
-    and `docker-buildx`), and the suite installs them in a VM created before
-    the seed did. With buildx Compose builds through Bake, as it does on a
-    host that has Docker's own packages; a host without buildx is covered by
-    the unit tests' recorded build output only.
+    which pull alpine images from Docker Hub. On Ubuntu it runs Docker's own
+    packages, which bring the Compose and buildx plugins; Debian's
+    `docker.io` and Fedora's `moby-engine` come without them, so the seed
+    installs them (`docker-compose` and `docker-buildx`). The suite installs
+    them in a VM created before the seed did, and gives an Ubuntu VM still
+    on `docker.io` Docker's packages, downloaded at every run until
+    `vm-update` keeps them in its snapshot. With buildx Compose builds
+    through Bake, as it does on a host that has Docker's own packages; a
+    host without buildx is covered by the unit tests' recorded build output
+    only.
   - `network` adds dummy and macvlan links and a network namespace as root
     (`TestVirtualChildrenByParentSeesOtherNamespaces`).
   - `userconfig` has a root bridge create config files for another user's

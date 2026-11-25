@@ -34,8 +34,8 @@ type scheduledPassOperations struct {
 	// replaced or failed to.
 	update func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(name string)) ([]ContainerOutcome, error)
 	// freeSpace refuses the updates when Docker's disk has less than the
-	// given GiB free (checkDockerFreeSpace). It is asked only when the
-	// settings set a minimum and the pass has containers to update.
+	// given GiB free, 0 asking for none (gateOnFreeSpace). It is asked by a
+	// pass in update mode with containers to update.
 	freeSpace func(ctx context.Context, minGiB int) error
 }
 
@@ -90,9 +90,31 @@ func RunScheduled(ctx context.Context, configPath string, report func(message st
 			return runScheduledUpdates(ctx, cli, registry, summaries, all, opts, alertReport, announce)
 		},
 		freeSpace: func(ctx context.Context, minGiB int) error {
-			return checkDockerFreeSpace(ctx, cli, minGiB)
+			return gateOnFreeSpace(ctx, cli, minGiB)
 		},
 	}, report)
+}
+
+// gateOnFreeSpace answers whether a pass may update, with minGiB GiB the
+// free space the settings ask for (0 for none), and keeps the low free space
+// alert in step: raised when there is less, which the returned error is
+// marked Reported for, so the run completes with a summary that says it
+// (PassReport.LowFreeSpace); resolved when no minimum is set or there is
+// room. A free space that cannot be read leaves the alert as it is and fails
+// the run.
+func gateOnFreeSpace(ctx context.Context, cli dockerInfoClient, minGiB int) error {
+	if minGiB > 0 {
+		err := checkDockerFreeSpace(ctx, cli, minGiB)
+		if low, ok := errors.AsType[lowFreeSpaceError](err); ok {
+			raiseLowFreeSpaceAlert(ctx, low)
+			return scheduledrun.Reported(err)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	resolveLowFreeSpaceAlert(ctx)
+	return nil
 }
 
 // containerdRoot is where the containerd that Docker talks to keeps its data
@@ -102,10 +124,20 @@ func RunScheduled(ctx context.Context, configPath string, report func(message st
 // snapshotters there and none under /var/lib/docker).
 const containerdRoot = "/var/lib/containerd"
 
-// errLowFreeSpace is a pass's refusal to update for want of free space, which
-// its summary names (PassReport.LowFreeSpace); a free space that cannot be
-// read is another error.
-var errLowFreeSpace = errors.New("no container was updated")
+// lowFreeSpaceError is a pass's refusal to update because the filesystem of
+// folder has free bytes, less than minGiB GiB; its summary names it
+// (PassReport.LowFreeSpace). A free space that cannot be read is another
+// error.
+type lowFreeSpaceError struct {
+	folder string
+	free   uint64
+	minGiB int
+}
+
+func (e lowFreeSpaceError) Error() string {
+	return fmt.Sprintf("no container was updated: the filesystem of %s has %.1f GiB free, less than the %d GiB the settings ask for",
+		e.folder, float64(e.free)/(1<<30), e.minGiB)
+}
 
 type dockerInfoClient interface {
 	Info(context.Context, client.InfoOptions) (client.SystemInfoResult, error)
@@ -143,8 +175,7 @@ func checkDockerFreeSpace(ctx context.Context, cli dockerInfoClient, minGiB int)
 			return fmt.Errorf("read the free space of %s: %w", folder, err)
 		}
 		if free < minimum {
-			return fmt.Errorf("%w: the filesystem of %s has %.1f GiB free, less than the %d GiB the settings ask for",
-				errLowFreeSpace, folder, float64(free)/(1<<30), minGiB)
+			return lowFreeSpaceError{folder: folder, free: free, minGiB: minGiB}
 		}
 	}
 	return nil
@@ -247,7 +278,9 @@ func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions
 	}
 	var updateErr error
 	pass.Containers, updateErr = updateSelected(ctx, opts, operations, selected, containers, report)
-	pass.LowFreeSpace = errors.Is(updateErr, errLowFreeSpace)
+	if low, ok := errors.AsType[lowFreeSpaceError](updateErr); ok {
+		pass.LowFreeSpace = low.Error()
+	}
 	updated, _, _ := pass.counts()
 	err = errors.Join(append(runErrs, checkErr, updateErr)...)
 	raisePassNotice(ctx, notify, err, checked, updated)
@@ -260,11 +293,8 @@ func updateSelected(ctx context.Context, opts DockerContainerAutoUpdateOptions, 
 	if len(selected) == 0 {
 		return nil, nil
 	}
-	if opts.MinFreeGiB > 0 {
-		// No container alert names this, so it fails the run.
-		if err := operations.freeSpace(ctx, opts.MinFreeGiB); err != nil {
-			return nil, err
-		}
+	if err := operations.freeSpace(ctx, opts.MinFreeGiB); err != nil {
+		return nil, err
 	}
 	announce := func(name string) { report("Updating " + name) }
 	return operations.update(ctx, selected, all, opts, announce)

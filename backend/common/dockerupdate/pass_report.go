@@ -88,10 +88,11 @@ type PassReport struct {
 	Mode       DockerContainerAutoUpdateMode
 	Checked    DockerUpdateCheckResult
 	Containers []ContainerOutcome
-	// LowFreeSpace is a pass that updated nothing because Docker's disk had
-	// less free space than the settings ask for (errLowFreeSpace). The run
-	// still fails, so its alert reports it.
-	LowFreeSpace bool
+	// LowFreeSpace is why a pass updated nothing because Docker's disk had
+	// less free space than the settings ask for (lowFreeSpaceError); empty
+	// for a pass that had room. It raised its own alert, so the run completes
+	// and counts it as a failure.
+	LowFreeSpace string
 }
 
 // counts tells the containers the pass replaced, those it failed to, and
@@ -123,12 +124,12 @@ func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 	if r.Skipped != "" {
 		return scheduledrun.Summary{Message: "Skipped: " + r.Skipped, Skipped: true}, true
 	}
-	if r.Mode == "" && len(r.Containers) == 0 && !r.LowFreeSpace {
+	if r.Mode == "" && len(r.Containers) == 0 && r.LowFreeSpace == "" {
 		return scheduledrun.Summary{}, false
 	}
 	updated, failed, rolledBack := r.counts()
 	var parts []string
-	if r.LowFreeSpace {
+	if r.LowFreeSpace != "" {
 		parts = append(parts, "Updates skipped for low free space")
 	}
 	if updated > 0 {
@@ -153,12 +154,18 @@ func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 	if len(parts) == 0 {
 		return scheduledrun.Summary{Message: "Nothing to update"}, true
 	}
-	// A rolled back update failed, and raised its alert.
-	return scheduledrun.Summary{Message: strings.Join(parts, ", "), Failures: failed + rolledBack}, true
+	// A rolled back update failed, and raised its alert; so did a pass that
+	// had too little free space to update.
+	failures := failed + rolledBack
+	if r.LowFreeSpace != "" {
+		failures++
+	}
+	return scheduledrun.Summary{Message: strings.Join(parts, ", "), Failures: failures}, true
 }
 
-// Write prints the pass for the run's output: a line of totals, then one line
-// for each container the pass replaced or failed to. The log lines of the
+// Write prints the pass for the run's output: a line of totals, then why it
+// updated nothing when it had too little free space, or one line for each
+// container it replaced or failed to. The log lines of the
 // pass carry the same facts as journal fields, which the saved output of a
 // run does not show. It prints nothing where Summary gives no line.
 func (r PassReport) Write(w io.Writer) {
@@ -175,6 +182,9 @@ func (r PassReport) Write(w io.Writer) {
 		fmt.Fprintf(w, "Container updates: %s\n", lowerFirst(summary.Message))
 	} else {
 		fmt.Fprintf(w, "Container updates: %d checked, %s\n", r.Checked.Checked, lowerFirst(summary.Message))
+	}
+	if r.LowFreeSpace != "" {
+		fmt.Fprintf(w, "  %s\n", r.LowFreeSpace)
 	}
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, outcome := range r.Containers {

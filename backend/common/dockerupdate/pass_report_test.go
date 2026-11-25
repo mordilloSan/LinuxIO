@@ -17,6 +17,7 @@ func TestPassReportSummary(t *testing.T) {
 	updated := ContainerOutcome{Name: "web", NewImageID: "sha256:new"}
 	failed := ContainerOutcome{Name: "proxy", Err: errors.New("container keeps restarting")}
 	rolledBack := ContainerOutcome{Name: "app", Err: rolledBackError{err: errors.New("container health is unhealthy"), to: "image old"}}
+	lowSpace := lowFreeSpaceError{folder: "/var/lib/docker", free: 1 << 30, minGiB: 5}.Error()
 	tests := map[string]struct {
 		report PassReport
 		want   scheduledrun.Summary
@@ -53,19 +54,19 @@ func TestPassReportSummary(t *testing.T) {
 			want:   scheduledrun.Summary{Message: "1 updated"},
 		},
 		// Too little free space: nothing was updated, so what waits is named.
-		// The run fails on its error; the summary counts no failed container.
+		// It raised its own alert, and counts as the run's one failure.
 		"low free space": {
-			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 2}, LowFreeSpace: true},
-			want:   scheduledrun.Summary{Message: "Updates skipped for low free space, 2 waiting"},
+			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 2}, LowFreeSpace: lowSpace},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space, 2 waiting", Failures: 1},
 		},
 		// The check failed, then the pass found too little room to update.
 		"failed check, low free space": {
-			report: PassReport{LowFreeSpace: true},
-			want:   scheduledrun.Summary{Message: "Updates skipped for low free space"},
+			report: PassReport{LowFreeSpace: lowSpace},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space", Failures: 1},
 		},
 		"low free space, nothing waiting": {
-			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4}, LowFreeSpace: true},
-			want:   scheduledrun.Summary{Message: "Updates skipped for low free space"},
+			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4}, LowFreeSpace: lowSpace},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space", Failures: 1},
 		},
 		// The check failed, so the pass has no mode, but it reached a container.
 		"failed check, one container failed": {
@@ -124,9 +125,13 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 		t.Fatalf("skipped report = %q", out.String())
 	}
 	out.Reset()
-	PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 1}, LowFreeSpace: true}.Write(&out)
-	if out.String() != "Container updates: 1 checked, updates skipped for low free space\n" {
-		t.Fatalf("low free space report = %q", out.String())
+	// The reason is printed: the run completes, so nothing else writes it.
+	low := lowFreeSpaceError{folder: "/var/lib/docker", free: 3 << 30, minGiB: 5}.Error()
+	PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 1}, LowFreeSpace: low}.Write(&out)
+	want := "Container updates: 1 checked, updates skipped for low free space\n" +
+		"  no container was updated: the filesystem of /var/lib/docker has 3.0 GiB free, less than the 5 GiB the settings ask for\n"
+	if out.String() != want {
+		t.Fatalf("low free space report = %q, want %q", out.String(), want)
 	}
 }
 
