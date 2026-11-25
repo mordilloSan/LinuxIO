@@ -5,6 +5,7 @@ import { closeStreamMux, initStreamMux, linuxio } from "@/api";
 import type { ConfigContextType } from "@/api";
 import { uiConfigQueryKey } from "@/api/config-query";
 import { ANONYMOUS_USER_ID } from "@/api/user-scope";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { Route } from "@/routes/_authenticated/network/index";
 
@@ -16,6 +17,19 @@ queryClient.setQueryData(uiConfigQueryKey(ANONYMOUS_USER_ID), {
   layoutOrders: {},
 });
 
+// The interface editor shows its controls, the bridge handoff among them,
+// only to a sudo session.
+const auth: AuthContextType = {
+  isAuthenticated: true,
+  isInitialized: true,
+  method: "session",
+  privileged: true,
+  user: null,
+  refreshCapabilities: async () => ({}),
+  sessionExpired: () => {},
+  signIn: async () => {},
+  signOut: async () => {},
+};
 const config: ConfigContextType = {
   isLoaded: true,
   setKey: () => {},
@@ -31,9 +45,11 @@ export default function NetworkHandoffPage() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigContext value={config}>
-        <NetworkLayout />
-      </ConfigContext>
+      <AuthContext.Provider value={auth}>
+        <ConfigContext value={config}>
+          <NetworkLayout />
+        </ConfigContext>
+      </AuthContext.Provider>
     </QueryClientProvider>
   );
 }

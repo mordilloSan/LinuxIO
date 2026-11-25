@@ -48,5 +48,6 @@ export default defineConfig({
     timeout: 120_000,
     url: `${baseURL}/accounts`,
   },
-  workers: 1,
+  // Playwright's default, half the CPUs: each page mocks its own backend, so
+  // spec files share nothing but the static preview server.
 });

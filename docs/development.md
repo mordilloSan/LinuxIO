@@ -36,9 +36,12 @@ pkill -f '^node .*vite preview --config config/browser.vite.config.ts'
 ```
 
 The `^node` anchor matters: without it `pkill -f` also matches the shell that
-runs it. Two runs at once slow each other down, so a timing assertion that
-fails while a second browser log in `.cache/test-logs` starts within seconds of
-yours is rerun when the machine is quiet;
+runs it. The spec files run side by side on half the CPUs (Playwright's
+default), each file's tests in order; every page mocks its own backend, so they
+share only the preview server. Two runs at once slow each other down, so a
+timing assertion that fails while a second browser log in `.cache/test-logs`
+starts within seconds of yours is rerun when the machine is quiet, or alone
+with `PLAYWRIGHT_ARGS="--workers=1"`;
 `PLAYWRIGHT_ARGS="<spec> --repeat-each 2"` confirms the spec is stable.
 
 ## Prerequisites
