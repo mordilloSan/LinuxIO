@@ -337,10 +337,14 @@ advertises the matching capability.
   store appends a `turn` block when the prompt resolves; a failed prompt
   gets none, and replayed history has no footer, since the agent does not
   replay the numbers.
-- **Reading column.** The transcript scrolls across the page, but its rows,
-  the permission card, the status line and the prompt share one centred
-  860 px column. The user's prompt is a bubble sized to its text on the
-  right; answers take the column.
+- **Reading column.** The transcript's scroller, the permission card, the
+  status line and the prompt share one centred 860 px column, so the
+  scrollbar sits on the edge of the prompt's box and the margins stay free
+  for the dock's tabs. Wheel scrolling over a margin does not scroll the
+  transcript. The area keeps the width of the tabs clear on both sides, so
+  on a narrow window the column shrinks and the tabs never lie over the
+  scrollbar. The user's prompt is a bubble sized to its text on
+  the right; answers take the column.
 - **Side question.** When the agent advertises `session/fork`, typing
   `/btw <question>` in the composer opens a panel beside the chat (below it on
   narrow screens), also while a turn is running. It forks the
@@ -402,7 +406,7 @@ advertises the matching capability.
 - **Diff view.** Tool calls that carry a diff show it as a line diff with the
   file path as header, additions and removals tinted.
 - **Chats.** The page header holds one action, New chat. The previous chats
-  are a tab on the chat's left edge: it opens a card that floats beside the
+  are a tab on the page's right edge: it opens a card that floats beside the
   chat, as tall as its list, with a search field and the chats grouped under
   Today, Yesterday and Earlier by when they were last used. The open chat is
   marked, and clicking another loads it. The tab is disabled when the agent
@@ -959,9 +963,9 @@ untouched.
   queued. The pane of the Claude Code process whose `session_id` equals the
   chat's ACP session id is drawn on a card that floats in the margin beside
   the chat, so the conversation keeps its centred column. Dragging the card's
-  right edge (or the arrow keys on it) resizes it between 240 and 720 px, a
+  left edge (or the left and right arrow keys on it) resizes it between 240 and 720 px, a
   double click restores 340 px, and the width is kept in the browser. The
-  pane has a tab on the chat's left edge, under the Chats tab: the card's
+  pane has a tab on the page's right edge, under the Chats tab: the card's
   one header button closes it to that tab, and the tab opens it again. Where
   the margin cannot hold the card beside the tabs it starts closed and opens
   over the chat on request. What the user chose holds for that pane; another

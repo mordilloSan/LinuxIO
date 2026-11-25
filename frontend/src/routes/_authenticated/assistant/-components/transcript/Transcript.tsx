@@ -645,7 +645,7 @@ export default function Transcript({
       aria-label={label}
       ref={ref}
     >
-      {/* The scroller spans the page; the column keeps lines readable. */}
+      {/* The scroller is itself the reading column (assistant.css). */}
       <div className="assistant__transcript-column">
         {blocks.length === 0 ? (
           children

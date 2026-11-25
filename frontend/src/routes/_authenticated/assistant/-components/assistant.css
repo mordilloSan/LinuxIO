@@ -84,8 +84,18 @@
 }
 
 .assistant__main {
-  /* The dock's tabs and cards float over this area (dock/dock.css). */
+  /* The dock's tabs and cards float over this area (dock/dock.css). The tabs
+     (--assistant-dock-tab, 32px) reach in from the page edge past the page's
+     inset, so the column keeps that much clear on both sides, and a window
+     narrower than the column does not put them over the scrollbar. */
   position: relative;
+  padding-inline: max(
+    0px,
+    calc(
+      var(--app-space-32) + var(--app-space-8) -
+        var(--page-inset-inline, 0px)
+    )
+  );
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -98,8 +108,14 @@
   font-size: var(--app-font-size-body);
 }
 
+/* The scroller is the reading column, as wide as the composer under it, so
+   its scrollbar sits on the column's edge and the margins stay free for the
+   dock's tabs (dock/dock.css). */
 .assistant__transcript {
   flex: 1;
+  width: 100%;
+  max-width: var(--assistant-column);
+  margin-inline: auto;
   min-height: 0;
   overflow: auto;
   display: flex;
@@ -108,16 +124,12 @@
   padding: var(--app-space-12);
 }
 
-/* The scroller spans the page so its scrollbar sits at the edge; the rows
-   keep to a centred column, because full-width lines are too long to read. */
 .assistant__transcript-column {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--app-space-16);
   width: 100%;
-  max-width: var(--assistant-column);
-  margin-inline: auto;
 }
 
 /* Answers and tool calls take the column; only the prompt is a bubble. */

@@ -74,36 +74,36 @@ describe("PanePanel", () => {
     expect(setup().card()).toHaveStyle({ width: "340px" });
   });
 
-  it("widens when the right edge is dragged right, and remembers it", () => {
+  it("widens when the left edge is dragged left, and remembers it", () => {
     const { card, edge } = setup();
     fireEvent.pointerDown(edge(), { clientX: 900, pointerId: 1 });
-    fireEvent.pointerMove(edge(), { clientX: 1000, pointerId: 1 });
+    fireEvent.pointerMove(edge(), { clientX: 800, pointerId: 1 });
     expect(card()).toHaveStyle({ width: "440px" });
     // Nothing is stored until the drag ends.
     expect(window.localStorage.getItem(WIDTH_KEY)).toBeNull();
-    fireEvent.pointerUp(edge(), { clientX: 1000, pointerId: 1 });
+    fireEvent.pointerUp(edge(), { clientX: 800, pointerId: 1 });
     expect(window.localStorage.getItem(WIDTH_KEY)).toBe("440");
     // A move after the drag ended changes nothing.
-    fireEvent.pointerMove(edge(), { clientX: 1200, pointerId: 1 });
+    fireEvent.pointerMove(edge(), { clientX: 600, pointerId: 1 });
     expect(card()).toHaveStyle({ width: "440px" });
   });
 
   it("keeps the width between its limits while dragging", () => {
     const { card, edge } = setup();
     fireEvent.pointerDown(edge(), { clientX: 900, pointerId: 1 });
-    fireEvent.pointerMove(edge(), { clientX: -2000, pointerId: 1 });
-    expect(card()).toHaveStyle({ width: "240px" });
     fireEvent.pointerMove(edge(), { clientX: 2000, pointerId: 1 });
+    expect(card()).toHaveStyle({ width: "240px" });
+    fireEvent.pointerMove(edge(), { clientX: -2000, pointerId: 1 });
     expect(card()).toHaveStyle({ width: "720px" });
   });
 
   it("resizes from the keyboard", async () => {
     const { card, edge } = setup();
     edge().focus();
-    await userEvent.keyboard("{ArrowRight}{ArrowRight}");
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
     expect(card()).toHaveStyle({ width: "372px" });
     expect(edge()).toHaveAttribute("aria-valuenow", "372");
-    await userEvent.keyboard("{ArrowLeft}");
+    await userEvent.keyboard("{ArrowRight}");
     expect(card()).toHaveStyle({ width: "356px" });
     await userEvent.keyboard("{Home}");
     expect(card()).toHaveStyle({ width: "240px" });

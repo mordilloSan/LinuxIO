@@ -158,8 +158,8 @@ export default function DockPanel({
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     const start = drag.current;
     if (!start) return;
-    // The card is anchored on the left, so dragging right widens it.
-    start.latest = resizeTo(start.width + event.clientX - start.x);
+    // The card is anchored on the right, so dragging left widens it.
+    start.latest = resizeTo(start.width + start.x - event.clientX);
   };
   const endDrag = () => {
     const start = drag.current;
@@ -170,9 +170,9 @@ export default function DockPanel({
   };
   const resizeByKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const next =
-      event.key === "ArrowRight"
+      event.key === "ArrowLeft"
         ? shownWidth + KEY_STEP
-        : event.key === "ArrowLeft"
+        : event.key === "ArrowRight"
           ? shownWidth - KEY_STEP
           : event.key === "Home"
             ? MIN_WIDTH
