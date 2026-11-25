@@ -13,6 +13,7 @@ import { createRoot } from "react-dom/client";
 
 import { validateDashboardSearch } from "@/api/dashboard-search";
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
+import { optionalString } from "@/routes/-search";
 import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
 import { Route as NetworkRoute } from "@/routes/_authenticated/network/index";
 import { Route as StorageDisksRoute } from "@/routes/_authenticated/storage/disks";
@@ -188,6 +189,7 @@ const assistantRoute = createRoute({
   component: AssistantFixturePage,
   getParentRoute: () => rootRoute,
   path: "assistant",
+  validateSearch: (search) => ({ ...optionalString(search, "chat") }),
 });
 const terminalRoute = createRoute({
   component: TerminalFixturePage,

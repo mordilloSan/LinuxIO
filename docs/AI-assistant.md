@@ -44,10 +44,23 @@ once the agent has been reaped.
 
 Chat lifetime: the stream is not cached by the multiplexer (so the settings
 probe never shares the page's stream); the chat and its connection live in a
-module-level store, so it survives navigation but is lost on page reload. After a reconnect the frontend loads the newest session from
-`session/list` with `session/load` when the agent advertises it, otherwise it
-starts `session/new`. There is no bridge-side session registry, so a lost
-websocket ends the agent process.
+module-level store, so it survives navigation but is lost on page reload. The
+page's address names the open chat (`/assistant?chat=<session id>`), replaced
+rather than pushed whenever another chat opens, so Back leaves the page. After
+a reload, a reconnect or a restart the frontend loads, with `session/load`
+when the agent advertises it, the chat the address names if `session/list`
+has it, and the newest session otherwise; it starts `session/new` when there
+is nothing to load. A named chat that fails to load for any reason but a
+sign-in is forgotten, so Restart opens the newest. An id the list lacks (another agent's chat, a deleted one,
+a made-up one) is never sent to the agent, and a crafted link can only open
+one of the user's own chats: nothing is typed or sent. Once the page is
+connected the open chat wins over the address: an older history entry naming
+another chat is rewritten, not loaded. There is no bridge-side session
+registry, so a lost websocket ends the agent process.
+
+Known limit: every tab starts an agent of its own, so a chat's address opened
+in a second tab gives two agent processes on one session, and LinuxIO does
+not stop both from sending to it.
 
 ## Agents
 
@@ -409,7 +422,8 @@ advertises the matching capability.
   are a tab on the page's right edge: it opens a card that floats beside the
   chat, as tall as its list, with a search field and the chats grouped under
   Today, Yesterday and Earlier by when they were last used. The open chat is
-  marked, and clicking another loads it. The tab is disabled when the agent
+  marked, and clicking another loads it and puts it in the page's address
+  (see Chat lifetime above). The tab is disabled when the agent
   cannot list sessions. The tabs stay in place while a card is open. Opening a
   card never closes another (the chats, the agents, the activity map, a
   [plugin pane](#plugin-panes)): the open cards stack in one column beside the
@@ -1068,7 +1082,8 @@ The chosen agent starts only when its own capability is available, and
 - Terminal panes for commands the agent runs; the agent keeps its own
   terminal tools.
 - Persisted "allow always" permission choices.
-- A bridge-side session registry that survives websocket loss.
+- Chats that survive websocket loss: planned as a per-user agent host in
+  [Assistant agent host](./TODO/assistant-agent-host.md).
 - Proactive alerts.
 - Automatic agent updates: a newer agent arrives with a LinuxIO release and
   is installed when the user presses Install.

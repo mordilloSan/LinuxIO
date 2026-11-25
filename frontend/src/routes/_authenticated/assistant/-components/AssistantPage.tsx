@@ -47,9 +47,12 @@ const MAX_FONT = 28;
 export default function AssistantPage({
   agent,
   chatDefaults,
+  chat,
 }: {
   agent: AssistantAgentId | null;
   chatDefaults?: AssistantChatDefaults;
+  /** The chat the address names, opened when the agent connects. */
+  chat?: string;
 }) {
   const { isOpen } = useStreamMux();
   const state = useAssistantState();
@@ -100,6 +103,12 @@ export default function AssistantPage({
   useEffect(() => {
     assistantStore.setChatDefaults(chatDefaults);
   }, [chatDefaults]);
+
+  // Ahead of connect too: a reload, a reconnect or a restart opens the chat
+  // the address names rather than the newest.
+  useEffect(() => {
+    assistantStore.setRequestedChat(chat);
+  }, [chat]);
 
   // Starting an agent never installs anything, so it is only started once
   // everything it needs is installed.

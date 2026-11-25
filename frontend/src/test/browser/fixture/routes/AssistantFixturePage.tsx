@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { closeStreamMux, initStreamMux } from "@/api";
@@ -12,6 +13,7 @@ import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import AssistantPage from "@/routes/_authenticated/assistant/-components/AssistantPage";
+import { useChatAddress } from "@/routes/_authenticated/assistant/-components/useChatAddress";
 
 // The app's own fonts, which swap in after the first paint as they do there.
 import "@fontsource-variable/inter/wght.css";
@@ -46,6 +48,9 @@ const stubConfig = {
 const stubAuth = { privileged: false } as unknown as AuthContextType;
 
 export default function AssistantFixture() {
+  // As the real route does: the address names the open chat.
+  const { chat } = useSearch({ strict: false });
+  useChatAddress(chat);
   useEffect(() => {
     initStreamMux();
     return closeStreamMux;
@@ -58,6 +63,7 @@ export default function AssistantFixture() {
             <AssistantPage
               agent="claude"
               chatDefaults={{ model: "opus", effort: "high", mode: "plan" }}
+              chat={chat}
             />
           </main>
         </ConfigContext>

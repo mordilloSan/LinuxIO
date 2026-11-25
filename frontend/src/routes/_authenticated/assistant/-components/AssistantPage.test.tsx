@@ -86,6 +86,21 @@ describe("AssistantPage", () => {
     expect(connectSpy).toHaveBeenCalledWith("claude");
   });
 
+  it("hands the store the chat the address names before it connects", () => {
+    const setRequestedChat = vi.spyOn(assistantStore, "setRequestedChat");
+    render(<AssistantPage agent="claude" chat="s-old" />, {
+      capabilities: {
+        claudeCodeAvailable: true,
+        assistantClaudeAvailable: true,
+      },
+    });
+    expect(setRequestedChat).toHaveBeenCalledWith("s-old");
+    expect(connectSpy).toHaveBeenCalledWith("claude");
+    expect(setRequestedChat.mock.invocationCallOrder[0]).toBeLessThan(
+      connectSpy.mock.invocationCallOrder[0],
+    );
+  });
+
   it("says what to install instead of starting an agent that is not ready", () => {
     render(<AssistantPage agent="claude" />, {
       capabilities: {
