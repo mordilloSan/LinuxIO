@@ -3,7 +3,7 @@
    readPaneTree picks. */
 
 /* While the edge is dragged the width follows the pointer exactly. */
-.assistant-pane-card--dragging {
+.assistant-dock-card:has(.assistant-pane-card__resize[data-dragging="true"]) {
   user-select: none;
 }
 
@@ -59,7 +59,7 @@
 
 .assistant-pane-card__resize:hover::after,
 .assistant-pane-card__resize:focus-visible::after,
-.assistant-pane-card--dragging .assistant-pane-card__resize::after {
+.assistant-pane-card__resize[data-dragging="true"]::after {
   opacity: 1;
   transform: translateY(-50%) scaleY(1);
 }

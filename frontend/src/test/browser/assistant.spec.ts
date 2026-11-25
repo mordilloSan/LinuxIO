@@ -525,7 +525,7 @@ test("shows a subagent the agent reports as a session of its own", async ({
   await expect(page.getByText("The root disk is 40% full.")).toBeVisible();
   await expect(page.getByRole("button", { name: "0 agents" })).toBeVisible();
 
-  // Its name opens the Agents view on it: the prompt, its call, its report.
+  // Its name opens the Agents card on it: the prompt, its call, its report.
   await sentTo.getByRole("button", { name: "Disk check" }).click();
   const agents = page.getByRole("complementary", { name: "Agents" });
   await expect(

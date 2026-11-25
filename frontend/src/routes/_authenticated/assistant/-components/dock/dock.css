@@ -120,13 +120,28 @@
   pointer-events: none;
 }
 
-.assistant-dock-card {
+/* The open cards, one under another beside the tabs, in the order they were
+   opened (DockCard.tsx puts each in this column and AssistantDock gives it
+   its `order`). A closed card is display: none, so it leaves no gap, and on a
+   short window the cards share the height and scroll inside. */
+.assistant-dock-cards {
   position: absolute;
   top: 0;
   right: calc(100% + var(--assistant-dock-gap));
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
+  gap: var(--assistant-dock-gap);
   max-height: 100%;
+  pointer-events: none;
+}
+
+.assistant-dock-card {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-floating-panel-radius);
   background: var(--assistant-dock-face);
@@ -143,10 +158,11 @@
     visibility 0s;
 }
 
-/* Closed, the card slides toward its tab and leaves the page to the chat. It
-   stays mounted so closing can be animated; DockPanel and ChatsCard also mark
-   it inert. */
+/* Closed, the card slides toward its tab and leaves the page to the chat, and
+   the cards below it move up once it has gone. It stays mounted so closing can
+   be animated; DockPanel and ChatsCard also mark it inert. */
 .assistant-dock-card--closed {
+  display: none;
   opacity: 0;
   transform: translateX(var(--app-space-24)) scale(0.96);
   visibility: hidden;
@@ -156,7 +172,8 @@
       var(--app-easing-decelerate),
     transform var(--app-transition-duration-standard)
       var(--app-easing-decelerate),
-    visibility 0s linear var(--app-transition-duration-standard);
+    visibility 0s linear var(--app-transition-duration-standard),
+    display var(--app-transition-duration-standard) allow-discrete;
 }
 
 .assistant-dock-card__header {
@@ -185,11 +202,8 @@
 }
 
 /* The chats card: a search field over a list that scrolls inside the card,
-   so the card is only as tall as its chats. */
-.assistant-chats {
-  width: 19rem;
-}
-
+   so the card is only as tall as its chats. Its width is the one every card
+   shares (dockWidth.tsx). */
 .assistant-chats__search {
   flex: 0 0 auto;
   padding: 0 var(--app-space-12) var(--app-space-8);

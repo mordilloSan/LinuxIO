@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { PaneView } from "@/api/acp";
 import { fireEvent, render, screen, within } from "@/test/render";
 
+import { DockWidthProvider } from "../dock/dockWidth";
 import PanePanel from "./PanePanel";
 
 const WIDTH_KEY = "linuxio.assistant.paneWidth";
@@ -36,13 +37,15 @@ function Harness({
 }) {
   const [open, setOpen] = useState<boolean | null>(null);
   return (
-    <PanePanel
-      onOpenChange={setOpen}
-      open={open}
-      pane={pane}
-      room={room}
-      running={running}
-    />
+    <DockWidthProvider>
+      <PanePanel
+        onOpenChange={setOpen}
+        open={open}
+        pane={pane}
+        room={room}
+        running={running}
+      />
+    </DockWidthProvider>
   );
 }
 

@@ -11,7 +11,7 @@ import {
   pair,
   stateOf,
 } from "@/test/assistantSubagentFixture";
-import { render, screen } from "@/test/render";
+import { render, screen, within } from "@/test/render";
 
 import AssistantDock, { type AssistantDockHandle } from "./AssistantDock";
 
@@ -97,23 +97,53 @@ describe("AssistantDock", () => {
     expect(card("Work map")).toHaveTextContent("Nothing is running");
   });
 
-  it("shows one card at a time", async () => {
+  it("opens a card without closing the others", async () => {
     render(<AssistantDock {...props({ pane })} />);
     await userEvent.click(tab("Chats"));
     expect(card("Chats")).not.toBeNull();
-    expect(card("Work map")).toBeNull();
+    expect(card("Work map")).not.toBeNull();
 
     await userEvent.click(tab("Work map"));
+    expect(card("Work map")).toBeNull();
+    await userEvent.click(tab("Work map"));
     expect(card("Work map")).not.toBeNull();
-    expect(card("Chats")).toBeNull();
+    expect(card("Chats")).not.toBeNull();
   });
 
-  it("leaves a pane that arrives while the chats are open behind its tab", async () => {
+  it("keeps the cards in one fixed order, whichever was opened first", async () => {
+    render(<AssistantDock {...props({ activity, pane })} />);
+    const order = (name: string) => card(name)?.style.order;
+    await userEvent.click(tab("Activity"));
+    await userEvent.click(tab("0 agents"));
+    await userEvent.click(tab("Chats"));
+    expect(order("Chats")).toBe("0");
+    expect(order("Agents")).toBe("1");
+    expect(order("Activity")).toBe("2");
+    expect(order("Work map")).toBe("3");
+  });
+
+  it("gives every card the same width, and widens them together", async () => {
+    render(<AssistantDock {...props({ activity })} />);
+    await userEvent.click(tab("Chats"));
+    await userEvent.click(tab("Activity"));
+    await userEvent.click(tab("0 agents"));
+    for (const name of ["Chats", "Agents", "Activity"]) {
+      expect(card(name)).toHaveStyle({ width: "340px" });
+    }
+
+    screen.getByRole("separator", { name: "Resize Chats" }).focus();
+    await userEvent.keyboard("{ArrowLeft}");
+    for (const name of ["Chats", "Agents", "Activity"]) {
+      expect(card(name)).toHaveStyle({ width: "356px" });
+    }
+  });
+
+  it("opens a pane that arrives beside the chats that are open", async () => {
     const { rerender } = render(<AssistantDock {...props()} />);
     await userEvent.click(tab("Chats"));
     rerender(<AssistantDock {...props({ pane })} />);
     expect(card("Chats")).not.toBeNull();
-    expect(card("Work map")).toBeNull();
+    expect(card("Work map")).not.toBeNull();
   });
 
   it("keeps the activity map behind its tab until it is clicked", async () => {
@@ -121,6 +151,10 @@ describe("AssistantDock", () => {
     expect(card("Activity")).toBeNull();
 
     await userEvent.click(tab("Activity"));
+    // The picture is drawn; the words under it open on request.
+    expect(within(card("Activity")!).getByRole("img")).toBeInTheDocument();
+    expect(card("Activity")).not.toHaveTextContent("new message");
+    await userEvent.click(screen.getByRole("button", { name: /Details/ }));
     expect(card("Activity")).toHaveTextContent("new message");
     expect(tab("Activity")).toHaveAttribute("aria-expanded", "true");
   });
@@ -130,27 +164,25 @@ describe("AssistantDock", () => {
     expect(screen.queryByRole("button", { name: "Activity" })).toBeNull();
   });
 
-  it("opens the map in place of a plugin's pane, and the pane in its place", async () => {
+  it("opens the map and a plugin's pane together", async () => {
     render(<AssistantDock {...props({ activity, pane })} />);
     expect(card("Work map")).not.toBeNull();
 
     await userEvent.click(tab("Activity"));
     expect(card("Activity")).not.toBeNull();
-    expect(card("Work map")).toBeNull();
-
-    await userEvent.click(tab("Work map"));
     expect(card("Work map")).not.toBeNull();
-    expect(card("Activity")).toBeNull();
   });
 
-  it("hides the map while the chats are open and brings it back", async () => {
+  it("keeps the map open while the chats open and close", async () => {
     render(<AssistantDock {...props({ activity })} />);
     await userEvent.click(tab("Activity"));
     await userEvent.click(tab("Chats"));
-    expect(card("Activity")).toBeNull();
+    expect(card("Activity")).not.toBeNull();
+    expect(card("Chats")).not.toBeNull();
 
     await userEvent.click(tab("Chats"));
     expect(card("Activity")).not.toBeNull();
+    expect(card("Chats")).toBeNull();
   });
 
   it("remembers that the map was open", async () => {
@@ -182,7 +214,7 @@ describe("AssistantDock", () => {
     await userEvent.click(tab("1 agent"));
     expect(card("Agents")).toHaveTextContent("1 agent · 1 running");
     expect(tab("1 agent")).toHaveAttribute("aria-expanded", "true");
-    // The card shows the agents, not the map.
+    // The map is its own card, closed until its tab is clicked.
     expect(tab("Activity")).toHaveAttribute("aria-expanded", "false");
 
     // Its state says when it is done, not the turn.
@@ -236,22 +268,27 @@ describe("AssistantDock", () => {
     expect(onStopAgent).toHaveBeenCalledExactlyOnceWith("a");
   });
 
-  it("moves between the map and the agents on one card", async () => {
+  it("opens the map and the agents together, each on its own card", async () => {
     render(<AssistantDock {...props({ activity })} />);
     await userEvent.click(tab("Activity"));
-    await userEvent.click(tab("Show the agents"));
-    expect(card("Agents")).toHaveTextContent("No subagents in this chat yet.");
-    expect(card("Activity")).toBeNull();
-
-    // The chat's agent leads back to the map, and so does the map's tab.
-    await userEvent.click(screen.getByRole("button", { name: /Claude Code/ }));
-    expect(card("Activity")).toHaveTextContent("new message");
     await userEvent.click(tab("0 agents"));
+    expect(within(card("Activity")!).getByRole("img")).toBeInTheDocument();
+    expect(card("Agents")).toHaveTextContent("No subagents in this chat yet.");
+
+    // Each tab closes its own card and leaves the other.
     await userEvent.click(tab("Activity"));
+    expect(card("Activity")).toBeNull();
+    expect(card("Agents")).not.toBeNull();
+
+    // The map's link to the agents opens theirs, and the agents' link to the
+    // map opens the map, each leaving the card it came from.
+    await userEvent.click(tab("Activity"));
+    await userEvent.click(tab("Activity"));
+    await userEvent.click(screen.getByRole("button", { name: /Claude Code/ }));
     expect(card("Activity")).not.toBeNull();
+    expect(card("Agents")).not.toBeNull();
 
     // Closing the agents returns focus to their tab.
-    await userEvent.click(tab("0 agents"));
     await userEvent.click(screen.getByRole("button", { name: "Close Agents" }));
     expect(card("Agents")).toBeNull();
     expect(tab("0 agents")).toHaveFocus();

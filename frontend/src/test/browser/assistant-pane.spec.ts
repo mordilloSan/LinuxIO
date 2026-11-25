@@ -221,7 +221,9 @@ test("floats a plugin pane beside a chat that stays centred", async ({
   await expect(card).toBeVisible();
   await expect(picture).toBeVisible();
 
-  // The chats have their own tab above it, and one card is open at a time.
+  // The chats have their own tab above it, and opening them leaves the pane
+  // open. The cards stand in a fixed order, the chats on top, and share one
+  // width.
   const chatsTab = page.getByRole("button", { name: "Chats", exact: true });
   const chats = page.getByRole("complementary", { name: "Chats" });
   await expect(chats).toBeHidden();
@@ -229,7 +231,7 @@ test("floats a plugin pane beside a chat that stays centred", async ({
   await expect(chats).toBeVisible();
   await expect(chats.getByText("Full health check")).toBeVisible();
   await expect(chats.getByRole("heading", { name: "Earlier" })).toBeVisible();
-  await expect(card).toBeHidden();
+  await expect(card).toBeVisible();
   // Once it has slid out of its tab it floats beside the chat, left of the
   // tabs.
   const tabBox = await chatsTab.boundingBox();
@@ -241,8 +243,16 @@ test("floats a plugin pane beside a chat that stays centred", async ({
     .toBeLessThanOrEqual(tabBox!.x);
   const chatsBox = await chats.boundingBox();
   expect(chatsBox!.x).toBeGreaterThan(composer!.x + composer!.width);
+  await chats.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((slide) => slide.finished));
+  });
+  const settled = (await chats.boundingBox())!;
+  const paneBox = (await card.boundingBox())!;
+  expect(paneBox.y).toBeGreaterThan(settled.y + settled.height);
+  expect(Math.abs(settled.width - paneBox.width)).toBeLessThan(1);
   await chats.getByRole("button", { name: "Close Chats" }).click();
   await expect(chats).toBeHidden();
+  await expect(card).toBeVisible();
   await expect(chatsTab).toBeFocused();
 });
 

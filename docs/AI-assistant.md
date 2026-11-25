@@ -312,8 +312,8 @@ advertises the matching capability.
   chat's own, and appear there as they run; the calls after a second message
   stand under the second row. A subagent that the subagent started shows the
   same way one level deeper. What a subagent said and thought stays out of
-  the chat: it is in the Agents view. Its report is a row `← <title>
-  reported` with the text as Markdown. The title opens the Agents view on
+  the chat: it is in the Agents card. Its report is a row `← <title>
+  reported` with the text as Markdown. The title opens the Agents card on
   that subagent. A message whose subagent is not known reads `a subagent`.
 - **Read-only commands.** `transcript/readOnlyCommand.ts` decides which
   commands only read: a list of readers (`cat`, `ls`, `ss`, `df`, ...),
@@ -410,11 +410,17 @@ advertises the matching capability.
   chat, as tall as its list, with a search field and the chats grouped under
   Today, Yesterday and Earlier by when they were last used. The open chat is
   marked, and clicking another loads it. The tab is disabled when the agent
-  cannot list sessions. The tabs stay in place while a card is open, and one
-  card is open at a time (the chats, the activity map or a
-  [plugin pane](#plugin-panes)), so two cards never run past the bottom of a
-  short window.
-- **Activity map.** The Activity tab, under Chats, opens a card that draws
+  cannot list sessions. The tabs stay in place while a card is open. Opening a
+  card never closes another (the chats, the agents, the activity map, a
+  [plugin pane](#plugin-panes)): the open cards stack in one column beside the
+  tabs (`dock/DockCard.tsx` places each in `.assistant-dock-cards`), always in
+  the same order from the top (chats, agents, activity, then a pane), whichever
+  was opened first, and closing a card moves the ones below it up, with no
+  gap. All the cards have one width, 340 px to begin with, which the user
+  changes by dragging the left edge of any of them or with the arrow keys; the
+  browser remembers it (`dock/dockWidth.tsx`). On a short window the cards
+  share the height and scroll inside.
+- **Activity map.** The Activity tab, under Agents, opens a card that draws
   where the chat's work went. It is LinuxIO's own (`-components/workmap`),
   computed from the transcript and `usage_update` the page already holds: it
   asks the agent for nothing, needs no plugin, and works for any agent that
@@ -569,21 +575,26 @@ advertises the matching capability.
     LinuxIO does (read from the source of `claude-agent-acp` 0.102.0). A subagent's
     own calls fly from the core, not from the Agents station; a call a hook
     refused is an ordinary failure; and compaction is not a step.
-  - *Card.* It shares the plugin pane's box, blending, width and resizing,
-    is drawn only while open, and the browser remembers that it was open and
-    reopens it where it fits beside the chat. Opening it closes a plugin's
-    pane and the reverse; an open side question hides both.
-- **Agents.** Under the Activity tab, a tab counts the subagents at work
+  - *Card.* It shares the plugin pane's box, blending and resizing, is
+    drawn only while open, and the browser remembers that it was open and
+    reopens it where it fits beside the chat. The picture stays pinned at the
+    top of the card at its own proportions; what runs now and the list of
+    what happened are under a **Details** button, closed until it is
+    clicked, and scroll inside the card. Opening it leaves the other cards
+    open; an open side question hides them.
+- **Agents.** The tab under Chats counts the subagents at work
   (`0 agents`, `2 agents`); its dot is grey while none runs and pulses while
-  one does. It opens the activity card on its other view
+  one does. It opens a card of its own
   (`-components/workmap/AgentMap.tsx`), which the map's Agents station opens
-  too. The view draws the chat's agent, with its model and the tokens in its
+  too, and which stays open beside the Activity card: each tab opens and
+  closes only its card, and the browser remembers that each was open. The
+  card draws the chat's agent, with its model and the tokens in its
   context, and the subagents it sent off joined to it by lines: beside it on
   a wide card, under it on a narrow one, and the subagents they sent off
   under them. Each subagent shows how it stands when it is not simply
   finished (`running`, `waiting for you`, `stopped`, `failed`, `ended`,
   `disconnected`), its kind, and how long it has run or took. Choosing the
-  chat's agent goes back to the map; choosing a subagent, here or by its
+  chat's agent opens the map; choosing a subagent, here or by its
   title in the transcript, shows under its name:
   - how it stands, its kind and the model it ran on; why it failed, when
     the agent says; which agent started it; its time and `tokens not
@@ -825,7 +836,7 @@ How LinuxIO keeps it (`-components/subagents.ts`, `assistant-store.ts`):
   so a loaded chat reads message, then report, as the live one did.
 - A subagent's call with no end on record counts as running only while the
   subagent does; after that it reads as done, in the transcript, the map
-  and the Agents view.
+  and the Agents card.
 
 What the form does not give:
 
