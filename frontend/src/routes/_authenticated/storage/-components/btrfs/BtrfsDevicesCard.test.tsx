@@ -91,6 +91,8 @@ const filesystem = (deviceCount: number): BtrfsFilesystem => ({
   totalBytes: 100 * GiB,
   unallocatedBytes: 40 * GiB,
   usedBytes: 30 * GiB,
+  storedBytes: 2 * GiB,
+  freeBytes: 40 * GiB,
   allocation: [
     { kind: "data", profile: "single", totalBytes: GiB, usedBytes: GiB },
     { kind: "metadata", profile: "dup", totalBytes: GiB, usedBytes: GiB },
@@ -923,12 +925,38 @@ describe("BtrfsDevicesCard hot spare", () => {
 
     expect(
       screen.getByText(
-        "A hot spare needs raid1, raid1c3, raid1c4 or raid10: a single pool cannot run with a disk missing.",
+        "A hot spare needs a pool that keeps two or more copies; this one keeps one (single).",
       ),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Set hot spare" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("says dup keeps both copies on one disk", () => {
+    render(
+      <BtrfsDevicesCard
+        filesystem={{
+          ...filesystem(2),
+          allocation: [
+            { kind: "data", profile: "raid1", totalBytes: GiB, usedBytes: GiB },
+            { kind: "metadata", profile: "dup", totalBytes: GiB, usedBytes: GiB },
+          ],
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "A hot spare needs every copy on a different disk; dup keeps both copies on one disk.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no hot spare row on a pool of one disk", () => {
+    render(<BtrfsDevicesCard filesystem={filesystem(1)} />);
+
+    expect(screen.queryByText("Hot spare")).not.toBeInTheDocument();
   });
 
   it("shows the spare's state and why it cannot serve", () => {

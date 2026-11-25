@@ -419,6 +419,8 @@ export interface BtrfsFilesystem {
   totalBytes: number;
   unallocatedBytes: number;
   usedBytes: number;
+  storedBytes: number;
+  freeBytes: number;
   allocation: BtrfsAllocation[];
   devices: BtrfsDevice[];
   scrub: BtrfsScrubStatus;

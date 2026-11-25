@@ -1079,9 +1079,15 @@ Layout under the top level:
 `<kind>` is `manual`, `timeline`, `pre-update` or `pre-rollback`. Snapshots
 are read-only. Nested subvolumes are not included in a snapshot.
 
-**Browse** opens the file browser at
-`/run/linuxio/btrfs/<uuid>/linuxio-snapshots/...`. **Restore files** is a copy
-in the file browser; there is no separate restore operation.
+The Snapshots view lists them under the local day they were taken (Today,
+Yesterday, then the date), newest first, with a legend for the kinds
+present: *Scheduled* (`timeline`), *Before an update*, *Taken by hand*
+(`manual`, never pruned) and *Before a rollback*. A row gives the time, with
+its age today and yesterday, and names its subvolume only when the pool has
+snapshots of more than one. **Browse** opens the file browser at
+`/run/linuxio/btrfs/<uuid>/linuxio-snapshots/...`; **Roll back to this
+snapshot…** and **Delete…** are in the row's ⋯ menu. **Restore files** is a
+copy in the file browser; there is no separate restore operation.
 
 ## Rollback
 
@@ -1479,7 +1485,8 @@ it, so a spare carries no signature another system or tool could misread.
 **What may be a spare.** Only a pool whose every profile keeps a second copy
 (`raid1`, `raid1c3`, `raid1c4`, `raid10`) is offered one: a `single`,
 `raid0` or `dup` pool cannot run with a member missing, so there is nothing
-for a spare to stand in for, and the card says so. The disk must be:
+for a spare to stand in for, and the card says so; a pool of one disk shows
+no hot spare row at all. The disk must be:
 
 1. a whole disk, never a partition, device-mapper, md, loop or RAM device,
    that rules 1 to 6 of [Which disks a pool may take](#which-disks-a-pool-may-take)
@@ -1905,6 +1912,41 @@ Connections use `StrictHostKeyChecking=yes`, `BatchMode=yes`,
 `ConnectTimeout=15` and `ServerAliveInterval=30`; an unknown or changed host
 key fails the job.
 
+## Space
+
+The pool details' **Space** card and the pool's card on the Disks overview
+give two figures, each byte counted once however many copies the profiles
+keep (`StoredBytes` and `FreeBytes` in `inventory.go`):
+
+- **stored**: the used bytes of every data, metadata and system row, as the
+  kernel's `SPACE_INFO` reports them;
+- **about N free**: the kernel's own room for more data, the figure `df`
+  shows (statfs's `f_bavail`, `poolFreeBytes` in `inventory.go`). btrfs
+  counts it disk by disk for the profile new data gets
+  (`btrfs_calc_avail_data_space`), so a raid1 pool's free space is about half
+  its raw free space, a mirror of a 1 TB and a 4 TB disk has about 1 TB to
+  give, not 2.5, and a missing disk adds nothing. `btrfs filesystem usage`
+  divides the unallocated space of all disks together and overstates the
+  uneven mirror, which is why LinuxIO does not use its estimate.
+
+The bar is stored against stored plus free. **Details: how the disk is laid
+out** opens the rows behind them: each kind and profile with what is used of
+what is set aside, the space not set aside yet, and the UUID. A disk's row
+on the Disks card says how much of it is **allocated** to the pool. When the
+space cannot be read, the Space card says so and shows no figures, and the
+pool's card on the Disks overview says **Space unknown**.
+
+### Known limits
+
+- A pool running without a disk writes new data as `single` on the disks
+  present (`btrfs_reduce_alloc_profile`), and the free figure counts that
+  room, as `df` does: it is room without a second copy.
+- The kernel's figure drops toward 0 when metadata is nearly full, before the
+  data chunks are; the `btrfs/space` alert says why.
+- The Snapshots view's Today and Yesterday are worked out when the list
+  loads, so a page left open past midnight keeps them until the list is read
+  again.
+
 ## Quotas and compression
 
 Both are in the **Settings** card of the pool details, with the
@@ -1921,7 +1963,8 @@ btrfsmaintenance timers.
   persisted into every existing `/etc/fstab` entry of the filesystem (matched
   by mountpoint or `UUID=` source); only the options field is rewritten, and
   comments and dump/pass fields are preserved. **Off** persists as removal of
-  the option. "Persisted in fstab" means every such entry carries it.
+  the option. The card says **Kept after a restart** when every such entry
+  carries it, and **Until the next restart** otherwise.
 - **Compression per subvolume** sets the `btrfs.compression` extended
   attribute, which is that property.
 

@@ -254,8 +254,9 @@ const PoolCard = ({
       />
     )}
     <AppTypography color="text.secondary" variant="caption">
-      Allocated {formatFileSize(pool.allocatedBytes)} · Free{" "}
-      {formatFileSize(pool.freeBytes)}
+      {pool.space
+        ? `${formatFileSize(pool.space.storedBytes)} stored · about ${formatFileSize(pool.space.freeBytes)} free`
+        : "Space unknown"}
     </AppTypography>
   </AppButton>
 );

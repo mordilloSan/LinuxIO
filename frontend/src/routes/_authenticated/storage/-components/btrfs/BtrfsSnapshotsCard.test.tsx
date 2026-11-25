@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ import { LinuxIOError } from "@/api/errors";
 import { render } from "@/test/render";
 
 import BtrfsSnapshotsCard from "./BtrfsSnapshotsCard";
+import { SNAPSHOT_DAY_FORMAT } from "./snapshotDays";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -154,19 +155,78 @@ beforeEach(() => {
 
 const rows = async () => {
   await screen.findAllByRole("button", { name: "Browse" });
-  return within(screen.getByRole("table", { name: "Btrfs snapshots" }))
-    .getAllByRole("row")
-    .slice(1);
+  return within(
+    screen.getByRole("region", { name: "Btrfs snapshots" }),
+  ).getAllByRole("listitem");
+};
+
+// Newest first: data 12:00, timeline 11:00, manual 10:00.
+const manualRow = async () => (await rows())[2];
+
+const chooseFromMenu = async (
+  user: ReturnType<typeof userEvent.setup>,
+  row: HTMLElement,
+  item: string,
+) => {
+  await user.click(within(row).getByRole("button", { name: /^More actions/ }));
+  await user.click(await screen.findByRole("menuitem", { name: item }));
 };
 
 describe("BtrfsSnapshotsCard", () => {
   it("renders the snapshot kinds in words", async () => {
     render(<BtrfsSnapshotsCard uuid="uuid-1" />);
 
-    expect(await screen.findByText("Manual snapshot")).toBeInTheDocument();
-    expect(screen.getByText("Scheduled snapshot")).toBeInTheDocument();
-    expect(screen.getByText("Before update snapshot")).toBeInTheDocument();
+    const [data, scheduled, manualItem] = await rows();
+    expect(data).toHaveTextContent("Before an update");
+    expect(scheduled).toHaveTextContent("Scheduled");
+    expect(manualItem).toHaveTextContent("Taken by hand");
     expect(mocks.snapshots).toHaveBeenCalledWith({ uuid: "uuid-1" });
+  });
+
+  it("groups snapshots under the day they were taken", async () => {
+    render(<BtrfsSnapshotsCard uuid="uuid-1" />);
+
+    expect(
+      await screen.findByRole("list", {
+        name: new Intl.DateTimeFormat(undefined, SNAPSHOT_DAY_FORMAT).format(
+          new Date(manual.createdAt),
+        ),
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("names each row's menu after its snapshot", async () => {
+    render(<BtrfsSnapshotsCard uuid="uuid-1" />);
+
+    const names = (await rows()).map(
+      (row) =>
+        within(row)
+          .getByRole("button", { name: /^More actions/ })
+          .getAttribute("aria-label") ?? "",
+    );
+    expect(new Set(names).size).toBe(3);
+  });
+
+  it("names the kinds present in a legend", async () => {
+    render(<BtrfsSnapshotsCard uuid="uuid-1" />);
+
+    const legend = await screen.findByRole("list", { name: "Snapshot kinds" });
+    expect(within(legend).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(legend).getByText("Before an update")).toBeInTheDocument();
+    expect(
+      within(legend).getByText("Taken by hand, never pruned"),
+    ).toBeInTheDocument();
+  });
+
+  it("names each row's subvolume only when there are several", async () => {
+    render(<BtrfsSnapshotsCard uuid="uuid-1" />);
+    expect((await rows())[0]).toHaveTextContent("data");
+
+    cleanup();
+    mocks.snapshots.mockResolvedValue([manual, timeline]);
+    render(<BtrfsSnapshotsCard uuid="uuid-1" />);
+    const [first] = await rows();
+    expect(within(first).queryByText("@")).not.toBeInTheDocument();
   });
 
   it("narrows the rows with the source filter", async () => {
@@ -177,8 +237,9 @@ describe("BtrfsSnapshotsCard", () => {
     await user.click(screen.getByRole("combobox", { name: "Source" }));
     await user.click(screen.getByRole("option", { name: "data" }));
 
-    expect(await rows()).toHaveLength(1);
-    expect(screen.queryByText("Scheduled snapshot")).not.toBeInTheDocument();
+    const remaining = await rows();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toHaveTextContent("Before an update");
   });
 
   it("browses a snapshot in the file browser", async () => {
@@ -186,7 +247,7 @@ describe("BtrfsSnapshotsCard", () => {
     render(<BtrfsSnapshotsCard uuid="uuid-1" />);
 
     await user.click(
-      within((await rows())[0]).getByRole("button", { name: "Browse" }),
+      within(await manualRow()).getByRole("button", { name: "Browse" }),
     );
 
     expect(mocks.navigate).toHaveBeenCalledWith({
@@ -199,9 +260,7 @@ describe("BtrfsSnapshotsCard", () => {
     const user = userEvent.setup();
     render(<BtrfsSnapshotsCard uuid="uuid-1" />);
 
-    await user.click(
-      within((await rows())[0]).getByRole("button", { name: "Delete" }),
-    );
+    await chooseFromMenu(user, await manualRow(), "Delete…");
     expect(route("btrfs_snapshot_delete")).not.toHaveBeenCalled();
     await user.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
@@ -273,14 +332,18 @@ describe("BtrfsSnapshotsCard", () => {
     } satisfies BtrfsRollbackResult;
     render(<BtrfsSnapshotsCard uuid="uuid-1" />);
 
-    await user.click(
-      within((await rows())[0]).getByRole("button", { name: "Restore" }),
+    await chooseFromMenu(
+      user,
+      await manualRow(),
+      "Roll back to this snapshot…",
     );
     const dialog = await screen.findByRole("dialog");
     expect(
-      within(dialog).getByText("Restore @?", { exact: false }),
+      within(dialog).getByText("Roll back @?", { exact: false }),
     ).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Roll back" }),
+    );
 
     expect(mocks.submit).toHaveBeenCalledWith({
       uuid: "uuid-1",
@@ -309,11 +372,15 @@ describe("BtrfsSnapshotsCard", () => {
     mocks.rollbackResult = { remounted: false, rebootRequired: true };
     render(<BtrfsSnapshotsCard uuid="uuid-1" />);
 
-    await user.click(
-      within((await rows())[0]).getByRole("button", { name: "Restore" }),
+    await chooseFromMenu(
+      user,
+      await manualRow(),
+      "Roll back to this snapshot…",
     );
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Roll back" }),
+    );
 
     await user.click(
       await within(dialog).findByRole("button", { name: "Reboot now" }),
@@ -327,11 +394,15 @@ describe("BtrfsSnapshotsCard", () => {
     mocks.rollbackResult = { remounted: false, rebootRequired: true };
     render(<BtrfsSnapshotsCard uuid="uuid-1" />);
 
-    await user.click(
-      within((await rows())[0]).getByRole("button", { name: "Restore" }),
+    await chooseFromMenu(
+      user,
+      await manualRow(),
+      "Roll back to this snapshot…",
     );
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Roll back" }),
+    );
     await user.click(
       await within(dialog).findByRole("button", { name: "Reboot now" }),
     );

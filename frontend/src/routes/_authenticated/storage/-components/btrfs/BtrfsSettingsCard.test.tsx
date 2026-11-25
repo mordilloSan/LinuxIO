@@ -74,6 +74,33 @@ beforeEach(() => {
 });
 
 describe("BtrfsSettingsCard", () => {
+  it("says compression lasts until the next restart when it is not kept", async () => {
+    mocks.settings.mockResolvedValue({
+      ...settings,
+      compression: { ...settings.compression, fstabPersisted: false },
+    });
+    render(<BtrfsSettingsCard mountpoint="/" uuid="uuid-1" />, {
+      capabilities,
+    });
+
+    expect(
+      await screen.findByText("Until the next restart"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/fstab/)).toBeNull();
+  });
+
+  it("puts the quotas switch beside its label", async () => {
+    render(<BtrfsSettingsCard mountpoint="/" uuid="uuid-1" />, {
+      capabilities,
+    });
+
+    const quotas = await screen.findByRole("checkbox", { name: "Quotas" });
+    expect(screen.getByText("Quotas").closest("label")).toContainElement(
+      quotas,
+    );
+    expect(quotas).toHaveAccessibleDescription(/lets you set size limits/);
+  });
+
   it("toggles quotas", async () => {
     const user = userEvent.setup();
     render(<BtrfsSettingsCard mountpoint="/" uuid="uuid-1" />, {
@@ -94,7 +121,12 @@ describe("BtrfsSettingsCard", () => {
       capabilities,
     });
 
-    expect(await screen.findByText("Persisted in fstab")).toBeInTheDocument();
+    expect(await screen.findByText("Kept after a restart")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Also compress data that looks incompressible",
+      }),
+    ).toBeInTheDocument();
     // Filesystem-wide: one control, not one per mount.
     expect(
       screen.getAllByRole("combobox", { name: "Compression" }),

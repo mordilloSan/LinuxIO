@@ -43,6 +43,8 @@ const filesystem = (overrides: Partial<BtrfsFilesystem>): BtrfsFilesystem => ({
   totalBytes: 100 * GiB,
   unallocatedBytes: 40 * GiB,
   usedBytes: 30 * GiB,
+  storedBytes: 25 * GiB,
+  freeBytes: 45 * GiB,
   allocation: [
     { kind: "metadata", profile: "dup", totalBytes: GiB, usedBytes: GiB },
     { kind: "data", profile: "raid10", totalBytes: GiB, usedBytes: GiB },
@@ -93,11 +95,14 @@ describe("profileLabel", () => {
 });
 
 describe("describePool", () => {
+  it("has no space figures when the space could not be read", () => {
+    expect(describePool(filesystem({ allocation: [] }), 0).space).toBeNull();
+  });
+
   it("summarises disks, data profile, space and volumes", () => {
     const pool = describePool(filesystem({}), 0);
     expect(pool.profile).toBe("RAID 10");
-    expect(pool.allocatedBytes).toBe(60 * GiB);
-    expect(pool.freeBytes).toBe(70 * GiB);
+    expect(pool.space).toEqual({ storedBytes: 25 * GiB, freeBytes: 45 * GiB });
     expect(pool.volumes).toEqual(["/"]);
     expect(pool.name).toBe("Storage pool 1");
     expect(pool.disks.map((d) => d.name)).toEqual([

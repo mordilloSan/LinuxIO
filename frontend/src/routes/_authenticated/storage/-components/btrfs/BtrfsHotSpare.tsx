@@ -337,10 +337,17 @@ const BtrfsHotSpare = ({
     ({ profile }) => !SPARE_PROFILES.includes(profile),
   );
   const offered = filesystem.allocation.length > 0 && oneCopy === undefined;
-  const notOffered = `A hot spare needs raid1, raid1c3, raid1c4 or raid10${
-    oneCopy ? `: a ${oneCopy.profile} pool cannot run with a disk missing` : ""
-  }.`;
+  const notOffered = !oneCopy
+    ? "A hot spare needs a pool that keeps two or more copies."
+    : oneCopy.profile === "dup"
+      ? "A hot spare needs every copy on a different disk; dup keeps both copies on one disk."
+      : ["single", "raid0"].includes(oneCopy.profile)
+        ? `A hot spare needs a pool that keeps two or more copies; this one keeps one (${oneCopy.profile}).`
+        : `A hot spare is offered for raid1, raid1c3, raid1c4 and raid10, not ${oneCopy.profile}.`;
   const state = spare ? STATES[spare.state] : null;
+
+  // A pool of one disk has nothing a spare could stand in for.
+  if (!spare && filesystem.devices.length < 2) return null;
 
   return (
     <div

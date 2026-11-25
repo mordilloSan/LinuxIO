@@ -57,7 +57,7 @@ const BtrfsRollbackDialog = ({
       onClose={isPending ? undefined : onClose}
       open
     >
-      <AppDialogTitle>Restore {snapshot.source}?</AppDialogTitle>
+      <AppDialogTitle>Roll back {snapshot.source}?</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
           Everything in {snapshot.source} goes back to how it was on{" "}
@@ -85,7 +85,7 @@ const BtrfsRollbackDialog = ({
             }
             severity="warning"
           >
-            Reboot required to finish restoring {snapshot.source}.
+            Reboot required to finish rolling back {snapshot.source}.
           </AppAlert>
         )}
         {result?.leftoverPath && (
@@ -120,7 +120,7 @@ const BtrfsRollbackDialog = ({
             onClick={onConfirm}
             variant="contained"
           >
-            {isPending ? "Restoring..." : "Restore"}
+            {isPending ? "Rolling back..." : "Roll back"}
           </AppButton>
         )}
       </AppDialogActions>

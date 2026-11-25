@@ -54,6 +54,8 @@ type fakeKernel struct {
 	statsFail       atomic.Bool // GET_DEV_STATS fails, as when the kernel cannot be asked
 	statsResetFail  error       // what a GET_DEV_STATS that resets fails with; nil resets
 	readOnly        bool        // statfs says the pool is read-only, as after a transaction abort
+	freeBytes       uint64      // statfs's room for more data (f_bavail times f_bsize)
+	freeErr         error       // what statfs's room fails with; nil answers freeBytes
 
 	cancelled  chan struct{} // closed on the first cancel of any operation
 	cancelOnce sync.Once
@@ -336,10 +338,11 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 	// The pool holds every member it lists.
 	deviceNotBusy = func(device string) error { return fmt.Errorf("%s is in use: %w", device, unix.EBUSY) }
 	fsIoctl = k.ioctl
-	oldReadOnly, oldUnitState := poolReadOnly, unitActiveState
+	oldReadOnly, oldUnitState, oldFree := poolReadOnly, unitActiveState, poolFreeBytes
 	poolReadOnly = func(string) (bool, error) { return k.readOnly, nil }
+	poolFreeBytes = func(string) (uint64, error) { return k.freeBytes, k.freeErr }
 	unitActiveState = func(context.Context, string) (string, error) { return "inactive", nil }
-	t.Cleanup(func() { poolReadOnly, unitActiveState = oldReadOnly, oldUnitState })
+	t.Cleanup(func() { poolReadOnly, unitActiveState, poolFreeBytes = oldReadOnly, oldUnitState, oldFree })
 	// A descriptor of the mount is one of a folder of its own, which the
 	// kernel answers; any other descriptor goes on as before.
 	mountDir, oldOpen, oldFD := t.TempDir(), openMount, ioctlFD

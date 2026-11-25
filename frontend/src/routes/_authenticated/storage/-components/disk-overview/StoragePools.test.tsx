@@ -92,6 +92,8 @@ const filesystem = (
   totalBytes: 100 * GiB,
   unallocatedBytes: 40 * GiB,
   usedBytes: 30 * GiB,
+  storedBytes: 25 * GiB,
+  freeBytes: 45 * GiB,
   allocation: [
     { kind: "data", profile, totalBytes: GiB, usedBytes: GiB },
     { kind: "metadata", profile: "dup", totalBytes: GiB, usedBytes: GiB },
@@ -253,6 +255,14 @@ beforeEach(() => {
 });
 
 describe("StoragePools", () => {
+  it("says the space is unknown when it could not be read", async () => {
+    mocks.list.mockResolvedValue([{ ...root, allocation: [] }]);
+    renderPools();
+
+    expect(await screen.findByText("Space unknown")).toBeInTheDocument();
+    expect(screen.queryByText(/stored · about/)).not.toBeInTheDocument();
+  });
+
   it("draws disks, pool and volumes for each btrfs filesystem", async () => {
     renderPools();
 
@@ -268,7 +278,9 @@ describe("StoragePools", () => {
     expect(
       screen.getByRole("button", { name: "Drive details nvme1n1" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText(/Allocated 60 GB · Free 70 GB/)).toHaveLength(2);
+    expect(screen.getAllByText(/25 GB stored · about 45 GB free/)).toHaveLength(
+      2,
+    );
     expect(
       screen.getByRole("button", { name: "Volume /mnt/tank/media" }),
     ).toHaveTextContent("Btrfs");

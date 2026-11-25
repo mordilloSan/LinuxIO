@@ -12,8 +12,6 @@ import {
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualTable from "@/components/tables/AppVirtualTable";
-import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -24,6 +22,7 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -37,32 +36,52 @@ import {
 
 import BtrfsRollbackDialog from "./BtrfsRollbackDialog";
 import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
+import { groupSnapshotsByDay } from "./snapshotDays";
 
 const ALL_SOURCES = "";
 
-const KINDS: Record<string, { label: string; color: string; detail: string }> =
-  {
-    manual: {
-      label: "Manual",
-      color: "var(--app-palette-primary-main)",
-      detail: "taken by you",
-    },
-    timeline: {
-      label: "Scheduled",
-      color: "var(--app-palette-text-secondary)",
-      detail: "automatic",
-    },
-    "pre-update": {
-      label: "Before update",
-      color: "var(--app-palette-warning-main)",
-      detail: "taken before an update",
-    },
-    "pre-rollback": {
-      label: "Before restore",
-      color: "var(--app-palette-info-main)",
-      detail: "taken before a restore",
-    },
-  };
+interface KindInfo {
+  label: string;
+  /** How the legend names the kind, when it says more than the label. */
+  legend?: string;
+  color: string;
+  detail: string;
+}
+
+// In the legend's order.
+const KINDS: Record<string, KindInfo> = {
+  timeline: {
+    label: "Scheduled",
+    color: "var(--app-palette-text-secondary)",
+    detail: "automatic",
+  },
+  "pre-update": {
+    label: "Before an update",
+    color: "var(--app-palette-warning-main)",
+    detail: "taken before an update",
+  },
+  manual: {
+    label: "Taken by hand",
+    legend: "Taken by hand, never pruned",
+    color: "var(--app-palette-primary-main)",
+    detail: "taken by you, never pruned",
+  },
+  "pre-rollback": {
+    label: "Before a rollback",
+    color: "var(--app-palette-info-main)",
+    detail: "taken before a rollback",
+  },
+};
+
+const kindColor = (kind: string) =>
+  KINDS[kind]?.color ?? "var(--app-palette-text-disabled)";
+
+const timeOfDay = (createdAt: string) =>
+  new Date(createdAt).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 
 const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
   // Lazy: the route loader cannot know the selected filesystem's uuid.
@@ -79,6 +98,10 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
   // null: dialog closed; "": open with nothing picked yet.
   const [taking, setTaking] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<BtrfsSnapshot | null>(null);
+  const [menu, setMenu] = useState<{
+    anchor: HTMLElement;
+    snapshot: BtrfsSnapshot;
+  } | null>(null);
   // Held as a path so a rollback recovered after a reload resolves once the
   // list has loaded.
   const [rollbackPath, setRollbackPath] = useState<string | null>(null);
@@ -159,94 +182,10 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
     (snapshot) => snapshot.referencedBytes !== undefined,
   );
 
-  const columns: AppVirtualTableColumnDef<BtrfsSnapshot>[] = [
-    {
-      id: "kind",
-      header: "",
-      cell: ({ row }) => (
-        <StatusDot
-          color={
-            KINDS[row.original.kind]?.color ??
-            "var(--app-palette-text-disabled)"
-          }
-          tooltip={KINDS[row.original.kind]?.detail ?? row.original.kind}
-        />
-      ),
-      meta: { width: 28 },
-    },
-    {
-      accessorKey: "createdAt",
-      header: "Taken",
-      cell: ({ row }) => (
-        <div style={{ minWidth: 0 }}>
-          {formatRelativeAge(new Date(row.original.createdAt).getTime())}
-          <AppTypography
-            color="text.secondary"
-            style={{ display: "block" }}
-            variant="caption"
-          >
-            {formatDate(row.original.createdAt)}
-          </AppTypography>
-        </div>
-      ),
-    },
-    {
-      id: "what",
-      header: "What",
-      cell: ({ row }) => (
-        <div style={{ minWidth: 0 }}>
-          {KINDS[row.original.kind]?.label ?? row.original.kind} snapshot
-          <AppTypography
-            color="text.secondary"
-            style={{ display: "block" }}
-            variant="caption"
-          >
-            {row.original.source}
-          </AppTypography>
-        </div>
-      ),
-    },
-    ...(hasSizes
-      ? [
-          {
-            id: "size",
-            header: "Size",
-            cell: ({ row }) => (
-              <AppTypography color="text.secondary" variant="caption">
-                {row.original.referencedBytes === undefined
-                  ? "-"
-                  : formatFileSize(row.original.referencedBytes)}
-              </AppTypography>
-            ),
-            meta: { align: "right" },
-          } satisfies AppVirtualTableColumnDef<BtrfsSnapshot>,
-        ]
-      : []),
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <AppActionIconButton
-            icon="mdi:folder-open-outline"
-            label="Browse"
-            onClick={() => handleBrowse(row.original)}
-          />
-          <AppActionIconButton
-            icon="mdi:backup-restore"
-            label="Restore"
-            onClick={() => openRollback(row.original)}
-          />
-          <AppActionIconButton
-            icon="mdi:delete"
-            label="Delete"
-            onClick={() => setDeleting(row.original)}
-          />
-        </div>
-      ),
-      meta: { align: "right" },
-    },
-  ];
+  const days = groupSnapshotsByDay(snapshots);
+  const kindsPresent = Object.keys(KINDS).filter((kind) =>
+    data.some((snapshot) => snapshot.kind === kind),
+  );
 
   return (
     <FrostedCard>
@@ -285,17 +224,187 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
           title="Snapshots"
         />
         {error && <AppAlert severity="error">{error.message}</AppAlert>}
-        <AppVirtualTable
-          ariaLabel="Btrfs snapshots"
-          columns={columns}
-          data={snapshots}
-          density="compact"
-          emptyMessage={isPending ? "Loading..." : "No snapshots yet"}
-          fillAvailable={false}
-          getRowId={(snapshot) => snapshot.path}
-          maxHeight={420}
-          variant="embedded"
-        />
+        {kindsPresent.length > 0 && (
+          <ul
+            aria-label="Snapshot kinds"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "var(--app-space-4) var(--app-space-16)",
+              listStyle: "none",
+              margin: "0 0 var(--app-space-8)",
+              padding: 0,
+            }}
+          >
+            {kindsPresent.map((kind) => (
+              <li
+                key={kind}
+                style={{
+                  alignItems: "center",
+                  display: "flex",
+                  gap: "var(--app-space-6)",
+                }}
+              >
+                <StatusDot color={kindColor(kind)} />
+                <AppTypography color="text.secondary" variant="caption">
+                  {KINDS[kind].legend ?? KINDS[kind].label}
+                </AppTypography>
+              </li>
+            ))}
+          </ul>
+        )}
+        <section
+          aria-label="Btrfs snapshots"
+          style={{
+            maxHeight: 520,
+            maxWidth: 880,
+            overflowX: "hidden",
+            overflowY: "auto",
+          }}
+        >
+          {days.length === 0 && (
+            <AppTypography color="text.secondary" variant="body2">
+              {isPending ? "Loading..." : "No snapshots yet"}
+            </AppTypography>
+          )}
+          {days.map((day) => {
+            const dayId = `btrfs-snapshot-day-${uuid}-${day.key}`;
+            return (
+              <div key={day.key}>
+                <AppTypography
+                  color="text.secondary"
+                  fontWeight={600}
+                  id={dayId}
+                  style={{
+                    borderBottom: "1px solid var(--app-palette-divider)",
+                    margin: "var(--app-space-12) 0 0",
+                    padding: "var(--app-space-6) var(--app-space-4)",
+                  }}
+                  variant="overline"
+                >
+                  {day.label}
+                </AppTypography>
+                <ul
+                  aria-labelledby={dayId}
+                  style={{ listStyle: "none", margin: 0, padding: 0 }}
+                >
+                  {day.items.map((snapshot) => {
+                    const kind = KINDS[snapshot.kind]?.label ?? snapshot.kind;
+                    const time = timeOfDay(snapshot.createdAt);
+                    const whenId = `btrfs-snapshot-${uuid}-${snapshot.id}`;
+                    return (
+                      <li
+                        key={snapshot.path}
+                        style={{
+                          alignItems: "center",
+                          borderBottom: "1px solid var(--app-palette-divider)",
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "var(--app-space-4) var(--app-space-12)",
+                          padding: "var(--app-space-4)",
+                        }}
+                      >
+                        <StatusDot
+                          color={kindColor(snapshot.kind)}
+                          tooltip={KINDS[snapshot.kind]?.detail ?? snapshot.kind}
+                        />
+                        <AppTypography
+                          id={whenId}
+                          style={{ flex: "0 0 150px" }}
+                          variant="body2"
+                        >
+                          <strong>{time}</strong>
+                          {day.recent &&
+                            ` · ${formatRelativeAge(new Date(snapshot.createdAt).getTime())}`}
+                        </AppTypography>
+                        <div style={{ flex: "1 1 120px", minWidth: 0 }}>
+                          <AppTypography variant="body2">{kind}</AppTypography>
+                          {sources.length > 1 && (
+                            <AppTypography
+                              color="text.secondary"
+                              style={{ display: "block" }}
+                              variant="caption"
+                            >
+                              {snapshot.source}
+                            </AppTypography>
+                          )}
+                        </div>
+                        {hasSizes && (
+                          <AppTypography color="text.secondary" variant="caption">
+                            {snapshot.referencedBytes === undefined
+                              ? ""
+                              : formatFileSize(snapshot.referencedBytes)}
+                          </AppTypography>
+                        )}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "var(--app-space-4)",
+                            marginInlineStart: "auto",
+                          }}
+                        >
+                          <AppButton
+                            aria-describedby={whenId}
+                            keepTextOnMobile
+                            onClick={() => handleBrowse(snapshot)}
+                            size="small"
+                            startIcon={
+                              <Icon
+                                height={18}
+                                icon="mdi:folder-open-outline"
+                                width={18}
+                              />
+                            }
+                            variant="text"
+                          >
+                            Browse
+                          </AppButton>
+                          <AppActionIconButton
+                            ariaLabel={`More actions for the snapshot of ${snapshot.source}, ${day.label} at ${time}`}
+                            icon="mdi:dots-horizontal"
+                            label="More actions"
+                            onClick={(event) =>
+                              setMenu({ anchor: event.currentTarget, snapshot })
+                            }
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </section>
+        <AppMenu
+          anchorEl={menu?.anchor ?? null}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          onClose={() => setMenu(null)}
+          open={menu !== null}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          <AppMenuItem
+            onClick={() => {
+              if (menu) openRollback(menu.snapshot);
+              setMenu(null);
+            }}
+            startAdornment={
+              <Icon height={18} icon="mdi:backup-restore" width={18} />
+            }
+          >
+            Roll back to this snapshot…
+          </AppMenuItem>
+          <AppMenuItem
+            danger
+            onClick={() => {
+              if (menu) setDeleting(menu.snapshot);
+              setMenu(null);
+            }}
+            startAdornment={<Icon height={18} icon="mdi:delete" width={18} />}
+          >
+            Delete…
+          </AppMenuItem>
+        </AppMenu>
       </AppCardContent>
 
       <GeneralDialog

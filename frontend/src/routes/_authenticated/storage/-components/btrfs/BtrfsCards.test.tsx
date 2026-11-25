@@ -22,6 +22,8 @@ const filesystem: BtrfsFilesystem = {
   totalBytes: 100 * 1024 ** 3,
   unallocatedBytes: 40 * 1024 ** 3,
   usedBytes: 30 * 1024 ** 3,
+  storedBytes: 25 * 1024 ** 3,
+  freeBytes: 65 * 1024 ** 3,
   allocation: [
     {
       kind: "data",
@@ -446,7 +448,18 @@ describe("BtrfsDevicesCard", () => {
     expect(screen.getByText("/dev/sda")).toBeInTheDocument();
     expect(screen.getByText("Missing")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("60 GB used · 40 GB free")).toBeInTheDocument();
+    expect(screen.getByText("60 GB allocated")).toBeInTheDocument();
+    expect(screen.queryByText(/free/)).not.toBeInTheDocument();
+    expect(screen.getByText("2 disks")).toBeInTheDocument();
+  });
+
+  it("counts one disk without a plural", () => {
+    render(
+      <BtrfsDevicesCard
+        filesystem={{ ...filesystem, devices: [filesystem.devices[0]] }}
+      />,
+    );
+    expect(screen.getByText("1 disk")).toBeInTheDocument();
   });
 
   it("marks a disk that dropped out of the mounted pool as such", () => {
@@ -476,12 +489,55 @@ describe("BtrfsDevicesCard", () => {
 });
 
 describe("BtrfsSpaceCard", () => {
-  it("shows allocation usage and unallocated bytes", () => {
+  it("shows what is stored and about how much is free", () => {
     render(<BtrfsSpaceCard filesystem={filesystem} />);
-    expect(screen.getByText("data · single")).toBeInTheDocument();
+    expect(screen.getByText("25 GB")).toBeInTheDocument();
+    expect(screen.getByText("About 65 GB free of 90 GB")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "Space used" }),
+    ).toBeInTheDocument();
+    // A figure, not a heading.
+    expect(
+      screen.queryByRole("heading", { name: "25 GB" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps how the disk is laid out behind Details", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsSpaceCard filesystem={filesystem} />);
+    expect(screen.queryByText("Data · single")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Details: how the disk is laid out" }),
+    );
+
+    expect(screen.getByText("Data · single")).toBeInTheDocument();
+    expect(
+      screen.getByText("25 GB used of 50 GB set aside"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Not set aside yet")).toBeInTheDocument();
     expect(
       screen.getByText(formatFileSize(filesystem.unallocatedBytes)),
     ).toBeInTheDocument();
     expect(screen.getByText("uuid-1")).toBeInTheDocument();
+  });
+
+  it("shows no figures when the space could not be read", () => {
+    render(
+      <BtrfsSpaceCard
+        filesystem={{
+          ...filesystem,
+          allocation: [],
+          storedBytes: 0,
+          freeBytes: 0,
+        }}
+      />,
+    );
+    expect(screen.getByText("Space could not be read")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Details/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/free of/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 });

@@ -10,7 +10,8 @@ suffix ("p2", or "1" on `sda1`); a whole disk used as a member has no label.
 A mapped device on another mapped device (LVM on LUKS) is drawn once, as the
 mounted device, with the layers in its caption. A drive with nothing on it
 says **Nothing on it**; partitions nothing mounts or builds on are listed on
-the drive's card.
+the drive's card. A btrfs pool's card gives what it stores and about how
+much is free, each byte counted once (see [Btrfs, Space](./btrfs.md#space)).
 
 Edges into the same node share a lane in the gap before it, so a four-drive
 array reads as one trunk with four branches. Node positions come from fixed
