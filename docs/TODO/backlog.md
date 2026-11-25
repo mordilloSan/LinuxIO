@@ -92,6 +92,25 @@ after a change that issues ioctls).
 
 ## Needs the owner
 
+- Updating a Compose service that other services join with
+  `network_mode: service:<it>` (a VPN container such as Gluetun and the
+  services that route through it) breaks them: the update runs
+  `up -d --no-deps --force-recreate <service>`
+  ([Docker Updates](../docker-updates.md#compose-services)), Compose leaves
+  the others alone, and Docker recorded the joined container by its ID. In
+  the test VMs (Docker 29.10.1 with Compose 5.8.0 on Ubuntu, Docker 29.9.3
+  on Fedora) the other service kept running with `lo` alone, still joined to
+  the removed container's ID, and its restart failed with "No such
+  container". `TestDockerUpdateComposeNetworkDependentsIntegration` (the
+  docker suite) shows it and fails until this is fixed. Either refuse the
+  update while another container joins the service, as
+  `validateStandaloneDependents` does for a standalone one, or recreate
+  those services with it in the same `up`, which the rollback's `up` must
+  then name too; the owner decides which. Watchtower recreates them (its
+  v1.24.2, pull request 3991). **checked**
+
+## Needs a real machine or a measurement
+
 ## Needs a real machine or a measurement
 
 - The Gemini CLI and Codex profiles (`GEMINI_CLI_HOME`, `CODEX_HOME`,
@@ -118,23 +137,6 @@ after a change that issues ioctls).
   container that publishes on the address starts), and a host whose address
   a bridge handoff by LinuxIO moved to a bridge (`systemd-analyze blame`
   must not show `docker.service` waiting 30 s).
-
-- A Compose service that other services join with
-  `network_mode: service:<it>` (a VPN container such as Gluetun and the
-  services that route through it) is updated with
-  `up -d --no-deps --force-recreate <service>`
-  ([Docker Updates](../docker-updates.md#compose-services)), and nothing
-  looks for those services first, as `validateStandaloneDependents` does for
-  a standalone container. Docker records the joined container by its ID, so
-  they may be left with no network, and fail with "No such container" at
-  their next start. Whether Compose recreates them itself under `--no-deps`
-  (an update from the page, or a pass that updates the shared service and not
-  them) is not run: a Docker suite case in the test VM should bring such a
-  pair up, update the shared service and look at the other. If they break,
-  either refuse the update as the standalone path does (a few lines) or
-  recreate them with it, which the rollback must then cover too; that choice
-  is the owner's. Watchtower fixed the same in v1.24.2 (its pull request
-  3991). **checked** for the missing check, **not verified** for the effect.
 
 - The monitoring daemon's NVIDIA paths, inherited from Beszel: the library is
   called under the GPU manager's lock (whether a slow call holds readers up),

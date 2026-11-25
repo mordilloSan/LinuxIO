@@ -80,6 +80,85 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	}
 }
 
+// TestDockerUpdateComposeNetworkDependentsIntegration updates a service that
+// another service joins with network_mode: service:<it> (a VPN container and
+// what routes through it), as the Containers page does, and checks that the
+// other service is left in the network of the new container: running, with
+// its interface, and able to start again. Docker records the joined container
+// by its ID, so a service left behind points at a container that is gone.
+func TestDockerUpdateComposeNetworkDependentsIntegration(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
+	}
+	requireDockerComposeIntegration(t)
+	withTempUpdateStatusPath(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	cli, err := client.New(client.FromEnv)
+	if err != nil {
+		t.Fatalf("create Docker client: %v", err)
+	}
+	defer cli.Close()
+
+	project := fmt.Sprintf("linuxio-it-%d", time.Now().UnixNano())
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	envPath := filepath.Join(dir, ".env")
+	writeDockerUpdateComposeEnvironmentFile(t, envPath, "LINUXIO_IT_IMAGE", "alpine:3.20")
+	content := "services:\n" +
+		"  vpn:\n    image: ${LINUXIO_IT_IMAGE}\n    command: [\"sleep\", \"infinity\"]\n" +
+		"  app:\n    image: alpine:3.20\n    network_mode: \"service:vpn\"\n    command: [\"sleep\", \"infinity\"]\n"
+	if err = os.WriteFile(composePath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write Compose file: %v", err)
+	}
+	registerDockerUpdateComposeCleanup(t, project, composePath, dir)
+	if err = composeUp(ctx, project, composePath, dir, true, nil); err != nil {
+		t.Fatalf("compose up: %v", err)
+	}
+	vpn := mustInspectComposeService(t, ctx, cli, project, "vpn")
+	app := mustInspectComposeService(t, ctx, cli, project, "app")
+	if string(app.HostConfig.NetworkMode) != "container:"+vpn.ID {
+		t.Fatalf("app network mode = %q, want container:%s", app.HostConfig.NetworkMode, vpn.ID)
+	}
+
+	writeDockerUpdateComposeEnvironmentFile(t, envPath, "LINUXIO_IT_IMAGE", "alpine:3.21")
+	target, _, _, err := composeTargetForContainer(ctx, cli, vpn)
+	if err != nil {
+		t.Fatalf("resolve Compose target: %v", err)
+	}
+	result, _, err := newContainerUpdateResult(vpn)
+	if err != nil {
+		t.Fatalf("build update result: %v", err)
+	}
+	if result, err = updateComposeContainer(ctx, cli, vpn, target, "vpn", result, nil); err != nil || !result.Updated {
+		t.Fatalf("update vpn = %+v, %v; want it replaced", result, err)
+	}
+
+	newVPN := mustInspectComposeService(t, ctx, cli, project, "vpn")
+	after := mustInspectComposeService(t, ctx, cli, project, "app")
+	t.Logf("vpn %s -> %s; app %s -> %s, running %v, network mode %s",
+		shortImageID(vpn.ID), shortImageID(newVPN.ID), shortImageID(app.ID), shortImageID(after.ID),
+		after.State != nil && after.State.Running, after.HostConfig.NetworkMode)
+	interfaces, ifErr := exec.CommandContext(ctx, "docker", "exec", after.ID, "ls", "/sys/class/net").CombinedOutput()
+	t.Logf("app's interfaces: %q, %v", strings.TrimSpace(string(interfaces)), ifErr)
+	restart, restartErr := exec.CommandContext(ctx, "docker", "restart", "-t", "1", after.ID).CombinedOutput()
+	t.Logf("restart of app: %q, %v", strings.TrimSpace(string(restart)), restartErr)
+
+	if string(after.HostConfig.NetworkMode) != "container:"+newVPN.ID {
+		t.Errorf("app joins %q, want the new vpn container %s", after.HostConfig.NetworkMode, newVPN.ID)
+	}
+	if after.State == nil || !after.State.Running {
+		t.Errorf("app is not running after the update of vpn")
+	}
+	if ifErr != nil || !strings.Contains(string(interfaces), "eth0") {
+		t.Errorf("app has no eth0 after the update of vpn: %q, %v", interfaces, ifErr)
+	}
+	if restartErr != nil {
+		t.Errorf("app cannot start again after the update of vpn: %q, %v", restart, restartErr)
+	}
+}
+
 // TestDockerUpdateComposeRollbackIntegration moves a service's tag to an image
 // the service exits on, as a pull does, and checks that the rollback puts the
 // tag back on the old image and brings the service up on it again.
