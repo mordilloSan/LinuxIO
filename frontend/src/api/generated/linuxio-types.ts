@@ -794,6 +794,7 @@ export interface CapabilityStatus {
 export interface ChangePasswordRequest {
   username: string;
   password: string;
+  smbSignIn?: boolean;
 }
 
 export interface ComposeActionResult {
@@ -1155,6 +1156,7 @@ export interface CreateUserRequest {
   shell?: string;
   groups?: string[];
   createHome?: boolean;
+  smbSignIn?: boolean;
 }
 
 export interface DeleteStackRequest {
@@ -2826,6 +2828,11 @@ export interface SambaShare {
   properties: Record<string, string>;
 }
 
+export interface SambaUser {
+  username: string;
+  passwordStale: boolean;
+}
+
 export interface ScheduleCreateRequest {
   options: ScheduleOptions;
   notify?: string;
@@ -2962,6 +2969,51 @@ export interface ShareUpdateSambaRequest {
   oldName: string;
   newName: string;
   properties: Record<string, string>;
+}
+
+export interface SharedFolder {
+  uuid: string;
+  path: string;
+  name: string;
+  access: SharedFolderAccess[];
+  everyone: string;
+  smb: boolean;
+  nfs: NFSClient[];
+  folder?: string;
+}
+
+export interface SharedFolderAccess {
+  kind: string;
+  name: string;
+  level: string;
+  id?: number;
+}
+
+export interface SharedFolderCreateRequest {
+  uuid: string;
+  name: string;
+  maxReferencedBytes?: number;
+  snapshotRule?: BtrfsSnapshotRule;
+  access: SharedFolderAccess[];
+  everyone: string;
+  smb: boolean;
+  nfs: NFSClient[];
+}
+
+export interface SharedFolderDeleteRequest {
+  uuid: string;
+  path: string;
+  confirmName: string;
+}
+
+export interface SharedFolderUpdateRequest {
+  uuid: string;
+  path: string;
+  name: string;
+  access: SharedFolderAccess[];
+  everyone: string;
+  smb: boolean;
+  nfs: NFSClient[];
 }
 
 export interface SmartAttribute {
@@ -4858,6 +4910,11 @@ export interface LinuxIOSchema {
   };
 
   shares: {
+    create_folder: {
+      input: [request: SharedFolderCreateRequest];
+      request: SharedFolderCreateRequest;
+      result: SharedFolder;
+    };
     create_nfs_share: {
       input: [request: ShareNFSRequest];
       request: ShareNFSRequest;
@@ -4867,6 +4924,11 @@ export interface LinuxIOSchema {
       input: [request: ShareSambaRequest];
       request: ShareSambaRequest;
       result: SuccessNameResponse;
+    };
+    delete_folder: {
+      input: [request: SharedFolderDeleteRequest];
+      request: SharedFolderDeleteRequest;
+      result: void;
     };
     delete_nfs_share: {
       input: [path: string];
@@ -4884,14 +4946,26 @@ export interface LinuxIOSchema {
       request: RsyncSSHRequest;
       result: RsyncSSHStatus;
     };
+    list_folders: { input: []; request: void; result: SharedFolder[] };
     list_nfs_shares: { input: []; request: void; result: NFSExport[] };
     list_samba_shares: { input: []; request: void; result: SambaShare[] };
+    list_samba_users: { input: []; request: void; result: SambaUser[] };
+    remove_samba_user: {
+      input: [username: string];
+      request: UsernameRequest;
+      result: void;
+    };
     save_rsync: {
       input: [request: RsyncSaveRequest];
       request: RsyncSaveRequest;
       result: RsyncStatus;
     };
     stop_rsync: { input: []; request: void; result: RsyncStatus };
+    update_folder: {
+      input: [request: SharedFolderUpdateRequest];
+      request: SharedFolderUpdateRequest;
+      result: SharedFolder;
+    };
     update_nfs_share: {
       input: [request: ShareNFSRequest];
       request: ShareNFSRequest;
@@ -5746,8 +5820,10 @@ export interface LinuxIOCallSchema {
   "schedules.list": { request: void; result: SchedulesListResult };
   "shares.get_rsync": { request: void; result: RsyncStatus };
   "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
+  "shares.list_folders": { request: void; result: SharedFolder[] };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };
+  "shares.list_samba_users": { request: void; result: SambaUser[] };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
   "storage.btrfs_pools_offline": { request: void; result: BtrfsOfflinePool[] };
   "storage.btrfs_replication_jobs": {

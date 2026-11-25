@@ -315,3 +315,17 @@ func TestParseMountinfoUnescapesTheSubvolume(t *testing.T) {
 		t.Fatalf("parseMountinfo = %+v", got)
 	}
 }
+
+// A bind mount of a folder of the top level has subvolume 5 too, but it is
+// not the top level: a path from the top level taken from it would name
+// another folder.
+func TestTopLevelSkipsABindMountOfAFolder(t *testing.T) {
+	stubMounts(t, []Mount{
+		{Mountpoint: "/mnt/my share", UUID: dataUUID, SubvolID: 5, SubPath: "my share"},
+		{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5},
+	})
+	dir, err := TopLevel(context.Background(), dataUUID)
+	if err != nil || dir != "/data" {
+		t.Fatalf("TopLevel() = %q, %v, want /data", dir, err)
+	}
+}

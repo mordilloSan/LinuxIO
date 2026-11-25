@@ -91,7 +91,8 @@ One resolution is bounded as one path lookup by the kernel is: it follows at mos
 ### Lock files
 
 A lock a root process takes lives in `/run` (`/run/linuxio-fstab.lock`,
-`/run/linuxio-shares.lock`, `/run/linuxio-rsync.lock`,
+`/run/linuxio-shares.lock`, `/run/linuxio-shared-folders.lock`,
+`/run/linuxio-rsync.lock`,
 `/run/linuxio-docker-update.lock`), or beside the state file it guards under
 `/var/lib/linuxio`: folders root alone writes. `/run/lock` and `/var/lock`
 are world-writable with the sticky bit, so any local user can create the

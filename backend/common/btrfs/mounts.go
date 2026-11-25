@@ -300,7 +300,10 @@ func TopLevel(ctx context.Context, uuid string) (string, error) {
 		return "", err
 	}
 	for _, m := range mounts {
-		if m.UUID == uuid && m.SubvolID == topLevelSubvolID {
+		// A bind mount of a folder of the top level has its subvolume
+		// too, but a path from the top level taken from it would name
+		// another folder.
+		if m.UUID == uuid && m.SubvolID == topLevelSubvolID && m.SubPath == "" {
 			return m.Mountpoint, nil
 		}
 	}

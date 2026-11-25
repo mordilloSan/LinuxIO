@@ -21,6 +21,8 @@ import StatusDot from "@/components/ui/StatusDot";
 import useAuth from "@/hooks/useAuth";
 import { CARD_PADDING_LG, CARD_PADDING_MD, GAP_SM } from "@/theme/constants";
 
+import { useSambaSignIn } from "./useSambaSignIn";
+
 function formatLastLogin(
   lastLogin: string,
   username: string,
@@ -214,6 +216,10 @@ const UserCard = ({
   pendingLockAction,
 }: UserCardProps) => {
   const { privileged } = useAuth();
+  // Every card asks for the one list; the query is shared between them.
+  const sambaUser = useSambaSignIn().users?.find(
+    (entry) => entry.username === user.username,
+  );
   const isCurrentUser = user.username === currentUsername;
   const isProtected = user.username === "root" || isCurrentUser;
   const lockLabel = user.isLocked ? "Unlock" : "Lock";
@@ -332,7 +338,7 @@ const UserCard = ({
               {user.gecos || "No full name"}
             </AppTypography>
           </div>
-          {(isCurrentUser || user.isLocked || user.isSystem) && (
+          {(isCurrentUser || user.isLocked || user.isSystem || sambaUser) && (
             <div
               style={{
                 display: "flex",
@@ -359,6 +365,18 @@ const UserCard = ({
               )}
               {user.isSystem && !isCurrentUser && (
                 <Chip label="System" size="xsmall" variant="soft" />
+              )}
+              {sambaUser && (
+                <Chip
+                  color={sambaUser.passwordStale ? "warning" : undefined}
+                  label={
+                    sambaUser.passwordStale
+                      ? "Shared folders: old password"
+                      : "Shared folders"
+                  }
+                  size="xsmall"
+                  variant="soft"
+                />
               )}
             </div>
           )}

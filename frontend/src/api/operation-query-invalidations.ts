@@ -25,9 +25,19 @@ const COMPOSE_KEYS = [
   endpointQueryPrefix("docker.get_docker_info"),
 ];
 
+// A shared folder shows on the Shared folders tab beside the SMB section
+// and the NFS export it is published as.
+const SHARED_FOLDER_KEYS = [
+  endpointQueryPrefix("shares.list_folders"),
+  endpointQueryPrefix("shares.list_samba_shares"),
+  endpointQueryPrefix("shares.list_nfs_shares"),
+];
+
+// A password set in LinuxIO can also change who signs in to shared folders.
 const ACCOUNT_USER_KEYS = [
   endpointQueryPrefix("accounts.list_users"),
   endpointQueryPrefix("accounts.get_user_details"),
+  endpointQueryPrefix("shares.list_samba_users"),
 ];
 
 // Filebrowser listing caches. Fresh transfers refresh the listing via their
@@ -200,13 +210,17 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   ],
 
   "accounts.create_user": ACCOUNT_USER_KEYS,
-  "accounts.delete_user": ACCOUNT_USER_KEYS,
+  // A deleted user loses their rows in the shared folders' access.
+  "accounts.delete_user": [...ACCOUNT_USER_KEYS, ...SHARED_FOLDER_KEYS],
   "accounts.modify_user": ACCOUNT_USER_KEYS,
   "accounts.lock_user": ACCOUNT_USER_KEYS,
   "accounts.unlock_user": ACCOUNT_USER_KEYS,
   "accounts.change_password": ACCOUNT_USER_KEYS,
   "accounts.create_group": [endpointQueryPrefix("accounts.list_groups")],
-  "accounts.delete_group": [endpointQueryPrefix("accounts.list_groups")],
+  "accounts.delete_group": [
+    endpointQueryPrefix("accounts.list_groups"),
+    ...SHARED_FOLDER_KEYS,
+  ],
   "accounts.modify_group_members": [
     endpointQueryPrefix("accounts.list_groups"),
     ...ACCOUNT_USER_KEYS,
@@ -310,6 +324,26 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "shares.delete_samba_share": [
     endpointQueryPrefix("shares.list_samba_shares"),
   ],
+  // A shared folder is a subvolume with a size limit and a snapshot rule.
+  "shares.create_folder": [
+    ...SHARED_FOLDER_KEYS,
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.btrfs_snapshot_rules"),
+    endpointQueryPrefix("storage.btrfs_settings"),
+    endpointQueryPrefix("storage.get_topology"),
+    ...FILEBROWSER_LISTING_KEYS,
+  ],
+  "shares.update_folder": SHARED_FOLDER_KEYS,
+  "shares.delete_folder": [
+    ...SHARED_FOLDER_KEYS,
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.btrfs_snapshots"),
+    endpointQueryPrefix("storage.btrfs_snapshot_rules"),
+    endpointQueryPrefix("storage.btrfs_replication_jobs"),
+    endpointQueryPrefix("storage.get_topology"),
+    ...FILEBROWSER_LISTING_KEYS,
+  ],
+  "shares.remove_samba_user": [endpointQueryPrefix("shares.list_samba_users")],
 
   "storage.mount_cifs": [
     endpointQueryPrefix("storage.get_topology"),

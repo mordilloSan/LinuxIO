@@ -1376,11 +1376,11 @@ after. The rollback removes only what the create made: what was on a disk
 before, such as a filesystem overwritten with **Force** or the old contents
 of a disk given a new GPT, is not restored.
 
-A shared folder can be created on a pool from **Shares → Add Folder Share →
-New folder on a pool**: it creates a subvolume under the pool's top-level
-mount, optionally limits its size (turning quotas on) and adds the default
-automatic snapshot rule, then shares it over SMB and/or NFS. Only pools with
-a permanent top-level mount are offered.
+A shared folder is a subvolume under the pool's top-level mount with a size
+limit (which turns quotas on), the default automatic snapshot rule and an
+access table, made in one operation from **Storage → Shared folders → Add
+Share → Create shared folder** ([Shared Folders](./shared-folders.md)). Only
+pools with a permanent top-level mount are offered.
 
 `nofail` keeps a pool with a missing disk from blocking boot. Such a pool is
 not mounted, since btrfs refuses that without `degraded`, so the overview

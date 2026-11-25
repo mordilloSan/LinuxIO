@@ -54,7 +54,7 @@ func handleDeleteUser(ctx context.Context, req apischema.UsernameRequest) error 
 }
 
 func handleChangePassword(ctx context.Context, req apischema.ChangePasswordRequest) error {
-	return ChangePassword(ctx, req.Username, req.Password)
+	return ChangePassword(ctx, req.Username, req.Password, req.SMBSignIn)
 }
 
 func handleLockUser(ctx context.Context, req apischema.UsernameRequest) error {

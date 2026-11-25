@@ -1,9 +1,7 @@
-import { Icon } from "@iconify/react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import {
   useCallback,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -12,9 +10,9 @@ import {
 import {
   getMutationErrorMessage,
   linuxio,
-  type NFSClient,
   type NFSExport,
   type SambaShare,
+  type SharedFolder,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
@@ -37,8 +35,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
-import AppPopover from "@/components/ui/AppPopover";
-import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
@@ -50,16 +46,20 @@ import { useViewMode } from "@/hooks/useViewMode";
 import FolderShareCard from "@/routes/_authenticated/storage/-components/shares/FolderShareCard";
 import { CARD_GRID_SIZE_DENSE, GAP_LG, GAP_XL } from "@/theme/constants";
 
-import { defaultRule } from "../btrfs/btrfsShared";
+import DeleteSharedFolderDialog from "./DeleteSharedFolderDialog";
 import {
   DeleteNFSShareDialog,
   DeleteSambaShareDialog,
 } from "./DeleteShareDialogs";
-import PoolFolderFields, {
-  poolFolderError,
-  sharePools,
-  type PoolFolder,
-} from "./PoolFolderFields";
+import NFSOptionsDropdown, {
+  defaultNFSOptions,
+  nfsOptionsFromStrings,
+  parseNFSClients,
+  type ClientOptions,
+} from "./NFSClientOptions";
+import SharedFolderDialog from "./SharedFolderDialog";
+import { accessSummary } from "./sharedFolders";
+import StopSharingDialog from "./StopSharingDialog";
 
 type ShareGroup = {
   id: string;
@@ -68,17 +68,12 @@ type ShareGroup = {
   comment: string;
   samba: SambaShare | null;
   nfs: NFSExport | null;
+  /** Set for a shared folder LinuxIO made, which has an access table. */
+  folder: SharedFolder | null;
 };
 
-interface ClientOptions {
-  allSquash: boolean;
-  crossmnt: boolean;
-  insecure: boolean;
-  noRootSquash: boolean;
-  noSubtreeCheck: boolean;
-  rw: boolean;
-  sync: boolean;
-}
+/** What can be done to a shared folder from its row. */
+type FolderAction = "edit" | "stop" | "delete";
 
 interface FolderShareDialogProps {
   /** `null` creates a new share; a group edits that share. */
@@ -88,33 +83,6 @@ interface FolderShareDialogProps {
   onSuccess: () => void;
   open: boolean;
 }
-
-const defaultNFSOptions: ClientOptions = {
-  rw: true,
-  sync: true,
-  noSubtreeCheck: true,
-  noRootSquash: false,
-  allSquash: false,
-  insecure: false,
-  crossmnt: false,
-};
-
-const nfsOptionLabels: { key: keyof ClientOptions; label: string }[] = [
-  { key: "rw", label: "Read / Write" },
-  { key: "sync", label: "Sync" },
-  { key: "noSubtreeCheck", label: "No Subtree Check" },
-  { key: "noRootSquash", label: "No Root Squash" },
-  { key: "allSquash", label: "All Squash" },
-  { key: "insecure", label: "Insecure" },
-  { key: "crossmnt", label: "Crossmnt" },
-];
-
-const emptyPoolFolder: PoolFolder = {
-  uuid: "",
-  name: "",
-  limitGiB: "",
-  snapshots: true,
-};
 
 const protocolSectionStyle: CSSProperties = {
   display: "flex",
@@ -249,6 +217,7 @@ function getNFSAccessLabel(share: NFSExport | null): string {
 function buildShareGroups(
   sambaShares: SambaShare[],
   nfsShares: NFSExport[],
+  folders: SharedFolder[],
 ): ShareGroup[] {
   const groups = new Map<string, ShareGroup>();
 
@@ -261,6 +230,7 @@ function buildShareGroups(
       comment: "",
       samba: null,
       nfs: null,
+      folder: null,
     };
 
     existing.name = samba.name || existing.name;
@@ -278,6 +248,7 @@ function buildShareGroups(
       comment: "",
       samba: null,
       nfs: null,
+      folder: null,
     };
 
     if (!existing.name) {
@@ -287,56 +258,31 @@ function buildShareGroups(
     groups.set(path, existing);
   }
 
+  // A shared folder joins the section and the export it is published as, or
+  // stands alone while it is not shared; who can use it stands in for the
+  // comment.
+  for (const folder of folders) {
+    const path = folder.folder
+      ? normalizeSharePath(folder.folder)
+      : `${folder.uuid}/${folder.path}`;
+    const existing = groups.get(path) ?? {
+      id: path,
+      name: folder.name,
+      path: folder.folder || folder.path,
+      comment: "",
+      samba: null,
+      nfs: null,
+      folder: null,
+    };
+    existing.name = folder.name;
+    existing.comment = accessSummary(folder);
+    existing.folder = folder;
+    groups.set(path, existing);
+  }
+
   return Array.from(groups.values()).sort((left, right) =>
     left.name.localeCompare(right.name),
   );
-}
-
-function nfsOptionsToStrings(options: ClientOptions): string[] {
-  const values: string[] = [];
-  values.push(options.rw ? "rw" : "ro");
-  values.push(options.sync ? "sync" : "async");
-  values.push(options.noSubtreeCheck ? "no_subtree_check" : "subtree_check");
-  if (options.allSquash) {
-    values.push("all_squash");
-  } else {
-    values.push(options.noRootSquash ? "no_root_squash" : "root_squash");
-  }
-  if (options.insecure) {
-    values.push("insecure");
-  }
-  if (options.crossmnt) {
-    values.push("crossmnt");
-  }
-  return values;
-}
-
-function nfsOptionsSummary(options: ClientOptions): string {
-  return nfsOptionsToStrings(options).join(", ");
-}
-
-function nfsOptionsFromStrings(options: string[] = []): ClientOptions {
-  const set = new Set(options);
-  return {
-    rw: !set.has("ro"),
-    sync: !set.has("async"),
-    noSubtreeCheck: !set.has("subtree_check"),
-    noRootSquash: set.has("no_root_squash"),
-    allSquash: set.has("all_squash"),
-    insecure: set.has("insecure"),
-    crossmnt: set.has("crossmnt"),
-  };
-}
-
-function parseNFSClients(value: string, options: ClientOptions): NFSClient[] {
-  return value
-    .split(",")
-    .map((client) => client.trim())
-    .filter(Boolean)
-    .map((host) => ({
-      host,
-      options: nfsOptionsToStrings(options),
-    }));
 }
 
 function buildFolderSambaProperties(
@@ -379,98 +325,12 @@ function renderProtocolSummary(group: ShareGroup): ReactNode {
           variant="soft"
         />
       ) : null}
+      {group.folder && !group.samba && !group.nfs ? (
+        <Chip label="Not shared" size="small" variant="soft" />
+      ) : null}
     </div>
   );
 }
-
-const NFSOptionsDropdown = ({
-  options,
-  onChange,
-}: {
-  options: ClientOptions;
-  onChange: (next: ClientOptions) => void;
-}) => {
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(false);
-
-  const toggle = (key: keyof ClientOptions) =>
-    onChange({ ...options, [key]: !options[key] });
-
-  return (
-    <>
-      <div ref={anchorRef} style={{ flex: 1, minWidth: 220 }}>
-        <AppTextField
-          endAdornment={
-            <Icon
-              icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
-              style={{ opacity: 0.5 }}
-              width={18}
-            />
-          }
-          fullWidth
-          label="Options"
-          onClick={() => {
-            setAnchorEl(anchorRef.current);
-            setOpen(true);
-          }}
-          size="small"
-          style={{ cursor: "pointer" }}
-          value={nfsOptionsSummary(options)}
-        />
-      </div>
-      <AppPopover
-        anchorEl={anchorEl}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        matchAnchorWidth
-        onClose={() => setOpen(false)}
-        open={open}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-      >
-        <div style={{ padding: "6px 0" }}>
-          {nfsOptionLabels.map(({ key, label }) => (
-            <AppButton
-              color="inherit"
-              key={key}
-              onClick={() => toggle(key)}
-              fullWidth
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                gap: 10,
-                width: "100%",
-                padding: "7px 14px",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "inherit",
-                textAlign: "left",
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  backgroundColor: options[key]
-                    ? "var(--app-palette-success-main)"
-                    : "var(--app-palette-text-disabled)",
-                  flexShrink: 0,
-                  transition: "background-color 150ms ease",
-                }}
-              />
-              <AppTypography component="span" variant="body2">
-                {label}
-              </AppTypography>
-            </AppButton>
-          ))}
-        </div>
-      </AppPopover>
-    </>
-  );
-};
 
 const FolderShareDialog = ({
   group,
@@ -510,26 +370,7 @@ const FolderShareDialog = ({
       : { ...defaultNFSOptions },
   );
   const [validationError, setValidationError] = useState<string | null>(null);
-  // A new share can also be a new subvolume on a pool, created first.
-  const { privileged } = useAuth();
-  const { isEnabled: btrfsEnabled } = useCapability("btrfsAvailable");
-  const { data: filesystems = [] } = useQuery({
-    ...linuxio.storage.btrfs_list,
-    enabled: !group && privileged && btrfsEnabled,
-  });
-  const pools = sharePools(filesystems);
-  const [onPool, setOnPool] = useState(false);
-  const [folder, setFolder] = useState<PoolFolder>(emptyPoolFolder);
-  const creatingOnPool = !group && onPool && pools.length > 0;
-  const poolMount = pools.find((p) => p.uuid === folder.uuid)?.mountpoint;
-  const targetPath = creatingOnPool
-    ? `${poolMount ?? ""}/${folder.name}`
-    : path;
 
-  const subvolumeCreate = linuxio.storage.btrfs_subvolume_create.useMutation();
-  const quotasSet = linuxio.storage.btrfs_set_quotas.useMutation();
-  const limitSet = linuxio.storage.btrfs_qgroup_limit.useMutation();
-  const ruleSet = linuxio.storage.btrfs_snapshot_rule_set.useMutation();
   const sambaCreate = linuxio.shares.create_samba_share.useMutation();
   const sambaUpdate = linuxio.shares.update_samba_share.useMutation();
   const sambaDelete = linuxio.shares.delete_samba_share.useMutation();
@@ -538,10 +379,6 @@ const FolderShareDialog = ({
   const nfsDelete = linuxio.shares.delete_nfs_share.useMutation();
 
   const isPending =
-    subvolumeCreate.isPending ||
-    quotasSet.isPending ||
-    limitSet.isPending ||
-    ruleSet.isPending ||
     sambaCreate.isPending ||
     sambaUpdate.isPending ||
     sambaDelete.isPending ||
@@ -564,23 +401,16 @@ const FolderShareDialog = ({
       setSambaPublic(false);
       setNFSClients("*");
       setNFSOptions({ ...defaultNFSOptions });
-      setOnPool(false);
-      setFolder(emptyPoolFolder);
     }
     setValidationError(null);
     onClose();
   };
 
   const handleSave = async () => {
-    const normalizedPath = normalizeSharePath(targetPath.trim());
+    const normalizedPath = normalizeSharePath(path.trim());
     const resolvedName = sambaName.trim() || inferShareName(normalizedPath);
     const parsedNFSClients = parseNFSClients(nfsClients, nfsOptions);
-    const folderError = creatingOnPool ? poolFolderError(folder) : null;
 
-    if (folderError) {
-      setValidationError(folderError);
-      return;
-    }
     if (!normalizedPath) {
       setValidationError("Folder path is required");
       return;
@@ -612,26 +442,6 @@ const FolderShareDialog = ({
     let changedAny = false;
 
     try {
-      if (creatingOnPool) {
-        const { uuid, name } = folder;
-        await subvolumeCreate.mutateAsync({ uuid, path: name });
-        changedAny = true;
-        const limit = folder.limitGiB.trim();
-        if (limit !== "") {
-          await quotasSet.mutateAsync({ uuid, enabled: true });
-          await limitSet.mutateAsync({
-            uuid,
-            path: name,
-            maxReferencedBytes: Math.round(Number(limit) * 1024 ** 3),
-          });
-        }
-        if (folder.snapshots) {
-          await ruleSet.mutateAsync({
-            rule: { ...defaultRule(uuid, name), enabled: true },
-          });
-        }
-      }
-
       if (effectiveSambaEnabled) {
         const sambaProperties = buildFolderSambaProperties(
           normalizedPath,
@@ -705,7 +515,7 @@ const FolderShareDialog = ({
       slotProps={{ transition: { onExited } }}
     >
       <AppDialogTitle>
-        {group ? "Edit Folder Share" : "Add Folder Share"}
+        {group ? "Edit Folder Share" : "Share an existing folder"}
       </AppDialogTitle>
       <AppDialogContent>
         <div className="app-dialog-fields">
@@ -719,32 +529,11 @@ const FolderShareDialog = ({
               value={group.path}
             />
           ) : (
-            <>
-              {pools.length > 0 && (
-                <AppSelect
-                  fullWidth
-                  label="Location"
-                  onChange={(event) => setOnPool(event.target.value === "pool")}
-                  value={onPool ? "pool" : "path"}
-                >
-                  <option value="path">Existing folder</option>
-                  <option value="pool">New folder on a pool</option>
-                </AppSelect>
-              )}
-              {creatingOnPool ? (
-                <PoolFolderFields
-                  folder={folder}
-                  onChange={setFolder}
-                  pools={pools}
-                />
-              ) : (
-                <PathPickerField
-                  label="Folder Path"
-                  onChange={setPath}
-                  value={path}
-                />
-              )}
-            </>
+            <PathPickerField
+              label="Folder Path"
+              onChange={setPath}
+              value={path}
+            />
           )}
 
           <div style={protocolSectionStyle}>
@@ -768,7 +557,7 @@ const FolderShareDialog = ({
                   fullWidth
                   label="Share Name"
                   onChange={(event) => setSambaName(event.target.value)}
-                  placeholder={inferShareName(targetPath)}
+                  placeholder={inferShareName(path)}
                   size="small"
                   value={sambaName}
                 />
@@ -867,12 +656,15 @@ const FolderShareCardActions = ({
   onEditShare,
   onDeleteSamba,
   onDeleteNFS,
+  onFolderAction,
 }: {
   group: ShareGroup;
   onEditShare: (group: ShareGroup) => void;
   onDeleteSamba: (share: SambaShare) => void;
   onDeleteNFS: (share: NFSExport) => void;
+  onFolderAction: (action: FolderAction, folder: SharedFolder) => void;
 }) => {
+  const folder = group.folder;
   const [removeAnchor, setRemoveAnchor] = useState<HTMLButtonElement | null>(
     null,
   );
@@ -902,7 +694,27 @@ const FolderShareCardActions = ({
         open={Boolean(removeAnchor)}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        {group.samba ? (
+        {folder && (folder.smb || folder.nfs.length > 0) ? (
+          <AppMenuItem
+            onClick={() => {
+              setRemoveAnchor(null);
+              onFolderAction("stop", folder);
+            }}
+          >
+            Stop sharing
+          </AppMenuItem>
+        ) : null}
+        {folder ? (
+          <AppMenuItem
+            onClick={() => {
+              setRemoveAnchor(null);
+              onFolderAction("delete", folder);
+            }}
+          >
+            Delete folder and its data
+          </AppMenuItem>
+        ) : null}
+        {!folder && group.samba ? (
           <AppMenuItem
             onClick={() => {
               setRemoveAnchor(null);
@@ -912,7 +724,7 @@ const FolderShareCardActions = ({
             Remove SMB
           </AppMenuItem>
         ) : null}
-        {group.nfs ? (
+        {!folder && group.nfs ? (
           <AppMenuItem
             onClick={() => {
               setRemoveAnchor(null);
@@ -932,7 +744,9 @@ function renderExpandedContent(
   setEditingShare: (share: ShareGroup) => void,
   setDeletingSamba: (share: SambaShare | null) => void,
   setDeletingNFS: (share: NFSExport | null) => void,
+  onFolderAction: (action: FolderAction, folder: SharedFolder) => void,
 ): ReactNode {
+  const folder = group.folder;
   return (
     <div style={{ display: "flex", gap: GAP_XL, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 280 }}>
@@ -943,7 +757,8 @@ function renderExpandedContent(
           <strong>Path:</strong> {group.path}
         </AppTypography>
         <AppTypography variant="body2">
-          <strong>Comment:</strong> {group.comment || "-"}
+          <strong>{folder ? "Access:" : "Comment:"}</strong>{" "}
+          {group.comment || "-"}
         </AppTypography>
         <div style={{ marginTop: 10 }}>{renderProtocolSummary(group)}</div>
         <div style={{ marginTop: 12 }}>
@@ -954,6 +769,25 @@ function renderExpandedContent(
           >
             Edit Share
           </AppButton>
+          {folder && (folder.smb || folder.nfs.length > 0) ? (
+            <AppButton
+              onClick={() => onFolderAction("stop", folder)}
+              size="small"
+              style={{ marginInlineStart: 8 }}
+            >
+              Stop sharing
+            </AppButton>
+          ) : null}
+          {folder ? (
+            <AppButton
+              color="error"
+              onClick={() => onFolderAction("delete", folder)}
+              size="small"
+              style={{ marginInlineStart: 8 }}
+            >
+              Delete folder and its data
+            </AppButton>
+          ) : null}
         </div>
       </div>
 
@@ -972,14 +806,16 @@ function renderExpandedContent(
               />
             ))}
           </div>
-          <AppButton
-            color="error"
-            onClick={() => setDeletingSamba(group.samba)}
-            size="small"
-            style={{ marginTop: 12 }}
-          >
-            Remove SMB
-          </AppButton>
+          {!folder && (
+            <AppButton
+              color="error"
+              onClick={() => setDeletingSamba(group.samba)}
+              size="small"
+              style={{ marginTop: 12 }}
+            >
+              Remove SMB
+            </AppButton>
+          )}
         </div>
       ) : null}
 
@@ -1017,14 +853,16 @@ function renderExpandedContent(
               No NFS access rules configured
             </AppTypography>
           )}
-          <AppButton
-            color="error"
-            onClick={() => setDeletingNFS(group.nfs)}
-            size="small"
-            style={{ marginTop: 12 }}
-          >
-            Remove NFS
-          </AppButton>
+          {!folder && (
+            <AppButton
+              color="error"
+              onClick={() => setDeletingNFS(group.nfs)}
+              size="small"
+              style={{ marginTop: 12 }}
+            >
+              Remove NFS
+            </AppButton>
+          )}
         </div>
       ) : null}
     </div>
@@ -1040,10 +878,38 @@ const SharesPage = () => {
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
   const [deleteSambaDialogOpen, setDeleteSambaDialogOpen] = useState(false);
 
-  const openEditDialog = useCallback((share: ShareGroup) => {
-    setEditingShare(share);
-    setShareDialogOpen(true);
-  }, []);
+  // The dialog of a shared folder: creating one (folder null), or changing,
+  // unsharing or deleting one. It is mounted while it is set, so each use
+  // starts with fresh fields.
+  const [folderDialog, setFolderDialog] = useState<{
+    action: FolderAction;
+    folder: SharedFolder | null;
+  } | null>(null);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  const { privileged } = useAuth();
+  const { isEnabled: btrfsEnabled } = useCapability("btrfsAvailable");
+  const foldersAllowed = privileged && btrfsEnabled;
+
+  // Stable, as the table's expanded rows are rendered through it.
+  const openFolderDialog = useCallback(
+    (action: FolderAction, folder: SharedFolder | null) => {
+      setFolderDialog({ action, folder });
+      setFolderDialogOpen(true);
+    },
+    [],
+  );
+  const openEditDialog = useCallback(
+    (share: ShareGroup) => {
+      if (share.folder) {
+        openFolderDialog("edit", share.folder);
+        return;
+      }
+      setEditingShare(share);
+      setShareDialogOpen(true);
+    },
+    [openFolderDialog],
+  );
   const openDeleteNFSDialog = useCallback((share: NFSExport | null) => {
     if (!share) return;
     setDeletingNFS(share);
@@ -1064,13 +930,22 @@ const SharesPage = () => {
     refetchInterval: 10000,
   });
 
+  // The record of shared folders is root's; without it they show as the
+  // plain shares they are published as.
+  const { data: folders } = useQuery({
+    ...linuxio.shares.list_folders,
+    enabled: foldersAllowed,
+    refetchInterval: 10000,
+  });
+
   const shareGroups = useMemo(
     () =>
       buildShareGroups(
         Array.isArray(sambaShares) ? sambaShares : [],
         Array.isArray(nfsShares) ? nfsShares : [],
+        folders ?? [],
       ),
-    [nfsShares, sambaShares],
+    [folders, nfsShares, sambaShares],
   );
   const sharesSurface = useReorderableSurface({
     getId: getShareGroupId,
@@ -1090,8 +965,14 @@ const SharesPage = () => {
         openEditDialog,
         openDeleteSambaDialog,
         openDeleteNFSDialog,
+        openFolderDialog,
       ),
-    [openDeleteNFSDialog, openDeleteSambaDialog, openEditDialog],
+    [
+      openDeleteNFSDialog,
+      openDeleteSambaDialog,
+      openEditDialog,
+      openFolderDialog,
+    ],
   );
 
   const sharesActions = (
@@ -1102,7 +983,11 @@ const SharesPage = () => {
           icon="mdi:plus"
           iconSize={20}
           label="Add Share"
-          onClick={() => setShareDialogOpen(true)}
+          onClick={(event) =>
+            foldersAllowed
+              ? setAddAnchor(event.currentTarget)
+              : setShareDialogOpen(true)
+          }
         />
       }
       view={
@@ -1138,6 +1023,7 @@ const SharesPage = () => {
                     onDeleteNFS={openDeleteNFSDialog}
                     onDeleteSamba={openDeleteSambaDialog}
                     onEditShare={openEditDialog}
+                    onFolderAction={openFolderDialog}
                   />
                 }
                 comment={group.comment}
@@ -1184,6 +1070,56 @@ const SharesPage = () => {
     >
       <RoutedTabActions>{sharesActions}</RoutedTabActions>
       {content}
+
+      <AppMenu
+        anchorEl={addAnchor}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        minWidth={220}
+        onClose={() => setAddAnchor(null)}
+        open={Boolean(addAnchor)}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <AppMenuItem
+          onClick={() => {
+            setAddAnchor(null);
+            openFolderDialog("edit", null);
+          }}
+        >
+          Create shared folder
+        </AppMenuItem>
+        <AppMenuItem
+          onClick={() => {
+            setAddAnchor(null);
+            setShareDialogOpen(true);
+          }}
+        >
+          Share an existing folder
+        </AppMenuItem>
+      </AppMenu>
+      {folderDialog?.action === "edit" && (
+        <SharedFolderDialog
+          folder={folderDialog.folder}
+          onClose={() => setFolderDialogOpen(false)}
+          onExited={() => setFolderDialog(null)}
+          open={folderDialogOpen}
+        />
+      )}
+      {folderDialog?.action === "stop" && folderDialog.folder && (
+        <StopSharingDialog
+          folder={folderDialog.folder}
+          onClose={() => setFolderDialogOpen(false)}
+          onExited={() => setFolderDialog(null)}
+          open={folderDialogOpen}
+        />
+      )}
+      {folderDialog?.action === "delete" && folderDialog.folder && (
+        <DeleteSharedFolderDialog
+          folder={folderDialog.folder}
+          onClose={() => setFolderDialogOpen(false)}
+          onExited={() => setFolderDialog(null)}
+          open={folderDialogOpen}
+        />
+      )}
 
       <FolderShareDialog
         group={editingShare}

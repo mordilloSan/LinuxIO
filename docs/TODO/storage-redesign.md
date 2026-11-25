@@ -205,16 +205,31 @@ Storage tabs become **Overview** (`/storage`), **Pools**, **Shared folders** (to
 
 - [x] `docs/storage-disks.md` (its paths), `docs/btrfs.md` (tab names), `docs/tanstack-router.md` (route tables, guards, the menu tab), `docs/README.md` rows; `make check-docs-quiet`, `make format-frontend`, `make test-quiet`, the browser fixture specs (`make test-frontend-browser-quiet`), a fresh review, fixes.
 
-## Phase 4: shared folders backend
+## Phase 4: shared folders
 
-Decisions (the owner may overturn any):
+Decided with the owner (2026-11-25):
 
-- A shared folder is a subvolume on a pool LinuxIO manages, recorded in `/etc/linuxio/shared-folders.json` (`root:root 0600`); folders outside a pool can still be shared, without the access matrix.
-- **Create shared folder** is one privileged job: subvolume, quota limit, snapshot rule, access, SMB and NFS sections; a failure undoes the steps already done, newest first.
-- Access per user and group (read and write, read only, no access) is written twice, to the same effect: `valid users`, `read list` and `write list` in the share's `smb.conf` section, and POSIX ACLs on the folder (with default ACLs, so new files follow), so local and NFS access match.
-- Signing in from Windows or a Mac uses the LinuxIO account's password: setting or changing a password with **Can open shared folders** on also writes it to Samba's own user list (`pdbedit` over stdin, through the existing command path); an existing user sets their password once more to turn it on. Samba cannot use PAM for this sign-in.
-- New routes declare `Privileged()`; a new doc in `docs/` for shared folders covers it and takes over SMB and NFS from `rsync-backups.md`'s row.
+- A shared folder is a subvolume on a pool LinuxIO manages, made by **Create shared folder** and recorded in `/etc/linuxio/shared-folders.json` (`root:root 0600`). Any other path is shared as before, a plain share without the access table. Adopting a folder that already exists is Phase 5.
+- **Create shared folder** is one privileged route: subvolume, size limit, snapshot rule, access, record, SMB section and NFS export; a failure undoes the steps already done, newest first. The folder is new and empty, so its undo deletes no data. Quotas turned on for the pool stay on.
+- Access per user and group is read and write, read only or no access, plus one level for everyone else. No access wins over everything; otherwise the most access among a person's own row and the rows of their groups applies; everyone else is whoever matches no row. It is written twice to the same effect: `valid users`, `invalid users`, `read list` and `write list` in the share's `smb.conf` section, and POSIX ACLs on the folder with default ACLs, so local and NFS access match.
+- Signing in from Windows or a Mac uses the LinuxIO account's password, for a user an administrator switched it on for (off by default): a password set in LinuxIO with **Can open shared folders from Windows and Mac** on is also written to Samba's user list. A user who existed before sets the password once more. Accounts flags a user whose system password is newer than the Samba one, to the day.
+- **Stop sharing** removes the SMB section and the NFS export and keeps the folder, its data, its access and its record. **Delete folder and its data** removes the folder and its snapshots after the folder's name is typed.
+- Rename changes the share name only; the folder keeps its path.
+- No guest access (Phase 5, asked again then).
+
+Tasks:
+
+- [x] **4.1 Access rules** (`backend/bridge/handlers/shares/access.go`): the levels, validation against the local users and groups (regular ones, UID and GID 1000 and up), `effectiveAccess` (no access first, then read and write, then read only), the four Samba lists and the ACL entries for a table. Table tests for each combination of a person's row and their groups.
+- [x] **4.2 ACL on the folder** (`backend/common/btrfs/acl.go` `SetFolderACL`, with the setgid bit): the `system.posix_acl_access` and `system.posix_acl_default` values built natively and set through the handle `openBelow` gives; a test pins the bytes against what `setfacl` writes.
+- [x] **4.3 Record store** (`shares/folders_store.go`): load and update under the shares lock, written atomically `0600`.
+- [x] **4.4 Routes** (`shares/folders.go`, `handlers.go`, `apischema/shares.go`): `shares.list_folders`, `shares.create_folder`, `shares.update_folder`, `shares.delete_folder`, all `Privileged()`; the plain SMB and NFS routes refuse a section or path a shared folder owns. Tests: each create step failing undoes the earlier ones; delete refuses a wrong name.
+- [x] **4.5 Sign-in** (`shares/samba_users.go`, `handlers/accounts`): set, remove and list Samba users; `smbSignIn` on create user and change password; a deleted user or group and a changed membership re-apply the access of every folder.
+- [x] **4.6 Shared folders page**: Create shared folder as one call with the access table; a shared folder's dialog (General, Access), Stop sharing, Delete folder and its data.
+- [x] **4.7 Accounts page**: the checkbox in Create user and Change password, the state and the flag on a user, turning it off.
+- [x] **4.8 Docs and the phase check**: `docs/shared-folders.md`, the `docs/README.md` rows, `make generate`, `make test-quiet`, a VM spec that signs in with `smbclient` as a read-and-write, a read-only and a no-access user, a general review and the privilege-boundary review, fixes.
 
 ## Phase 5: network extras
+
+Adopting a folder that already exists (a pool subvolume, shared or not): it is recorded and gets the access table, applied to the top folder only by default; saving warns first when the folder is mounted into a container or holds files owned by system accounts, since access applied to existing contents breaks a program that checks its own permissions (PostgreSQL refuses a data folder that is not `0700` or `0750`). Guest access as a **Guest** row, off by default, asked of the owner again.
 
 Per shared folder: earlier versions in Windows and Finder from its snapshots (`vfs_shadow_copy2`, with the snapshot name format checked against what it parses, in the test VM); a recycle bin for files deleted over SMB (`vfs_recycle`) emptied after 30 days by a `linuxio-worker` word on a timer, listed for package removal; Time Machine (`vfs_fruit`, a size limit); discovery by Windows (WS-Discovery, as a capability) and by Macs (Avahi `_smb._tcp`). SMB service settings (minimum protocol, encryption) on the Shared folders tab.

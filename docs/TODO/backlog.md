@@ -88,9 +88,24 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+- A plain SMB or NFS share makes the folders missing on its path by path, as
+  root (`mkdirShareDir`, `backend/bridge/handlers/shares/nfs.go`): a local
+  user who may write a folder on that path can swap the next one for a link
+  between the check and the `MkdirAll`, and root makes and opens up folders
+  where the link points. Refused inside a shared folder; elsewhere it should
+  go through handles, as the file browser's operations do
+  ([Privilege pattern](../privilege_pattern.md)). **checked**
+
 ## Tests that are missing
 
 ## Needs the owner
+
+- A change of a shared folder's access table reaches the folder and what is
+  made in it afterwards, not what is already inside: someone lowered from
+  read and write to read only keeps writing existing files locally and over
+  NFS ([Shared Folders](../shared-folders.md#change-stop-sharing)). For a
+  folder LinuxIO made, the table could also be applied to its contents, as
+  a job, or as a choice when saving; the owner decides which. **checked**
 
 - Updating a Compose service that other services join with
   `network_mode: service:<it>` (a VPN container such as Gluetun and the
@@ -111,8 +126,12 @@ after a change that issues ioctls).
 
 ## Needs a real machine or a measurement
 
-## Needs a real machine or a measurement
-
+- A shared folder or a plain SMB share on Fedora with SELinux enforcing:
+  LinuxIO neither labels the folder `samba_share_t` nor sets
+  `samba_export_all_rw`, so by the policy `smbd` is refused a folder on a
+  pool ([Shared Folders](../shared-folders.md)). Read from the policy, not
+  run: `shared-folders.spec.ts` skips Fedora. Run it there, then decide
+  between the label on each shared folder and the boolean.
 - The Gemini CLI and Codex profiles (`GEMINI_CLI_HOME`, `CODEX_HOME`,
   [Assistant](../AI-assistant.md#profile)) were read from the pinned packages
   and not run: a sign-in at each vendor from the Assistant should land in
