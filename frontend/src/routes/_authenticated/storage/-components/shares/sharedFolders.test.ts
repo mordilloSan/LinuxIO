@@ -9,6 +9,7 @@ import {
   accessSummary,
   defaultAccess,
   networkAddresses,
+  timeMachineName,
 } from "./sharedFolders";
 
 const row = (
@@ -206,6 +207,22 @@ describe("accessLowered", () => {
         everyone: "rw",
       }),
     ).toBe(false);
+  });
+});
+
+// smbd tells Macs of its Time Machine folders when it starts, so a change of
+// the name one is announced under restarts it.
+describe("timeMachineName", () => {
+  it("is the share name of a Time Machine folder shared over SMB", () => {
+    expect(
+      timeMachineName({ name: "Backups", smb: true, timeMachine: true }),
+    ).toBe("Backups");
+    expect(
+      timeMachineName({ name: "Backups", smb: false, timeMachine: true }),
+    ).toBe("");
+    expect(
+      timeMachineName({ name: "Backups", smb: true, timeMachine: false }),
+    ).toBe("");
   });
 });
 

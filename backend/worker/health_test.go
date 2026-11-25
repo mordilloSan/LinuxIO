@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,8 +16,14 @@ import (
 )
 
 func TestRunHealth(t *testing.T) {
-	oldCheck, oldStart := checkBtrfsHealth, startUnit
-	t.Cleanup(func() { checkBtrfsHealth, startUnit = oldCheck, oldStart })
+	oldCheck, oldStart, oldNarrow := checkBtrfsHealth, startUnit, narrowSnapshotDirs
+	t.Cleanup(func() { checkBtrfsHealth, startUnit, narrowSnapshotDirs = oldCheck, oldStart, oldNarrow })
+	narrowed := 0
+	var narrowErr error
+	narrowSnapshotDirs = func(context.Context) error {
+		narrowed++
+		return narrowErr
+	}
 	runs := 0
 	var fail error
 	var actions btrfs.HealthActions
@@ -39,6 +47,17 @@ func TestRunHealth(t *testing.T) {
 	if code := runHealth(context.Background(), nil, io.Discard); code != 0 || runs != 1 {
 		t.Fatalf("run = %d, runs = %d", code, runs)
 	}
+	// Each pass also narrows the snapshot folders left open; a pass that
+	// could not is still a health pass that ran.
+	if narrowed != 1 {
+		t.Fatalf("snapshot folders narrowed %d times, want 1", narrowed)
+	}
+	narrowErr = errors.New("read-only pool")
+	var out bytes.Buffer
+	if code := runHealth(context.Background(), nil, &out); code != 0 || !strings.Contains(out.String(), "read-only pool") {
+		t.Fatalf("run with snapshot folders that could not be narrowed = %d, stderr %q", code, out.String())
+	}
+	narrowErr = nil
 	actions = btrfs.HealthActions{Resync: []string{"uuid-1"}, Rebuild: []string{"uuid-2"}}
 	if code := runHealth(context.Background(), nil, io.Discard); code != 0 || !reflect.DeepEqual(started, []string{"linuxio-btrfs-resync@uuid-1.service", "linuxio-btrfs-rebuild@uuid-2.service"}) {
 		t.Fatalf("run = %d, started = %v", code, started)

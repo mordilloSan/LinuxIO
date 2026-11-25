@@ -678,6 +678,7 @@ jobs, which also keep their own unit, limits and journal that way. The units:
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | Pool resync | `/storage?pool=<uuid>` |
 | `scheduled.btrfs_rebuild` | `linuxio-btrfs-rebuild@<uuid>.service` | Pool rebuild | `/storage?pool=<uuid>` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | Container updates | `/docker/containers` |
+| `scheduled.shares_recycle` | `linuxio-shares-recycle.service` (daily, while a shared folder has its recycle bin on) | Recycle bins | `/storage/shares` |
 | `scheduled.system_update` | `apt-daily-upgrade`, `dnf-automatic`, `dnf5-automatic` or `mintupdate-automation-upgrade.service` | System updates | `/updates` |
 
 Every unit of the table but the schedules' and the distribution's is a

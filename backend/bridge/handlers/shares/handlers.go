@@ -33,6 +33,10 @@ var api = apischema.Bindings(
 	// (samba_users.go). Samba's user list is root's alone.
 	apischema.Call[apischema.NoRequest, []apischema.SambaUser]("shares.list_samba_users", apischema.RetrySafe(), apischema.Privileged()).Handle(handleListSambaUsers),
 	apischema.MutationVoid("shares.remove_samba_user", handleRemoveSambaUser, apischema.Privileged()),
+	// The SMB service as a whole (smb_settings.go). smb.conf is readable by
+	// all, as is the state of a unit.
+	apischema.Call[apischema.NoRequest, apischema.SMBSettings]("shares.get_smb_settings", apischema.RetrySafe()).Handle(handleGetSMBSettings),
+	apischema.Mutation("shares.set_smb_settings", SetSMBSettings, apischema.Privileged()),
 )
 
 var Routes = api.Routes()
@@ -64,6 +68,10 @@ func handleListNFSShares(ctx context.Context, _ apischema.NoRequest) ([]apischem
 
 func handleListSharedFolders(ctx context.Context, _ apischema.NoRequest) ([]apischema.SharedFolder, error) {
 	return ListSharedFolders(ctx)
+}
+
+func handleGetSMBSettings(ctx context.Context, _ apischema.NoRequest) (apischema.SMBSettings, error) {
+	return GetSMBSettings(ctx)
 }
 
 func handleListSambaUsers(ctx context.Context, _ apischema.NoRequest) ([]apischema.SambaUser, error) {

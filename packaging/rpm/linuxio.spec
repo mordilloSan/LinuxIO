@@ -23,7 +23,7 @@
 %global btrfs_units linuxio-btrfs-health.timer linuxio-btrfs-degraded.service
 %global started_units linuxio.target linuxio-monitoring.service linuxio-issue.service
 # The units LinuxIO writes to /etc/systemd/system when a setting is saved.
-%global written_units linuxio-btrfs-snapshot.timer linuxio-docker-update.timer linuxio-docker-shutdown.service
+%global written_units linuxio-btrfs-snapshot.timer linuxio-shares-recycle.timer linuxio-docker-update.timer linuxio-docker-shutdown.service
 
 Name:           linuxio
 Version:        %{linuxio_version}
@@ -196,6 +196,7 @@ fi
 if [ "$1" -eq 0 ]; then
 	written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer
+/etc/systemd/system/linuxio-shares-recycle.timer
 /etc/systemd/system/linuxio-docker-update.timer
 /etc/systemd/system/linuxio-docker-shutdown.service
 /etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf

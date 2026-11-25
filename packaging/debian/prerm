@@ -12,7 +12,7 @@ enabled_units="linuxio.target linuxio-indexer-index.timer linuxio-monitoring.ser
 # docker.service.wants; its stop does nothing outside a shutdown, so the
 # containers keep running). The postrm deletes their files. The RPM's %preun
 # does the same.
-written_units="linuxio-btrfs-snapshot.timer linuxio-docker-update.timer linuxio-docker-shutdown.service"
+written_units="linuxio-btrfs-snapshot.timer linuxio-shares-recycle.timer linuxio-docker-update.timer linuxio-docker-shutdown.service"
 
 if [ "$1" = remove ]; then
 	if [ -d /run/systemd/system ]; then

@@ -135,10 +135,12 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 # the bridge storage rules that decide which disks a pool may take
 # (TestBtrfsMemberIntegration) and destroy (TestBtrfsDestroyIntegration) and
 # which members Format, Delete and Initialize erase (TestPartitionMemberIntegration).
+# TestBtrfsSharedFolderIntegration acts as other accounts on a pool it mounts
+# under /run.
 # TestBtrfsRebuildProofIntegration and TestBtrfsAutoRebuildIntegration pull
 # the VM's virtio data disks off the PCI bus, so they run only in the test VM
 # and skip on a host.
-BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Dropout|Unready|Resume|Replicate|Member|ArrayMember|AddWipe|Destroy|MountRecord|RebuildProof|AutoRebuild)?|Partition(Claim|Member)?)Integration$$
+BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Dropout|Unready|Resume|Replicate|Member|ArrayMember|AddWipe|Destroy|MountRecord|RebuildProof|AutoRebuild|SharedFolder)?|Partition(Claim|Member)?)Integration$$
 BTRFS_INTEGRATION_PKGS := ./common/btrfs ./bridge/handlers/storage
 
 # -p 1: with two packages go test otherwise holds each one's output until it

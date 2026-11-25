@@ -33,8 +33,12 @@ that **Force** never takes a disk of an unmounted pool
 zeroes a disk mounted or held after the checks (`TestBtrfsAddWipeIntegration`),
 that no writer touches a device claimed after its checks and that md and LVM2
 signatures are read as libblkid reads them (`TestPartitionClaimIntegration`),
-and that a pool whose top level a read mounted can be destroyed
-(`TestBtrfsDestroyIntegration`); it needs sudo.
+that a pool whose top level a read mounted can be destroyed
+(`TestBtrfsDestroyIntegration`), and, acting as other accounts, that the
+kernel decides by a [shared folder](./shared-folders.md)'s ACL, keeps its
+snapshots root's alone until its earlier versions open them, and that the
+recycle bin's emptying keeps a folder new to the bin and leaves a subvolume
+inside it alone (`TestBtrfsSharedFolderIntegration`); it needs sudo.
 
 Parsing command output is avoided because `btrfs-progs` prints JSON for only a
 few commands, and no Go btrfs library covers balance, scrub and devices. A new
@@ -1144,6 +1148,30 @@ Layout under the top level:
 `<kind>` is `manual`, `timeline`, `pre-update` or `pre-rollback`. Snapshots
 are read-only. Nested subvolumes are not included in a snapshot.
 
+A snapshot holds the files as they were, permissions included, so whoever
+could read a file then could read it there for as long as the snapshot is
+kept. `linuxio-snapshots` and each `linuxio-snapshots/<source>` are
+therefore root's alone: they are made `0700` whatever the umask of what
+makes them (the timer's service runs with systemd's `022`, under which they
+were `0755`), and one found more open is narrowed, every source's folder
+at once, at the next snapshot of any source (`ensureSnapshotDir`) and at
+each health pass of `linuxio-worker` (`btrfs.NarrowSnapshotDirs`), so the
+folder of a source that takes no snapshot any more does not stay open. The
+one exception is a shared folder that offers earlier versions, whose
+`linuxio-snapshots/<source>` carries an ACL that lets read who may read the
+folder ([Shared Folders](./shared-folders.md#network)); for it
+`linuxio-snapshots` itself is `0711`, passed through and listed by nobody
+but root. Narrowing leaves a folder with an ACL as it is, and takes
+`linuxio-snapshots` down to `0711` and no further, so one that was `0755`
+ends `0711` whether or not a shared folder uses it: the names of the
+sources can be probed there, their snapshots cannot be reached. It touches
+only what LinuxIO made: root's folders, on the subvolume of a
+`linuxio-snapshots` that is root's own. A subvolume or a mount put there,
+a folder of another owner, and everything in a `linuxio-snapshots` that is
+a user's (the top level of a disk they mounted) are left alone. A source's
+folder that cannot be narrowed does not fail the snapshot of another
+source; the health pass names it in its output.
+
 The snapshot list, on the pool page's Snapshots tab and in the Subvolumes
 tab's Snapshots view, groups them under the local day they were taken (Today,
 Yesterday, then the date), newest first. Chips narrow it to one kind present:
@@ -2050,7 +2078,7 @@ btrfsmaintenance timers.
 | Path | Owner | Purpose |
 |---|---|---|
 | `/run/linuxio/btrfs/<uuid>` | root, tmpfs | Mount of the filesystem's top level; gone at reboot |
-| `<top>/linuxio-snapshots/` | root | Snapshots |
+| `<top>/linuxio-snapshots/` | root, `0700` when made (`0711` once a shared folder offers earlier versions, and where an earlier version made it `0755`) | Snapshots, each source's folder `0700`, or with an ACL while a shared folder offers earlier versions |
 | `/etc/linuxio/btrfs-snapshots.json` | `root:root` `0600` | Snapshot rules |
 | `/etc/linuxio/btrfs-replication.json` | `root:root` `0600` | Replication jobs |
 | `/etc/linuxio/btrfs-replication/id_ed25519` (`.pub`) | root, key `0600` | SSH key for replication |

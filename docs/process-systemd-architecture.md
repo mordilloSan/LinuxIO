@@ -152,6 +152,8 @@ The words of `linuxio-worker` are:
 - `replicate [--now RFC3339]`: the replication the btrfs timer runs.
 - `health`, `degraded`, `resync <uuid>` and `rebuild <uuid>`: the other btrfs
   units.
+- `recycle`: the daily emptying of the shared folders' recycle bins
+  ([Shared Folders](./shared-folders.md#network)).
 - `scheduled-run begin|end --unit <unit>`: the hooks of the scheduled units
   ([Scheduled runs](#scheduled-runs)).
 - `alert raise|resolve|auto-update|pending-updates`: the alert hooks
@@ -265,8 +267,9 @@ scripts (`linuxio-schedule-<id>.service`), btrfs snapshots
 (`linuxio-btrfs-snapshot.service`), btrfs replication
 (`linuxio-btrfs-replicate.service`, which the snapshot pass starts), pool resyncs
 (`linuxio-btrfs-resync@<uuid>.service`), pool rebuilds
-(`linuxio-btrfs-rebuild@<uuid>.service`) and Docker updates
-(`linuxio-docker-update.service`). Two hooks do it:
+(`linuxio-btrfs-rebuild@<uuid>.service`), Docker updates
+(`linuxio-docker-update.service`) and the emptying of the shared folders'
+recycle bins (`linuxio-shares-recycle.service`). Two hooks do it:
 
 ```ini
 [Service]
@@ -280,8 +283,8 @@ ExecStopPost=-+/usr/libexec/linuxio/linuxio-worker scheduled-run end --unit %n
   `packaging/systemd/linuxio-run-record.conf` as `10-linuxio-run.conf` in
   `/usr/lib/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
   every `linuxio-schedule-<id>.service` gets it),
-  `linuxio-btrfs-snapshot.service.d/`, `linuxio-btrfs-replicate.service.d/`
-  and `linuxio-docker-update.service.d/`,
+  `linuxio-btrfs-snapshot.service.d/`, `linuxio-btrfs-replicate.service.d/`,
+  `linuxio-shares-recycle.service.d/` and `linuxio-docker-update.service.d/`,
   and in the drop-in directories of the distributions' automatic update
   services (`apt-daily-upgrade.service.d/`, `dnf-automatic.service.d/`,
   `dnf5-automatic.service.d/`, `mintupdate-automation-upgrade.service.d/`),

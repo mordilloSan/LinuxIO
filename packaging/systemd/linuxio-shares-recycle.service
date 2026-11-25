@@ -1,0 +1,9 @@
+[Unit]
+Description=LinuxIO shared folders: empty the recycle bins
+Documentation=https://github.com/mordilloSan/LinuxIO
+# Started by linuxio-shares-recycle.timer, which the bridge writes and
+# enables while a shared folder has its recycle bin on.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/linuxio/linuxio-worker recycle

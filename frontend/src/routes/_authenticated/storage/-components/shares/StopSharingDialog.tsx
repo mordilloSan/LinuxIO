@@ -11,6 +11,8 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 
+import { SMB_RESTART_NOTE, timeMachineName } from "./sharedFolders";
+
 interface StopSharingDialogProps {
   folder: SharedFolder;
   onClose: () => void;
@@ -50,6 +52,9 @@ const StopSharingDialog = ({
           <AppDialogContentText>
             {`${folder.name} is taken off the network. The folder, everything in it, its snapshots and its access table stay, and it can be shared again.`}
           </AppDialogContentText>
+          {timeMachineName(folder) !== "" && (
+            <AppDialogContentText>{SMB_RESTART_NOTE}</AppDialogContentText>
+          )}
           {problem && <AppAlert severity="error">{problem}</AppAlert>}
         </div>
       </AppDialogContent>
@@ -67,6 +72,11 @@ const StopSharingDialog = ({
               everyone: folder.everyone,
               smb: false,
               nfs: [],
+              // Kept for when it is shared again.
+              previousVersions: folder.previousVersions,
+              recycleBin: folder.recycleBin,
+              timeMachine: folder.timeMachine,
+              timeMachineMaxBytes: folder.timeMachineMaxBytes,
             });
           }}
           variant="contained"

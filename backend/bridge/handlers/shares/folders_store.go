@@ -15,14 +15,14 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/common/sharedfolders"
 )
 
 // sharedFoldersFile records the shared folders LinuxIO made: which
 // subvolume, under which share name, who may use it and how it is shared.
 // The smb.conf section, the export and the folder's ACL are written from
 // it. A var so tests can point it at a temp file.
-var sharedFoldersFile = version.ConfigDir + "/shared-folders.json"
+var sharedFoldersFile = sharedfolders.RecordPath
 
 type foldersDocument struct {
 	Folders []apischema.SharedFolder `json:"folders"`

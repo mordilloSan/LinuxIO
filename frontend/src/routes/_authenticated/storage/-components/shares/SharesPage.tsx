@@ -59,6 +59,7 @@ import NFSOptionsDropdown, {
 } from "./NFSClientOptions";
 import SharedFolderDialog from "./SharedFolderDialog";
 import { accessSummary } from "./sharedFolders";
+import SMBSettingsDialog from "./SMBSettingsDialog";
 import StopSharingDialog from "./StopSharingDialog";
 
 type ShareGroup = {
@@ -887,6 +888,10 @@ const SharesPage = () => {
   } | null>(null);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  // Mounted while it is open or closing, so it opens on what the server has.
+  const [smbSettings, setSMBSettings] = useState<"open" | "closing" | null>(
+    null,
+  );
   const { privileged } = useAuth();
   const { isEnabled: btrfsEnabled } = useCapability("btrfsAvailable");
   const foldersAllowed = privileged && btrfsEnabled;
@@ -977,6 +982,17 @@ const SharesPage = () => {
 
   const sharesActions = (
     <HeaderActions
+      options={
+        privileged ? (
+          <AppActionIconButton
+            ariaLabel="SMB settings"
+            icon="mdi:cog-outline"
+            iconSize={20}
+            label="SMB settings"
+            onClick={() => setSMBSettings("open")}
+          />
+        ) : undefined
+      }
       create={
         <AppActionIconButton
           ariaLabel="Add Share"
@@ -1110,6 +1126,13 @@ const SharesPage = () => {
           onClose={() => setFolderDialogOpen(false)}
           onExited={() => setFolderDialog(null)}
           open={folderDialogOpen}
+        />
+      )}
+      {smbSettings && (
+        <SMBSettingsDialog
+          onClose={() => setSMBSettings("closing")}
+          onExited={() => setSMBSettings(null)}
+          open={smbSettings === "open"}
         />
       )}
       {folderDialog?.action === "delete" && folderDialog.folder && (

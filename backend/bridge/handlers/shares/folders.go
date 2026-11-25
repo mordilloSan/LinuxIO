@@ -18,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
+	"github.com/mordilloSan/LinuxIO/backend/common/sharedfolders"
 )
 
 // A shared folder is a subvolume at the top of a pool that LinuxIO made to
@@ -41,6 +42,12 @@ type folderStorage struct {
 	// replicated says a replication job copies the path.
 	replicated func(uuid, path string) (bool, error)
 	setACL     func(ctx context.Context, uuid, path string, acl btrfs.FolderACL) error
+	// setSnapshotsACL opens the folder of path's snapshots to read for acl,
+	// or makes it root's alone again when acl is nil.
+	setSnapshotsACL func(ctx context.Context, uuid, path string, acl *btrfs.FolderACL) error
+	// makeFolder makes a folder inside the shared folder, through its
+	// handle, with the access the shared folder gives what is made in it.
+	makeFolder func(ctx context.Context, uuid, path string, mode uint32) error
 	// listSnapshots returns the paths of the folder's snapshots.
 	listSnapshots  func(ctx context.Context, uuid, path string) ([]string, error)
 	deleteSnapshot func(ctx context.Context, uuid, snapshotPath string) error
@@ -86,7 +93,9 @@ var folderOps = folderStorage{
 			return r.UUID == uuid && r.Path == path
 		}), err
 	},
-	setACL: btrfs.SetFolderACL,
+	setACL:          btrfs.SetFolderACL,
+	setSnapshotsACL: btrfs.SetSnapshotsACL,
+	makeFolder:      btrfs.MakeFolder,
 	listSnapshots: func(ctx context.Context, uuid, path string) ([]string, error) {
 		snapshots, err := btrfs.ListSnapshots(ctx, uuid, &path)
 		if err != nil {
@@ -214,7 +223,133 @@ func folderSambaProperties(f apischema.SharedFolder, folderPath string) map[stri
 	props["inherit acls"] = "yes"
 	props["create mask"] = "0666"
 	props["directory mask"] = "0777"
+	var modules []string
+	if f.TimeMachine {
+		// The modules a Mac needs, first and in the order Samba's manual
+		// gives. The folder is announced to Macs as a Time Machine
+		// destination, by smbd itself through Avahi.
+		modules = append(modules, "catia", "fruit", "streams_xattr")
+		props["fruit:time machine"] = "yes"
+		if f.TimeMachineMaxBytes != nil {
+			// What the backups may take, in MiB: a Mac removes its oldest
+			// backups to stay below it.
+			props["fruit:time machine max size"] = fmt.Sprintf("%dM", max(*f.TimeMachineMaxBytes>>20, 1))
+		}
+	}
+	if f.PreviousVersions {
+		modules = append(modules, "shadow_copy2")
+		// The snapshots of the folder, by the time in their names, UTC.
+		// snapprefix and the empty delimiter have Samba keep the names it
+		// listed and open those: without them it rebuilds a name from the
+		// format alone, which drops the kind (-hourly), and finds nothing.
+		props["shadow:snapdir"] = filepath.Join(filepath.Dir(folderPath), btrfs.SnapshotRoot, btrfs.EscapeSource(f.Path))
+		props["shadow:format"] = btrfs.SnapshotStrftime
+		props["shadow:snapprefix"] = "^$"
+		props["shadow:delimiter"] = ""
+		props["shadow:localtime"] = "no"
+		props["shadow:sort"] = "desc"
+	}
+	if f.RecycleBin {
+		modules = append(modules, "recycle")
+		// What is deleted over SMB is moved into the bin, under the path it
+		// had, a second file of one name beside the first. Office's lock
+		// and temporary files are deleted as before.
+		props["recycle:repository"] = sharedfolders.RecycleBinName
+		props["recycle:keeptree"] = "yes"
+		props["recycle:versions"] = "yes"
+		props["recycle:exclude"] = "~$*,*.tmp,*.temp"
+		// Samba makes the folders of the bin as the person deleting, with
+		// 0700 by default, which under the bin's default ACL shuts everyone
+		// else out: the next person's file could not be moved in, and would
+		// be deleted for good. 0777 leaves it to the ACL.
+		props["recycle:directory_mode"] = "0777"
+		props["recycle:subdir_mode"] = "0777"
+	}
+	if len(modules) > 0 {
+		props["vfs objects"] = strings.Join(modules, " ")
+	}
 	return props
+}
+
+// timeMachineName is the name a folder is announced to Macs under as a Time
+// Machine destination, "" when it is not one.
+func timeMachineName(f apischema.SharedFolder) string {
+	if f.SMB && f.TimeMachine {
+		return f.Name
+	}
+	return ""
+}
+
+// timeMachineChanged restarts smbd when a change of the folder old into f
+// changes what Macs are told: smbd announces its Time Machine folders
+// through Avahi when it starts and never again, so a reload leaves a new one
+// unannounced and a removed one announced. Nothing else restarts it, since a
+// restart cuts every open connection. The folder's change is done by then:
+// a failure is logged, and the announcement follows at smbd's next start.
+func timeMachineChanged(ctx context.Context, old, f apischema.SharedFolder) {
+	if timeMachineName(old) == timeMachineName(f) {
+		return
+	}
+	if err := restartSamba(ctx); err != nil {
+		slog.Warn("failed to restart Samba for the Time Machine announcement", "error", err)
+	}
+}
+
+// makeRecycleBin makes the folder's recycle bin when it has one, and gives
+// it to root with the folder's own access, whatever is there under its name
+// (a folder someone made first) and whatever the access was when it was
+// made: Samba deletes for good what it cannot move into the bin, so a bin
+// that lagged behind the table would lose the files of whoever was given
+// access since, and stay open to whoever lost it. It is left, with what is
+// in it, when the bin is turned off.
+//
+// A link or a file under the bin's name is left as it is and fails nothing:
+// whoever may write the folder can put one there, and a save that stopped
+// at it would leave the folder's record and its section behind the access
+// already written, at that person's will. Samba then deletes for good, as
+// it does without a bin.
+func makeRecycleBin(ctx context.Context, f apischema.SharedFolder, accounts localAccounts) error {
+	if !f.RecycleBin {
+		return nil
+	}
+	bin := f.Path + "/" + sharedfolders.RecycleBinName
+	err := folderOps.makeFolder(ctx, f.UUID, bin, 0o777)
+	if btrfs.NotAFolder(err) {
+		slog.Warn("recycle bin is not a folder, left as it is", "uuid", f.UUID, "path", bin, "error", err)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("the recycle bin: %w", err)
+	}
+	if err := folderOps.setACL(ctx, f.UUID, bin, folderACL(f, accounts)); err != nil {
+		return fmt.Errorf("the recycle bin: %w", err)
+	}
+	return nil
+}
+
+// snapshotsACL is who may read a folder's snapshots for its earlier
+// versions: whoever may read the folder, by the same rule; nil while the
+// folder offers none, or is not shared over SMB, which keeps them root's
+// alone.
+func snapshotsACL(f apischema.SharedFolder, accounts localAccounts) *btrfs.FolderACL {
+	if !f.PreviousVersions || !f.SMB {
+		return nil
+	}
+	read := func(perm btrfs.ACLPerm) btrfs.ACLPerm {
+		if perm == btrfs.ACLNone {
+			return btrfs.ACLNone
+		}
+		return btrfs.ACLRead
+	}
+	acl := folderACL(f, accounts)
+	for id, perm := range acl.Users {
+		acl.Users[id] = read(perm)
+	}
+	for id, perm := range acl.Groups {
+		acl.Groups[id] = read(perm)
+	}
+	acl.Other = read(acl.Other)
+	return &acl
 }
 
 // sectionNamed returns the name smb.conf has a section under, compared as
@@ -367,6 +502,9 @@ func checkSharing(f apischema.SharedFolder, oldName, folderPath string, folders 
 	if err := checkShareName(f, oldName, folders); err != nil {
 		return localAccounts{}, err
 	}
+	if f.TimeMachineMaxBytes != nil && *f.TimeMachineMaxBytes == 0 {
+		return localAccounts{}, fmt.Errorf("%w: a Time Machine size of zero", bridgeipc.ErrInvalidArgs)
+	}
 	accounts, err := readLocalAccounts()
 	if err != nil {
 		return localAccounts{}, err
@@ -414,7 +552,12 @@ func CreateSharedFolder(ctx context.Context, req apischema.SharedFolderCreateReq
 			return err
 		}
 		created = f
-		return makeSharedFolder(ctx, f, req.MaxReferencedBytes, rule, accounts)
+		if err = makeSharedFolder(ctx, f, req.MaxReferencedBytes, rule, accounts); err != nil {
+			return err
+		}
+		timeMachineChanged(ctx, apischema.SharedFolder{}, f)
+		recycleBinsChanged(ctx)
+		return nil
 	})
 	if err != nil {
 		return apischema.SharedFolder{}, fmt.Errorf("create shared folder %s: %w", req.Name, err)
@@ -431,6 +574,8 @@ func newSharedFolder(ctx context.Context, req apischema.SharedFolderCreateReques
 		UUID: req.UUID, Path: req.Name, Name: req.Name,
 		Access: nonNil(req.Access), Everyone: req.Everyone,
 		SMB: req.SMB, NFS: nonNil(req.NFS),
+		PreviousVersions: req.PreviousVersions, RecycleBin: req.RecycleBin,
+		TimeMachine: req.TimeMachine, TimeMachineMaxBytes: req.TimeMachineMaxBytes,
 	}
 	refuse := func(err error) (apischema.SharedFolder, *btrfs.BtrfsSnapshotRule, localAccounts, error) {
 		return apischema.SharedFolder{}, nil, localAccounts{}, err
@@ -547,6 +692,17 @@ func makeSharedFolder(ctx context.Context, f apischema.SharedFolder, limit *uint
 		folderStep{
 			do: func(ctx context.Context) error { return folderOps.setACL(ctx, f.UUID, f.Path, folderACL(f, accounts)) },
 		},
+		// Set or cleared: a folder of an earlier one's snapshots, left with
+		// that one's readers, is closed before this one's snapshots go in.
+		folderStep{
+			do: func(ctx context.Context) error {
+				return folderOps.setSnapshotsACL(ctx, f.UUID, f.Path, snapshotsACL(f, accounts))
+			},
+			undo: func(ctx context.Context) error { return folderOps.setSnapshotsACL(ctx, f.UUID, f.Path, nil) },
+		},
+		// After the access, which the bin starts with; it goes with the
+		// folder when a later step fails.
+		folderStep{do: func(ctx context.Context) error { return makeRecycleBin(ctx, f, accounts) }},
 		folderStep{
 			do:   func(context.Context) error { return putFolder(f) },
 			undo: func(context.Context) error { return removeFolder(f.UUID, f.Path) },
@@ -604,6 +760,8 @@ func UpdateSharedFolder(ctx context.Context, req apischema.SharedFolderUpdateReq
 		f := old
 		f.Name, f.Access, f.Everyone = req.Name, nonNil(req.Access), req.Everyone
 		f.SMB, f.NFS = req.SMB, nonNil(req.NFS)
+		f.PreviousVersions, f.RecycleBin = req.PreviousVersions, req.RecycleBin
+		f.TimeMachine, f.TimeMachineMaxBytes = req.TimeMachine, req.TimeMachineMaxBytes
 		top, err := permanentTop(ctx, f.UUID)
 		if err != nil {
 			return err
@@ -614,20 +772,41 @@ func UpdateSharedFolder(ctx context.Context, req apischema.SharedFolderUpdateReq
 			return err
 		}
 		f.Access = withAccountIDs(f.Access, accounts)
-		if err = folderOps.setACL(ctx, f.UUID, f.Path, folderACL(f, accounts)); err != nil {
+		if err = applyFolderAccess(ctx, old, f, accounts); err != nil {
 			return err
 		}
 		if err = putFolder(f); err != nil {
 			return err
 		}
 		updated = f
-		return publishFolder(ctx, old.Name, f, f.Folder)
+		if err = publishFolder(ctx, old.Name, f, f.Folder); err != nil {
+			return err
+		}
+		timeMachineChanged(ctx, old, f)
+		recycleBinsChanged(ctx)
+		return nil
 	})
 	if err != nil {
 		return apischema.SharedFolder{}, fmt.Errorf("update shared folder %s: %w", req.Path, err)
 	}
 	slog.Info("shared folder updated", "uuid", updated.UUID, "path", updated.Path, "name", updated.Name, "smb", updated.SMB, "nfs", len(updated.NFS) > 0)
 	return updated, nil
+}
+
+// applyFolderAccess writes to the pool what a change of the folder old into
+// f asks: the folder's ACL, who may read its snapshots when it offers
+// earlier versions or did, and its recycle bin, which starts with the access
+// just written.
+func applyFolderAccess(ctx context.Context, old, f apischema.SharedFolder, accounts localAccounts) error {
+	if err := folderOps.setACL(ctx, f.UUID, f.Path, folderACL(f, accounts)); err != nil {
+		return err
+	}
+	if f.PreviousVersions || old.PreviousVersions {
+		if err := folderOps.setSnapshotsACL(ctx, f.UUID, f.Path, snapshotsACL(f, accounts)); err != nil {
+			return err
+		}
+	}
+	return makeRecycleBin(ctx, f, accounts)
 }
 
 // DeleteSharedFolder deletes a shared folder with everything in it and its
@@ -657,22 +836,15 @@ func DeleteSharedFolder(ctx context.Context, req apischema.SharedFolderDeleteReq
 		top, err := permanentTop(ctx, f.UUID)
 		if errors.Is(err, errNotMounted) {
 			withData = false
-			return forgetFolder(ctx, f)
+			err = forgetFolder(ctx, f)
+		} else if err == nil {
+			err = deleteFolderAt(ctx, f, filepath.Join(top, f.Path))
 		}
 		if err != nil {
 			return err
 		}
-		if err = unpublishFolder(ctx, f.Name, filepath.Join(top, f.Path)); err != nil {
-			return err
-		}
-		f.SMB, f.NFS = false, []apischema.NFSClient{}
-		if err = putFolder(f); err != nil {
-			return err
-		}
-		if err = deleteFolderData(ctx, f); err != nil {
-			return err
-		}
-		return removeFolder(f.UUID, f.Path)
+		recycleBinsChanged(ctx)
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("delete shared folder %s: %w", req.Path, err)
@@ -683,6 +855,33 @@ func DeleteSharedFolder(ctx context.Context, req apischema.SharedFolderDeleteReq
 	}
 	slog.Info("shared folder deleted with its data", "uuid", req.UUID, "path", req.Path)
 	return nil
+}
+
+// deleteFolderAt deletes the shared folder f, at folderPath: off the
+// network, then what it holds on its pool, then its record.
+func deleteFolderAt(ctx context.Context, f apischema.SharedFolder, folderPath string) error {
+	shared := f
+	if err := unpublishFolder(ctx, f.Name, folderPath); err != nil {
+		return err
+	}
+	f.SMB, f.NFS = false, []apischema.NFSClient{}
+	if err := putFolder(f); err != nil {
+		return err
+	}
+	// Now, while the record still says it was shared: a delete that fails
+	// below and is run again finds it not shared. Its snapshots are closed
+	// with it, not after its data, so a delete that fails does not leave
+	// them open.
+	timeMachineChanged(ctx, shared, f)
+	if shared.PreviousVersions {
+		if err := folderOps.setSnapshotsACL(ctx, f.UUID, f.Path, nil); err != nil {
+			return err
+		}
+	}
+	if err := deleteFolderData(ctx, f); err != nil {
+		return err
+	}
+	return removeFolder(f.UUID, f.Path)
 }
 
 // forgetFolder removes what LinuxIO holds of a shared folder whose pool is
@@ -700,6 +899,7 @@ func forgetFolder(ctx context.Context, f apischema.SharedFolder) error {
 			return err
 		}
 	}
+	timeMachineChanged(ctx, f, apischema.SharedFolder{})
 	if err = folderOps.deleteRule(ctx, f.UUID, f.Path); err != nil {
 		return err
 	}
@@ -792,6 +992,14 @@ func reapplyFolder(ctx context.Context, f apischema.SharedFolder, accounts local
 		return validateAccess([]apischema.SharedFolderAccess{row}, f.Everyone, accounts) != nil
 	})
 	if err = folderOps.setACL(ctx, f.UUID, f.Path, folderACL(next, accounts)); err != nil {
+		return nil, err
+	}
+	if next.PreviousVersions {
+		if err = folderOps.setSnapshotsACL(ctx, f.UUID, f.Path, snapshotsACL(next, accounts)); err != nil {
+			return nil, err
+		}
+	}
+	if err = makeRecycleBin(ctx, next, accounts); err != nil {
 		return nil, err
 	}
 	if len(next.Access) == len(f.Access) {

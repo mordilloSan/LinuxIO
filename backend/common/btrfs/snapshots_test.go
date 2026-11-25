@@ -2,6 +2,7 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -182,5 +183,136 @@ func TestDeleteSnapshotRefusesMounted(t *testing.T) {
 	}
 	if len(*calls) != 0 {
 		t.Fatalf("unexpected mutations: %v", *calls)
+	}
+}
+
+// Snapshots keep the files as they were, permissions included, so their
+// folders are root's alone, whatever umask made them: the timer's service
+// runs with systemd's 022, under which a folder would be 0755.
+func TestCreateSnapshotMakesItsFoldersRootOnly(t *testing.T) {
+	dest := SnapshotPath(snapSource, snapshotTime, KindManual)
+	top, _ := stubSnapshotTop(t, snapshotSubvolume(1, dest))
+	if _, err := CreateSnapshot(context.Background(), rootUUID, snapSource, KindManual, snapshotTime); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{SnapshotRoot, filepath.Join(SnapshotRoot, snapSource)} {
+		if got := permOf(t, filepath.Join(top, dir)); got != 0o700 {
+			t.Errorf("%s = %o, want 700", dir, got)
+		}
+	}
+}
+
+func permOf(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
+}
+
+// Folders an earlier run left open are narrowed at the next snapshot. The
+// top keeps others' pass-through, which earlier versions of a shared folder
+// need, and loses the rest.
+func TestCreateSnapshotNarrowsFoldersLeftOpen(t *testing.T) {
+	dest := SnapshotPath(snapSource, snapshotTime, KindManual)
+	top, _ := stubSnapshotTop(t, snapshotSubvolume(1, dest))
+	for _, dir := range []string{SnapshotRoot, filepath.Join(SnapshotRoot, snapSource)} {
+		if err := os.Mkdir(filepath.Join(top, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Join(top, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := CreateSnapshot(context.Background(), rootUUID, snapSource, KindManual, snapshotTime); err != nil {
+		t.Fatal(err)
+	}
+	if got := permOf(t, filepath.Join(top, SnapshotRoot)); got != 0o711 {
+		t.Errorf("%s = %o, want 711", SnapshotRoot, got)
+	}
+	if got := permOf(t, filepath.Join(top, SnapshotRoot, snapSource)); got != 0o700 {
+		t.Errorf("%s/%s = %o, want 700", SnapshotRoot, snapSource, got)
+	}
+}
+
+// A folder of snapshots a shared folder opened with an ACL, for its earlier
+// versions, is left as it is: its group bits are the ACL's mask, and
+// narrowed they would shut the named entry out.
+func TestCreateSnapshotLeavesAFolderAnACLOpened(t *testing.T) {
+	dest := SnapshotPath(snapSource, snapshotTime, KindManual)
+	top, _ := stubSnapshotTop(t, snapshotSubvolume(1, dest))
+	dir := filepath.Join(top, SnapshotRoot, snapSource)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	acl := encodeACL(FolderACL{Users: map[int]ACLPerm{os.Getuid() + 1: ACLRead}, Other: ACLNone})
+	err := unix.Setxattr(dir, aclXattrAccess, acl, 0)
+	if errors.Is(err, unix.ENOTSUP) {
+		t.Skip("the temp dir's filesystem keeps no POSIX ACLs")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := permOf(t, dir)
+	if _, err = CreateSnapshot(context.Background(), rootUUID, snapSource, KindManual, snapshotTime); err != nil {
+		t.Fatal(err)
+	}
+	if got := permOf(t, dir); got != before {
+		t.Errorf("%s = %o, want %o, as its ACL made it", dir, got, before)
+	}
+}
+
+// Folders of snapshots an earlier version left open are narrowed for every
+// source of a pool, also one that takes no snapshot any more, and one a
+// shared folder opened with an ACL is left as it is.
+func TestNarrowSnapshotDirs(t *testing.T) {
+	top := t.TempDir()
+	stubMounts(t, []Mount{
+		{Mountpoint: "/elsewhere", UUID: dataUUID, Subvol: "@", SubvolID: 256},
+		{Mountpoint: top, UUID: rootUUID, SubvolID: 5},
+	})
+	for _, dir := range []string{SnapshotRoot, SnapshotRoot + "/@home", SnapshotRoot + "/@old", SnapshotRoot + "/Media"} {
+		if err := os.Mkdir(filepath.Join(top, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Join(top, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A file and a link beside the folders are not followed or changed.
+	if err := os.WriteFile(filepath.Join(top, SnapshotRoot, "note"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(top, SnapshotRoot, "link")); err != nil {
+		t.Fatal(err)
+	}
+	shared := filepath.Join(top, SnapshotRoot, "Media")
+	acl := encodeACL(FolderACL{Users: map[int]ACLPerm{os.Getuid() + 1: ACLRead}, Other: ACLNone})
+	hasACL := true
+	if err := unix.Setxattr(shared, aclXattrAccess, acl, 0); errors.Is(err, unix.ENOTSUP) {
+		hasACL = false
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	sharedBefore := permOf(t, shared)
+
+	if err := NarrowSnapshotDirs(context.Background()); err != nil {
+		t.Fatalf("NarrowSnapshotDirs() = %v", err)
+	}
+	if got := permOf(t, filepath.Join(top, SnapshotRoot)); got != 0o711 {
+		t.Errorf("%s = %o, want 711", SnapshotRoot, got)
+	}
+	for _, source := range []string{"@home", "@old"} {
+		if got := permOf(t, filepath.Join(top, SnapshotRoot, source)); got != 0o700 {
+			t.Errorf("%s/%s = %o, want 700", SnapshotRoot, source, got)
+		}
+	}
+	if got := permOf(t, shared); hasACL && got != sharedBefore {
+		t.Errorf("the folder an ACL opened = %o, want %o", got, sharedBefore)
+	}
+	if got := permOf(t, outside); got&0o077 == 0 {
+		t.Errorf("the folder a link pointed to was narrowed to %o", got)
 	}
 }

@@ -775,6 +775,7 @@ export type CapabilityName =
   | "tuned"
   | "zram"
   | "avahi"
+  | "wsdd"
   | "wireguard"
   | "libvirt"
   | "btrfs_maintenance"
@@ -2823,6 +2824,13 @@ export interface RunReport {
   errors: string[];
 }
 
+export interface SMBSettings {
+  minProtocol: string;
+  encryption: string;
+  macDiscovery: boolean;
+  windowsDiscovery: boolean;
+}
+
 export interface SambaShare {
   name: string;
   properties: Record<string, string>;
@@ -2979,6 +2987,10 @@ export interface SharedFolder {
   everyone: string;
   smb: boolean;
   nfs: NFSClient[];
+  previousVersions: boolean;
+  recycleBin: boolean;
+  timeMachine: boolean;
+  timeMachineMaxBytes?: number;
   folder?: string;
 }
 
@@ -2998,6 +3010,10 @@ export interface SharedFolderCreateRequest {
   everyone: string;
   smb: boolean;
   nfs: NFSClient[];
+  previousVersions: boolean;
+  recycleBin: boolean;
+  timeMachine: boolean;
+  timeMachineMaxBytes?: number;
 }
 
 export interface SharedFolderDeleteRequest {
@@ -3014,6 +3030,10 @@ export interface SharedFolderUpdateRequest {
   everyone: string;
   smb: boolean;
   nfs: NFSClient[];
+  previousVersions: boolean;
+  recycleBin: boolean;
+  timeMachine: boolean;
+  timeMachineMaxBytes?: number;
 }
 
 export interface SmartAttribute {
@@ -4946,6 +4966,7 @@ export interface LinuxIOSchema {
       request: RsyncSSHRequest;
       result: RsyncSSHStatus;
     };
+    get_smb_settings: { input: []; request: void; result: SMBSettings };
     list_folders: { input: []; request: void; result: SharedFolder[] };
     list_nfs_shares: { input: []; request: void; result: NFSExport[] };
     list_samba_shares: { input: []; request: void; result: SambaShare[] };
@@ -4959,6 +4980,11 @@ export interface LinuxIOSchema {
       input: [request: RsyncSaveRequest];
       request: RsyncSaveRequest;
       result: RsyncStatus;
+    };
+    set_smb_settings: {
+      input: [request: SMBSettings];
+      request: SMBSettings;
+      result: SMBSettings;
     };
     stop_rsync: { input: []; request: void; result: RsyncStatus };
     update_folder: {
@@ -5820,6 +5846,7 @@ export interface LinuxIOCallSchema {
   "schedules.list": { request: void; result: SchedulesListResult };
   "shares.get_rsync": { request: void; result: RsyncStatus };
   "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
+  "shares.get_smb_settings": { request: void; result: SMBSettings };
   "shares.list_folders": { request: void; result: SharedFolder[] };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };

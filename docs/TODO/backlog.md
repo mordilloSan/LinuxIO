@@ -169,6 +169,17 @@ after a change that issues ioctls).
 
 Do one of these only when something shows it is needed.
 
+- Adopt a folder that already exists as a shared folder (a pool subvolume,
+  shared or not), so it gets an access table
+  ([Shared Folders](../shared-folders.md)). Applied to the top folder only by
+  default, with a warning before saving when the folder is mounted into a
+  container or holds files owned by system accounts: access applied to
+  existing contents breaks a program that checks its own permissions
+  (PostgreSQL refuses a data folder that is not `0700` or `0750`).
+- Guest access to a shared folder: a **Guest** row in the access table, off
+  by default, which needs Samba's global `map to guest`. Windows 11 refuses
+  guest sign-in by default, so it often fails from Windows anyway.
+
 ## Rejected
 
 Listed once, with the reason, so they are not raised again.

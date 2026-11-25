@@ -11,6 +11,8 @@ export const SCHEDULED_BTRFS_REPLICATE = "scheduled.btrfs_replicate";
 export const SCHEDULED_BTRFS_RESYNC = "scheduled.btrfs_resync";
 export const SCHEDULED_BTRFS_REBUILD = "scheduled.btrfs_rebuild";
 export const SCHEDULED_DOCKER_UPDATE = "scheduled.docker_update";
+// The daily emptying of the shared folders' recycle bins.
+export const SCHEDULED_SHARES_RECYCLE = "scheduled.shares_recycle";
 // The distribution's automatic system updates (APT, DNF, Mint).
 export const SCHEDULED_SYSTEM_UPDATE = "scheduled.system_update";
 
@@ -21,6 +23,7 @@ const SCHEDULED_RUN_TYPES = new Set<string>([
   SCHEDULED_BTRFS_RESYNC,
   SCHEDULED_BTRFS_REBUILD,
   SCHEDULED_DOCKER_UPDATE,
+  SCHEDULED_SHARES_RECYCLE,
   SCHEDULED_SYSTEM_UPDATE,
 ]);
 
@@ -50,6 +53,8 @@ export function scheduledRunLink(task: TaskSnapshot): BackgroundTaskLink {
       return { to: "/storage/snapshots", search: { view: "replication" } };
     case SCHEDULED_DOCKER_UPDATE:
       return { to: "/docker/containers" };
+    case SCHEDULED_SHARES_RECYCLE:
+      return { to: "/storage/shares" };
     case SCHEDULED_SYSTEM_UPDATE:
       return { to: "/updates" };
     default:

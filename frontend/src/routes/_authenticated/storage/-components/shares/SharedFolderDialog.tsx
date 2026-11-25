@@ -20,6 +20,12 @@ import { useCapability } from "@/hooks/useCapabilities";
 
 import { defaultRule } from "../btrfs/btrfsShared";
 import AccessTable from "./AccessTable";
+import NetworkOptions, {
+  networkOf,
+  networkProblem,
+  timeMachineMaxBytes,
+  type NetworkValue,
+} from "./NetworkOptions";
 import NFSOptionsDropdown, {
   defaultNFSOptions,
   nfsOptionsFromStrings,
@@ -36,14 +42,17 @@ import {
   accessProblem,
   defaultAccess,
   networkAddresses,
+  SMB_RESTART_NOTE,
+  timeMachineName,
   type AccessTable as AccessTableValue,
 } from "./sharedFolders";
 
-type DialogTab = "general" | "access";
+type DialogTab = "general" | "access" | "network";
 
 const TABS: { label: string; value: DialogTab }[] = [
   { label: "General", value: "general" },
   { label: "Access", value: "access" },
+  { label: "Network", value: "network" },
 ];
 
 const emptyPoolFolder: PoolFolder = {
@@ -96,6 +105,11 @@ const SharedFolderDialog = ({
     folder ? { access: folder.access, everyone: folder.everyone } : null,
   );
   const [problem, setProblem] = useState<string | null>(null);
+  // Null until it is edited: a new folder offers earlier versions when it
+  // takes snapshots, as long as that is not set by hand.
+  const [editedNetwork, setEditedNetwork] = useState<NetworkValue | null>(
+    folder ? networkOf(folder) : null,
+  );
 
   // A server that is not installed can still be switched off for a folder
   // that was shared through it.
@@ -128,6 +142,16 @@ const SharedFolderDialog = ({
     folder !== null &&
     accessLowered({ access: folder.access, everyone: folder.everyone }, table);
   const name = folder ? shareName.trim() : poolFolder.name;
+  const network = editedNetwork ?? {
+    previousVersions: poolFolder.snapshots,
+    recycleBin: true,
+    timeMachine: false,
+    timeMachineGiB: "",
+  };
+  // What Macs are told changes: the server restarts the SMB service.
+  const restarts =
+    timeMachineName({ name, smb, timeMachine: network.timeMachine }) !==
+    (folder ? timeMachineName(folder) : "");
 
   const showError = (fallback: string) => (error: unknown) =>
     setProblem(getMutationErrorMessage(error, fallback));
@@ -150,6 +174,7 @@ const SharedFolderDialog = ({
       (folder ? null : poolFolderError(poolFolder)) ??
       (name === "" ? "Give the share a name" : null) ??
       (nfsOn && clients.length === 0 ? "Name at least one NFS client" : null) ??
+      networkProblem(network) ??
       accessIssue;
     if (invalid) {
       setProblem(invalid);
@@ -158,7 +183,20 @@ const SharedFolderDialog = ({
       return;
     }
     setProblem(null);
-    const sharing = { ...table, name, smb, nfs: clients };
+    const offered = smb || folder !== null;
+    const sharing = {
+      ...table,
+      name,
+      smb,
+      nfs: clients,
+      // A new folder that is not shared over SMB starts with none of what
+      // SMB offers; one that is saved keeps its switches for when it is
+      // shared again.
+      previousVersions: offered && network.previousVersions,
+      recycleBin: offered && network.recycleBin,
+      timeMachine: offered && network.timeMachine,
+      timeMachineMaxBytes: offered ? timeMachineMaxBytes(network) : undefined,
+    };
     if (folder) {
       update.mutate({ uuid: folder.uuid, path: folder.path, ...sharing });
       return;
@@ -275,6 +313,12 @@ const SharedFolderDialog = ({
                 </AppTypography>
               )}
             </>
+          ) : tab === "network" ? (
+            <NetworkOptions
+              onChange={setEditedNetwork}
+              smb={smb}
+              value={network}
+            />
           ) : (
             <>
               <AccessTable
@@ -300,6 +344,11 @@ const SharedFolderDialog = ({
               The users and groups could not be read, so a new folder cannot be
               given its access yet. Close the dialog and try again.
             </AppAlert>
+          )}
+          {restarts && (
+            <AppTypography color="text.secondary" variant="caption">
+              {SMB_RESTART_NOTE}
+            </AppTypography>
           )}
           {problem && <AppAlert severity="error">{problem}</AppAlert>}
         </div>

@@ -42,6 +42,14 @@ vi.mock("@/api", async (importOriginal) => {
         list_samba_shares: query("test-samba", () => mocks.samba()),
         list_nfs_shares: query("test-nfs", () => mocks.nfs()),
         list_samba_users: none("test-samba-users"),
+        get_smb_settings: query("test-smb-settings", () =>
+          Promise.resolve({
+            minProtocol: "SMB2",
+            encryption: "default",
+            macDiscovery: true,
+            windowsDiscovery: false,
+          }),
+        ),
       },
       storage: {
         ...actual.linuxio.storage,
@@ -70,6 +78,9 @@ const media: SharedFolder = {
   smb: true,
   nfs: [],
   folder: "/mnt/tank/Media",
+  previousVersions: false,
+  recycleBin: false,
+  timeMachine: false,
 };
 
 const archive: SharedFolder = {
@@ -179,6 +190,16 @@ describe("SharesPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens the settings of the SMB service", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(<SharesPage />, admin);
+    await screen.findByText("/srv/plain");
+    await user.click(screen.getByRole("button", { name: "SMB settings" }));
+    expect(
+      await screen.findByRole("dialog", { name: "SMB service" }),
+    ).toBeInTheDocument();
+  });
+
   it("leaves shared folders out for a session that cannot read their record", async () => {
     const user = userEvent.setup();
     renderWithTanStackRouter(<SharesPage />, {
@@ -187,6 +208,8 @@ describe("SharesPage", () => {
     });
     await screen.findByText("/srv/plain");
     expect(mocks.folders).not.toHaveBeenCalled();
+    // Its settings are an administrator's to change.
+    expect(screen.queryByRole("button", { name: "SMB settings" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Add Share" }));
     expect(
       await screen.findByRole("dialog", { name: "Share an existing folder" }),

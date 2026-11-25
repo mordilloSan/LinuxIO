@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -154,5 +155,67 @@ func TestSetFolderACLRefusesALink(t *testing.T) {
 	err = SetFolderACL(context.Background(), uuid, "link", FolderACL{Other: ACLReadWrite})
 	if !errors.Is(err, ErrLinkOnPath) {
 		t.Fatalf("SetFolderACL() through a link = %v, want ErrLinkOnPath", err)
+	}
+}
+
+// Samba reads the time in a snapshot's name with strptime, given
+// SnapshotStrftime; it must say what snapshotTimeLayout writes.
+func TestSnapshotStrftimeIsTheLayout(t *testing.T) {
+	layout := strings.NewReplacer("%Y", "2006", "%m", "01", "%d", "02", "%H", "15", "%M", "04", "%S", "05").Replace(SnapshotStrftime)
+	if layout != snapshotTimeLayout {
+		t.Fatalf("SnapshotStrftime %q reads as %q, but names are written as %q", SnapshotStrftime, layout, snapshotTimeLayout)
+	}
+}
+
+// A shared folder's earlier versions are read by Samba as the person signed
+// in: the folder of its snapshots lets read who may read the folder, and
+// SnapshotRoot lets them pass through. Turned off, the folder is root's
+// alone again; one never made is not made for that.
+func TestSetSnapshotsACL(t *testing.T) {
+	uuid := aclFolder(t)
+	top, err := TopLevel(context.Background(), uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	dir := filepath.Join(top, SnapshotRoot, "media")
+	if err = SetSnapshotsACL(ctx, uuid, "media", nil); err != nil {
+		t.Fatalf("clear before any snapshot = %v", err)
+	}
+	if _, err = os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("clearing made %s: %v", dir, err)
+	}
+	acl := FolderACL{Users: map[int]ACLPerm{os.Getuid() + 1: ACLRead}, Other: ACLNone}
+	err = SetSnapshotsACL(ctx, uuid, "media", &acl)
+	if errors.Is(err, unix.ENOTSUP) {
+		t.Skip("the temp dir's filesystem keeps no POSIX ACLs")
+	}
+	if err != nil {
+		t.Fatalf("SetSnapshotsACL() = %v", err)
+	}
+	buf := make([]byte, 256)
+	n, err := unix.Getxattr(dir, aclXattrAccess, buf)
+	if err != nil || !bytes.Equal(buf[:n], encodeACL(acl)) {
+		t.Fatalf("ACL of %s = % x, %v", dir, buf[:n], err)
+	}
+	info, err := os.Stat(filepath.Join(top, SnapshotRoot))
+	if err != nil || info.Mode().Perm() != 0o711 {
+		t.Fatalf("%s mode = %v, %v, want 711", SnapshotRoot, info, err)
+	}
+	// A new snapshot leaves the opened folder as it is.
+	if err = ensureSnapshotDir(top, filepath.Join(SnapshotRoot, "media")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = unix.Getxattr(dir, aclXattrAccess, buf); err != nil {
+		t.Fatalf("a snapshot took the ACL away: %v", err)
+	}
+	if err = SetSnapshotsACL(ctx, uuid, "media", nil); err != nil {
+		t.Fatalf("clear = %v", err)
+	}
+	if _, err = unix.Getxattr(dir, aclXattrAccess, buf); !errors.Is(err, unix.ENODATA) {
+		t.Errorf("ACL after clearing: %v", err)
+	}
+	if info, err = os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("%s mode after clearing = %v, %v, want 700", dir, info, err)
 	}
 }

@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -20,16 +24,23 @@ const testPool = "uuid-tank"
 // fakePool stands in for the pool: it keeps what was made on it and the
 // order of the calls, and fails the call named in fail.
 type fakePool struct {
-	top       string
-	calls     []string
-	fail      map[string]error
-	rules     map[string]btrfs.BtrfsSnapshotRule
-	acls      map[string]btrfs.FolderACL
-	limits    map[string]uint64
-	snapshots map[string][]string
-	jobs      map[string]bool
+	top   string
+	calls []string
+	fail  map[string]error
+	rules map[string]btrfs.BtrfsSnapshotRule
+	acls  map[string]btrfs.FolderACL
+	// snapshotACLs is the ACL of each folder's snapshots, absent when
+	// they are root's alone.
+	snapshotACLs map[string]btrfs.FolderACL
+	limits       map[string]uint64
+	snapshots    map[string][]string
+	jobs         map[string]bool
 	// onCreate runs once the subvolume is made.
 	onCreate func()
+	// timer is what was asked of systemd about the recycle timer.
+	timer []string
+	// restarts counts the restarts of smbd.
+	restarts int
 }
 
 func (p *fakePool) call(name, path string) error {
@@ -89,6 +100,23 @@ func (p *fakePool) ops() folderStorage {
 			p.acls[path] = acl
 			return nil
 		},
+		setSnapshotsACL: func(_ context.Context, _, path string, acl *btrfs.FolderACL) error {
+			if acl == nil {
+				delete(p.snapshotACLs, path)
+				return p.call("clearSnapshotsACL", path)
+			}
+			if err := p.call("setSnapshotsACL", path); err != nil {
+				return err
+			}
+			p.snapshotACLs[path] = *acl
+			return nil
+		},
+		makeFolder: func(_ context.Context, _, path string, _ uint32) error {
+			if err := p.call("makeFolder", path); err != nil {
+				return err
+			}
+			return os.MkdirAll(filepath.Join(p.top, path), 0o755)
+		},
 		listSnapshots: func(_ context.Context, _, path string) ([]string, error) {
 			return p.snapshots[path], p.call("listSnapshots", path)
 		},
@@ -108,13 +136,14 @@ func setupFolders(t *testing.T) *fakePool {
 	t.Helper()
 	dir := t.TempDir()
 	pool := &fakePool{
-		top:       filepath.Join(dir, "tank"),
-		fail:      map[string]error{},
-		rules:     map[string]btrfs.BtrfsSnapshotRule{},
-		acls:      map[string]btrfs.FolderACL{},
-		limits:    map[string]uint64{},
-		snapshots: map[string][]string{},
-		jobs:      map[string]bool{},
+		top:          filepath.Join(dir, "tank"),
+		fail:         map[string]error{},
+		rules:        map[string]btrfs.BtrfsSnapshotRule{},
+		acls:         map[string]btrfs.FolderACL{},
+		snapshotACLs: map[string]btrfs.FolderACL{},
+		limits:       map[string]uint64{},
+		snapshots:    map[string][]string{},
+		jobs:         map[string]bool{},
 	}
 	write := func(name, content string) string {
 		t.Helper()
@@ -155,6 +184,20 @@ func setupFolders(t *testing.T) *fakePool {
 	foldersLockFile = filepath.Join(dir, "shared-folders.lock")
 	// The temp dir is the test user's, not root's.
 	topIsRootOnly = func(string) error { return nil }
+	origTimer, origTimerPath, origRestart := recycleTimer, recycleTimerPath, restartSamba
+	t.Cleanup(func() { recycleTimer, recycleTimerPath, restartSamba = origTimer, origTimerPath, origRestart })
+	restartSamba = func(context.Context) error { pool.restarts++; return nil }
+	recycleTimerPath = filepath.Join(dir, "linuxio-shares-recycle.timer")
+	say := func(what string) func(context.Context, string) error {
+		return func(_ context.Context, unit string) error {
+			pool.timer = append(pool.timer, what+" "+unit)
+			return nil
+		}
+	}
+	recycleTimer = recycleTimerOps{
+		daemonReload: func(context.Context) error { pool.timer = append(pool.timer, "reload"); return nil },
+		enableUnit:   say("enable"), startUnit: say("start"), stopUnit: say("stop"), disableUnit: say("disable"),
+	}
 	folderOps = pool.ops()
 	sambaServerAvailable = func() (bool, error) { return true, nil }
 	nfsServerAvailable = func() (bool, error) { return true, nil }
@@ -200,7 +243,7 @@ func TestCreateSharedFolder(t *testing.T) {
 	if folder.Folder != media || folder.Path != "Media" || folder.Name != "Media" {
 		t.Errorf("folder = %+v", folder)
 	}
-	wantCalls := []string{"listSnapshots Media", "createSubvolume Media", "setLimit Media", "saveRule Media", "setACL Media"}
+	wantCalls := []string{"listSnapshots Media", "createSubvolume Media", "setLimit Media", "saveRule Media", "setACL Media", "clearSnapshotsACL Media"}
 	if !slices.Equal(pool.calls, wantCalls) {
 		t.Errorf("calls = %v, want %v", pool.calls, wantCalls)
 	}
@@ -474,6 +517,376 @@ func TestCreateSharedFolderRefusesAFolderAlreadyThere(t *testing.T) {
 func updateOf(f apischema.SharedFolder) apischema.SharedFolderUpdateRequest {
 	return apischema.SharedFolderUpdateRequest{
 		UUID: f.UUID, Path: f.Path, Name: f.Name, Access: f.Access, Everyone: f.Everyone, SMB: f.SMB, NFS: f.NFS,
+		PreviousVersions: f.PreviousVersions, RecycleBin: f.RecycleBin,
+		TimeMachine: f.TimeMachine, TimeMachineMaxBytes: f.TimeMachineMaxBytes,
+	}
+}
+
+// Earlier versions: Samba lists the folder's snapshots by the time in
+// their names, keeps the names it listed to open them (snapprefix and an
+// empty delimiter, without which it rebuilds a name without its kind), and
+// reads them as the person signed in, so the folder of the snapshots lets
+// read who may read the folder.
+func TestSharedFolderEarlierVersions(t *testing.T) {
+	pool := setupFolders(t)
+	req := mediaRequest()
+	req.PreviousVersions = true
+	folder, err := CreateSharedFolder(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CreateSharedFolder() = %v", err)
+	}
+	if !slices.Contains(pool.calls, "setSnapshotsACL Media") {
+		t.Errorf("calls = %v", pool.calls)
+	}
+	// alice may write the folder and family read it: both may read its
+	// snapshots; nobody else.
+	want := btrfs.FolderACL{
+		Users:  map[int]btrfs.ACLPerm{1000: btrfs.ACLRead},
+		Groups: map[int]btrfs.ACLPerm{2000: btrfs.ACLRead},
+		Other:  btrfs.ACLNone,
+	}
+	if got := pool.snapshotACLs["Media"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("snapshots ACL = %+v, want %+v", got, want)
+	}
+	smb := readFile(t, smbConfFile)
+	for _, line := range []string{
+		"vfs objects = shadow_copy2",
+		"shadow:snapdir = " + filepath.Join(pool.top, btrfs.SnapshotRoot, "Media"),
+		"shadow:format = %Y%m%dT%H%M%SZ",
+		"shadow:snapprefix = ^$",
+		"shadow:delimiter = \n",
+		"shadow:localtime = no",
+		"shadow:sort = desc",
+	} {
+		if !strings.Contains(smb, line) {
+			t.Errorf("smb.conf lacks %q:\n%s", line, smb)
+		}
+	}
+
+	// The access changes: so does who may read the snapshots.
+	pool.calls = nil
+	req2 := updateOf(folder)
+	req2.Everyone = "ro"
+	if _, err = UpdateSharedFolder(context.Background(), req2); err != nil {
+		t.Fatal(err)
+	}
+	if got := pool.snapshotACLs["Media"].Other; got != btrfs.ACLRead {
+		t.Errorf("snapshots ACL for everyone else = %v, want read", got)
+	}
+
+	// Not shared with Windows and Macs, nobody is offered them: the
+	// snapshots are root's alone until it is shared again.
+	req2.SMB = false
+	if _, err = UpdateSharedFolder(context.Background(), req2); err != nil {
+		t.Fatal(err)
+	}
+	if _, open := pool.snapshotACLs["Media"]; open {
+		t.Errorf("snapshots open while the folder is not shared over SMB")
+	}
+	req2.SMB = true
+	if _, err = UpdateSharedFolder(context.Background(), req2); err != nil {
+		t.Fatal(err)
+	}
+	if _, open := pool.snapshotACLs["Media"]; !open {
+		t.Errorf("snapshots closed after sharing again")
+	}
+
+	// Off: the snapshots are root's alone again, and the share says nothing
+	// of them.
+	pool.calls = nil
+	req2.PreviousVersions = false
+	if _, err = UpdateSharedFolder(context.Background(), req2); err != nil {
+		t.Fatal(err)
+	}
+	if _, open := pool.snapshotACLs["Media"]; open || !slices.Contains(pool.calls, "clearSnapshotsACL Media") {
+		t.Errorf("snapshots still open: %v, calls %v", pool.snapshotACLs, pool.calls)
+	}
+	if smb := readFile(t, smbConfFile); strings.Contains(smb, "shadow:") || strings.Contains(smb, "vfs objects") {
+		t.Errorf("smb.conf:\n%s", smb)
+	}
+}
+
+// The recycle bin: Samba moves what is deleted over SMB into #recycle at the
+// top of the folder, which LinuxIO makes there once the folder has its
+// access, so the bin carries it (in a bin it cannot write, Samba deletes for
+// good); a timer has linuxio-worker empty the bins while a folder has one.
+func TestSharedFolderRecycleBin(t *testing.T) {
+	pool := setupFolders(t)
+	req := mediaRequest()
+	req.RecycleBin, req.PreviousVersions = true, true
+	folder, err := CreateSharedFolder(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CreateSharedFolder() = %v", err)
+	}
+	acl, bin := slices.Index(pool.calls, "setACL Media"), slices.Index(pool.calls, "makeFolder Media/#recycle")
+	if acl < 0 || bin < acl {
+		t.Errorf("the bin is made after the folder's access: %v", pool.calls)
+	}
+	smb := readFile(t, smbConfFile)
+	for _, line := range []string{
+		"vfs objects = shadow_copy2 recycle",
+		"recycle:repository = #recycle",
+		"recycle:keeptree = yes",
+		"recycle:versions = yes",
+		"recycle:exclude = ~$*,*.tmp,*.temp",
+		// Samba makes the folders of the bin as the person deleting, 0700
+		// by default, which the next person could not move a file into:
+		// 0777 leaves it to the folder's ACL.
+		"recycle:directory_mode = 0777",
+		"recycle:subdir_mode = 0777",
+	} {
+		if !strings.Contains(smb, line) {
+			t.Errorf("smb.conf lacks %q:\n%s", line, smb)
+		}
+	}
+	if want := []string{"reload", "enable linuxio-shares-recycle.timer", "start linuxio-shares-recycle.timer"}; !slices.Equal(pool.timer, want) {
+		t.Errorf("timer = %v, want %v", pool.timer, want)
+	}
+	// The bin is root's and has the folder's own access, whoever made a
+	// folder of that name before, and keeps it through a change: someone
+	// given access later can use the bin, someone who lost it cannot.
+	if !reflect.DeepEqual(pool.acls["Media/#recycle"], pool.acls["Media"]) || len(pool.acls["Media/#recycle"].Users) == 0 {
+		t.Errorf("the bin's access = %+v, the folder's %+v", pool.acls["Media/#recycle"], pool.acls["Media"])
+	}
+	wider := updateOf(folder)
+	wider.Access = append(slices.Clone(wider.Access), row("user", "bob", "rw"))
+	if folder, err = UpdateSharedFolder(context.Background(), wider); err != nil {
+		t.Fatal(err)
+	}
+	if pool.acls["Media/#recycle"].Users[1001] != btrfs.ACLReadWrite {
+		t.Errorf("the bin's access after bob was added = %+v", pool.acls["Media/#recycle"])
+	}
+	if text := readFile(t, recycleTimerPath); !strings.Contains(text, "OnCalendar=daily") || !strings.Contains(text, "Unit=linuxio-shares-recycle.service") {
+		t.Errorf("timer unit:\n%s", text)
+	}
+
+	// Off: Samba deletes for good again, the bin and what is in it stay,
+	// and with no bin left to empty the timer stops.
+	pool.calls, pool.timer = nil, nil
+	off := updateOf(folder)
+	off.RecycleBin = false
+	if _, err = UpdateSharedFolder(context.Background(), off); err != nil {
+		t.Fatal(err)
+	}
+	if smb := readFile(t, smbConfFile); strings.Contains(smb, "recycle") {
+		t.Errorf("smb.conf:\n%s", smb)
+	}
+	if _, err = os.Stat(filepath.Join(pool.top, "Media", "#recycle")); err != nil {
+		t.Errorf("the bin went with the switch: %v", err)
+	}
+	if want := []string{"stop linuxio-shares-recycle.timer", "disable linuxio-shares-recycle.timer"}; !slices.Equal(pool.timer, want) {
+		t.Errorf("timer = %v, want %v", pool.timer, want)
+	}
+}
+
+// Whoever may write a folder can put a link or a file where its recycle bin
+// was. A save goes through all the same, to the record and the section: one
+// that stopped at the bin would leave both behind the access already
+// written, for as long as that person liked.
+func TestSharedFolderSavesPastABinThatIsNotAFolder(t *testing.T) {
+	pool := setupFolders(t)
+	req := mediaRequest()
+	req.RecycleBin = true
+	folder, err := CreateSharedFolder(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CreateSharedFolder() = %v", err)
+	}
+	for name, binErr := range map[string]error{
+		"a link": fmt.Errorf("%w: Media/#recycle", btrfs.ErrLinkOnPath),
+		"a file": &fs.PathError{Op: "open", Path: "Media/#recycle", Err: unix.ENOTDIR},
+	} {
+		pool.fail["makeFolder"] = binErr
+		pool.calls = nil
+		renamed := updateOf(folder)
+		renamed.Name = "Films" + strings.ReplaceAll(name, " ", "")
+		got, updateErr := UpdateSharedFolder(context.Background(), renamed)
+		if updateErr != nil {
+			t.Fatalf("%s: UpdateSharedFolder() = %v", name, updateErr)
+		}
+		if got.Name != renamed.Name || !strings.Contains(readFile(t, smbConfFile), "["+renamed.Name+"]") {
+			t.Errorf("%s: saved as %q, smb.conf:\n%s", name, got.Name, readFile(t, smbConfFile))
+		}
+		if slices.Contains(pool.calls, "setACL Media/#recycle") {
+			t.Errorf("%s: an ACL was set through the bin's name: %v", name, pool.calls)
+		}
+		folder = got
+	}
+	// Any other failure of the bin still stops the save.
+	pool.fail["makeFolder"] = errors.New("input/output error")
+	if _, err = UpdateSharedFolder(context.Background(), updateOf(folder)); err == nil {
+		t.Error("a bin that could not be made did not fail the save")
+	}
+}
+
+// Time Machine: the folder is offered to Macs as a backup destination, with
+// the size its backups may take. The Mac modules come first and in their
+// own order, as Samba asks.
+func TestSharedFolderTimeMachine(t *testing.T) {
+	setupFolders(t)
+	req := mediaRequest()
+	size := uint64(500) << 30
+	req.TimeMachine, req.TimeMachineMaxBytes = true, &size
+	req.PreviousVersions, req.RecycleBin = true, true
+	folder, err := CreateSharedFolder(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CreateSharedFolder() = %v", err)
+	}
+	smb := readFile(t, smbConfFile)
+	for _, line := range []string{
+		"vfs objects = catia fruit streams_xattr shadow_copy2 recycle",
+		"fruit:time machine = yes",
+		"fruit:time machine max size = 512000M",
+	} {
+		if !strings.Contains(smb, line) {
+			t.Errorf("smb.conf lacks %q:\n%s", line, smb)
+		}
+	}
+	// No limit: Samba is told none.
+	noLimit := updateOf(folder)
+	noLimit.TimeMachineMaxBytes = nil
+	if _, err = UpdateSharedFolder(context.Background(), noLimit); err != nil {
+		t.Fatal(err)
+	}
+	if smb := readFile(t, smbConfFile); !strings.Contains(smb, "fruit:time machine = yes") || strings.Contains(smb, "max size") {
+		t.Errorf("smb.conf:\n%s", smb)
+	}
+	zero := uint64(0)
+	noLimit.TimeMachineMaxBytes = &zero
+	if _, err = UpdateSharedFolder(context.Background(), noLimit); !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+		t.Errorf("a size of zero = %v, want ErrInvalidArgs", err)
+	}
+	// Off: no Mac module is loaded for the folder.
+	noLimit.TimeMachine, noLimit.TimeMachineMaxBytes = false, nil
+	if _, err = UpdateSharedFolder(context.Background(), noLimit); err != nil {
+		t.Fatal(err)
+	}
+	if smb := readFile(t, smbConfFile); strings.Contains(smb, "fruit") || !strings.Contains(smb, "vfs objects = shadow_copy2 recycle") {
+		t.Errorf("smb.conf:\n%s", smb)
+	}
+}
+
+// smbd tells Macs of a Time Machine folder when it starts, and only then: a
+// reload of its settings leaves what it announced as it was. It is
+// restarted when that changes, and only then, since a restart cuts every
+// open connection.
+func TestTimeMachineAnnouncementRestartsSamba(t *testing.T) {
+	pool := setupFolders(t)
+	ctx := context.Background()
+	req := mediaRequest()
+	folder, err := CreateSharedFolder(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := func(what string, want int, change func(*apischema.SharedFolderUpdateRequest)) {
+		t.Helper()
+		update := updateOf(folder)
+		change(&update)
+		pool.restarts = 0
+		if folder, err = UpdateSharedFolder(ctx, update); err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+		if pool.restarts != want {
+			t.Errorf("%s: %d restarts of smbd, want %d", what, pool.restarts, want)
+		}
+	}
+	if pool.restarts != 0 {
+		t.Errorf("a folder without Time Machine restarted smbd %d times", pool.restarts)
+	}
+	step("access changed", 0, func(u *apischema.SharedFolderUpdateRequest) { u.Everyone = "ro" })
+	step("Time Machine on", 1, func(u *apischema.SharedFolderUpdateRequest) { u.TimeMachine = true })
+	step("its size changed", 0, func(u *apischema.SharedFolderUpdateRequest) { size := uint64(1) << 40; u.TimeMachineMaxBytes = &size })
+	step("renamed", 1, func(u *apischema.SharedFolderUpdateRequest) { u.Name = "Backups" })
+	step("no longer shared", 1, func(u *apischema.SharedFolderUpdateRequest) { u.SMB = false })
+	step("shared again", 1, func(u *apischema.SharedFolderUpdateRequest) { u.SMB = true })
+	pool.restarts = 0
+	if err = DeleteSharedFolder(ctx, apischema.SharedFolderDeleteRequest{UUID: folder.UUID, Path: folder.Path, ConfirmName: folder.Name}); err != nil {
+		t.Fatal(err)
+	}
+	if pool.restarts != 1 {
+		t.Errorf("deleted: %d restarts of smbd, want 1", pool.restarts)
+	}
+	// A new folder that is one from the start.
+	pool.restarts = 0
+	req.TimeMachine = true
+	if _, err = CreateSharedFolder(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	if pool.restarts != 1 {
+		t.Errorf("created with Time Machine: %d restarts of smbd, want 1", pool.restarts)
+	}
+}
+
+// A host with no recycle bin is not asked anything about the timer.
+func TestSharedFolderWithoutARecycleBinLeavesTheTimerAlone(t *testing.T) {
+	pool := setupFolders(t)
+	if _, err := CreateSharedFolder(context.Background(), mediaRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if len(pool.timer) != 0 {
+		t.Errorf("timer = %v", pool.timer)
+	}
+	if _, err := os.Stat(recycleTimerPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the timer unit was written: %v", err)
+	}
+}
+
+// The timer is a file LinuxIO writes for its own work: both packages stop
+// and disable it at removal, and delete it.
+func TestPackageRemovalDeletesTheRecycleTimer(t *testing.T) {
+	read := func(script string) string {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packaging", script))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
+		if !slices.Contains(strings.Fields(read(script)), recycleTimerPath) {
+			t.Errorf("packaging/%s does not delete %s", script, recycleTimerPath)
+		}
+	}
+	for _, script := range []string{"debian/prerm", "rpm/linuxio.spec"} {
+		if !strings.Contains(read(script), recycleTimerName) {
+			t.Errorf("packaging/%s does not stop and disable %s", script, recycleTimerName)
+		}
+	}
+}
+
+// A folder that comes off the network to be deleted has its snapshots
+// closed at once, before its data is touched: when the delete then fails,
+// they are not left open under a record that says it is not shared.
+func TestDeleteSharedFolderClosesItsSnapshotsBeforeItsData(t *testing.T) {
+	pool := setupFolders(t)
+	req := mediaRequest()
+	req.PreviousVersions = true
+	if _, err := CreateSharedFolder(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	pool.fail["deleteSubvolume"] = errors.New("busy")
+	err := DeleteSharedFolder(context.Background(), apischema.SharedFolderDeleteRequest{UUID: testPool, Path: "Media", ConfirmName: "Media"})
+	if err == nil {
+		t.Fatal("DeleteSharedFolder() = nil, want the subvolume's error")
+	}
+	if _, open := pool.snapshotACLs["Media"]; open {
+		t.Errorf("the snapshots are still open after a delete that failed")
+	}
+}
+
+// A deleted folder leaves its snapshots' folder root's alone, so the next
+// folder of that name does not start with the old table's readers.
+func TestDeleteSharedFolderClosesItsSnapshots(t *testing.T) {
+	pool := setupFolders(t)
+	req := mediaRequest()
+	req.PreviousVersions = true
+	if _, err := CreateSharedFolder(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	pool.calls = nil
+	if err := DeleteSharedFolder(context.Background(), apischema.SharedFolderDeleteRequest{UUID: testPool, Path: "Media", ConfirmName: "Media"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, open := pool.snapshotACLs["Media"]; open {
+		t.Errorf("snapshots still open after delete: calls %v", pool.calls)
 	}
 }
 

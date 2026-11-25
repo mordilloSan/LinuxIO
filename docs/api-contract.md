@@ -941,6 +941,7 @@ and `tasks.events` while it runs. Seven task types:
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | `Pool resync` | `[<pool uuid>]` |
 | `scheduled.btrfs_rebuild` | `linuxio-btrfs-rebuild@<uuid>.service` | `Pool rebuild` | `[<pool uuid>]` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | `Container updates` | none |
+| `scheduled.shares_recycle` | `linuxio-shares-recycle.service` | `Recycle bins` | none |
 | `scheduled.system_update` | the distribution's automatic update service: `apt-daily-upgrade.service`, `dnf-automatic.service`, `dnf5-automatic.service` or `mintupdate-automation-upgrade.service` | `System updates` | none |
 
 - **Who sees them.** Only the root host serves them, so every admin session

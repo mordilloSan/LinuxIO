@@ -233,7 +233,7 @@ var errBusy = errors.New("mount is busy")
 func runRollbackStep(ctx context.Context, uuid, top string, step RollbackStep) error {
 	switch step.Op {
 	case opSnapshotRO:
-		if err := mkdirAllBelow(top, filepath.Dir(step.To)); err != nil {
+		if err := ensureSnapshotDir(top, filepath.Dir(step.To)); err != nil {
 			return fmt.Errorf("create snapshot directory for %q: %w", step.From, err)
 		}
 		if err := subvolOps.snapshot(top, step.From, step.To, true); err != nil {

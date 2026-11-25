@@ -17,6 +17,8 @@ import (
 func TestMain(m *testing.M) {
 	if os.Getenv("LINUXIO_RUN_BTRFS_INTEGRATION") != "1" {
 		fsidOf = func(int) ([16]byte, error) { return [16]byte{1}, nil }
+		// And the snapshot folders a unit test makes are its user's.
+		snapshotsOwnerUID = uint32(os.Getuid())
 	}
 	// No test asks the machine's systemd what it is: without a version, the
 	// health run leaves /etc/fstab and the mounts as they are.
@@ -52,7 +54,7 @@ func TestOnFilesystemOfRefusesAnotherFilesystem(t *testing.T) {
 	if _, err := openBelow(top, "shared"); err == nil || errors.Is(err, ErrNotOnFilesystem) {
 		t.Errorf("top level that is not btrfs: err = %v, want an error that is not ErrNotOnFilesystem", err)
 	}
-	if err := mkdirAllBelow(top, "linuxio-snapshots/@"); err == nil || errors.Is(err, ErrNotOnFilesystem) {
+	if err := mkdirAllBelow(top, "linuxio-snapshots/@", 0o755, nil); err == nil || errors.Is(err, ErrNotOnFilesystem) {
 		t.Errorf("mkdir below a top level that is not btrfs: err = %v, want an error that is not ErrNotOnFilesystem", err)
 	}
 	if _, err := os.Stat(filepath.Join(top, "linuxio-snapshots")); !errors.Is(err, os.ErrNotExist) {
@@ -127,7 +129,7 @@ func TestSubvolumeOpsRefuseAPathThroughALink(t *testing.T) {
 		"snapshot to": snapshotSubvolumeTo(top, "shared/real", "shared/inbox/copy", true),
 		"read-only":   setSubvolumeReadOnly(top, "shared/inbox", true),
 		"compression": setCompressionProperty(top, "shared/inbox", "zstd"),
-		"mkdir":       mkdirAllBelow(top, "shared/inbox/a/b"),
+		"mkdir":       mkdirAllBelow(top, "shared/inbox/a/b", 0o755, nil),
 		"send":        sendStream(top, "shared/inbox", "", os.Stdout),
 		"send parent": sendStream(top, "shared/real", "shared/inbox", os.Stdout),
 		"rename from": renameBelow(top, "shared/inbox/x", "shared/real/x"),
@@ -145,11 +147,11 @@ func TestSubvolumeOpsRefuseAPathThroughALink(t *testing.T) {
 
 func TestMkdirAllBelowAndRenameBelow(t *testing.T) {
 	top, _ := linkedTop(t)
-	if err := mkdirAllBelow(top, "linuxio-snapshots/@home"); err != nil {
+	if err := mkdirAllBelow(top, "linuxio-snapshots/@home", 0o755, nil); err != nil {
 		t.Fatal(err)
 	}
 	// Again, with every folder there already.
-	if err := mkdirAllBelow(top, "linuxio-snapshots/@home"); err != nil {
+	if err := mkdirAllBelow(top, "linuxio-snapshots/@home", 0o755, nil); err != nil {
 		t.Fatalf("existing folders: %v", err)
 	}
 	if err := renameBelow(top, "linuxio-snapshots/@home", "shared/real/moved"); err != nil {

@@ -127,9 +127,11 @@ func openAtBelow(dirFD int, rel string) (int, error) {
 
 // mkdirAllBelow makes the folders of rel below top that are missing, each
 // through the handle of the one above it, and refuses a symbolic link or
-// another filesystem at any of them. They get mode 0755 less the bridge's
-// umask, as os.MkdirAll would give them.
-func mkdirAllBelow(top, rel string) error {
+// another filesystem at any of them. A folder it makes gets mode less the
+// umask, as os.MkdirAll would give it. visit, when given, is called with
+// the handle of each folder on the way, made or found, and its place (0 for
+// the first).
+func mkdirAllBelow(top, rel string, mode uint32, visit func(fd, depth int) error) error {
 	topFD, err := openBelow(top, ".")
 	if err != nil {
 		return err
@@ -141,17 +143,12 @@ func mkdirAllBelow(top, rel string) error {
 			unix.Close(fd)
 		}
 	}()
+	depth := 0
 	for name := range strings.SplitSeq(rel, "/") {
 		if name == "" || name == "." {
 			continue
 		}
-		if err = unix.Mkdirat(fd, name, 0o755); err != nil && !errors.Is(err, unix.EEXIST) {
-			return &fs.PathError{Op: "mkdir", Path: name, Err: err}
-		}
-		next, err := openAtBelow(fd, name)
-		if err != nil && !errors.Is(err, ErrLinkOnPath) {
-			return &fs.PathError{Op: "open", Path: name, Err: err}
-		}
+		next, err := mkdirAtBelow(topFD, fd, name, mode)
 		if err != nil {
 			return err
 		}
@@ -159,11 +156,35 @@ func mkdirAllBelow(top, rel string) error {
 			unix.Close(fd)
 		}
 		fd = next
-		if err = onFilesystemOf(topFD, fd, name); err != nil {
-			return err
+		if visit != nil {
+			if err = visit(fd, depth); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
 		}
+		depth++
 	}
 	return nil
+}
+
+// mkdirAtBelow makes the folder name in the folder open at fd when it is
+// missing, and returns its handle, opened without following a link and
+// checked to be on the filesystem of topFD.
+func mkdirAtBelow(topFD, fd int, name string, mode uint32) (int, error) {
+	if err := unix.Mkdirat(fd, name, mode); err != nil && !errors.Is(err, unix.EEXIST) {
+		return -1, &fs.PathError{Op: "mkdir", Path: name, Err: err}
+	}
+	next, err := openAtBelow(fd, name)
+	if err != nil && !errors.Is(err, ErrLinkOnPath) {
+		return -1, &fs.PathError{Op: "open", Path: name, Err: err}
+	}
+	if err != nil {
+		return -1, err
+	}
+	if err = onFilesystemOf(topFD, next, name); err != nil {
+		unix.Close(next)
+		return -1, err
+	}
+	return next, nil
 }
 
 // existsBelow reports whether anything, a link included, is at rel below

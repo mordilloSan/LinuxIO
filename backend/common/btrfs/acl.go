@@ -3,6 +3,7 @@ package btrfs
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -122,4 +123,66 @@ func SetFolderACL(ctx context.Context, uuid, path string, acl FolderACL) error {
 		return fmt.Errorf("set the setgid bit on %s: %w", folder.Name(), err)
 	}
 	return nil
+}
+
+// SetSnapshotsACL opens the folder of source's snapshots to read for the
+// entries of acl, so Samba, which reads earlier versions as the person
+// signed in, can list and open them, and lets others pass through
+// SnapshotRoot to reach it; each snapshot still keeps the permissions its
+// files had. A nil acl makes the folder root's alone again, and makes no
+// folder that is not there. The ACL is the access one only: what is in the
+// folder is made by snapshotting, which copies a subvolume's own.
+func SetSnapshotsACL(ctx context.Context, uuid, source string, acl *FolderACL) error {
+	if err := ValidateSubvolumePath(source); err != nil {
+		return err
+	}
+	top, err := TopLevel(ctx, uuid)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(SnapshotRoot, EscapeSource(source))
+	if acl == nil {
+		return closeSnapshotsDir(top, dir)
+	}
+	if err = ensureSnapshotDir(top, dir); err != nil {
+		return err
+	}
+	rootFD, err := openBelow(top, SnapshotRoot)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(rootFD)
+	var st unix.Stat_t
+	if err = unix.Fstat(rootFD, &st); err != nil {
+		return err
+	}
+	if err = unix.Fchmod(rootFD, st.Mode&0o700|0o011); err != nil {
+		return fmt.Errorf("let others pass through %s: %w", SnapshotRoot, err)
+	}
+	fd, err := openBelow(top, dir)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	if err = unix.Fsetxattr(fd, aclXattrAccess, encodeACL(*acl), 0); err != nil {
+		return fmt.Errorf("set %s on %s: %w", aclXattrAccess, dir, err)
+	}
+	return nil
+}
+
+// closeSnapshotsDir takes the ACL off the folder dir of snapshots, when it
+// is there, and makes it root's alone.
+func closeSnapshotsDir(top, dir string) error {
+	fd, err := openBelow(top, dir)
+	if errors.Is(err, unix.ENOENT) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	if err = unix.Fremovexattr(fd, aclXattrAccess); err != nil && !errors.Is(err, unix.ENODATA) {
+		return fmt.Errorf("remove the ACL of %s: %w", dir, err)
+	}
+	return narrowSnapshotDir(fd, false)
 }

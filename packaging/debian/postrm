@@ -17,6 +17,7 @@ set -e
 # memory page's files.
 written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer
+/etc/systemd/system/linuxio-shares-recycle.timer
 /etc/systemd/system/linuxio-docker-update.timer
 /etc/systemd/system/linuxio-docker-shutdown.service
 /etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf

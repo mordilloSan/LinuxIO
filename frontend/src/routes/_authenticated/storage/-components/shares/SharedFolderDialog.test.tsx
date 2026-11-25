@@ -84,6 +84,9 @@ const media: SharedFolder = {
   smb: true,
   nfs: [{ host: "10.0.0.0/24", options: ["rw", "sync", "no_subtree_check"] }],
   folder: "/mnt/tank/Media",
+  previousVersions: false,
+  recycleBin: false,
+  timeMachine: false,
 };
 
 const admin = {
@@ -155,6 +158,11 @@ describe("SharedFolderDialog", () => {
       everyone: "none",
       smb: true,
       nfs: [],
+      // With automatic snapshots, Windows and Macs offer them as earlier
+      // versions.
+      previousVersions: true,
+      recycleBin: true,
+      timeMachine: false,
     });
     // The page no longer makes the folder step by step.
     expect(mocks.mutations["storage.btrfs_subvolume_create"]).toBeUndefined();
@@ -214,7 +222,238 @@ describe("SharedFolderDialog", () => {
           options: ["rw", "sync", "no_subtree_check", "root_squash"],
         },
       ],
+      previousVersions: false,
+      recycleBin: false,
+      timeMachine: false,
     });
+  });
+
+  it("offers earlier versions only when the folder takes snapshots", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog folder={null} onClose={vi.fn()} open />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog");
+    await pickOption(user, "Pool", new RegExp(poolFixture().label));
+    await user.type(within(dialog).getByLabelText("Folder name"), "Media");
+    await user.click(within(dialog).getByLabelText(/Automatic snapshots/));
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    expect(
+      within(dialog).getByLabelText(
+        "Windows and Mac can open earlier versions from snapshots",
+      ),
+    ).not.toBeChecked();
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    expect(mocks.mutations["shares.create_folder"]).toHaveBeenCalledWith(
+      expect.objectContaining({ previousVersions: false }),
+    );
+  });
+
+  it("keeps a recycle bin for a new folder unless told not to", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog folder={null} onClose={vi.fn()} open />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog");
+    await pickOption(user, "Pool", new RegExp(poolFixture().label));
+    await user.type(within(dialog).getByLabelText("Folder name"), "Media");
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    const bin = within(dialog).getByLabelText(
+      "Keep files deleted over the network in a recycle bin for 30 days",
+    );
+    expect(bin).toBeChecked();
+    await user.click(bin);
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    expect(mocks.mutations["shares.create_folder"]).toHaveBeenCalledWith(
+      expect.objectContaining({ recycleBin: false, previousVersions: true }),
+    );
+  });
+
+  it("offers the folder to Macs for Time Machine, with a size its backups may take", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog folder={media} onClose={vi.fn()} open />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Media" });
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    expect(
+      within(dialog).queryByLabelText("Time Machine size limit (GiB)"),
+    ).toBeNull();
+    expect(within(dialog).queryByText(/restarts the SMB service/)).toBeNull();
+    await user.click(
+      within(dialog).getByLabelText("Use as a Time Machine backup destination"),
+    );
+    // Macs are told of it only when the service starts.
+    expect(
+      within(dialog).getByText(/restarts the SMB service/),
+    ).toBeInTheDocument();
+    await user.type(
+      within(dialog).getByLabelText("Time Machine size limit (GiB)"),
+      "500",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(mocks.mutations["shares.update_folder"]).toHaveBeenCalledWith(
+      expect.objectContaining({
+        timeMachine: true,
+        timeMachineMaxBytes: 500 * 1024 ** 3,
+      }),
+    );
+  });
+
+  it("says that renaming a Time Machine folder restarts the service too", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog
+        folder={{ ...media, timeMachine: true }}
+        onClose={vi.fn()}
+        open
+      />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Media" });
+    expect(within(dialog).queryByText(/restarts the SMB service/)).toBeNull();
+    await user.type(within(dialog).getByLabelText("Share name"), "2");
+    expect(
+      within(dialog).getByText(/restarts the SMB service/),
+    ).toBeInTheDocument();
+  });
+
+  it("refuses a Time Machine size too small to be one", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog folder={media} onClose={vi.fn()} open />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Media" });
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    await user.click(
+      within(dialog).getByLabelText("Use as a Time Machine backup destination"),
+    );
+    await user.type(
+      within(dialog).getByLabelText("Time Machine size limit (GiB)"),
+      "0.0000000001",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(mocks.mutations["shares.update_folder"]).not.toHaveBeenCalled();
+  });
+
+  // A folder shared over NFS alone keeps a bin that is emptied each night:
+  // its switch must still turn off.
+  it("lets a switch that is on be turned off while the folder is not shared over SMB", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog
+        folder={{ ...media, smb: false, recycleBin: true, timeMachine: false }}
+        onClose={vi.fn()}
+        open
+      />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Media" });
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    expect(
+      within(dialog).getByLabelText("Use as a Time Machine backup destination"),
+    ).toBeDisabled();
+    const bin = within(dialog).getByLabelText(
+      "Keep files deleted over the network in a recycle bin for 30 days",
+    );
+    expect(bin).toBeEnabled();
+    await user.click(bin);
+    expect(bin).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(mocks.mutations["shares.update_folder"]).toHaveBeenCalledWith(
+      expect.objectContaining({ smb: false, recycleBin: false }),
+    );
+  });
+
+  it("shows a saved Time Machine size as it was typed", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog
+        folder={{
+          ...media,
+          timeMachine: true,
+          timeMachineMaxBytes: Math.round(0.3 * 1024 ** 3),
+        }}
+        onClose={vi.fn()}
+        open
+      />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Media" });
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    expect(
+      within(dialog).getByLabelText("Time Machine size limit (GiB)"),
+    ).toHaveValue(0.3);
+  });
+
+  it("gives a new folder that is not shared over SMB none of what SMB offers", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog folder={null} onClose={vi.fn()} open />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog");
+    await pickOption(user, "Pool", new RegExp(poolFixture().label));
+    await user.type(within(dialog).getByLabelText("Folder name"), "Media");
+    await user.click(
+      within(dialog).getByLabelText("Share with Windows and Mac (SMB)"),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    expect(mocks.mutations["shares.create_folder"]).toHaveBeenCalledWith(
+      expect.objectContaining({
+        smb: false,
+        previousVersions: false,
+        recycleBin: false,
+        timeMachine: false,
+      }),
+    );
+  });
+
+  it("refuses a Time Machine size that is not a size", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog folder={media} onClose={vi.fn()} open />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Media" });
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    await user.click(
+      within(dialog).getByLabelText("Use as a Time Machine backup destination"),
+    );
+    await user.type(
+      within(dialog).getByLabelText("Time Machine size limit (GiB)"),
+      "-3",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(
+      within(dialog).getByText(
+        "Time Machine size limit must be a positive number of GiB",
+      ),
+    ).toBeInTheDocument();
+    expect(mocks.mutations["shares.update_folder"]).not.toHaveBeenCalled();
+  });
+
+  it("switches earlier versions on for a folder", async () => {
+    const user = userEvent.setup();
+    renderWithTanStackRouter(
+      <SharedFolderDialog folder={media} onClose={vi.fn()} open />,
+      admin,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Media" });
+    await user.click(within(dialog).getByRole("tab", { name: "Network" }));
+    await user.click(
+      within(dialog).getByLabelText(
+        "Windows and Mac can open earlier versions from snapshots",
+      ),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(mocks.mutations["shares.update_folder"]).toHaveBeenCalledWith(
+      expect.objectContaining({ previousVersions: true }),
+    );
   });
 
   it("starts a folder made by root with nobody, and shows the Access tab when Create needs a row", async () => {
@@ -326,7 +565,44 @@ describe("StopSharingDialog", () => {
       everyone: "none",
       smb: false,
       nfs: [],
+      previousVersions: false,
+      recycleBin: false,
+      timeMachine: false,
+      timeMachineMaxBytes: undefined,
     });
+  });
+});
+
+describe("a Time Machine folder taken off the network", () => {
+  const backups = { ...media, timeMachine: true };
+
+  it("says that Stop sharing restarts the service", async () => {
+    renderWithTanStackRouter(
+      <StopSharingDialog folder={backups} onClose={vi.fn()} open />,
+      admin,
+    );
+    expect(
+      await screen.findByText(/restarts the SMB service/),
+    ).toBeInTheDocument();
+  });
+
+  it("says that Delete restarts the service", async () => {
+    renderWithTanStackRouter(
+      <DeleteSharedFolderDialog folder={backups} onClose={vi.fn()} open />,
+      admin,
+    );
+    expect(
+      await screen.findByText(/restarts the SMB service/),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing of a restart for a folder that is not one", async () => {
+    renderWithTanStackRouter(
+      <StopSharingDialog folder={media} onClose={vi.fn()} open />,
+      admin,
+    );
+    await screen.findByRole("dialog", { name: "Stop sharing" });
+    expect(screen.queryByText(/restarts the SMB service/)).toBeNull();
   });
 });
 

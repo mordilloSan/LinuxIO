@@ -207,9 +207,9 @@ The DEB's `postrm` and the RPM's `%postun` then delete the files LinuxIO
 itself wrote for its own settings while it ran, by exact path, the two lists
 kept equal:
 
-- the two timers, `linuxio-btrfs-snapshot.timer` and
-  `linuxio-docker-update.timer`: left behind, each would start a service the
-  removal took away;
+- the three timers, `linuxio-btrfs-snapshot.timer`,
+  `linuxio-shares-recycle.timer` and `linuxio-docker-update.timer`: left
+  behind, each would start a service the removal took away;
 - the Docker shutdown unit, `linuxio-docker-shutdown.service`;
 - the verbose drop-ins of the webserver, the indexer and monitoring
   (`backend/common/verbosemode`);

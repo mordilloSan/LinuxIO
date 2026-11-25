@@ -459,6 +459,7 @@ const linuxio = {
     }),
     get_rsync: defineCall("shares.get_rsync"),
     get_rsync_ssh: defineCallWithRequest("shares.get_rsync_ssh"),
+    get_smb_settings: defineCall("shares.get_smb_settings"),
     list_folders: defineCall("shares.list_folders"),
     list_nfs_shares: defineCall("shares.list_nfs_shares"),
     list_samba_shares: defineCall("shares.list_samba_shares"),
@@ -468,6 +469,9 @@ const linuxio = {
       field: "username",
     }),
     save_rsync: defineMutation("shares", "save_rsync", { kind: "object" }),
+    set_smb_settings: defineMutation("shares", "set_smb_settings", {
+      kind: "object",
+    }),
     stop_rsync: defineMutation("shares", "stop_rsync", { kind: "none" }),
     update_folder: defineMutation("shares", "update_folder", {
       kind: "object",

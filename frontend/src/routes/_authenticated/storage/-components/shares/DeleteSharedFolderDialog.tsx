@@ -14,6 +14,8 @@ import {
 import AppTextField from "@/components/ui/AppTextField";
 import { formatFileSize } from "@/utils/formatters";
 
+import { SMB_RESTART_NOTE, timeMachineName } from "./sharedFolders";
+
 interface DeleteSharedFolderDialogProps {
   folder: SharedFolder;
   onClose: () => void;
@@ -96,6 +98,9 @@ const DeleteSharedFolderDialog = ({
             {copied &&
               " Its copies on another pool or server stay; the job that makes them is removed."}
           </AppDialogContentText>
+          {timeMachineName(folder) !== "" && (
+            <AppDialogContentText>{SMB_RESTART_NOTE}</AppDialogContentText>
+          )}
           <AppTextField
             autoFocus
             fullWidth

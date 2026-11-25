@@ -115,6 +115,19 @@ export const accessProblem = (
     ? "Give someone access before sharing over SMB"
     : null;
 
+/**
+ * The name a folder is announced to Macs under as a Time Machine
+ * destination, "" when it is not one. The SMB service announces them when it
+ * starts and never again, so the server restarts it when this changes.
+ */
+export const timeMachineName = (
+  folder: Pick<SharedFolder, "name" | "smb" | "timeMachine">,
+): string => (folder.smb && folder.timeMachine ? folder.name : "");
+
+/** Said before a change that restarts the SMB service. */
+export const SMB_RESTART_NOTE =
+  "This restarts the SMB service, which is when Macs are told of Time Machine folders. Open connections are cut for a moment.";
+
 /** Where a share is opened from Windows and from a Mac. */
 export const networkAddresses = (host: string, share: string): string =>
   `\\\\${host}\\${share} on Windows, smb://${host}/${share} on a Mac`;

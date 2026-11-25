@@ -227,6 +227,132 @@ Samba, which keeps the old one. `shares.list_samba_users` compares the day
 own, and Accounts flags the user (**Shared folders: old password**) when the
 system one is newer.
 
+## Network
+
+The **Network** tab of a shared folder holds what Windows and Macs are
+offered beyond its files. All three are Samba modules of the folder's
+section (`vfs objects = catia fruit streams_xattr shadow_copy2 recycle`,
+each present when its switch is on), so they apply over SMB only. The
+dialog makes a folder that is not shared over SMB with all three off; a
+folder that is saved keeps its switches for when it is shared over SMB
+again, and while it is not, a switch can only be turned off. A bin is
+emptied each night whether or not the folder is shared over SMB.
+
+### Earlier versions
+
+**Windows and Mac can open earlier versions from snapshots** (on for a new
+folder that takes snapshots) has Samba offer the folder's LinuxIO snapshots
+as the earlier versions of its files (`vfs_shadow_copy2`): Previous Versions
+in Windows, Browse All Versions in Finder.
+
+- Samba finds the snapshots in `<top>/linuxio-snapshots/<folder>`
+  (`shadow:snapdir`) and reads the time in each name
+  (`shadow:format = %Y%m%dT%H%M%SZ`, UTC). `shadow:snapprefix = ^$` with an
+  empty `shadow:delimiter` have it keep the names it listed and open those:
+  without them it rebuilds a name from the format alone, which drops the
+  kind at its end (`-timeline`), and every earlier version is "not found".
+- Samba reads them as the person signed in, so
+  `linuxio-snapshots/<folder>` gets an ACL that lets read who may read the
+  folder (the access table with read and write as read; no access wins as
+  it does on the folder), written with the folder's own, and
+  `linuxio-snapshots` lets others pass through
+  ([Btrfs](./btrfs.md#snapshots)). Each snapshot keeps the permissions its
+  files had when it was taken. Turned off, or with the folder no longer
+  shared over SMB, the snapshots' folder is root's alone again; deleting the
+  folder closes it too.
+
+### Recycle bin
+
+**Keep files deleted over the network in a recycle bin for 30 days** (on for
+a new folder) has Samba move what is deleted over SMB into `#recycle` at the
+top of the folder (`vfs_recycle`), under the path it had, a second file of
+one name kept beside the first; Office's lock and temporary files are
+deleted as before.
+
+- LinuxIO makes `#recycle`, as root, inside the folder and once the folder
+  has its access, and gives it to root with the folder's access again at
+  every save of the folder and every time access is applied again
+  (`makeRecycleBin`), a `#recycle` someone made first included: Samba
+  deletes for good what it cannot move into the bin, so a bin made by the
+  first person to delete something would be theirs to close to the others,
+  and one that kept an older table would lose the files of whoever was
+  given access since. Everyone with access to the folder can open the bin
+  and take files back out.
+- Samba makes the folders below the bin, the path a deleted file had, as
+  the person deleting it. `recycle:directory_mode` and `recycle:subdir_mode`
+  are `0777`, so each starts with the bin's ACL: Samba's own `0700` would
+  keep the next person's file out of a folder the first one made, and
+  delete it for good.
+- `linuxio-worker recycle`, run once a day by the package unit
+  `linuxio-shares-recycle.service`, deletes from the bin of each folder that
+  has one what has been there for 30 days (`btrfs.RemoveOlderThan`):
+  - A file or a link has been there since the last change to the entry
+    itself (its ctime), which the move into the bin sets and no user can
+    set back.
+  - A folder moved into the bin keeps the times of everything in it, so a
+    folder has been there since a run first saw it: the run notes the time
+    and the folder it was in on the folder itself
+    (`trusted.linuxio.recycled`, an attribute only root reads and writes),
+    deletes nothing below it until the note is 30 days old, and removes the
+    folder once it is empty and its note is that old. Without the note,
+    whoever moves a folder into a bin would have root delete, the same
+    night, files in it that they could not delete themselves. A folder
+    moved to another place in the bin is new there, and noted again. A
+    folder that cannot be noted (the pool or the folder's limit is full, or
+    someone filled the folder's attributes) is new at every run: it is kept
+    with what it holds, the run goes on to the rest of the bin, and a
+    warning in the log counts such folders.
+  - It works through handles, follows no link (a link is removed, never
+    what it points to), stays on the folder's subvolume and goes 64 folders
+    deep at most.
+- Whoever may write the folder can remove its bin and put a link or a file
+  under its name. Neither is followed or replaced: the run skips that bin
+  with a line in its output and does not fail, and a save of the folder
+  goes through with a warning in the log, since one that stopped there
+  would leave the record and the section behind the access already
+  written. Samba then deletes for good, as it does without a bin.
+- The timer, `/etc/systemd/system/linuxio-shares-recycle.timer`, is written
+  and enabled by the bridge while a folder has its bin on, and stopped when
+  none has; a host that never had one has no timer. Each run is a scheduled
+  run (`scheduled.shares_recycle`, [Jobs](./jobs.md#scheduled-runs)), and a
+  bin that could not be emptied fails the run, which raises its alert.
+- Turned off, Samba deletes for good again; the bin and what is in it stay,
+  and are no longer emptied.
+
+### Time Machine
+
+**Use as a Time Machine backup destination** adds the modules a Mac needs
+(`vfs_fruit`) with `fruit:time machine = yes`, and
+`fruit:time machine max size` when a size is given, which has a Mac remove
+its oldest backups to stay below it; Samba is told the size in whole MiB,
+one at least.
+
+`smbd` itself announces a Time Machine folder to Macs, through Avahi, and
+only when it starts: a reload of its settings leaves a new folder
+unannounced and a removed one announced. So a change of what Macs are told
+(the switch, the share name of such a folder, sharing it or not, deleting
+it) restarts `smbd`, which cuts every open connection for a moment; the
+dialogs say so before saving, renaming, stopping to share and deleting.
+Nothing else LinuxIO does restarts it.
+
+## The SMB service
+
+**SMB settings**, in the header of the Shared folders tab, holds what
+applies to every share (`shares.get_smb_settings`, `shares.set_smb_settings`),
+written to `[global]` of `smb.conf` and nowhere else in it: a line there is
+replaced where it stands, whatever its spelling, and the rest of the file is
+left as it is.
+
+| Setting | In `smb.conf` | Notes |
+|---------|---------------|-------|
+| Oldest protocol | `server min protocol`: SMB2 or SMB3 | An older one set by hand (NT1) is shown, and must be replaced to save |
+| Encryption | `server smb encrypt`: off, when the client asks (Samba's default), asked of every client, required | |
+| Show this server to Macs in Finder | `multicast dns register` | Needs the `avahi` capability; a change restarts `smbd`, which announces itself when it starts |
+| Show this server to Windows in Network | the WS-Discovery service: on is shown while it runs, and a save has it run now and start at boot, or neither, changing whichever of the two is not as asked | Needs the `wsdd` capability: `wsdd-server.service` (Debian 13, Ubuntu 25.04 on) or `wsdd.service` |
+
+The protocol and the encryption are for connections made from then on, which
+a reload gives.
+
 ## Routes
 
 | Route | Privileged | Does |
@@ -235,6 +361,8 @@ system one is newer.
 | `shares.create_folder`, `update_folder`, `delete_folder` | yes | as above |
 | `shares.list_samba_users` | yes: Samba's list and `/etc/shadow` are root's | who can sign in, and whose password is stale |
 | `shares.remove_samba_user` | yes | turns sign-in off for a user |
+| `shares.get_smb_settings` | no: `smb.conf` and a unit's state are readable by all | the settings of the SMB service |
+| `shares.set_smb_settings` | yes | writes them |
 | `shares.list_samba_shares`, `list_nfs_shares` | no | the sections of `smb.conf` and the lines of `/etc/exports` |
 | `shares.create_*`, `update_*`, `delete_*` for `samba_share` and `nfs_share` | yes | plain shares |
 
@@ -247,9 +375,11 @@ one lock (`/run/linuxio-shared-folders.lock`), taken before the lock of
 
 ## Package removal
 
-The record is LinuxIO's and goes with a purge of the DEB. The sections of
-`smb.conf`, the exports, the folders with their ACLs and Samba's user list
-are the administrator's setup, work without LinuxIO and stay.
+The record is LinuxIO's and goes with a purge of the DEB, and the recycle
+bins' timer is stopped, disabled and deleted at removal, with the service it
+starts. The sections of `smb.conf`, the exports, the folders with their
+ACLs and recycle bins, and Samba's user list are the administrator's setup,
+work without LinuxIO and stay.
 
 ## Known limits
 
@@ -269,6 +399,26 @@ are the administrator's setup, work without LinuxIO and stay.
   export naming the old one until the folder is saved again.
 - A shared folder's subvolume deleted from the pool page leaves its share
   and its record behind; **Delete folder and its data** then removes them.
+- Files deleted on the server itself or over NFS do not go to the recycle
+  bin.
+- A folder taken out of a bin and later put back in the same place, under
+  any name, still carries its first note, so what it holds goes 30 days
+  after the first time and not the second.
+- What lies more than 64 folders deep in a bin is never emptied.
+- Whoever owns a file in a bin can keep it there by changing it (a `chmod`
+  or a write renews its time); the space it takes stays theirs.
+- An empty folder in a bin is removed in the same instant Samba is about to
+  move a file into it only by a coincidence of milliseconds; Samba then
+  deletes that one file for good.
+- Time Machine's modules are loaded for the folders that are destinations
+  only, not for every share.
+- Earlier versions being switched on in the same few microseconds a
+  snapshot or the health pass narrows that folder of snapshots can leave
+  its ACL with an empty mask, and earlier versions closed to everyone
+  until the folder is saved again.
+- On Debian 12 and Ubuntu 24.04 the WS-Discovery service is in the package
+  `wsdd`, which the capability's Install does not name; installed by hand,
+  it is detected.
 - A table change does not reach what is already inside the folder for
   local and NFS use (see [Change, stop sharing](#change-stop-sharing)).
 - When Samba's user list cannot be read (`pdbedit` fails), deleting a user

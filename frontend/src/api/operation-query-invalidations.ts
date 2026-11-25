@@ -344,6 +344,7 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     ...FILEBROWSER_LISTING_KEYS,
   ],
   "shares.remove_samba_user": [endpointQueryPrefix("shares.list_samba_users")],
+  "shares.set_smb_settings": [endpointQueryPrefix("shares.get_smb_settings")],
 
   "storage.mount_cifs": [
     endpointQueryPrefix("storage.get_topology"),
