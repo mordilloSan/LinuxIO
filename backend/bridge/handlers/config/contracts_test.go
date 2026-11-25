@@ -56,8 +56,9 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 			Light: userconfig.ThemeColors{"backgroundDefault": light},
 			Dark:  userconfig.ThemeColors{"codeText": dark, "codeInsetBackground": dark, "panePictureBackground": dark},
 		},
-		ViewModes:        map[string]string{"docker": "table", "storage": "card"},
-		TerminalFontSize: 18,
+		ViewModes:         map[string]string{"docker": "table", "storage": "card"},
+		TerminalFontSize:  18,
+		AssistantFontSize: 15,
 	}
 
 	wantCore := decodeConfigJSON(t, core)

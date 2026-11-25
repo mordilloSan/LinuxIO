@@ -83,6 +83,9 @@ func uiConfigToAPI(value userconfig.UIPreferences) apischema.UIConfig {
 	if value.TerminalFontSize == 0 {
 		value.TerminalFontSize = defaults.TerminalFontSize
 	}
+	if value.AssistantFontSize == 0 {
+		value.AssistantFontSize = defaults.AssistantFontSize
+	}
 	result := apischema.UIConfig{
 		Theme:             apischema.Theme(value.Theme),
 		PrimaryColor:      value.PrimaryColor.String(),
@@ -95,6 +98,7 @@ func uiConfigToAPI(value userconfig.UIPreferences) apischema.UIConfig {
 		LayoutOrders:      value.LayoutOrders,
 		ViewModeDefault:   apischema.TableCardViewMode(userconfig.DefaultViewMode),
 		TerminalFontSize:  value.TerminalFontSize,
+		AssistantFontSize: value.AssistantFontSize,
 	}
 	result.ViewModes = make(map[string]apischema.TableCardViewMode, len(value.ViewModes))
 	for key, mode := range value.ViewModes {

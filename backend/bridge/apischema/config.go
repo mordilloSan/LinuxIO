@@ -61,6 +61,7 @@ type UIConfig struct {
 	PrimaryColor       string                          `json:"primaryColor"`
 	SidebarCollapsed   bool                            `json:"sidebarCollapsed"`
 	TerminalFontSize   int                             `json:"terminalFontSize"`
+	AssistantFontSize  int                             `json:"assistantFontSize"`
 	Theme              Theme                           `json:"theme"`
 	ThemeColors        *ConfigThemeColorsByModePayload `json:"themeColors,omitzero"`
 	ViewModes          map[string]TableCardViewMode    `json:"viewModes"`
@@ -116,6 +117,7 @@ type ConfigUISetPayload struct {
 	ViewModes          map[string]string               `json:"viewModes,omitempty"`
 	LayoutOrders       map[string][]string             `json:"layoutOrders,omitempty"`
 	TerminalFontSize   *int                            `json:"terminalFontSize,omitzero"`
+	AssistantFontSize  *int                            `json:"assistantFontSize,omitzero"`
 }
 
 type ConfigDockAccentGradient struct {

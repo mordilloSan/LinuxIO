@@ -748,9 +748,10 @@ advertises the matching capability.
   The header tooltips show them.
 - **Text size.** The transcript and composer use the app body size, and code
   uses a smaller monospace size. The chat starts at the app's
-  body size (13px); the Text size row at the foot of the composer's `+` menu
-  changes it, and the choice is kept in the browser. The dock (its tabs and
-  cards) keeps the app's body size whatever the chat's text size is.
+  body size (14px); the Text size row at the foot of the composer's `+` menu
+  changes it (10 to 28px), and the choice is kept in the user's config as
+  `assistantFontSize`, so it follows them to another browser. The dock (its
+  tabs and cards) keeps the app's body size whatever the chat's text size is.
 - **Titles.** A `session_info_update` title renames the chat on the Chats
   card; untitled chats show their session id.
 

@@ -926,6 +926,7 @@ export interface ConfigUISetPayload {
   viewModes?: Record<string, string>;
   layoutOrders?: Record<string, string[]>;
   terminalFontSize?: number;
+  assistantFontSize?: number;
 }
 
 export interface ContainerConfiguration {
@@ -3608,6 +3609,7 @@ export interface UIConfig {
   primaryColor: string;
   sidebarCollapsed: boolean;
   terminalFontSize: number;
+  assistantFontSize: number;
   theme: Theme;
   themeColors?: ConfigThemeColorsByModePayload;
   viewModes: Record<string, TableCardViewMode>;

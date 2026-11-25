@@ -182,6 +182,10 @@ func TestApplyRejectsBadValuesAsInvalidArgs(t *testing.T) {
 			ui := userconfig.DefaultUIPreferences()
 			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{TerminalFontSize: new(99)})
 		},
+		"assistantFontSize": func() error {
+			ui := userconfig.DefaultUIPreferences()
+			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{AssistantFontSize: new(99)})
+		},
 		"chunkSizeMB": func() error {
 			app := userconfig.PersistedAppSettings{}
 			return applyAppSettingsUpdate(&app, &apischema.ConfigAppSettingsPayload{ChunkSizeMB: new(99)})

@@ -53,12 +53,15 @@ describe("AssistantPage", () => {
     expect(connectSpy).not.toHaveBeenCalled();
   });
 
-  it("starts at the app body size and lets the user resize the chat", async () => {
-    window.localStorage.removeItem("linuxio.assistant.fontSize");
-    const { container } = render(<AssistantPage agent="claude" />);
+  it("starts at the saved text size and saves the chat's size to the config", async () => {
+    const setKey = vi.fn();
+    const { container } = render(<AssistantPage agent="claude" />, {
+      appSettings: { assistantFontSize: 15 },
+      config: { setKey },
+    });
     setState({ status: "ready", sessionId: "s" });
     const root = container.querySelector<HTMLElement>(".assistant")!;
-    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("13px");
+    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("15px");
 
     // The size lives in the composer's menu, not in the page header.
     await userEvent.click(
@@ -67,11 +70,13 @@ describe("AssistantPage", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /increase font size/i }),
     );
-    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("14px");
-    expect(window.localStorage.getItem("linuxio.assistant.fontSize")).toBe(
-      "14",
+    expect(setKey).toHaveBeenCalledWith(
+      "assistantFontSize",
+      expect.any(Function),
     );
-    window.localStorage.removeItem("linuxio.assistant.fontSize");
+    const update = setKey.mock.calls[0][1] as (prev: number) => number;
+    expect(update(15)).toBe(16);
+    expect(update(28)).toBe(28);
   });
 
   it("connects to the configured agent on mount", () => {

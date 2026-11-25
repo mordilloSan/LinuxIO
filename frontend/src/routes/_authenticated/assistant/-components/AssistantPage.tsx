@@ -13,11 +13,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 import { useAssistantRequirements } from "@/hooks/useAssistantRequirements";
+import { useConfigValue } from "@/hooks/useConfig";
 import { useAlerts } from "@/routes/_authenticated/-components/footer/useAlerts";
-import {
-  readPersistedState,
-  writePersistedState,
-} from "@/utils/persistedState";
 import { openTerminalTab, typeInTerminalTab } from "@/utils/terminalTab";
 
 import {
@@ -43,15 +40,9 @@ import "./assistant.css";
 // Escape inside an overlay belongs to that overlay, not to the running turn.
 const OVERLAY_SELECTOR = `${OVERLAY_ROOT_SELECTOR}, .app-popover-root, [role="menu"], [role="listbox"]`;
 
-// The chat starts at the app's body size (--app-font-size-body, 0.8125rem).
-const DEFAULT_FONT = 13;
-// Same bounds the terminal enforces for terminalFontSize.
+// The same bounds the backend enforces for assistantFontSize.
 const MIN_FONT = 10;
 const MAX_FONT = 28;
-const FONT_SIZE_KEY = "linuxio.assistant.fontSize";
-
-const isFontSize = (value: unknown): value is number =>
-  typeof value === "number" && value >= MIN_FONT && value <= MAX_FONT;
 
 export default function AssistantPage({
   agent,
@@ -96,15 +87,13 @@ export default function AssistantPage({
   // What the welcome screen of a new chat offers to look at.
   const { alerts } = useAlerts();
 
-  // The app's body size until the user picks one here.
-  const [ownFontSize, setOwnFontSize] = useState(() =>
-    readPersistedState(FONT_SIZE_KEY, isFontSize),
-  );
-  const fontSize = ownFontSize ?? DEFAULT_FONT;
+  // The chat's text size, kept in the user's config (14px until they pick
+  // one).
+  const [fontSize, setConfigFontSize] = useConfigValue("assistantFontSize");
   const adjustFontSize = (delta: number) => {
-    const next = Math.min(MAX_FONT, Math.max(MIN_FONT, fontSize + delta));
-    setOwnFontSize(next);
-    writePersistedState(FONT_SIZE_KEY, next);
+    setConfigFontSize((prev) =>
+      Math.min(MAX_FONT, Math.max(MIN_FONT, prev + delta)),
+    );
   };
 
   // Ahead of connect, so the first chat already starts on them.
