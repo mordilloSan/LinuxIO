@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -387,6 +388,161 @@ func TestReplaceCancelsWithContext(t *testing.T) {
 	}
 	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"REPLACE_START 1 /dev/sdd", "REPLACE_CANCEL"}) {
 		t.Fatalf("calls = %v", calls)
+	}
+}
+
+// The new disk goes away while the kernel copies onto it: the replace is
+// canceled, before the kernel can finish it onto a disk that is gone, and
+// fails saying so. A link that reaches its device cancels nothing.
+func TestReplaceCancelsWhenItsTargetDropsOut(t *testing.T) {
+	k := raid1Kernel()
+	started := make(chan struct{})
+	k.replaceStart = func(*devReplaceArgs) error {
+		close(started)
+		<-k.cancelled
+		return unix.ECANCELED
+	}
+	k.replaceStatus = func() (uint64, uint64) { return replaceStateStarted, 100 }
+	stubKernel(t, k)
+	// The kernel links the target under the pool's devices while it copies.
+	disk := filepath.Join(t.TempDir(), "sdd")
+	if err := os.WriteFile(disk, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(disk, filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdd")); err != nil {
+		t.Fatal(err)
+	}
+	reports := make(chan struct{}, 1)
+	go func() {
+		<-started
+		<-reports // a poll that found the disk there
+		if err := os.Remove(disk); err != nil {
+			t.Error(err)
+		}
+	}()
+	err := Replace(context.Background(), dataUUID, 1, "/dev/sdd", func(float64) {
+		select {
+		case reports <- struct{}{}:
+		default:
+		}
+	})
+	if !errors.Is(err, ErrReplaceTargetGone) || !strings.Contains(err.Error(), "/dev/sdd") || strings.Contains(err.Error(), "restart") {
+		t.Fatalf("err = %v, want the new disk gone and no restart asked", err)
+	}
+	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"REPLACE_START 1 /dev/sdd", "REPLACE_CANCEL"}) {
+		t.Fatalf("calls = %v", calls)
+	}
+}
+
+// A cancel the kernel fails is not one it took: it is sent again at the
+// next poll, since a replace left running would finish onto the gone disk.
+func TestReplaceSendsItsCancelAgainWhenTheFirstFails(t *testing.T) {
+	k := raid1Kernel()
+	k.replaceStart = func(*devReplaceArgs) error {
+		<-k.cancelled
+		return unix.ECANCELED
+	}
+	k.replaceStatus = func() (uint64, uint64) { return replaceStateStarted, 100 }
+	stubKernel(t, k)
+	if err := os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdd")); err != nil {
+		t.Fatal(err)
+	}
+	// The link dangles only once the replace runs: a poll saw the disk.
+	kernel, failed := fsIoctl, false
+	fsIoctl = func(mnt string, req uintptr, arg unsafe.Pointer) error {
+		if req == iocDevReplace && (*devReplaceArgs)(arg).Cmd == replaceCmdCancel && !failed {
+			failed = true
+			return unix.EIO
+		}
+		return kernel(mnt, req, arg)
+	}
+	t.Cleanup(func() { fsIoctl = kernel })
+	err := replaceWatched(t, k)
+	if !errors.Is(err, ErrReplaceTargetGone) || !failed {
+		t.Fatalf("err = %v after a failed cancel (%v), want the replace canceled for its gone disk", err, failed)
+	}
+	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"REPLACE_START 1 /dev/sdd", "REPLACE_CANCEL"}) {
+		t.Fatalf("calls = %v", calls)
+	}
+}
+
+// replaceWatched replaces device 1 onto /dev/sdd, whose link under the
+// pool's devices the caller made, with the link read as reaching its disk
+// when the replace starts.
+func replaceWatched(t *testing.T, _ *fakeKernel) error {
+	t.Helper()
+	link := filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdd")
+	gone, err := os.Readlink(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gone, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first := true
+	return Replace(context.Background(), dataUUID, 1, "/dev/sdd", func(float64) {
+		if first {
+			first = false
+			if err := os.Remove(gone); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+}
+
+// A link of the target's name that reaches nothing before the replace
+// starts, as a member that dropped out leaves, is not the target going
+// away: the replace runs to its end.
+func TestReplaceIsNotCanceledByALinkThatDangledBefore(t *testing.T) {
+	k := raid1Kernel()
+	polls := make(chan struct{}, 8)
+	k.replaceStart = func(*devReplaceArgs) error {
+		<-polls
+		<-polls
+		return nil
+	}
+	k.replaceStatus = func() (uint64, uint64) {
+		select {
+		case polls <- struct{}{}:
+		default:
+		}
+		return replaceStateStarted, 100
+	}
+	stubKernel(t, k)
+	if err := os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdd")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Replace(context.Background(), dataUUID, 1, "/dev/sdd", func(float64) {}); err != nil {
+		t.Fatalf("Replace = %v", err)
+	}
+	if calls := k.Calls(); slices.Contains(calls, "REPLACE_CANCEL") {
+		t.Fatalf("calls = %v, want no cancel", calls)
+	}
+}
+
+// A kernel that marks the gone target missing miscounts the pool's writable
+// disks from then on, so the failure asks for a restart.
+func TestReplaceAsksForARestartWhenTheKernelMarkedItsTargetMissing(t *testing.T) {
+	k := raid1Kernel()
+	k.replaceStart = func(*devReplaceArgs) error {
+		<-k.cancelled
+		return unix.ECANCELED
+	}
+	k.replaceStatus = func() (uint64, uint64) { return replaceStateStarted, 100 }
+	stubKernel(t, k)
+	if err := os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdd")); err != nil {
+		t.Fatal(err)
+	}
+	info := filepath.Join(sysFSBtrfs, dataUUID, "devinfo", "0")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(info, "missing"), []byte("1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := replaceWatched(t, k)
+	if !errors.Is(err, ErrReplaceTargetGone) || !strings.Contains(err.Error(), "restart the server") {
+		t.Fatalf("err = %v, want the new disk gone and a restart asked", err)
 	}
 }
 
@@ -929,7 +1085,7 @@ func TestResumeReplaceFollowsAKernelRun(t *testing.T) {
 		wantErr string
 	}{
 		{"installed", false, ""},
-		{"missing", true, "replace of device 1 of pool " + dataUUID + ": the device is missing from the pool: the replace did not leave a working disk"},
+		{"missing", true, "replace of device 1 of pool " + dataUUID + ": the device is missing from the pool; if its new disk went away during the replace, restart the server before doing anything else with the pool, since the kernel then corrupts its own memory until it is restarted: the replace did not leave a working disk"},
 	} {
 		k := raid1Kernel()
 		if c.missing {

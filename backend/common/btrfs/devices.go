@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -367,6 +368,7 @@ func replaceDevice(ctx context.Context, fs BtrfsFilesystem, id int, newDevice st
 	if len(newDevice) >= 1024 {
 		return fmt.Errorf("device path too long: %s", newDevice)
 	}
+	target := watchReplaceTarget(uuid, mnt, id, newDevice)
 	putU64(args.Params[:], replaceSrcDevID, uint64(id))
 	if avoidSource {
 		putU64(args.Params[:], replaceContReading, replaceReadAvoid)
@@ -399,10 +401,17 @@ func replaceDevice(ctx context.Context, fs BtrfsFilesystem, id int, newDevice st
 	}
 	err := waitOp(ctx, done, cancel, func() (float64, bool) {
 		state, pct, _, statusErr := replaceStatusOf(mnt)
-		return pct, statusErr == nil && state == replaceStateStarted
+		running := statusErr == nil && state == replaceStateStarted
+		if running {
+			target.cancelIfGone()
+		}
+		return pct, running
 	}, report)
 	if err != nil {
-		if errors.Is(err, unix.ECANCELED) {
+		switch {
+		case target.canceled:
+			return target.failure(err)
+		case errors.Is(err, unix.ECANCELED):
 			return fmt.Errorf("replace of device %d canceled", id)
 		}
 		return fmt.Errorf("replace device %d: %w", id, err)
@@ -410,6 +419,100 @@ func replaceDevice(ctx context.Context, fs BtrfsFilesystem, id int, newDevice st
 	forgetReplacedDisk(ctx, uuid, id)
 	return nil
 }
+
+// replaceTarget watches the new disk of a running replace, to cancel the
+// replace when that disk goes away. Left alone the kernel copies on and then
+// installs the dead target: 7.0 aborts the commit and forces the pool
+// read-only, and 7.1 and later finish the replace onto the missing disk,
+// take a source still present out of the pool and erase its superblocks,
+// and corrupt kernel memory from then on (docs/btrfs.md, Missing disks). A
+// cancel has the kernel destroy the target and keep the source.
+//
+// A kernel that marks a gone disk missing (7.1) also takes the target off
+// its count of writable disks, where a target was never counted (super.c
+// btrfs_remove_bdev), and a cancel leaves that count one short until the
+// kernel forgets the pool: it allocates no new chunk, and a read-write
+// mount of the pool is refused (EACCES). Only a restart puts that right, so
+// the failure says so.
+type replaceTarget struct {
+	uuid, mnt, device string
+	id                int
+	// link is where the kernel links the target's block device while it
+	// copies, under the pool's devices (sysfs.c btrfs_sysfs_add_device); ""
+	// when the target is not watched.
+	link                 string
+	canceled, miscounted bool
+}
+
+// watchReplaceTarget prepares the watch of a replace of device id of the
+// pool mounted at mnt onto device, which must still be there: the link's
+// name is the device's own, which a path through links resolves to only
+// while the disk exists. A device outside /dev is not watched, and neither
+// is one whose name a link that reaches nothing bears already, such as the
+// one a member that dropped out left: it would read as the target gone.
+func watchReplaceTarget(uuid, mnt string, id int, device string) *replaceTarget {
+	t := &replaceTarget{uuid: uuid, mnt: mnt, id: id, device: device}
+	if name := sysfsName(canonicalPath(device)); name != "" {
+		t.link = filepath.Join(sysFSBtrfs, uuid, "devices", name)
+	}
+	if linkDangles(t.link) {
+		slog.Warn("btrfs replace target not watched, a link of its name reaches nothing already", "uuid", uuid, "device", id, "target", device)
+		t.link = ""
+	}
+	return t
+}
+
+// cancelIfGone cancels the replace when the target's block device went
+// away, and is called at every poll while the replace runs: a cancel the
+// kernel did not take, or that failed, is sent again at the next.
+func (t *replaceTarget) cancelIfGone() {
+	if t.canceled || !linkDangles(t.link) {
+		return
+	}
+	t.miscounted = t.miscounted || replaceTargetMarkedMissing(t.uuid)
+	slog.Warn("btrfs replace target went away, canceling the replace", "uuid", t.uuid, "device", t.id, "target", t.device)
+	canceled, err := cancelReplace(t.mnt)
+	if err != nil {
+		slog.Warn("btrfs replace not canceled", "uuid", t.uuid, "device", t.id, "error", err)
+	}
+	t.canceled = canceled
+}
+
+// failure words the end of a replace canceled for its gone target, which
+// the kernel reports as canceled (err).
+func (t *replaceTarget) failure(err error) error {
+	failure := fmt.Errorf("replace of device %d onto %s canceled: %w", t.id, t.device, ErrReplaceTargetGone)
+	if !errors.Is(err, unix.ECANCELED) {
+		failure = fmt.Errorf("%w (the kernel ended it with: %w)", failure, err)
+	}
+	if t.miscounted {
+		failure = fmt.Errorf("%w; restart the server soon: until then the kernel miscounts this pool's disks, so the pool may run out of space early and cannot be mounted again", failure)
+	}
+	return failure
+}
+
+// replaceTargetMarkedMissing reports whether the kernel marked the target of
+// pool uuid's running replace, device ID 0, missing.
+func replaceTargetMarkedMissing(uuid string) bool {
+	data, err := os.ReadFile(filepath.Join(sysFSBtrfs, uuid, "devinfo", "0", "missing"))
+	return err == nil && strings.TrimSpace(string(data)) == "1"
+}
+
+// linkDangles reports whether link is there and reaches nothing, as the
+// kernel's link to a block device that went away does (dropout.go). The
+// kernel holds a replace's target until the replace ends, so its name
+// passes to no other disk meanwhile.
+func linkDangles(link string) bool {
+	if link == "" || !linked(link) {
+		return false
+	}
+	_, err := os.Stat(link)
+	return errors.Is(err, os.ErrNotExist)
+}
+
+// ErrReplaceTargetGone is a replace canceled because its new disk went away
+// while the kernel copied onto it.
+var ErrReplaceTargetGone = errors.New("the new disk went away during the replace")
 
 // ErrReplaceUnverified is a replace the kernel reported finished whose new
 // disk is not working in the pool (see verifyReplaced).
@@ -480,7 +583,11 @@ func verifyReplaced(ctx context.Context, uuid string, id int, target string) (Bt
 	case target != "" && fs.Devices[i].Path != target:
 		return BtrfsFilesystem{}, unverified("it ended without installing %s (see dmesg)", target)
 	case fs.Devices[i].Missing && fs.Devices[i].Path == "":
-		return BtrfsFilesystem{}, unverified("the device is missing from the pool")
+		// 7.1 and later: the kernel finished the replace onto a disk that
+		// went away before LinuxIO's cancel reached it (replaceDevice), and
+		// from then on writes past an array whenever it recalculates the
+		// pool's free space (docs/btrfs.md, Missing disks, Known limits).
+		return BtrfsFilesystem{}, unverified("the device is missing from the pool; if its new disk went away during the replace, restart the server before doing anything else with the pool, since the kernel then corrupts its own memory until it is restarted")
 	case fs.Devices[i].Missing:
 		return BtrfsFilesystem{}, unverified("the new disk %s is not working in the pool", fs.Devices[i].Path)
 	}

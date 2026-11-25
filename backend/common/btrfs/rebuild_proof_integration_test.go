@@ -254,6 +254,7 @@ type rebuildRig struct {
 	nocow  map[string][]byte
 	keep   bool // leave the pool on the disks for the next boot
 	logged int  // kernel log lines already shown
+	marks  bool // the kernel marked a pulled member missing itself (7.1)
 }
 
 func newRebuildRig(t *testing.T, wantBlank bool) *rebuildRig {
@@ -644,6 +645,11 @@ func (r *rebuildRig) unmount() {
 //
 //	make vm-ssh VM=N CMD='sudo env LINUXIO_RUN_BTRFS_INTEGRATION=1 LINUXIO_REBUILD_PROOF_PHASE=keep ./btrfs.test -test.run TestBtrfsRebuildProofIntegration -test.v'
 //
+// targetgone alone, on a kernel that marks a gone disk missing (7.1), which
+// the run without a phase leaves out there: it pulls a replace's target,
+// after which that kernel's memory is corrupt, so the VM is reverted
+// afterwards (make vm-reset VM=N).
+//
 // keep then verify: vm-ssh shuts the VM down when it ends and the next one
 // boots it. cut then resume: cut resets the VM with sysrq b mid-replace, so
 // its vm-ssh fails, and the rig may not get the rebooting VM to shut down
@@ -656,18 +662,29 @@ func TestBtrfsRebuildProofIntegration(t *testing.T) {
 		t.Fatal("the btrfs integration test needs root")
 	}
 	phase := os.Getenv("LINUXIO_REBUILD_PROOF_PHASE")
-	r := newRebuildRig(t, phase == "" || phase == "keep" || phase == "cut")
+	r := newRebuildRig(t, phase == "" || phase == "keep" || phase == "cut" || phase == "targetgone")
 	var uts unix.Utsname
 	r.must("uname", unix.Uname(&uts))
 	t.Logf("kernel %s, phase %q", unix.ByteSliceToString(uts.Release[:]), phase)
 	switch phase {
 	case "":
 		r.notMissing()
-		r.targetFailsMidReplace()
-		r.targetFailsThenWiped()
+		if r.marks {
+			// A kernel that marks a gone disk missing (7.1) finishes a
+			// replace onto its pulled target and corrupts its own memory
+			// from then on (docs/btrfs.md, Missing disks, Known limits):
+			// whatever ran after these legs would run on that kernel.
+			t.Log("skipping the legs that pull a replace's target: on this kernel they corrupt kernel memory; LINUXIO_REBUILD_PROOF_PHASE=targetgone runs them, on a VM to revert afterwards")
+		} else {
+			r.targetFailsMidReplace()
+			r.targetFailsThenWiped()
+		}
 		r.rebuiltDiskAlone()
 		r.missingState()
 		r.threeMembers()
+	case "targetgone":
+		r.notMissing()
+		r.targetFailsMidReplace()
 	case "keep":
 		r.keepForReboot()
 	case "verify":
@@ -696,6 +713,9 @@ func (r *rebuildRig) dropout(d *pciDisk, id uint64, prefix string) (devUUID, ret
 	r.observe("before " + prefix + ": " + was + " is member " + strconv.FormatUint(id, 10))
 	r.kernelLog("before " + prefix)
 	d.pull()
+	if data, err := os.ReadFile(filepath.Join(sysFSBtrfs, r.uuid, "devinfo", strconv.FormatUint(id, 10), "missing")); err == nil && strings.TrimSpace(string(data)) == "1" {
+		r.marks = true
+	}
 	pulledAt := r.generation()
 	r.write(prefix, 4, 32<<20)
 	r.rewriteNocow("nocow.bin", 16<<20, 16<<20)

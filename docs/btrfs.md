@@ -544,7 +544,25 @@ marks the pulled target missing (`btrfs_remove_bdev`), so the commit that
 installs it skips it rather than failing (`write_all_supers` writes no
 superblock to a device that is not writeable), and the replace finishes "from
 `<missing disk>` (devid 2) to `<missing disk>`" with the pool writable and
-the member missing (test VM, Fedora's 7.3.4). So the runner, and a
+the member missing (test VM, Fedora's 7.3.4), takes a source disk that is
+still present out of the pool and erases its superblocks, and corrupts
+kernel memory from then on (see [Known limits](#known-limits)). LinuxIO
+therefore cancels a replace whose new disk goes away, the rebuild's and one
+from the pool details alike (`replaceDevice`): every two seconds while the
+kernel copies it looks at the kernel's link to the new disk under the
+pool's devices, and when that reaches nothing it sends the cancel, on which
+the kernel destroys the target and keeps the source, and the replace fails
+saying the new disk went away. On 7.0 the pool still goes read-only, since
+the dead target, which that kernel does not mark missing, fails the commit
+of the cancel; LinuxIO's next mount cancels the replace the kernel then
+suspends, as before. On 7.1 and later the pool stays writable with the
+member as it was, but the kernel has taken the target off its count of
+writable disks, where a target was never counted (`btrfs_remove_bdev`), and
+the count stays one short until the kernel forgets the pool: the pool is
+given no new chunk, and a read-write mount of it is refused (`EACCES`). So
+where the kernel had marked the target missing, the failure also says to
+restart the server. A disk that goes within the last two seconds of the
+copy is not caught. So the runner, and a
 replace started from the pool details (`ReplaceResult`, `ResumeReplace`),
 check that the kernel reports the replace finished, that the devid is in use
 at the new disk's path and not dropped out, that the pool is not read-only
@@ -653,10 +671,9 @@ member dropped out, the same with the disk the mount names as its source,
 and with the member missing after a degraded mount, a
 clone of the member on another disk refused by its identity and left as it
 was, two disks claiming the member refused, a replace onto the hot spare, and
-the returned disk pulled again mid-rebuild, after which the rebuild fails with
-its record kept, LinuxIO's degraded mount erases the disk and cancels the
-replace 7.0 suspends (after 7.1's finish onto the missing disk there is none),
-and a replace from the pool details makes the pool whole;
+the returned disk pulled again mid-rebuild, after which the rebuild cancels
+its replace and fails with its record kept, LinuxIO's degraded mount erases
+the disk, and a replace from the pool details makes the pool whole;
 each ends whole by the same checks as the proof.
 
 A disk whose writes fail while it stays attached, as when its cable comes
@@ -887,13 +904,27 @@ once it is fixed repairs what it missed.
 - The rebuild was run in the test VM on Ubuntu's 7.0 and Fedora's 7.3.4;
   on 6.8 it rests on its source.
 - Since 7.1 a replace whose target is pulled mid-copy finishes onto the
-  missing disk, and the kernel puts that disk back on its allocation list
-  and counts it writable (`btrfs_dev_replace_finishing`): chunk allocations
-  then log `read-only device in alloc_list` and the unmount a `WARNING` in
-  `btrfs_close_one_device` (`volumes.c`), as does a failed mount that
-  opened a replace target's disk. An upstream bug; nothing is written to the
-  missing disk, and LinuxIO's check refuses the finish as for any target
-  gone.
+  missing disk, and the kernel then corrupts its own memory: the finish
+  puts that disk on the pool's allocation list without counting it writable
+  (`btrfs_dev_replace_finishing`), and each recalculation of the pool's free
+  space fills an array sized for the writable disks with every disk on that
+  list (`alloc_virtual_chunk` in `volumes.c`, new in 7.1), 32 bytes past its
+  end. An unmount leaves the disk on the list (the `WARNING` in
+  `btrfs_close_one_device`), and a scan of the returned disk under the same
+  device number frees it while linked, so the next mount writes to freed
+  memory. Shown in the test VM on Fedora's 7.3.4 booted with `slub_debug`,
+  the second with `btrfs` and `mount` alone, the first during LinuxIO's own
+  degraded mount after a rebuild whose disk dropped out again; without
+  `slub_debug` two of five runs of the root tests ended with the guest
+  crashed. An upstream bug, as is the count of writable disks the cancel
+  leaves one short (above): after either, only a restart of the server
+  puts the kernel's view of the pool right. LinuxIO cancels the replace
+  when it sees the disk go, which keeps the kernel from finishing it; when
+  the copy ends
+  within two seconds of the disk going, or a replace the kernel continued
+  at a mount is only watched (`ResumeReplace`), the kernel finishes first,
+  LinuxIO's check refuses the result and its error says to restart the
+  server, until which the kernel may crash or corrupt data.
 - A pool unmounted by hand while its rebuild copies fails that rebuild, and
   when the pool is then mounted by systemd at boot, where the kernel takes
   the copy up and ends it, the record still says failed: LinuxIO did not

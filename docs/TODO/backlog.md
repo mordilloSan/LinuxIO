@@ -54,8 +54,37 @@ after a change that issues ioctls).
   up at the next mount past every extent, leaving the disk's stale copies in
   the member. Both are shown by `TestBtrfsRebuildProofIntegration`
   (`targetFailsMidReplace`) in the test VM, on 7.0 and on Fedora's 7.3.4.
-  Whether such a replace gets a record the next mount acts on, as the
-  rebuild's does, is the owner's decision.
+  Worse, since 7.1, when the disk being replaced is still present the finish
+  also takes it out of the pool and erases its superblocks
+  (`btrfs_dev_replace_finishing` scratches a writeable source), so a
+  two-disk raid1 is left with one copy; read in 7.3.4's source, not run.
+  LinuxIO cancels a replace as soon as its target disk goes, which keeps
+  the kernel from that finish. Still open, decided 2026-11-25: a replace
+  from the pool details keeps a record as the rebuild does, which
+  LinuxIO's next mount acts on, since after the cancel too the disk comes
+  back with the target's superblock and the mount is refused. **checked**
+
+- Since 7.1 a replace whose target disk drops out mid-copy leaves the
+  kernel corrupting its own memory ([Btrfs](../btrfs.md#known-limits)): the
+  finish onto the missing disk leaves one more disk on the pool's
+  allocation list than it counts writable, and every recalculation of free
+  space then writes 32 bytes past an array (`alloc_virtual_chunk`); after
+  an unmount, a scan of the returned disk frees a device still on that
+  list. Seen with `slub_debug` on Fedora's 7.3.4 in the test VM, during
+  LinuxIO's degraded mount in `TestBtrfsAutoRebuildIntegration` ("dies
+  again") and with `btrfs` and `mount` alone; two of five runs without it
+  ended with the guest crashed. The automatic rebuild reaches it when its
+  disk drops out again, and so does a replace from the pool details.
+  LinuxIO now cancels such a replace within two seconds, and says to
+  restart the server, which the cancel needs too on these kernels: it
+  leaves the kernel's count of the pool's writable disks one short, so the
+  pool gets no new chunk and cannot be mounted read-write again
+  (`btrfs_remove_bdev` takes a replace target off a count it was never
+  in). Open: neither bug is
+  reported upstream (the steps are `btrfs replace start`, the target
+  removed from its bus mid-copy, `umount`, the disk back and scanned,
+  `mount`), and a replace the kernel continued at a mount is watched
+  without the cancel. **checked**
 
 ## Visible bugs
 
