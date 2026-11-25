@@ -52,6 +52,21 @@ func TestPassReportSummary(t *testing.T) {
 			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 3}, Containers: []ContainerOutcome{updated}},
 			want:   scheduledrun.Summary{Message: "1 updated"},
 		},
+		// Too little free space: nothing was updated, so what waits is named.
+		// The run fails on its error; the summary counts no failed container.
+		"low free space": {
+			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 2}, LowFreeSpace: true},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space, 2 waiting"},
+		},
+		// The check failed, then the pass found too little room to update.
+		"failed check, low free space": {
+			report: PassReport{LowFreeSpace: true},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space"},
+		},
+		"low free space, nothing waiting": {
+			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4}, LowFreeSpace: true},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space"},
+		},
 		// The check failed, so the pass has no mode, but it reached a container.
 		"failed check, one container failed": {
 			report: PassReport{Containers: []ContainerOutcome{failed}},
@@ -107,6 +122,11 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 	PassReport{Skipped: passSkippedBusy}.Write(&out)
 	if out.String() != "Container updates: skipped, another Docker update was running\n" {
 		t.Fatalf("skipped report = %q", out.String())
+	}
+	out.Reset()
+	PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 1}, LowFreeSpace: true}.Write(&out)
+	if out.String() != "Container updates: 1 checked, updates skipped for low free space\n" {
+		t.Fatalf("low free space report = %q", out.String())
 	}
 }
 

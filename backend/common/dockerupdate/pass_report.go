@@ -88,6 +88,10 @@ type PassReport struct {
 	Mode       DockerContainerAutoUpdateMode
 	Checked    DockerUpdateCheckResult
 	Containers []ContainerOutcome
+	// LowFreeSpace is a pass that updated nothing because Docker's disk had
+	// less free space than the settings ask for (errLowFreeSpace). The run
+	// still fails, so its alert reports it.
+	LowFreeSpace bool
 }
 
 // counts tells the containers the pass replaced, those it failed to, and
@@ -113,16 +117,20 @@ func (o ContainerOutcome) rolledBack() bool {
 }
 
 // Summary is the one line the history shows for the pass; ok is false for a
-// pass that neither finished its check nor reached a container.
+// pass that neither finished its check, reached a container nor found too
+// little free space to update.
 func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 	if r.Skipped != "" {
 		return scheduledrun.Summary{Message: "Skipped: " + r.Skipped, Skipped: true}, true
 	}
-	if r.Mode == "" && len(r.Containers) == 0 {
+	if r.Mode == "" && len(r.Containers) == 0 && !r.LowFreeSpace {
 		return scheduledrun.Summary{}, false
 	}
 	updated, failed, rolledBack := r.counts()
 	var parts []string
+	if r.LowFreeSpace {
+		parts = append(parts, "Updates skipped for low free space")
+	}
 	if updated > 0 {
 		parts = append(parts, fmt.Sprintf("%d updated", updated))
 	}
@@ -152,8 +160,7 @@ func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 // Write prints the pass for the run's output: a line of totals, then one line
 // for each container the pass replaced or failed to. The log lines of the
 // pass carry the same facts as journal fields, which the saved output of a
-// run does not show. It prints nothing for a pass that neither finished its
-// check nor reached a container.
+// run does not show. It prints nothing where Summary gives no line.
 func (r PassReport) Write(w io.Writer) {
 	summary, ok := r.Summary()
 	if !ok {

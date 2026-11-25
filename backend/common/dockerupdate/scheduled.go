@@ -102,6 +102,11 @@ func RunScheduled(ctx context.Context, configPath string, report func(message st
 // snapshotters there and none under /var/lib/docker).
 const containerdRoot = "/var/lib/containerd"
 
+// errLowFreeSpace is a pass's refusal to update for want of free space, which
+// its summary names (PassReport.LowFreeSpace); a free space that cannot be
+// read is another error.
+var errLowFreeSpace = errors.New("no container was updated")
+
 type dockerInfoClient interface {
 	Info(context.Context, client.InfoOptions) (client.SystemInfoResult, error)
 }
@@ -138,8 +143,8 @@ func checkDockerFreeSpace(ctx context.Context, cli dockerInfoClient, minGiB int)
 			return fmt.Errorf("read the free space of %s: %w", folder, err)
 		}
 		if free < minimum {
-			return fmt.Errorf("no container was updated: the filesystem of %s has %.1f GiB free, less than the %d GiB the settings ask for",
-				folder, float64(free)/(1<<30), minGiB)
+			return fmt.Errorf("%w: the filesystem of %s has %.1f GiB free, less than the %d GiB the settings ask for",
+				errLowFreeSpace, folder, float64(free)/(1<<30), minGiB)
 		}
 	}
 	return nil
@@ -242,6 +247,7 @@ func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions
 	}
 	var updateErr error
 	pass.Containers, updateErr = updateSelected(ctx, opts, operations, selected, containers, report)
+	pass.LowFreeSpace = errors.Is(updateErr, errLowFreeSpace)
 	updated, _, _ := pass.counts()
 	err = errors.Join(append(runErrs, checkErr, updateErr)...)
 	raisePassNotice(ctx, notify, err, checked, updated)

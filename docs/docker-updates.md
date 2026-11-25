@@ -402,7 +402,10 @@ store keeps the layers (in the test VM's Docker 29.1.3 that folder holds the
 snapshotters and `/var/lib/docker` none); a containerd folder that does not
 exist is passed over. When either has less, the pass updates nothing and fails, naming the
 folder and its free space, so the run's own alert reports it; the check's
-result stays in the report and the status file. An update from the
+result stays in the report and the status file, and the history's summary
+reads *Updates skipped for low free space*, followed by what waits (*2
+waiting*). A free space that cannot be read fails the pass the same way,
+with its own error and no such summary. An update from the
 Containers page does not ask.
 
 A pass checks every container in its scope, then updates the standalone

@@ -3,6 +3,7 @@ package dockerupdate
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -203,10 +204,10 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 // containers to update; too little room fails the pass before any update,
 // with no container alert, so the run's own alert reports it.
 func TestRunScheduledPassRefusesUpdatesWithTooLittleFreeSpace(t *testing.T) {
-	lowSpace := errors.New("no container was updated: the filesystem of /var/lib/docker has 1.0 GiB free")
+	lowSpace := fmt.Errorf("%w: the filesystem of /var/lib/docker has 1.0 GiB free", errLowFreeSpace)
+	unreadable := errors.New("read the free space of /var/lib/docker: permission denied")
 	for name, tc := range map[string]struct {
 		opts       DockerContainerAutoUpdateOptions
-		names      []string
 		spaceErr   error
 		wantAsked  int
 		wantUpdate bool
@@ -215,6 +216,7 @@ func TestRunScheduledPassRefusesUpdatesWithTooLittleFreeSpace(t *testing.T) {
 		"no minimum":        {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true}, wantUpdate: true},
 		"room enough":       {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true, MinFreeGiB: 5}, wantAsked: 5, wantUpdate: true},
 		"too little room":   {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true, MinFreeGiB: 5}, spaceErr: lowSpace, wantAsked: 5, wantErr: lowSpace},
+		"space unreadable":  {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true, MinFreeGiB: 5}, spaceErr: unreadable, wantAsked: 5, wantErr: unreadable},
 		"check only":        {opts: DockerContainerAutoUpdateOptions{Mode: "check_only", UpdateAll: true, MinFreeGiB: 5}, spaceErr: lowSpace},
 		"nothing to update": {opts: DockerContainerAutoUpdateOptions{Mode: "update", MinFreeGiB: 5}, spaceErr: lowSpace},
 	} {
@@ -247,6 +249,11 @@ func TestRunScheduledPassRefusesUpdatesWithTooLittleFreeSpace(t *testing.T) {
 			}
 			if pass.Checked.Updates != 1 {
 				t.Fatalf("report = %+v, want the check's result kept", pass)
+			}
+			// Only too little room is summarised as such; a free space that
+			// could not be read is the run's error alone.
+			if want := errors.Is(tc.wantErr, errLowFreeSpace); pass.LowFreeSpace != want {
+				t.Fatalf("report LowFreeSpace = %v, want %v", pass.LowFreeSpace, want)
 			}
 		})
 	}
@@ -290,17 +297,20 @@ func TestCheckDockerFreeSpaceNamesTheFolderShortOfRoom(t *testing.T) {
 			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
 				t.Fatalf("checkDockerFreeSpace error = %v, want %q", err, tc.wantErr)
 			}
+			if err != nil && !errors.Is(err, errLowFreeSpace) {
+				t.Fatalf("checkDockerFreeSpace error = %v, want errLowFreeSpace", err)
+			}
 		})
 	}
 	// Docker's own folder must be readable: its absence is an error.
 	old := freeBytesAt
 	t.Cleanup(func() { freeBytesAt = old })
 	freeBytesAt = func(string) (uint64, error) { return 0, unix.ENOENT }
-	if err := checkDockerFreeSpace(t.Context(), fakeDockerInfo{root: "/srv/docker"}, 5); err == nil {
-		t.Fatal("a Docker root folder that cannot be read passed the check")
+	if err := checkDockerFreeSpace(t.Context(), fakeDockerInfo{root: "/srv/docker"}, 5); err == nil || errors.Is(err, errLowFreeSpace) {
+		t.Fatalf("unreadable Docker root folder: error = %v, want an error other than low free space", err)
 	}
-	if err := checkDockerFreeSpace(t.Context(), fakeDockerInfo{err: errors.New("daemon down")}, 5); err == nil {
-		t.Fatal("a daemon that does not answer passed the check")
+	if err := checkDockerFreeSpace(t.Context(), fakeDockerInfo{err: errors.New("daemon down")}, 5); err == nil || errors.Is(err, errLowFreeSpace) {
+		t.Fatalf("daemon that does not answer: error = %v, want an error other than low free space", err)
 	}
 }
 
