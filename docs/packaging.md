@@ -196,8 +196,11 @@ no command line.
 A package manager removes only the files it installed. On removal (not on an
 upgrade) the DEB's `prerm` and the RPM's `%preun` stop `linuxio.target`, its
 sockets and timers, monitoring, the banner and every job host and job socket,
-and disable what the install enabled. They also stop and disable the snapshot
-and Docker update timers LinuxIO wrote.
+and disable what the install enabled. They also stop and disable the units
+LinuxIO wrote for its own settings: the snapshot and Docker update timers, and
+the Docker shutdown unit, whose stop leaves the containers running and whose
+disable takes its link out of `docker.service.wants`
+([Docker Shutdown](./docker-shutdown.md#removal)).
 
 The DEB's `postrm` and the RPM's `%postun` then delete what LinuxIO itself
 wrote under `/etc/systemd/system` while it ran, by exact path, the two lists
@@ -206,6 +209,7 @@ kept equal:
 - the two timers, `linuxio-btrfs-snapshot.timer` and
   `linuxio-docker-update.timer`: left behind, each would start a service the
   removal took away;
+- the Docker shutdown unit, `linuxio-docker-shutdown.service`;
 - the verbose drop-ins of the webserver, the indexer and monitoring
   (`backend/common/verbosemode`);
 - the indexer timer's schedule, `linuxio-indexer-index.timer.d/linuxio.conf`;
@@ -229,10 +233,7 @@ their user; the run-record drop-in that hooks them goes with the package), the
 rsync service (`linuxio-rsync.service`, `rsync --daemon` on
 `/etc/linuxio/rsyncd.conf`) and Docker's drop-ins (`docker.service.d/linuxio-*.conf`:
 the mounts its data needs and the addresses it waits for). A new install finds
-them with their definitions under `/etc/linuxio`. So does
-`linuxio-docker-shutdown.service`, which stops containers through Docker
-before a shutdown and needs nothing of LinuxIO
-([Docker Shutdown](./docker-shutdown.md#removal)). The WireGuard interfaces
+them with their definitions under `/etc/linuxio`. The WireGuard interfaces
 stay too, being wg-quick's own files, and with them
 `/etc/sysctl.d/90-linuxio-wireguard.conf`, which keeps IPv4 forwarding on at
 boot for those with NAT ([Forwarding](./wireguard.md#forwarding)). The memory page writes no

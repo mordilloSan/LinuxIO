@@ -208,13 +208,21 @@ func TestRenderDockerShutdownStopUnit(t *testing.T) {
 	require.NotContains(t, strings.Join(settings, "\n"), "/usr/libexec/linuxio")
 }
 
-// The unit stays when LinuxIO is removed, as Docker's drop-ins do: no removal
-// script stops, disables or deletes it.
-func TestPackageRemovalKeepsTheShutdownUnit(t *testing.T) {
-	for _, script := range []string{"debian/prerm", "debian/postrm", "rpm/linuxio.spec"} {
+// Removing the package stops and disables the unit, so no link is left under
+// docker.service.wants, then deletes its file: each name is in the lists of
+// both packages.
+func TestPackageRemovalDeletesTheShutdownUnit(t *testing.T) {
+	for script, want := range map[string][]string{
+		"debian/prerm":     {dockerShutdownStopUnit},
+		"debian/postrm":    {dockerShutdownStopUnitPath},
+		"rpm/linuxio.spec": {dockerShutdownStopUnit, dockerShutdownStopUnitPath},
+	} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packaging", script))
 		require.NoError(t, err)
-		require.NotContains(t, string(data), dockerShutdownStopUnit, "packaging/%s", script)
+		words := strings.FieldsFunc(string(data), func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '"' })
+		for _, name := range want {
+			require.Contains(t, words, name, "packaging/%s", script)
+		}
 	}
 }
 

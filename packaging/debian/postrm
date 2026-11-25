@@ -9,12 +9,13 @@ set -e
 
 # Exact paths, kept equal to the RPM's list; a test of each writer holds both
 # lists to the paths it writes. The prerm stopped and disabled the two
-# timers. What LinuxIO writes for something an administrator set up stays,
-# since it works without LinuxIO: scheduled scripts (linuxio-schedule-*), the
-# rsync service and Docker's drop-ins.
+# timers and the Docker shutdown unit. What LinuxIO writes for something an
+# administrator set up stays, since it works without LinuxIO: scheduled
+# scripts (linuxio-schedule-*), the rsync service and Docker's drop-ins.
 written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer
 /etc/systemd/system/linuxio-docker-update.timer
+/etc/systemd/system/linuxio-docker-shutdown.service
 /etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf
 /etc/systemd/system/linuxio-webserver.service.d/verbose.conf
 /etc/systemd/system/linuxio-indexer.service.d/verbose.conf

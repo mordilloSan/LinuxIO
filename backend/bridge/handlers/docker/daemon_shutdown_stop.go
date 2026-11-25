@@ -35,12 +35,12 @@ var (
 	shutdownStopLookPath    = lookSystemPath
 )
 
-// dockerShutdownStopUnitText is the whole unit. It is plain shell on the
-// Docker CLI and names no LinuxIO program, so it works on a host LinuxIO was
-// removed from. @DOCKER@, @LIST@, @STATE@ and @PATH@ are filled in by
+// dockerShutdownStopUnitText is the whole unit, plain shell on the Docker
+// CLI. Removing the package disables and deletes it (packaging/debian/prerm
+// and postrm, the RPM's %preun and %postun). @DOCKER@, @LIST@, @STATE@ and @PATH@ are filled in by
 // renderDockerShutdownStopUnit; a "$$" is systemd's way to write one "$".
-const dockerShutdownStopUnitText = `# Written by LinuxIO: Settings, Docker, "Stop containers before shutdown". It runs without
-# LinuxIO and stays when LinuxIO is removed.
+const dockerShutdownStopUnitText = `# Written by LinuxIO: Settings, Docker, "Stop containers before shutdown". Removing LinuxIO
+# disables and deletes it.
 #
 # Stops running containers through Docker before shutdown, and at boot starts those of them whose
 # restart policy is unless-stopped.

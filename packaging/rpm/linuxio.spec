@@ -22,8 +22,8 @@
 %global enabled_units linuxio.target linuxio-indexer-index.timer linuxio-monitoring.service linuxio-jobs@0.service
 %global btrfs_units linuxio-btrfs-health.timer linuxio-btrfs-degraded.service
 %global started_units linuxio.target linuxio-monitoring.service linuxio-issue.service
-# The timers LinuxIO writes to /etc/systemd/system when a setting is saved.
-%global written_timers linuxio-btrfs-snapshot.timer linuxio-docker-update.timer
+# The units LinuxIO writes to /etc/systemd/system when a setting is saved.
+%global written_units linuxio-btrfs-snapshot.timer linuxio-docker-update.timer linuxio-docker-shutdown.service
 
 Name:           linuxio
 Version:        %{linuxio_version}
@@ -163,11 +163,14 @@ if [ "$1" -eq 0 ] && [ -d /run/systemd/system ]; then
 	systemctl stop linuxio.target linuxio-webserver.socket linuxio-auth.socket linuxio-indexer.socket \
 		linuxio-indexer-index.timer linuxio-btrfs-health.timer linuxio-issue.service $hosts || :
 fi
-# The timers LinuxIO wrote: left running, each would start a service this
-# removal takes away. %%postun deletes their files. One at a time: systemctl
-# refuses the whole list when one of them was never written.
+# The units LinuxIO wrote: left running, a timer would start a service this
+# removal takes away, and an enabled unit would leave its link behind (the
+# Docker shutdown unit's under docker.service.wants; its stop does nothing
+# outside a shutdown, so the containers keep running). %%postun deletes their
+# files. One at a time: systemctl refuses the whole list when one of them was
+# never written.
 if [ "$1" -eq 0 ]; then
-	for unit in %{written_timers}; do
+	for unit in %{written_units}; do
 		if [ -d /run/systemd/system ]; then
 			systemctl stop "$unit" >/dev/null 2>&1 || :
 		fi
@@ -192,6 +195,7 @@ if [ "$1" -eq 0 ]; then
 	written_files="
 /etc/systemd/system/linuxio-btrfs-snapshot.timer
 /etc/systemd/system/linuxio-docker-update.timer
+/etc/systemd/system/linuxio-docker-shutdown.service
 /etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf
 /etc/systemd/system/linuxio-webserver.service.d/verbose.conf
 /etc/systemd/system/linuxio-indexer.service.d/verbose.conf

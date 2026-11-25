@@ -6,10 +6,13 @@ set -e
 # What the postinst may have enabled through deb-systemd-helper, and LinuxIO
 # itself (the btrfs units); the root job host is enabled with systemctl.
 enabled_units="linuxio.target linuxio-indexer-index.timer linuxio-monitoring.service linuxio-btrfs-health.timer linuxio-btrfs-degraded.service"
-# The timers LinuxIO writes to /etc/systemd/system when a setting is saved:
-# left running, each would start a service this removal takes away. The
-# postrm deletes their files. The RPM's %preun does the same.
-written_timers="linuxio-btrfs-snapshot.timer linuxio-docker-update.timer"
+# The units LinuxIO writes to /etc/systemd/system when a setting is saved:
+# left running, a timer would start a service this removal takes away, and an
+# enabled unit would leave its link behind (the Docker shutdown unit's under
+# docker.service.wants; its stop does nothing outside a shutdown, so the
+# containers keep running). The postrm deletes their files. The RPM's %preun
+# does the same.
+written_units="linuxio-btrfs-snapshot.timer linuxio-docker-update.timer linuxio-docker-shutdown.service"
 
 if [ "$1" = remove ]; then
 	if [ -d /run/systemd/system ]; then
@@ -29,7 +32,7 @@ if [ "$1" = remove ]; then
 	done
 	# One at a time: systemctl refuses the whole list when one of them was
 	# never written.
-	for unit in $written_timers; do
+	for unit in $written_units; do
 		if [ -d /run/systemd/system ]; then
 			systemctl stop "$unit" >/dev/null 2>&1 || true
 		fi

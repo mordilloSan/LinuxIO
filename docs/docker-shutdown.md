@@ -64,17 +64,14 @@ running, and deletes the file. Both log one Info line. The route is
 
 ## Removal
 
-The unit names no LinuxIO program and runs without LinuxIO, so removing the
-package leaves it in place, as it does Docker's drop-ins
-([Removal](./packaging.md#removal)). `TestPackageRemovalKeepsTheShutdownUnit`
-holds the removal scripts to that. A new install shows the toggle on, read
-from systemd. To remove it without LinuxIO:
-
-```sh
-sudo systemctl disable --now linuxio-docker-shutdown.service
-sudo rm /etc/systemd/system/linuxio-docker-shutdown.service
-sudo systemctl daemon-reload
-```
+Removing the package removes the unit, as it does the other units LinuxIO
+writes for its own settings ([Removal](./packaging.md#removal)). The DEB's
+`prerm` and the RPM's `%preun` stop and disable it, which takes its link out
+of `docker.service.wants`; the stop leaves the containers running, since
+`ExecStop` acts only while the host shuts down. The DEB's `postrm` and the
+RPM's `%postun` then delete the file. `TestPackageRemovalDeletesTheShutdownUnit`
+holds both packages to that. Without the unit the host is back to systemd
+ending the containers at shutdown, and a new install shows the toggle off.
 
 ## Compared with Docker without live restore
 
