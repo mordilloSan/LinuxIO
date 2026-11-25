@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+  test,
+} from "@playwright/test";
 
 const DATA = 0x04;
 const BRIDGE_DATA = 0x81;
@@ -1091,6 +1097,80 @@ test("keeps a long answer with a code block inside the chat's own scroller", asy
     ),
   ).toBe(0);
   await expect(input).toBeInViewport();
+});
+
+test("opens a long saved chat at its newest message", async ({ page }) => {
+  // As on a first sign-in, the web fonts arrive after the replayed chat is
+  // drawn, and the column grows when they swap in without a render.
+  const fonts: Route[] = [];
+  await page.route(/\.woff2?$/, (route) => {
+    fonts.push(route);
+  });
+  const prose =
+    "A long paragraph wraps at different places in the fallback font and in Inter, ".repeat(
+      6,
+    );
+  const turn = (index: number) =>
+    `Answer ${index}. ${prose}\n\n\`\`\`bash\nsystemctl status unit-${index}\njournalctl -u unit-${index}\n\`\`\`\n\nThat is all for ${index}.`;
+  await serveAgent(page, (request, { send, notify }) => {
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { list: {} },
+            },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { sessions: [{ sessionId: "s1", cwd: "/home/alice" }] },
+        });
+        break;
+      case "session/load":
+        for (let index = 0; index < 40; index++) {
+          notify("s1", {
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text: `Question ${index}` },
+          });
+          notify("s1", {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: turn(index) },
+          });
+        }
+        send({ jsonrpc: "2.0", id: request.id, result: {} });
+        break;
+    }
+  });
+
+  await page.goto("/assistant");
+  await expect(page.getByLabel("Message")).toBeEnabled();
+  const transcript = page.getByRole("log").first();
+  const belowView = () =>
+    transcript.evaluate(
+      (el) => el.scrollHeight - el.scrollTop - el.clientHeight,
+    );
+  await expect.poll(belowView).toBeLessThanOrEqual(1);
+
+  expect(fonts.length).toBeGreaterThan(0);
+  await Promise.all(fonts.map((route) => route.continue()));
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(belowView).toBeLessThanOrEqual(1);
+  await expect(page.getByText("That is all for 39.")).toBeInViewport();
+
+  // A smaller window shrinks the scroller, again without a render.
+  const size = page.viewportSize();
+  if (!size) throw new Error("no viewport");
+  await page.setViewportSize({ width: size.width, height: size.height - 200 });
+  await expect.poll(belowView).toBeLessThanOrEqual(1);
 });
 
 test("types a command in a terminal tab beside the chat, and reuses that tab", async ({

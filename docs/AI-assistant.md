@@ -736,7 +736,13 @@ advertises the matching capability.
   such as one that lands on the sign-in page, drops its command without a
   message.
 - **Auto-scroll.** The transcript follows new content while it is scrolled to
-  the bottom and pauses when the user scrolls up.
+  the bottom, pauses when the user scrolls up and follows again once they are
+  back at the bottom, so a loaded chat opens at its newest message
+  (`useFollowBottom`). It also follows what grows without a render, watched by
+  a `ResizeObserver` on the scroller and its column: web fonts swapping in
+  after the first paint, code being coloured, the window shrinking. Only a
+  move up pauses it, since the scroll event of its own jump can arrive after
+  more content landed and read as "not at the bottom".
 - **Shortcuts.** Enter sends, Shift+Enter inserts a newline, Escape stops a
   running turn, Shift+Tab cycles the mode, Ctrl/Cmd+Shift+O starts a new chat.
   The header tooltips show them.

@@ -13,6 +13,10 @@ import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import AssistantPage from "@/routes/_authenticated/assistant/-components/AssistantPage";
 
+// The app's own fonts, which swap in after the first paint as they do there.
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource/jetbrains-mono/400.css";
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
 });
