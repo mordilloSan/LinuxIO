@@ -68,7 +68,7 @@ export function useFolderWatch(path: string | null) {
 
     const markStale = () => {
       const hidden = document.visibilityState === "hidden";
-      missedWhileHidden ||= hidden;
+      if (hidden) missedWhileHidden = true;
       markListingStale(queryClient, folder, !hidden);
     };
 
