@@ -31,10 +31,14 @@ the network or the test VMs. `make test-full` runs everything: `make test`,
 it, it ends with each one's result and time and fails when one failed, Ctrl-C
 ends it once the target running stops, and it takes no `SUITES`,
 `PLAYWRIGHT_ARGS` or `DISTRO`. It runs as long as `test-vm-all` and a few
-minutes more, and it is the owner's to run.
-`test-assistant-agent-integration` writes every line, whether run alone or by
-`test-full`, to `.cache/test-logs/test-assistant-agent-integration.log`,
-replaced by each run.
+minutes more, and it is the owner's to run. Its recap names each one's log
+and is also kept in `.cache/test-logs/test-full/recap.log`, beside `make
+test`'s output (`test.log`), which `make test` does not keep itself; the
+folder is emptied as `test-full` starts. `test-frontend-browser` and
+`test-assistant-agent-integration` write every line, whether run alone or by
+`test-full`, to `.cache/test-logs/test-frontend-browser.log` and
+`.cache/test-logs/test-assistant-agent-integration.log`, replaced by each run;
+`test-vm-all` keeps its own in `.cache/test-logs/test-vm-all/`.
 `test-packages` is not in it, since it checks packages a release build
 assembles.
 

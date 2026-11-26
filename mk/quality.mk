@@ -58,22 +58,38 @@ test: setup dev-prep test-packaging-scripts check-docs check-actions check-syste
 # the tree. It is the owner's run, too long for an agent. A failure does not
 # end it, since none of the four needs another; it ends with each one's result
 # and time, and fails when one failed. Ctrl-C ends it once the target running
-# stops, and the rest are shown as not run.
+# stops, and the rest are shown as not run. The recap, with where each one's
+# log is, is also kept in test_full_logs/recap.log, beside make test's output,
+# which make test does not keep itself; the other three keep their own.
+test_full_logs := $(cache_dir)/test-logs/test-full
+test_full_shown = $(patsubst $(repo_root)/%,%,$(1))
 test-full: ## Run make test, the browser tests, the assistant agent install test and test-vm-all in turn, and end with the result of each
 	@$(if $(filter command line environment,$(origin SUITES) $(origin PLAYWRIGHT_ARGS))$(strip $(DISTRO)),echo "❌ test-full takes no SUITES or PLAYWRIGHT_ARGS or DISTRO: run the target you want narrowed on its own" >&2; exit 1)
-	@failed=0 stopped=0 recap=()
+	@set -o pipefail
+	@failed=0 stopped=0 recap=() started="$$(date '+%F %T')"
 	@if [[ -t 1 && -z $${NO_COLOR:-} ]]; then ok=$$'\e[32m✓\e[0m' bad=$$'\e[31m✘\e[0m'; else ok=✓ bad=✘; fi
 	@trap 'stopped=1' INT
+	@rm -rf "$(test_full_logs)" && mkdir -p "$(test_full_logs)" || exit 1
 	@for target in test test-frontend-browser test-assistant-agent-integration test-vm-all; do
 	  name="$$(printf '%-33s' "$$target")"
 	  if ((stopped)); then
 	    recap+=("  – $$name not run")
 	    continue
 	  fi
+	  case $$target in
+	    test) log="$(call test_full_shown,$(test_full_logs))/test.log" ;;
+	    test-frontend-browser) log="$(call test_full_shown,$(frontend_browser_log))" ;;
+	    test-assistant-agent-integration) log="$(call test_full_shown,$(agent_integration_log))" ;;
+	    test-vm-all) log="$(vm_all_logs_shown)/" ;;
+	  esac
 	  begun=$$EPOCHSECONDS code=0
-	  $(MAKE) --no-print-directory "$$target" || code=$$?
+	  if [[ $$target == test ]]; then
+	    $(MAKE) --no-print-directory test 2>&1 | tee "$(test_full_logs)/test.log" || code=$$?
+	  else
+	    $(MAKE) --no-print-directory "$$target" || code=$$?
+	  fi
 	  took=$$((EPOCHSECONDS - begun))
-	  line="$$name $$(printf '%3dm %02ds' $$((took / 60)) $$((took % 60)))"
+	  line="$$name $$(printf '%3dm %02ds' $$((took / 60)) $$((took % 60)))  $$log"
 	  if ((code == 0)); then
 	    recap+=("  $$ok $$line")
 	  else
@@ -82,6 +98,9 @@ test-full: ## Run make test, the browser tests, the assistant agent install test
 	  fi
 	done
 	@printf '%s\n' "" "test-full" "$${recap[@]}"
+	@printf '%s\n' "test-full of $(GIT_VERSION), started $$started, ended $$(date '+%F %T')" "$${recap[@]}" \
+	  | sed 's/\x1b\[[0-9;]*m//g' >"$(test_full_logs)/recap.log"
+	@echo "recap kept in $(call test_full_shown,$(test_full_logs))/recap.log"
 	@((stopped == 0)) || exit 130
 	@exit "$$failed"
 

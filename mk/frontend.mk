@@ -75,13 +75,21 @@ setup-frontend-browser: ensure-node setup-frontend ## Install Playwright Chromiu
 	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright install chromium
 	@echo "✅ Playwright Chromium installed!"
 
+# Every line also goes to frontend_browser_log, replaced by each run, so the
+# result of a test-full run outlives the terminal.
+frontend_browser_log := $(cache_dir)/test-logs/test-frontend-browser.log
 test-frontend-browser: ensure-node setup-frontend ## Build frontend + run router browser tests
-	@set -e
-	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
-	@cd "$(frontend_dir)" && ./node_modules/.bin/vite build --config config/vite.config.ts --configLoader native
-	@echo "🌐 Running frontend browser tests..."
-	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts $(PLAYWRIGHT_ARGS)
+	@set -eo pipefail
+	@mkdir -p "$(dir $(frontend_browser_log))"
+	@(
+	  cd "$(frontend_dir)"
+	  echo "🏗️  Building the production frontend for chunk-boundary checks..."
+	  ./node_modules/.bin/vite build --config config/vite.config.ts --configLoader native
+	  echo "🌐 Running frontend browser tests..."
+	  ./node_modules/.bin/playwright test --config config/playwright.config.ts $(PLAYWRIGHT_ARGS)
+	) 2>&1 | tee "$(frontend_browser_log)"
 	@echo "✅ Frontend browser tests passed!"
+	@echo "every line in full: $(patsubst $(repo_root)/%,%,$(frontend_browser_log))"
 
 # Rewrites the screenshot baselines the styling gallery and dialog specs
 # compare against. Run after a deliberate visual change, then review the PNG
