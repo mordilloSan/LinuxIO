@@ -308,8 +308,11 @@ test("a toast fired on another page links back to its page, and not on its own p
   page,
 }) => {
   test.setTimeout(300_000);
+  // A pull stalled on the registry would otherwise use up the test's
+  // timeout with no step to blame; timeout(1) exits 124 when it cuts one.
   await vmSsh(
-    `sudo docker rm -f ${STOP_ON_PAGE} ${STOP_AWAY} >/dev/null 2>&1; sudo docker pull -q busybox:1.37 >/dev/null && ` +
+    `sudo docker rm -f ${STOP_ON_PAGE} ${STOP_AWAY} >/dev/null 2>&1; ` +
+      `{ sudo timeout 120 docker pull -q busybox:1.37 >/dev/null || { s=$?; [ $s -ne 124 ] || echo "docker pull busybox:1.37 took more than 120 s" >&2; exit $s; }; } && ` +
       `for n in ${STOP_ON_PAGE} ${STOP_AWAY}; do sudo docker run -d --name $n busybox:1.37 sleep 3600 >/dev/null; done`,
   );
   // The container's Stop button, in a card or in a table row.

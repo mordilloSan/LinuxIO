@@ -155,12 +155,19 @@ test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose 
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
 	  "$(GO_BIN)" test ./common/dockerupdate -run '$(DOCKER_UPDATE_RUN)' -count=1 -v
 
+# Every line also goes to agent_integration_log, replaced by each run, so the
+# result of a test-full run outlives the terminal.
+agent_integration_log := $(cache_dir)/test-logs/test-assistant-agent-integration.log
 test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install and launch of the assistant agents (needs Node.js and network)
+	@set -eo pipefail
+	@mkdir -p "$(dir $(agent_integration_log))"
 	@echo "🤖 Running assistant agent install integration test..."
 	@cd "$(backend_dir)" && \
 	  LINUXIO_RUN_ASSISTANT_AGENT_INTEGRATION=1 \
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
-	  "$(GO_BIN)" test ./bridge/handlers/packages -run '^TestAssistantAgentIntegration$$' -count=1 -v -timeout 10m
+	  "$(GO_BIN)" test ./bridge/handlers/packages -run '^TestAssistantAgentIntegration$$' -count=1 -v -timeout 10m 2>&1 \
+	  | tee "$(agent_integration_log)"
+	@echo "every line in full: $(patsubst $(repo_root)/%,%,$(agent_integration_log))"
 
 # The root btrfs and partition kernel tests, run on this host by
 # test-btrfs-integration and in the test VM by vm-test-btrfs-integration:

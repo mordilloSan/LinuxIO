@@ -27,7 +27,12 @@ const repositoryRoot = path.resolve(frontendRoot, "..");
 export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   fullyParallel: false,
-  outputDir: path.join(repositoryRoot, ".cache/playwright/vm-results"),
+  // Playwright empties this folder as a run starts. test-vm-all gives each of
+  // its runs a folder of its own (LINUXIO_VM_RESULTS_DIR), so Fedora's run
+  // does not delete the screenshot and trace of a failure on Ubuntu.
+  outputDir:
+    process.env.LINUXIO_VM_RESULTS_DIR ||
+    path.join(repositoryRoot, ".cache/playwright/vm-results"),
   projects: [
     {
       name: "specs",

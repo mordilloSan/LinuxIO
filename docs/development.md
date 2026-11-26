@@ -32,6 +32,9 @@ it, it ends with each one's result and time and fails when one failed, Ctrl-C
 ends it once the target running stops, and it takes no `SUITES`,
 `PLAYWRIGHT_ARGS` or `DISTRO`. It runs as long as `test-vm-all` and a few
 minutes more, and it is the owner's to run.
+`test-assistant-agent-integration` writes every line, whether run alone or by
+`test-full`, to `.cache/test-logs/test-assistant-agent-integration.log`,
+replaced by each run.
 `test-packages` is not in it, since it checks packages a release build
 assembles.
 
@@ -483,7 +486,10 @@ Ubuntu's root suites and browser specs, then Fedora's. A failure does not
 stop it, since none of the four needs another (each reverts its VMs, and
 Fedora's VMs are not Ubuntu's). Each writes its logs to a folder of its own,
 `.cache/test-logs/test-vm-all/DISTRO-backend` or `DISTRO-browser`, emptied as
-it starts, so Fedora's logs do not overwrite Ubuntu's. The run ends with a
+it starts, so Fedora's logs do not overwrite Ubuntu's. A browser run's
+screenshots, traces and error context go in `results/` there
+(`LINUXIO_VM_RESULTS_DIR`) instead of `.cache/playwright/vm-results`, which
+Playwright empties as each run starts. The run ends with a
 recap of the four: each one's result and time, the folder of each one that
 failed, and the totals line of each browser run (the specs and the
 release-update spec). It fails when one of the four failed. Ctrl-C ends it

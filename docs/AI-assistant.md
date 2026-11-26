@@ -229,7 +229,8 @@ the user installed another way satisfies it as well. See
 
 `make test-assistant-agent-integration` installs all three agents with the
 real npm into a temporary home and starts each far enough to answer
-`initialize`. It needs Node.js, network access and `claude` on the PATH.
+`initialize`. It needs Node.js, network access and `claude` on the PATH. Its
+output is also kept in `.cache/test-logs/test-assistant-agent-integration.log`.
 
 ## Client behavior
 
