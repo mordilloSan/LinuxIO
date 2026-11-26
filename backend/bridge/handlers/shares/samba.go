@@ -49,6 +49,26 @@ var (
 	sambaServerAvailable = CheckSambaServerAvailability
 )
 
+// sambaUnits are the names smbd's service has, on Debian and on Fedora.
+var sambaUnits = []string{"smbd.service", "smb.service"}
+
+// restartSamba restarts smbd where it runs; one that is stopped stays
+// stopped. A restart cuts every open connection, so it is for what a reload
+// of the settings does not reach: what smbd announces to Macs, which it
+// registers once, when it starts. A var so tests can stand in for systemd.
+var restartSamba = func(ctx context.Context) error {
+	for _, unit := range sambaUnits {
+		if state, err := systemd.GetActiveState(ctx, unit); err != nil || state != "active" {
+			continue
+		}
+		if err := systemd.RestartUnit(ctx, unit); err != nil {
+			return fmt.Errorf("restart %s: %w", unit, err)
+		}
+		slog.Info("Samba restarted", "unit", unit)
+	}
+	return nil
+}
+
 // CheckSambaServerAvailability reports whether the Samba server (smbd) is
 // installed. It backs both the share-management preflight and the system
 // capability registry entry for Samba.

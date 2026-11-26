@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
@@ -21,10 +22,11 @@ import (
 )
 
 var (
-	runWGQuickCommand = runWGQuick
-	isInterfaceUpFunc = isInterfaceUp
-	interfaceGoneFunc = interfaceGone
-	units             = unitControl{
+	runWGQuickCommand    = runWGQuick
+	isInterfaceUpFunc    = isInterfaceUp
+	interfaceGoneFunc    = interfaceGone
+	deviceRunsConfigFunc = deviceRunsConfig
+	units                = unitControl{
 		activeState: systemd.GetActiveState,
 		start:       systemd.StartUnitAndWait,
 		stop:        systemd.StopUnitAndWait,
@@ -140,12 +142,20 @@ func startInterface(ctx context.Context, name string) error {
 		return err
 	}
 	if state == "active" {
-		// Starting a unit that is already active does nothing: either the
-		// interface is up, or the unit is left over from one that is gone.
-		if !interfaceGoneFunc(name) {
+		// Starting a unit that is already active does nothing, whatever the
+		// unit holds: the interface, up on this config; nothing, the
+		// interface having been taken away by hand; or an interface under
+		// another key, left running when its config was deleted or replaced.
+		switch {
+		case interfaceGoneFunc(name):
+			clearStaleUnit(ctx, name)
+		case deviceRunsConfigFunc(name):
 			return nil
+		default:
+			if err = stopOtherKeysInterface(ctx, name); err != nil {
+				return err
+			}
 		}
-		clearStaleUnit(ctx, name)
 	}
 	since := time.Now()
 	err = units.start(ctx, unit)
@@ -226,6 +236,68 @@ func clearStaleUnit(ctx context.Context, name string) {
 func interfaceGone(name string) bool {
 	_, err := os.Lstat("/sys/class/net/" + name)
 	return errors.Is(err, fs.ErrNotExist)
+}
+
+// stopOtherKeysInterface takes down the interface a unit holds under another
+// key than its config's, so that the start which follows runs the config on
+// disk. The unit's stop runs wg-quick down, which deletes the link and then
+// runs the hooks of the config on disk: the PostDown lines of the config that
+// interface came up on are gone with it and never run. A stop that failed
+// after the link was deleted, in a PostDown line, has done what is needed
+// here, and the unit it left failed is reset.
+func stopOtherKeysInterface(ctx context.Context, name string) error {
+	unit := unitName(name)
+	since := time.Now()
+	if err := units.stop(ctx, unit); err != nil {
+		if !interfaceGoneFunc(name) {
+			return withUnitOutput(ctx, unit, since, fmt.Errorf("take down the interface running as %s under another key than its config: %w", name, err))
+		}
+		slog.Debug("the stop of an interface under another key failed after it took the interface down", "component", "wireguard", "interface", name, "unit", unit, "error", err)
+		if resetErr := units.resetFailed(ctx, unit); resetErr != nil {
+			slog.Warn("failed to reset interface unit", "interface", name, "unit", unit, "error", resetErr)
+		}
+	}
+	slog.Info("took down a WireGuard interface that ran under another key than its config", "interface", name, "unit", unit)
+	return nil
+}
+
+// deviceRunsConfig reports whether the WireGuard interface that is up under a
+// name is the one its config describes: its public key is the one the
+// config's private key gives. An interface with another key was left running
+// when its config was deleted or replaced by hand or by a LinuxIO from before
+// a delete refused an interface it could not take down; its unit is still
+// active, and no client of the config on disk completes a handshake with it.
+// Where either side cannot be read the answer is true: an interface that
+// works is not taken down on a guess.
+func deviceRunsConfig(name string) bool {
+	cfg, err := ParseWireGuardConfig(configPath(name))
+	if err != nil {
+		slog.Debug("no config to compare a running interface with", "component", "wireguard", "interface", name, "error", err)
+		return true
+	}
+	private, err := wgtypes.ParseKey(cfg.PrivateKey)
+	if err != nil {
+		slog.Debug("no private key to compare a running interface with", "component", "wireguard", "interface", name, "error", err)
+		return true
+	}
+	client, err := wgctrl.New()
+	if err != nil {
+		slog.Debug("failed to create wgctrl client", "component", "wireguard", "interface", name, "error", err)
+		return true
+	}
+	defer client.Close()
+	dev, err := client.Device(name)
+	if err != nil {
+		slog.Debug("failed to read a running interface's key", "component", "wireguard", "interface", name, "error", err)
+		return true
+	}
+	return keyMatches(private, dev.PublicKey)
+}
+
+// keyMatches reports whether public is the public key of private. An
+// interface with no private key has the zero public key, which is no key's.
+func keyMatches(private, public wgtypes.Key) bool {
+	return private.PublicKey() == public
 }
 
 // withUnitOutput adds what the unit wrote to the journal since the job was

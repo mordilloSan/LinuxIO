@@ -22,6 +22,7 @@ import { GAP_MD } from "@/theme/constants";
 
 import {
   DEFAULT_AUTO_UPDATE_OPTIONS,
+  MAX_MIN_FREE_GIB,
   optionsKey,
 } from "./dockerAutoUpdateState";
 import type { DockerAutoUpdateController } from "./useDockerAutoUpdateState";
@@ -520,6 +521,59 @@ const DockerAutoUpdateSettingsSection = ({
           disabled={controlsDisabled}
           onChange={(_, checked) => updateDraft("cleanup", checked)}
           size="small"
+        />
+      </FrostedCard>
+
+      <FrostedCard
+        aria-label="Minimum free space setting"
+        style={{
+          alignItems: "center",
+          display: loading ? "none" : "flex",
+          flexWrap: "wrap",
+          gap: "var(--app-space-4)",
+          minHeight: 66,
+          padding: 14,
+        }}
+      >
+        <Icon
+          color="var(--app-palette-primary-main)"
+          height={19}
+          icon="mdi:harddisk"
+          width={19}
+        />
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <AppTypography fontWeight={600} variant="body2">
+            Minimum free space
+          </AppTypography>
+          <AppTypography
+            color="text.secondary"
+            style={{ display: "block" }}
+            variant="caption"
+          >
+            Skip scheduled updates, and report the run as failed, while the disk
+            holding Docker&apos;s images has less free space. Empty turns this
+            off.
+          </AppTypography>
+        </div>
+        <AppTextField
+          aria-label="Minimum free space in GiB"
+          disabled={controlsDisabled}
+          label="GiB"
+          onChange={(event) =>
+            updateDraft(
+              "min_free_gib",
+              Math.min(
+                MAX_MIN_FREE_GIB,
+                Math.max(0, Math.trunc(Number(event.target.value)) || 0),
+              ),
+            )
+          }
+          placeholder="Off"
+          shrinkLabel
+          size="small"
+          style={{ width: 120 }}
+          type="number"
+          value={currentOptions.min_free_gib || ""}
         />
       </FrostedCard>
 

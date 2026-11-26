@@ -120,7 +120,7 @@ async function startBalance(
   to: string,
   before: Set<string>,
 ) {
-  await page.goto(`/storage?pool=${uuid}`);
+  await page.goto(`/storage/pools/${uuid}?tab=disks`);
   await page.getByRole("button", { name: "Balance", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Balance" });
   await dialog
@@ -497,7 +497,7 @@ test("a replace cut by a power loss is resumed by the kernel and followed to the
   await throttle(16 * MiB, [target.slice("/dev/".length)]);
   try {
     const before = await jobIds();
-    await page.goto(`/storage?pool=${uuid}`);
+    await page.goto(`/storage/pools/${uuid}?tab=disks`);
     await page
       .getByRole("row")
       .filter({ hasText: source })

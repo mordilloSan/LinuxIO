@@ -40,6 +40,7 @@ func TestBtrfsAutoRebuildIntegration(t *testing.T) {
 	t.Cleanup(func() { SparePath = oldSpares })
 	a.requireSerials()
 	a.notMissing()
+	a.sourcePulled()
 	a.missingState()
 	a.refusesWhatIsNotTheMember()
 	a.ontoTheSpare()
@@ -197,6 +198,38 @@ func (a *autoRig) notMissing() {
 	a.resyncWhole("not missing", []int{1, 2}, raid1)
 }
 
+// sourcePulled: the disk the mount names as its source drops out. Since 7.1
+// the kernel shows that source as "<missing disk>" (btrfs_show_devname), and
+// LinuxIO still finds the pool's mount, by asking the mount, and a member to
+// mount its top level by; then it rebuilds devid 1 onto the disk once back.
+func (a *autoRig) sourcePulled() {
+	vdc, vdd := a.disks["vdc"], a.disks["vdd"]
+	a.fresh()
+	a.createPool("raid1", vdc, vdd)
+	a.write("before", 4, 32<<20)
+	a.writeNocow("nocow.bin", 64<<20)
+	a.health("whole")
+	source := vdc.dev
+	_, returned := a.dropout(vdc, 1, "source pulled")
+	mounts, err := ListMounts(a.ctx)
+	a.must("mounts", err)
+	i := slices.IndexFunc(mounts, func(m Mount) bool { return m.Mountpoint == a.mnt })
+	if i < 0 || mounts[i].UUID != a.uuid {
+		a.t.Fatalf("mounts after %s, the mount's source, was pulled = %+v, want pool %s at %s", source, mounts, a.uuid, a.mnt)
+	}
+	a.t.Logf("source pulled: %s came back as %s; the mount shows its source as %q", source, returned, mounts[i].Device)
+	if mounts[i].Device == missingDiskName {
+		device, err := deviceOf(mounts, a.uuid)
+		a.must("a member to mount the pool by", err)
+		if device != vdd.dev {
+			a.t.Fatalf("member to mount the pool by = %s, want %s", device, vdd.dev)
+		}
+	}
+	a.rebuildStarts("source pulled")
+	a.rebuild("source pulled")
+	a.resyncWhole("source pulled", []int{1, 2}, raid1)
+}
+
 // missingState: a degraded mount without the disk, which every kernel calls
 // missing; the disk returns and udev's scan names the member by its path.
 // The rebuild's forget of the erased disk is refused (EBUSY) and accepted,
@@ -326,21 +359,57 @@ func (a *autoRig) ontoTheSpare() {
 }
 
 // targetDiesMidRebuild: the returned disk drops out again while the rebuild
-// copies onto it. The kernel copies on, installs the dead target and forces
-// the pool read-only, and reports success: the rebuild's check refuses it,
-// keeps the record as failed and raises an error. LinuxIO's mount, degraded,
-// then erases the disk, back with the replace target's superblock, before
-// the kernel could resume the replace past every extent, and cancels the
-// replace the kernel suspends. No rebuild is tried onto that disk again; a
+// copies onto it. Left alone the kernel copies on and installs the dead
+// target: 7.0 then forces the pool read-only, and 7.1 and later finish the
+// replace "to <missing disk>" and corrupt their own memory from then on (the
+// proof shows both). So the rebuild cancels the replace as soon as it sees
+// the disk gone: the kernel destroys the target, the pool stays writable
+// with the member missing, and the rebuild keeps its record as failed and
+// raises an error. LinuxIO's mount, degraded, then erases the disk, back
+// with the replace target's superblock, which the kernel would otherwise
+// refuse the mount over. No rebuild is tried onto that disk again; a
 // person's replace makes the pool whole, and clears the record.
 func (a *autoRig) targetDiesMidRebuild() {
+	vdd := a.disks["vdd"]
+	returned, miscounted := a.rebuildCanceledForItsDisk()
+
+	a.unmount()
+	if miscounted {
+		// In place of the restart: the kernel forgets every unmounted btrfs
+		// device, and with them its count of this pool's writable disks,
+		// which would refuse the mount below (EACCES).
+		a.must("forget every unmounted btrfs device", controlIoctl(iocForgetDev, ""))
+	}
+	again := vdd.plug()
+	id, err := readIdentity(again)
+	a.t.Logf("dies again: %s is back as %s: %+v, %v", returned, again, id, err)
+	a.mountErasesTheTarget(again)
+
+	// A person replaces the device onto the erased disk.
+	err = Replace(a.ctx, a.uuid, 2, again, func(float64) {})
+	a.kernelLog("dies again: a person's replace")
+	a.must("a person's replace", err)
+	_, err = ReplaceResult(a.ctx, a.uuid, 2, again)
+	a.must("a person's replace, checked", err)
+	if st := a.poolState(); st.Rebuild != nil {
+		a.t.Fatalf("record after a person's replace = %+v, want it cleared", st.Rebuild)
+	}
+	a.resyncWhole("dies again", []int{1, 2}, raid1)
+}
+
+// rebuildCanceledForItsDisk starts a rebuild of member 2 onto its returned
+// disk and pulls that disk mid-copy: the rebuild cancels its replace and
+// fails with its record kept. It returns the disk's path as it was and
+// whether the failure asks for a restart, as it does where the kernel
+// marked the target missing and now miscounts the pool's disks.
+func (a *autoRig) rebuildCanceledForItsDisk() (returned string, miscounted bool) {
 	vdc, vdd := a.disks["vdc"], a.disks["vdd"]
 	a.fresh()
 	a.createPool("raid1", vdc, vdd)
 	a.write("before", 4, 32<<20)
 	a.writeNocow("nocow.bin", 64<<20)
 	a.health("whole")
-	_, returned := a.dropout(vdd, 2, "dies again")
+	_, returned = a.dropout(vdd, 2, "dies again")
 	a.rebuildStarts("dies again")
 	speed := filepath.Join(sysFSBtrfs, a.uuid, "devinfo", "2", "scrub_speed_max")
 	a.must("throttle the replace", sysWrite(speed, strconv.Itoa(16<<20)))
@@ -349,21 +418,35 @@ func (a *autoRig) targetDiesMidRebuild() {
 	a.waitCopied(2, 96<<20, done)
 	a.t.Logf("dies again: pulling %s mid-rebuild", returned)
 	vdd.pull()
-	_ = sysWrite(speed, "0")
+	// Still paced, so the copy has not ended when the rebuild looks again.
 	var err error
 	select {
 	case err = <-done:
 	case <-time.After(10 * time.Minute):
 		a.t.Fatal("the rebuild did not end after its target was pulled")
 	}
+	_ = sysWrite(speed, "0")
 	a.kernelLog("dies again: target pulled")
 	a.t.Logf("dies again: Rebuild = %v", err)
 	if !scheduledrun.AllReported(err) {
 		a.t.Fatalf("Rebuild with its target pulled = %v, want a reported failure", err)
 	}
 	st := a.poolState()
-	if st.Rebuild == nil || st.Rebuild.Failed == "" {
-		a.t.Fatalf("record = %+v, want it kept as failed", st.Rebuild)
+	if st.Rebuild == nil || !strings.Contains(st.Rebuild.Failed, ErrReplaceTargetGone.Error()) {
+		a.t.Fatalf("record = %+v, want it kept as failed on the disk that went away", st.Rebuild)
+	}
+	// Canceled before the kernel could install the dead target. 7.0 still
+	// forces the pool read-only: the dead target fails the cancel's commit.
+	// A kernel that marked the target missing (7.1) keeps the pool writable
+	// and miscounts its disks until it forgets the pool, so the failure
+	// asks for a restart.
+	miscounted = strings.Contains(st.Rebuild.Failed, "restart the server")
+	readOnly, roErr := poolReadOnly(a.mnt)
+	a.must("statfs", roErr)
+	state, _, _, statusErr := replaceStatusOf(a.mnt)
+	a.t.Logf("dies again: after the cancel the pool is read-only %v, replace state %d (%v), a restart asked %v", readOnly, state, statusErr, miscounted)
+	if statusErr != nil || state != replaceStateCanceled || miscounted && readOnly {
+		a.t.Fatalf("after the target was pulled: pool read-only %v, replace state %d (%v); want the replace canceled, and a writable pool where the kernel marked the target missing", readOnly, state, statusErr)
 	}
 	if obs, ok := a.alert("rebuild-" + a.uuid); !ok || obs.Severity != alerts.SeverityError {
 		a.t.Fatalf("rebuild alert = %+v, %v; want an error", obs, ok)
@@ -371,11 +454,14 @@ func (a *autoRig) targetDiesMidRebuild() {
 	if slices.Contains(a.health("after the failure").Resync, a.uuid) {
 		a.t.Fatal("the health run started a resync after the failed rebuild")
 	}
+	return returned, miscounted
+}
 
-	a.unmount()
-	again := vdd.plug()
-	id, err := readIdentity(again)
-	a.t.Logf("dies again: %s is back as %s: %+v, %v", returned, again, id, err)
+// mountErasesTheTarget mounts the pool as LinuxIO does with a failed rebuild
+// on record: the disk, back as again with the replace target's superblock,
+// is erased first, the pool mounts degraded with no replace left running,
+// and the rebuild is not tried onto that disk again.
+func (a *autoRig) mountErasesTheTarget(again string) {
 	pools, err := FindOfflinePools(a.ctx, BlockDevices())
 	a.must("offline pools", err)
 	i := slices.IndexFunc(pools, func(p BtrfsOfflinePool) bool { return p.UUID == a.uuid })
@@ -391,7 +477,10 @@ func (a *autoRig) targetDiesMidRebuild() {
 	state, pct, _, err := replaceStatusOf(a.mnt)
 	a.t.Logf("dies again: replace status after the mount: state %d at %.1f%%, %v", state, pct, err)
 	if err != nil || state != replaceStateCanceled {
-		a.t.Fatalf("replace state %d after LinuxIO's mount (%v), want it canceled", state, err)
+		a.t.Fatalf("replace state %d after LinuxIO's mount (%v), want it still canceled", state, err)
+	}
+	if fs := a.filesystem(); !slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == 2 && d.Missing }) {
+		a.t.Fatalf("devices after LinuxIO's mount = %+v, want device 2 missing", fs.Devices)
 	}
 	if st := a.poolState(); st.Rebuild == nil || st.Rebuild.Failed == "" {
 		a.t.Fatalf("record after the mount = %+v, want it still failed", st.Rebuild)
@@ -399,15 +488,4 @@ func (a *autoRig) targetDiesMidRebuild() {
 	if slices.Contains(a.health("after LinuxIO's mount").Rebuild, a.uuid) {
 		a.t.Fatal("the rebuild was tried again onto the disk that failed")
 	}
-
-	// A person replaces the device onto the erased disk.
-	err = Replace(a.ctx, a.uuid, 2, again, func(float64) {})
-	a.kernelLog("dies again: a person's replace")
-	a.must("a person's replace", err)
-	_, err = ReplaceResult(a.ctx, a.uuid, 2, again)
-	a.must("a person's replace, checked", err)
-	if st := a.poolState(); st.Rebuild != nil {
-		a.t.Fatalf("record after a person's replace = %+v, want it cleared", st.Rebuild)
-	}
-	a.resyncWhole("dies again", []int{1, 2}, raid1)
 }

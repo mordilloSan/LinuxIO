@@ -22,6 +22,17 @@ A container has an update when the digest the registry gives for its
 reference (`DistributionInspect`) is not one of its image's repository
 digests. A reference pinned by digest is never updated. A registry that
 throttles or does not answer is asked again five times over 155 seconds.
+Docker Hub's pull rate limit ("You have reached your pull rate limit",
+typed as resource exhausted since Engine 29.10) is not: its quota is
+counted over hours, so a retry within minutes would only spend it again.
+The check records the error, and the next check asks again.
+
+A container Docker Engine runs for a job (label `com.docker.job.id`, Engine
+29.10; Compose 5.8 schedules its jobs through it) is not checked, counted as
+a replica of its service, offered as a target in the settings, or updated:
+the engine creates and removes each run itself and keeps its exit status for
+the job's history, and an update would run the job again outside its
+schedule. An update that names one is refused.
 
 An image built or loaded on the host cannot be compared with a registry, and
 how that shows depends on Docker's image store. The classic store gives it no
@@ -96,9 +107,14 @@ Docker 29.1.3 and the containerd image store, in two setups:
   through which Compose builds with Bake: `#5 [1/2] FROM …` and
   `#6 [builder 1/2] FROM …`, with no service in the bracket.
 
+Docker's own packages, Docker 29.10.1 with Compose 5.8.0 and buildx 0.39.1
+(the Ubuntu test VMs), write the Bake form too, and the Docker suite's
+rebuild records the base from it.
+
 Only a whole line of either form counts, and its reference must parse. The
-test VM's Docker suite builds with buildx through Bake (`docker-buildx` is in
-its snapshot, [Development](./development.md#test-vm)); the form without
+test VM's Docker suite builds with buildx through Bake (Docker's own buildx
+plugin on the Ubuntu VMs, `docker-buildx` on Debian and Fedora,
+[Development](./development.md#test-vm)); the form without
 buildx is covered by the unit tests' recorded build output only. A step's
 own output is written behind its number and the seconds since it began
 (`#5 0.183 …`), so nothing a `RUN` step prints can add a base or hide one. A
@@ -182,7 +198,7 @@ A Compose service is updated with the project its labels name: its
 configuration files in order, its environment files and its working folder,
 with the environment of the `docker compose` process reduced to a fixed
 list. The update runs `config --quiet`, `pull <service>` (retried while the
-registry throttles) and `up -d --no-deps --no-build --force-recreate <service>`,
+registry throttles, not on Docker Hub's pull rate limit) and `up -d --no-deps --no-build --force-recreate <service>`,
 which builds nothing whatever the service's pull policy says and recreates
 the container even when Compose 5 sees no change (a tag moved to an index
 that differs only in its attestations or its other platforms; step 4 of the
@@ -190,6 +206,21 @@ rollback below), then waits for the service's new container to be ready. A servi
 refused, and a scheduled pass does not update a stopped service. A container
 whose service label starts with a dash, which `docker compose` would read as
 an option, is refused before any Compose command runs, by the check too.
+
+A service that others join with `network_mode: service:<it>`, or `ipc:` or
+`pid:` in the same form (a VPN container such as Gluetun and the services
+that route through it), takes them with it: Docker records the joined
+container by its ID, so recreating the service alone left the others running
+in a namespace that was gone, with the loopback interface only, and unable
+to start again ("No such container"). The running services of the project
+that join an updated one, read from the engine before the update, are named
+after it in the same `up`, in a rebuild's `up` and in a rollback's, and so
+recreated on the image they have; they are not pulled by the update, not
+waited for and not reported. A container that joins the service and is no
+service of its project (a standalone container, another project's, one
+`docker compose run` started) cannot be recreated by that `up`, so the
+update is refused and names it, as a standalone container's is
+([Standalone containers](#standalone-containers)).
 
 `up` removes the old container, so there is nothing to park. The old image
 stays on the host, untagged, and that is what a rollback uses: a pull that
@@ -220,8 +251,8 @@ error says so. When it failed:
    (`<project>-<service>`), the tag its container was created from.
 3. The tag goes back on the old image (`docker image tag <old id> <image>`).
 4. `up -d --no-deps --pull never --no-build --force-recreate` brings the
-   services up on it, pulling and building nothing whatever their pull
-   policy says. The recreate is forced because Compose 5 decides whether a
+   services up on it, and the services that join one of them, pulling and
+   building nothing whatever their pull policy says. The recreate is forced because Compose 5 decides whether a
    container is out of date by the digest of the image's platform manifest,
    not its ID: two images whose indexes differ only in their attestations
    share that digest, and Compose 5.7 left the container on the image it ran
@@ -379,7 +410,31 @@ The service runs
 with `ProtectSystem=strict`, writing only `/var/lib/linuxio` and `/run`. The
 settings choose the mode (update, or check only), which containers to update
 (all, or those named), whether stopped containers are checked, updated and
-started, and whether old images no container uses are removed afterwards.
+started, whether old images no container uses are removed afterwards, and
+the free space a pass needs before it updates anything.
+
+That minimum (*Minimum free space*, `min_free_gib`, whole GiB, 0 or empty for
+none, at most 1 PiB) is asked after the check, only by a pass in update mode
+with containers to update. The pass reads Docker's root folder from the
+daemon (`DockerRootDir`) and measures the room for a write on its
+filesystem and on that of `/var/lib/containerd`, where the containerd image
+store keeps the layers (in the test VMs, Docker 29.1.3 and 29.10.1, that
+folder holds the snapshotters and `/var/lib/docker` none, and a pull of
+`alpine` adds to it); a containerd folder that does not
+exist is passed over. When either has less, the pass updates nothing and
+raises the warning *Docker updates skipped: low free space*
+(`docker-update/linuxio-low-free-space`, linking to the Docker settings),
+which names the folder, its free space and the minimum; a pass that keeps
+finding the same folder short of the same minimum is one occurrence,
+delivered once. The run completes: the check's result stays in the report
+and the status file, and the history's summary reads *Updates skipped for
+low free space*, followed by what waits (*2 waiting*), with the amber marker
+of a run whose failures raised alerts of their own. The next pass in update
+mode with containers to update that finds room, or has no minimum set,
+clears the warning. A free space that cannot be read (the daemon does not
+answer, the folder cannot be measured) fails the run, which raises the run's
+own alert, and leaves the warning as it is. An update from the Containers
+page does not ask.
 
 A pass checks every container in its scope, then updates the standalone
 containers one by one, then the Compose projects. Its output ends with a
@@ -390,6 +445,14 @@ updated (the image, the versions when both images carry
 or the original container). The history shows the summary of the run, such as
 *1 updated, 1 failed, 1 rolled back*; the messages and the exit status are in
 [Jobs](./jobs.md#scheduled-runs).
+
+Text that others wrote reaches the report and the alerts without its control
+characters (a line break and a tab excepted) and invisible format
+characters, the bidirectional controls among them (`printableText`): the
+version label, which the image's author sets, and the reason a registry, the
+daemon or Compose gave for a failure. An escape sequence could change the
+terminal that shows a run's output, and a bidirectional control make a line
+read as another. A version is also put on one line and cut to 64 characters.
 
 The log lines of the pass about one container end their message with the
 container's name, as well as carrying it as the `container` attribute: the
@@ -431,6 +494,13 @@ check that finds no newer base, or a rebuild, clears it.
   place), files that now name another image than the one it ran, or services
   under the same tag that ran different images. The update is reported as
   failed with the reason, and the service stays on the new image.
+- A stopped service that joins an updated one is not recreated with it,
+  since `up` would start it: it stays joined to the removed container and
+  does not start until it is recreated
+  (`docker compose up -d --force-recreate <service>`).
+- A service recreated because it joins an updated one is pulled by that `up`
+  when it has `pull_policy: always`, as any `up` of it would; a rebuild's
+  `up` and a rollback's pull nothing.
 - The scheduled pass never builds an image: a built service is rebuilt only
   when an administrator asks from the Containers page and watches it (why is
   under Rejected in the [backlog](./TODO/backlog.md)). The pass reports a
@@ -504,6 +574,14 @@ check that finds no newer base, or a rebuild, clears it.
   an earlier LinuxIO replaced still carries the values of the image it had
   then where they have changed since; recreating it from its image clears
   them.
+- The free-space minimum measures `/var/lib/containerd` by that path: a
+  containerd whose own configuration keeps its data elsewhere has that
+  folder's filesystem unmeasured. The minimum is the scheduled pass's; an
+  update or a rebuild from the Containers page pulls whatever room is left.
+- A Docker job's run is never updated by LinuxIO: which image the job's next
+  run starts is the engine's. The label and the engine's behaviour are as
+  Watchtower describes Engine 29.10 and Compose 5.8 (its pull request 3892);
+  the Ubuntu test VMs run that Docker, but no test runs a job yet.
 - The job host that runs an update from the page has its own stop timeout (2
   minutes), shorter than a Compose rollback's bound: a stop of it during a
   rollback can end the rollback's `docker compose up`.

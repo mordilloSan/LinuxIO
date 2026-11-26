@@ -33,13 +33,20 @@ interface PoolDisk {
   sizeBytes: number;
 }
 
-export interface PoolSummary {
-  allocatedBytes: number;
-  disks: PoolDisk[];
+/** A pool's space, each byte counted once however many copies are kept. */
+export interface PoolSpace {
+  storedBytes: number;
+  /** Room for more data, as the kernel counts it for df. */
   freeBytes: number;
+}
+
+export interface PoolSummary {
+  disks: PoolDisk[];
   name: string;
   /** Data profile as shown to people, e.g. "RAID 10"; empty when unknown. */
   profile: string;
+  /** Null when the space could not be read. */
+  space: PoolSpace | null;
   uuid: string;
   volumes: string[];
 }
@@ -67,8 +74,10 @@ export const describePool = (
     uuid: fs.uuid,
     name: fs.label || `Storage pool ${index + 1}`,
     profile: data ? profileLabel(data.profile) : "",
-    allocatedBytes: Math.max(fs.totalBytes - fs.unallocatedBytes, 0),
-    freeBytes: Math.max(fs.totalBytes - fs.usedBytes, 0),
+    space:
+      fs.allocation.length > 0
+        ? { storedBytes: fs.storedBytes, freeBytes: fs.freeBytes }
+        : null,
     disks: fs.devices.map((device) => ({
       key: device.path || String(device.id),
       name: device.path ? device.path.replace(/^\/dev\//, "") : "Missing disk",

@@ -208,6 +208,81 @@ func TestAddInterfaceRefusesExistingInterface(t *testing.T) {
 	}
 }
 
+// An interface deleted by a LinuxIO that could not take it down is still
+// running, under its old key, and its unit is still active. A create of the
+// same name must end with the new config running: started on a unit that is
+// already active, wg-quick does nothing, and no client of the new config
+// ever completes a handshake.
+func TestAddInterfaceReplacesTheInterfaceItsUnitLeftRunning(t *testing.T) {
+	// A new interface's key is new, so what runs under its name is never
+	// its own: it is replaced also where its key could not be read.
+	for name, keyRead := range map[string]bool{"another key": true, "a key that cannot be read": false} {
+		t.Run(name, func(t *testing.T) {
+			newWireGuardTestEnv(t)
+			runWGQuickCommand = runWGQuick
+			unit := fakeUnit{state: "active", interfaceUp: true, otherKey: keyRead}
+			unit.install(t)
+			setInterfaceForwarding(t, "wgtest", "1\n")
+
+			_, err := AddInterface(context.Background(), apischema.WireGuardAddInterfaceRequest{
+				Name:       "wgtest",
+				Addresses:  "10.9.0.1/24",
+				ListenPort: "51821",
+				EgressNic:  "eth0",
+			})
+			if err != nil {
+				t.Fatalf("AddInterface returned error: %v", err)
+			}
+			want := []string{"stop wg-quick@wgtest.service", "start wg-quick@wgtest.service"}
+			if !slices.Equal(unit.calls, want) {
+				t.Fatalf("calls = %v, want %v", unit.calls, want)
+			}
+		})
+	}
+}
+
+// A network interface of that name which no unit holds is somebody else's
+// (made by hand, by systemd-networkd or by NetworkManager): the create says
+// so before it writes anything, instead of leaving a config wg-quick refuses
+// to bring up.
+func TestAddInterfaceRefusesANameAnotherNetworkInterfaceHas(t *testing.T) {
+	newWireGuardTestEnv(t)
+	runWGQuickCommand = runWGQuick
+	unit := fakeUnit{state: "inactive", interfaceUp: true}
+	unit.install(t)
+	numPeers := "1"
+
+	_, err := AddInterface(context.Background(), apischema.WireGuardAddInterfaceRequest{
+		Name:       "wgtest",
+		Addresses:  "10.9.0.1/24",
+		ListenPort: "51821",
+		EgressNic:  "eth0",
+		NumPeers:   &numPeers,
+	})
+	if bridgeipc.StatusCode(err) != 409 || !strings.Contains(err.Error(), "ip link delete wgtest") {
+		t.Fatalf("error = %v, want a 409 that says how to take the interface down", err)
+	}
+	assertPathMissing(t, configPath("wgtest"))
+	assertPathMissing(t, peerDirPath("wgtest"))
+	if len(unit.calls) != 0 {
+		t.Fatalf("calls = %v, want none", unit.calls)
+	}
+
+	// A bridge or a network card of that name is never to be deleted: the
+	// error names the command only for a WireGuard interface.
+	unit = fakeUnit{state: "inactive", interfaceUp: true, notWireGuard: true}
+	unit.install(t)
+	_, err = AddInterface(context.Background(), apischema.WireGuardAddInterfaceRequest{
+		Name:       "wgtest",
+		Addresses:  "10.9.0.1/24",
+		ListenPort: "51821",
+		EgressNic:  "eth0",
+	})
+	if bridgeipc.StatusCode(err) != 409 || strings.Contains(err.Error(), "ip link delete") {
+		t.Fatalf("error = %v, want a 409 that names no command", err)
+	}
+}
+
 func TestAddInterfaceRefusesLeftoverPeerDirectory(t *testing.T) {
 	newWireGuardTestEnv(t)
 	numPeers := "1"

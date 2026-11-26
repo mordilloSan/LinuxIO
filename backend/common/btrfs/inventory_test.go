@@ -47,6 +47,69 @@ func TestListFilesystemsReadsKernel(t *testing.T) {
 	if fs.Degraded || !fs.HealthKnown || fs.LowMetadataSpace || fs.Scrub.Status != "none" {
 		t.Fatalf("degraded=%v known=%v low=%v scrub=%+v", fs.Degraded, fs.HealthKnown, fs.LowMetadataSpace, fs.Scrub)
 	}
+	// Logical: what is in the pool, each byte counted once.
+	if fs.StoredBytes != 40<<30+512<<20+16<<10 {
+		t.Fatalf("stored = %d", fs.StoredBytes)
+	}
+}
+
+func TestStoredBytes(t *testing.T) {
+	const gb = 1_000_000_000
+	for _, tc := range []struct {
+		name  string
+		alloc []BtrfsAllocation
+		want  uint64
+	}{
+		{
+			name: "every row's used bytes, counted once",
+			alloc: []BtrfsAllocation{
+				{Kind: "data", Profile: "single", TotalBytes: 37201 * gb / 100, UsedBytes: 32726 * gb / 100},
+				{Kind: "system", Profile: "dup", TotalBytes: 32 << 20, UsedBytes: 64 << 10},
+				{Kind: "metadata", Profile: "dup", TotalBytes: 4 * gb, UsedBytes: 166 * gb / 100},
+			},
+			want: 32726*gb/100 + 64<<10 + 166*gb/100,
+		},
+		{
+			name: "mixed block groups",
+			alloc: []BtrfsAllocation{
+				{Kind: "data+metadata", Profile: "single", TotalBytes: 8 << 30, UsedBytes: 3 << 30},
+			},
+			want: 3 << 30,
+		},
+		{name: "space info not read"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := storedBytes(tc.alloc); got != tc.want {
+				t.Fatalf("stored = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// Free space is the kernel's own figure, the one df shows: statfs counts
+// the room per disk, so a mirror of uneven disks or a degraded pool is
+// counted as btrfs would allocate it.
+func TestListFilesystemsFreeIsTheKernelsFigure(t *testing.T) {
+	k := raid1Kernel()
+	k.freeBytes = 23 << 30
+	stubKernel(t, k)
+
+	got, err := ListFilesystems(context.Background())
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %+v err=%v", got, err)
+	}
+	if got[0].FreeBytes != 23<<30 {
+		t.Fatalf("free = %d", got[0].FreeBytes)
+	}
+
+	k.freeErr = unix.EACCES
+	got, err = ListFilesystems(context.Background())
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %+v err=%v", got, err)
+	}
+	if got[0].FreeBytes != 0 || got[0].StoredBytes == 0 {
+		t.Fatalf("stored/free = %d/%d after statfs failed", got[0].StoredBytes, got[0].FreeBytes)
+	}
 }
 
 func TestListFilesystemsMissingDevice(t *testing.T) {

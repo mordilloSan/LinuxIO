@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Link } from "@tanstack/react-router";
+import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import {
   createContext,
   memo,
@@ -20,6 +20,7 @@ import { down } from "@/theme/breakpoints";
 import { iconSize } from "@/theme/constants";
 
 import AppIconButton from "../ui/AppIconButton";
+import AppMenu, { AppMenuItem } from "../ui/AppMenu";
 import AppMobileActionsMenu from "../ui/AppMobileActionsMenu";
 import AppPopover from "../ui/AppPopover";
 import { getTabSelectorThemeVars } from "./TabSelector";
@@ -44,9 +45,21 @@ export interface RoutedTab {
   to: RoutedTabTarget;
 }
 
+/**
+ * A pill that opens a menu of routes, for pages a section keeps but most
+ * visits do not need. It is selected, and names the route, while one of its
+ * routes is open.
+ */
+export interface RoutedTabGroup {
+  label: string;
+  items: readonly RoutedTab[];
+}
+
+export type RoutedTabEntry = RoutedTab | RoutedTabGroup;
+
 interface RoutedTabContainerProps {
   children?: ReactNode;
-  tabs: readonly RoutedTab[];
+  tabs: readonly RoutedTabEntry[];
 }
 
 interface TabSelectorProps {
@@ -55,7 +68,7 @@ interface TabSelectorProps {
   hasSlotActions?: boolean;
   hasSlotSearch?: boolean;
   searchHostMountRef?: (element: HTMLDivElement | null) => void;
-  tabs: readonly RoutedTab[];
+  tabs: readonly RoutedTabEntry[];
 }
 
 const TabActionSlotContext = createContext<{
@@ -231,6 +244,59 @@ const RoutedTabLink = memo(function RoutedTabLink({
   );
 });
 
+function RoutedTabMenu({ items, label }: RoutedTabGroup) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const matchRoute = useMatchRoute();
+  const navigate = useNavigate();
+  const open = items.find((item) =>
+    matchRoute({ fuzzy: Boolean(item.matchChildren), to: item.to }),
+  );
+  return (
+    <>
+      <button
+        aria-expanded={Boolean(anchorEl)}
+        aria-haspopup="menu"
+        aria-selected={Boolean(open)}
+        className={`tab-selector__pill${open ? " tab-selector__pill--active" : ""}`}
+        onClick={(event) => setAnchorEl(event.currentTarget)}
+        role="tab"
+        type="button"
+      >
+        {open ? `${label}: ${open.label}` : label}
+        <Icon
+          aria-hidden="true"
+          height={16}
+          icon="mdi:chevron-down"
+          width={16}
+        />
+      </button>
+      <AppMenu
+        anchorEl={anchorEl}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        ariaLabel={label}
+        onClose={() => setAnchorEl(null)}
+        open={Boolean(anchorEl)}
+      >
+        {items.map((item) => (
+          <AppMenuItem
+            aria-current={item === open ? "page" : undefined}
+            key={item.to}
+            onClick={() => {
+              // Back to the pill, as closing the menu any other way does.
+              anchorEl?.focus();
+              setAnchorEl(null);
+              void navigate({ to: item.to });
+            }}
+            selected={item === open}
+          >
+            {item.label}
+          </AppMenuItem>
+        ))}
+      </AppMenu>
+    </>
+  );
+}
+
 const TabSelector = memo(function TabSelector({
   tabs,
   actionHostMountRef,
@@ -372,9 +438,13 @@ const TabSelector = memo(function TabSelector({
     >
       <div className="tab-selector__scroller">
         <div aria-label="Tabs" className="tab-selector__pills" role="tablist">
-          {tabs.map((tab) => (
-            <RoutedTabLink key={tab.to} {...tab} />
-          ))}
+          {tabs.map((tab) =>
+            "items" in tab ? (
+              <RoutedTabMenu key={tab.label} {...tab} />
+            ) : (
+              <RoutedTabLink key={tab.to} {...tab} />
+            ),
+          )}
         </div>
       </div>
 

@@ -276,7 +276,7 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck
 .PHONY: setup setup-frontend update-deps update-go-deps update-build-pins ci-frontend-deps
 .PHONY: lint lint-only lint-ci lint-ci-only tsc tsc-only tsc-ci golint golint-only
-.PHONY: test check-actions check-docs check-systemd check-frontend check-backend
+.PHONY: test test-full check-actions check-docs check-systemd check-frontend check-backend
 .PHONY: test-frontend test-frontend-only test-frontend-ci setup-frontend-browser test-frontend-browser update-frontend-screenshots
 .PHONY: test-backend test-go test-auth test-auth-protocol test-auth-pam
 .PHONY: test-packaging-scripts test-indexer-systemd-integration test-docker-update-integration test-assistant-agent-integration test-btrfs-integration

@@ -41,8 +41,14 @@ const STORAGE_MUTATION_KEY = [TASK_TYPE_DOCKER_STORAGE] as const;
 const trimDataRoot = (value: string): string =>
   value.trim().replace(/(.)\/+$/, "$1");
 
+// Stopping containers before shutdown only matters with live restore on, so
+// turning live restore off turns it off too.
+const stopsBeforeShutdown = (draft: DockerDaemonConfig): boolean =>
+  draft.live_restore && draft.stop_before_shutdown;
+
 const toRequest = (draft: DockerDaemonConfig): DockerDaemonConfig => ({
   ...draft,
+  stop_before_shutdown: stopsBeforeShutdown(draft),
   data_root: trimDataRoot(draft.data_root),
   log_max_size: draft.log_max_size.trim(),
   log_max_file: draft.log_max_file.trim(),
@@ -299,6 +305,13 @@ const DockerDaemonSettingsSection = () => {
         disabled={disabled}
         label="Live restore"
         onChange={(checked) => patchKey("live_restore", checked)}
+      />
+      <ToggleCard
+        checked={stopsBeforeShutdown(draft)}
+        description="Stop containers through Docker before the host shuts down, each with its own stop signal and grace period, and start the unless-stopped ones again at boot. Needs live restore."
+        disabled={disabled || !draft.live_restore}
+        label="Stop containers before shutdown"
+        onChange={(checked) => patchKey("stop_before_shutdown", checked)}
       />
       <ToggleCard
         checked={draft.userland_proxy}

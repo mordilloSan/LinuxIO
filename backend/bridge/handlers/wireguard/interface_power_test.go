@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
@@ -43,15 +45,24 @@ func TestUpAndDownInterfaceRunWGQuick(t *testing.T) {
 type fakeUnit struct {
 	state       string
 	interfaceUp bool
-	startErr    error
-	stopErr     error
-	calls       []string
+	// otherKey says the interface that is up runs under another key than the
+	// config on disk: left running when its config was deleted or replaced.
+	otherKey bool
+	// notWireGuard says the network interface of the name is of another kind.
+	notWireGuard bool
+	startErr     error
+	stopErr      error
+	// stopErrAfterDown says the failed stop had taken the interface down
+	// already, as when a PostDown line fails.
+	stopErrAfterDown bool
+	calls            []string
 }
 
 func (u *fakeUnit) install(t *testing.T) {
 	t.Helper()
-	isInterfaceUpFunc = func(string) bool { return u.interfaceUp }
+	isInterfaceUpFunc = func(string) bool { return u.interfaceUp && !u.notWireGuard }
 	interfaceGoneFunc = func(string) bool { return !u.interfaceUp }
+	deviceRunsConfigFunc = func(string) bool { return !u.otherKey }
 	units = unitControl{
 		activeState: func(context.Context, string) (string, error) { return u.state, nil },
 		start: func(_ context.Context, unit string) error {
@@ -60,13 +71,17 @@ func (u *fakeUnit) install(t *testing.T) {
 				u.state = "failed"
 				return u.startErr
 			}
-			u.state, u.interfaceUp = "active", true
+			// wg-quick up reads the config on disk.
+			u.state, u.interfaceUp, u.otherKey = "active", true, false
 			return nil
 		},
 		stop: func(_ context.Context, unit string) error {
 			u.calls = append(u.calls, "stop "+unit)
 			if u.stopErr != nil {
 				u.state = "failed"
+				if u.stopErrAfterDown {
+					u.interfaceUp = false
+				}
 				return u.stopErr
 			}
 			u.state, u.interfaceUp = "inactive", false
@@ -111,6 +126,20 @@ func TestInterfacePowerGoesThroughTheUnit(t *testing.T) {
 			// A start of an active unit does nothing, so the unit an
 			// interface was taken away from by hand is stopped first.
 			name: "up clears a unit whose interface is gone", unit: fakeUnit{state: "active", stopErr: errors.New("not a WireGuard interface")}, action: "up",
+			want: []string{"stop " + unit, "reset-failed " + unit, "start " + unit},
+		},
+		{
+			// The unit holds an interface, but not this config's: one left
+			// running when its config was deleted keeps the old key, and no
+			// client of the config on disk completes a handshake with it.
+			name: "up restarts a unit that runs under another key", unit: fakeUnit{state: "active", interfaceUp: true, otherKey: true}, action: "up",
+			want: []string{"stop " + unit, "start " + unit},
+		},
+		{
+			// wg-quick down deletes the link before PostDown, so a stop
+			// that failed there has done what the up needed of it.
+			name: "up goes on when the failed stop took the other key's interface down",
+			unit: fakeUnit{state: "active", interfaceUp: true, otherKey: true, stopErr: errors.New("PostDown failed"), stopErrAfterDown: true}, action: "up",
 			want: []string{"stop " + unit, "reset-failed " + unit, "start " + unit},
 		},
 		{name: "down stops the unit", unit: fakeUnit{state: "active", interfaceUp: true}, action: "down", want: []string{"stop " + unit}},
@@ -158,6 +187,48 @@ func TestInterfacePowerFailureCarriesTheUnitOutput(t *testing.T) {
 	_, err = DownInterface(context.Background(), apischema.NameRequest{Name: "wgtest"})
 	if err == nil || !strings.Contains(err.Error(), "wg-quick: said why") {
 		t.Fatalf("DownInterface error = %v, want the unit's failure with its output", err)
+	}
+}
+
+// The interface a unit could not take down stays as it is, and the up fails
+// with what wg-quick said, instead of a start that would do nothing.
+func TestUpFailsWhenTheOtherKeysInterfaceCannotBeTakenDown(t *testing.T) {
+	newWireGuardTestEnv(t)
+	failed := errors.New("stop unit wg-quick@wgtest.service: the unit is failed")
+	unit := fakeUnit{state: "active", interfaceUp: true, otherKey: true, stopErr: failed}
+	unit.install(t)
+
+	_, err := runWGQuick(context.Background(), "up", "wgtest")
+	if !errors.Is(err, failed) || !strings.Contains(err.Error(), "wg-quick: said why") {
+		t.Fatalf("runWGQuick error = %v, want the unit's failure with its output", err)
+	}
+	if want := []string{"stop wg-quick@wgtest.service"}; !slices.Equal(unit.calls, want) {
+		t.Fatalf("calls = %v, want %v", unit.calls, want)
+	}
+}
+
+// keyMatches is what tells an interface's own device from one left running
+// under its name: a device with no key at all is not the config's either.
+func TestKeyMatches(t *testing.T) {
+	private, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("GeneratePrivateKey returned error: %v", err)
+	}
+	other, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("GeneratePrivateKey returned error: %v", err)
+	}
+	for name, tc := range map[string]struct {
+		public wgtypes.Key
+		want   bool
+	}{
+		"the config's own key": {private.PublicKey(), true},
+		"another key":          {other.PublicKey(), false},
+		"no key":               {wgtypes.Key{}, false},
+	} {
+		if got := keyMatches(private, tc.public); got != tc.want {
+			t.Errorf("keyMatches(%s) = %v, want %v", name, got, tc.want)
+		}
 	}
 }
 

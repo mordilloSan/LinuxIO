@@ -47,6 +47,7 @@ func TestDefaultSettingsContainFunctionalDefaultsOnly(t *testing.T) {
 	require.Equal(t, NavigationModeSidebar, ui.NavigationMode)
 	require.Equal(t, DockTileColorsAccent, ui.DockTileColors)
 	require.Equal(t, 16, ui.TerminalFontSize)
+	require.Equal(t, 14, ui.AssistantFontSize)
 	require.Empty(t, ui.HiddenCards)
 	require.Empty(t, ui.ViewModes)
 	require.Empty(t, ui.LayoutOrders)
@@ -246,6 +247,7 @@ func TestSparseUIConfigLoadsWithBackendDefaults(t *testing.T) {
 	require.Equal(t, 100, loaded.DockAccentGradient.RangeEnd)
 	require.Equal(t, map[string][]string{"docker.dashboard": {"overview"}}, loaded.CollapsedSections)
 	require.Equal(t, 16, loaded.TerminalFontSize)
+	require.Equal(t, 14, loaded.AssistantFontSize)
 	require.Empty(t, loaded.ViewModes)
 	require.Empty(t, loaded.LayoutOrders)
 }
@@ -420,6 +422,7 @@ func nonDefaultUI() UIPreferences {
 	ui.ViewModes = map[string]string{"docker.stacks": ViewModeTable}
 	ui.LayoutOrders = map[string][]string{"dashboard": {"memory", "cpu"}}
 	ui.TerminalFontSize = 20
+	ui.AssistantFontSize = 15
 	return ui
 }
 

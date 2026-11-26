@@ -317,7 +317,7 @@ test("the snapshot unit records its run", async ({ page }) => {
   await vmSsh(
     `sudo test -d ${POOL_MOUNT}/e2e-data || sudo btrfs subvolume create ${POOL_MOUNT}/e2e-data >/dev/null`,
   );
-  await page.goto(`/storage/subvolumes?view=snapshots&fs=${uuid}`);
+  await page.goto(`/storage/snapshots?fs=${uuid}`);
   const rule = page.getByLabel(/^Automatic snapshots of \/?e2e-data$/);
   // The switch shows the saved rule, so it turns on once the rules reload.
   if (!(await rule.isChecked())) await rule.click();

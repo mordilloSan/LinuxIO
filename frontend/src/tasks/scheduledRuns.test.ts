@@ -40,6 +40,7 @@ describe("isScheduledRun", () => {
     "scheduled.btrfs_resync",
     "scheduled.btrfs_rebuild",
     "scheduled.docker_update",
+    "scheduled.shares_recycle",
   ])("is true for %s", (type) => {
     expect(isScheduledRun(type)).toBe(true);
   });
@@ -105,6 +106,7 @@ describe("scheduledRunLink targets", () => {
     "scheduled.btrfs_resync",
     "scheduled.btrfs_rebuild",
     "scheduled.docker_update",
+    "scheduled.shares_recycle",
     "scheduled.system_update",
   ])("links %s to a route the app has", (type) => {
     for (const metadata of [{ identity: ["id-1"] }, {}]) {
@@ -116,6 +118,12 @@ describe("scheduledRunLink targets", () => {
 });
 
 describe("scheduledRunLink", () => {
+  it("opens the Shared folders tab for the emptying of the recycle bins", () => {
+    expect(scheduledRunLink(scheduledRun("scheduled.shares_recycle"))).toEqual({
+      to: "/storage/shares",
+    });
+  });
+
   it("opens the Updates page for a system update, which the bell and the history list like any scheduled run", () => {
     const run = scheduledRun("scheduled.system_update", {
       metadata: { label: "System updates" },
@@ -161,7 +169,7 @@ describe("scheduledRunLink", () => {
           metadata: { label: "Snapshots" },
         }),
       ),
-    ).toEqual({ to: "/storage/subvolumes", search: { view: "snapshots" } });
+    ).toEqual({ to: "/storage/snapshots" });
   });
 
   it("opens the replication view for a replication run", () => {
@@ -171,7 +179,7 @@ describe("scheduledRunLink", () => {
           metadata: { label: "Replication" },
         }),
       ),
-    ).toEqual({ to: "/storage/subvolumes", search: { view: "replication" } });
+    ).toEqual({ to: "/storage/snapshots", search: { view: "replication" } });
   });
 
   it("opens the containers page for a Docker update", () => {

@@ -39,13 +39,40 @@ describe("BtrfsMaintenanceControls", () => {
     expect(
       screen.getByText(/Shared with \/, so a new period applies there too/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Breaks sharing with snapshots/)).toBeVisible();
+    expect(
+      screen.getByText(/Undoes the sharing between files and their snapshots/),
+    ).toBeVisible();
     expect(
       screen.getByRole("combobox", { name: "Scrub period" }),
     ).toHaveTextContent("Monthly");
     expect(
       screen.getByRole("combobox", { name: "Defrag period" }),
     ).toHaveTextContent("Off");
+    expect(
+      screen.getByText("Runs in the background on a schedule."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/systemd|btrfsmaintenance/)).toBeNull();
+  });
+
+  it("suggests a period only where it differs from the one set", async () => {
+    render(
+      <BtrfsMaintenanceControls
+        btrfsMaintenance={{
+          tasks: [
+            { ...schedule.tasks[0], period: "weekly", mountpoints: [] },
+            schedule.tasks[1],
+          ],
+        }}
+        btrfsMaintenanceReason={null}
+        isUpdatingMaintenance={false}
+        mountpoint="/home"
+        onSetMaintenance={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Suggested: Monthly")).toBeInTheDocument();
+    // Defrag is off, as suggested.
+    expect(screen.queryByText("Suggested: Off")).toBeNull();
   });
 
   it("links to Capabilities when btrfsmaintenance is missing", async () => {

@@ -182,8 +182,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* A steady highlight that ends on its own; the class stays while focused. */
   .account-activity-row--flash {
-    animation: none;
+    animation: account-login-row-highlight 2.4s;
+  }
+}
+
+@keyframes account-login-row-highlight {
+  0%,
+  100% {
     background-color: color-mix(
       in srgb,
       var(--app-palette-warning-main) 20%,

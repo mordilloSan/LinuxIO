@@ -640,6 +640,68 @@ func TestCheckContainerImageUpdatesClassifiesRefusedLookups(t *testing.T) {
 	})
 }
 
+// Docker Hub's pull limit is asked once, typed (Engine 29.10) or not; any
+// other throttling is asked again.
+func TestRegistryDigestDoesNotRetryDockerHubPullLimit(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err       error
+		wantCalls int
+	}{
+		"hub limit":       {errors.New("toomanyrequests: You have reached your pull rate limit"), 1},
+		"typed hub limit": {fmt.Errorf("You have reached your pull rate limit: %w", errdefs.ErrResourceExhausted), 1},
+		"typed throttle":  {fmt.Errorf("slow down: %w", errdefs.ErrResourceExhausted), registryRetries + 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				calls := 0
+				fake := &fakeImageUpdateCheckClient{
+					distributionHook: func(context.Context, string, client.DistributionInspectOptions) (client.DistributionInspectResult, error) {
+						calls++
+						return client.DistributionInspectResult{}, tc.err
+					},
+				}
+				if _, err := registryDigest(t.Context(), fake, "docker.io/library/nginx:latest"); err == nil {
+					t.Fatal("registryDigest succeeded, want the registry's error")
+				}
+				if calls != tc.wantCalls {
+					t.Fatalf("registry asked %d times, want %d", calls, tc.wantCalls)
+				}
+			})
+		})
+	}
+}
+
+// A run of a Docker job is the engine's: it is not checked, so it has no
+// status and counts for nothing.
+func TestCheckContainerImageUpdatesLeavesOutDockerJobRuns(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	localDigest := digest.FromString("local")
+	fake := &fakeImageUpdateCheckClient{
+		images: map[string]client.ImageInspectResult{
+			"image-id": {InspectResponse: image.InspectResponse{
+				RepoDigests: []string{"docker.io/library/nginx@" + localDigest.String()},
+			}},
+		},
+		distributionHook: func(context.Context, string, client.DistributionInspectOptions) (client.DistributionInspectResult, error) {
+			return distributionInspectResult(localDigest), nil
+		},
+	}
+	targets := []containerImageUpdateTarget{
+		{ContainerID: "web", ContainerName: "web", ImageID: "image-id", ImageRef: "nginx"},
+		{ContainerID: "run", ContainerName: "media-nightly-1", ImageID: "image-id", ImageRef: "nginx", Labels: map[string]string{dockerJobLabel: "nightly"}},
+	}
+	statuses, result, err := checkContainerImageUpdates(t.Context(), fake, nil, targets, time.Now())
+	if err != nil {
+		t.Fatalf("checkContainerImageUpdates: %v", err)
+	}
+	if len(statuses) != 1 || statuses[0].ContainerID != "web" || result.Checked != 1 {
+		t.Fatalf("statuses = %+v, result = %+v; want the service alone", statuses, result)
+	}
+	if targets[1].ContainerID != "run" {
+		t.Fatalf("the caller's targets changed: %+v", targets)
+	}
+}
+
 // recordingClassifier answers reasons, and adds the ID of each target it is
 // asked about to asked.
 func recordingClassifier(asked *[]string, reasons map[string]string) builtClassifier {
@@ -661,6 +723,8 @@ func TestRegistryRefusal(t *testing.T) {
 		"typed not found":    {fmt.Errorf("daemon: %w", errdefs.ErrNotFound), true},
 		"unknown manifest":   {errors.New("manifest unknown: manifest unknown"), true},
 		"throttled":          {errors.New("toomanyrequests: retry-after: 1s"), false},
+		"docker hub limit":   {errors.New("Error response from daemon: You have reached your pull rate limit"), false},
+		"typed hub limit":    {fmt.Errorf("You have reached your pull rate limit: %w", errdefs.ErrResourceExhausted), false},
 		"timed out":          {errors.New("dial tcp 3.67.33.93:443: i/o timeout"), false},
 		"no such host":       {errors.New("dial tcp: lookup registry-1.docker.io: no such host"), false},
 		"unreachable":        {errors.New("dial tcp 3.67.33.93:443: connect: network is unreachable"), false},

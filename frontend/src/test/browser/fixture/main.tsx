@@ -13,9 +13,10 @@ import { createRoot } from "react-dom/client";
 
 import { validateDashboardSearch } from "@/api/dashboard-search";
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
+import { optionalString } from "@/routes/-search";
 import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
 import { Route as NetworkRoute } from "@/routes/_authenticated/network/index";
-import { Route as StorageRoute } from "@/routes/_authenticated/storage/index";
+import { Route as StorageDisksRoute } from "@/routes/_authenticated/storage/disks";
 import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import { installTabNavigationIntent } from "@/utils/tabNavigation";
@@ -188,6 +189,7 @@ const assistantRoute = createRoute({
   component: AssistantFixturePage,
   getParentRoute: () => rootRoute,
   path: "assistant",
+  validateSearch: (search) => ({ ...optionalString(search, "chat") }),
 });
 const terminalRoute = createRoute({
   component: TerminalFixturePage,
@@ -320,8 +322,8 @@ const memoryOverflowRoute = createRoute({
 const storageDisksRoute = createRoute({
   component: StorageDisksPage,
   getParentRoute: () => authenticatedRoute,
-  path: "storage/",
-  validateSearch: StorageRoute.options.validateSearch,
+  path: "storage/disks",
+  validateSearch: StorageDisksRoute.options.validateSearch,
 });
 const validateProcessFixtureSearch = (search: Record<string, unknown>) => ({
   filter:

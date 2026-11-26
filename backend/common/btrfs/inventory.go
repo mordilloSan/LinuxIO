@@ -20,6 +20,8 @@ type BtrfsFilesystem struct {
 	TotalBytes       uint64            `json:"totalBytes"`
 	UnallocatedBytes uint64            `json:"unallocatedBytes"`
 	UsedBytes        uint64            `json:"usedBytes"`
+	StoredBytes      uint64            `json:"storedBytes"`
+	FreeBytes        uint64            `json:"freeBytes"`
 	Allocation       []BtrfsAllocation `json:"allocation"`
 	Devices          []BtrfsDevice     `json:"devices"`
 	Scrub            BtrfsScrubStatus  `json:"scrub"`
@@ -203,6 +205,8 @@ func fillFilesystem(fs *BtrfsFilesystem) {
 			// Used is raw bytes on disk, so every copy counts.
 			fs.UsedBytes += uint64(float64(s.UsedBytes) * profileRatio(profile, present))
 		}
+		fs.StoredBytes = storedBytes(fs.Allocation)
+		fs.FreeBytes = freeOrZero(mnt, warn)
 		fs.LowMetadataSpace = lowMetadataSpace(fs.Allocation, fs.UnallocatedBytes)
 	}
 
@@ -227,6 +231,40 @@ func balanceStatus(mnt string, warn func(string, error)) *BtrfsBalanceStatus {
 		return &BtrfsBalanceStatus{State: "paused", Percent: pct}
 	}
 	return &BtrfsBalanceStatus{State: "running", Percent: pct}
+}
+
+// storedBytes is what the pool holds, each byte counted once: the used
+// bytes of every data, metadata and system row, which SPACE_INFO gives as
+// logical sizes.
+func storedBytes(alloc []BtrfsAllocation) uint64 {
+	var stored uint64
+	for _, a := range alloc {
+		stored += a.UsedBytes
+	}
+	return stored
+}
+
+// freeOrZero is poolFreeBytes, or 0 after warning when statfs fails.
+func freeOrZero(mnt string, warn func(string, error)) uint64 {
+	free, err := poolFreeBytes(mnt)
+	if err != nil {
+		warn("statfs", err)
+		return 0
+	}
+	return free
+}
+
+// poolFreeBytes is the kernel's room for more data in the filesystem at mnt,
+// as df shows it: statfs's f_bavail, which btrfs counts disk by disk for the
+// profile new data gets (btrfs_calc_avail_data_space), so a mirror of uneven
+// disks, a degraded pool and a convert are counted as btrfs will allocate.
+// A variable so tests can stand in for the kernel.
+var poolFreeBytes = func(mnt string) (uint64, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(mnt, &st); err != nil {
+		return 0, fmt.Errorf("statfs %s: %w", mnt, err)
+	}
+	return st.Bavail * uint64(st.Bsize), nil
 }
 
 // profileRatio is how many raw bytes one logical byte of a profile takes.

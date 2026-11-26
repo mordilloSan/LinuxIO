@@ -577,7 +577,9 @@ loader: (loaderArgs) => {
 
 `router.test.tsx` enforces both halves, so a new route must satisfy them:
 
-- Every protected **leaf** route has a loader on itself *or an ancestor*.
+- Every protected **leaf** route has a loader on itself *or an ancestor*. A
+  route that only redirects an old path is left out by name
+  (`REDIRECT_ONLY_ROUTES` in `router.test.tsx`: `storage/subvolumes.tsx`).
 - Layout routes that own no data must have **no loader at all** — no empty no-op
   loaders. Currently that means `_authenticated`, `sign-in`, the six tab layouts,
   and `vm/machines`.
@@ -616,12 +618,17 @@ inherits its ancestor's.
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
 | `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | `tab` | — |
 | `/storage` | `storage/route.tsx` | — | — | — | — |
-| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `pool` | — |
+| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×2 | — | `drive`, `fs`, `pool`, `raid` | redirects `pool` to `/storage/pools/$uuid` when the session may open pools, and `drive`, `fs`, `raid` to `/storage/disks` |
+| `/storage/disks` | `storage/disks.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `raid` | — |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
 | `/storage/mounts` | `storage/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
+| `/storage/pools` | `storage/pools/route.tsx` | `loadRouteQueries` ×1 | — | — | `requireAccess` btrfs, privileged |
+| `/storage/pools/` | `storage/pools/index.tsx` | — | — | — | — |
+| `/storage/pools/$uuid` | `storage/pools/$uuid.tsx` | — | `uuid` | `tab` | — |
 | `/storage/rsync` | `storage/rsync.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` privileged |
 | `/storage/shares` | `storage/shares.tsx` | `loadRouteQueries` ×2 | — | — | — |
-| `/storage/subvolumes` | `storage/subvolumes.tsx` | `loadRouteQueries` ×1 | — | `fs`, `view` | `requireAccess` btrfs |
+| `/storage/snapshots` | `storage/snapshots.tsx` | `loadRouteQueries` ×1 | — | `fs`, `view` | `requireAccess` btrfs |
+| `/storage/subvolumes` | `storage/subvolumes.tsx` | — | — | `fs`, `view` | redirects to `/storage/snapshots`, view `subvolumes` by default |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/updates` | `updates/route.tsx` | — | — | — | — |
 | `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
@@ -671,15 +678,18 @@ wrappers that only hide an observer.
 
 ## Guards And Access
 
-All guarding goes through `routes/-auth.ts`. There are ten `beforeLoad` hooks in
-the whole tree:
+All guarding goes through `routes/-auth.ts`. There are thirteen `beforeLoad`
+hooks in the whole tree; eleven guard, and two only redirect old links:
+`storage/index.tsx` (`?pool=` to the pool's page, `?drive=|fs=|raid=` to the
+Disks page) and `storage/subvolumes.tsx` (to the Snapshots tab):
 
 | Route | Guard | Policy |
 |-------|-------|--------|
 | `_authenticated.tsx` | `requireAuthentication` | signed in |
 | `sign-in/route.tsx` | `requireGuest` | signed **out** |
 | `docker/route.tsx` | `requireAccess` | `dockerAvailable` |
-| `storage/subvolumes.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
+| `storage/snapshots.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
+| `storage/pools/route.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
 | `hardware/route.tsx` | `requireAccess` | `lmSensorsAvailable` |
 | `vm/route.tsx` | `requireAccess` | `libvirtAvailable` + privileged |
 | `network/wireguard.tsx` | `requireAccess` | `wireguardAvailable` + privileged |
@@ -846,6 +856,11 @@ export const DOCKER_TABS = [
 `to` is checked against the generated tree, and routes needing path params are
 excluded from the target type — a tab renders a bare `Link`, so it cannot supply
 params.
+
+A manifest entry may also be a **group**, `{ label, items }`
+(`RoutedTabGroup`): one pill that opens a menu of its routes and, while one of
+them is open, is selected and reads "Advanced: Disks". Storage keeps its
+Disks, LVM, Mounts and rsync pages behind one (`storageTabs.ts`).
 
 Most layouts are then three lines (`docker/route.tsx`):
 

@@ -301,19 +301,18 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     },
     {
       accessorKey: "usedBytes",
-      header: "Usage",
+      header: "Allocated",
       cell: ({ row }) => {
         const { sizeBytes, usedBytes } = row.original;
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <AppLinearProgress
-              aria-label={`${row.original.path || row.original.id} usage`}
+              aria-label={`${row.original.path || row.original.id} allocated`}
               value={sizeBytes > 0 ? (usedBytes / sizeBytes) * 100 : 0}
               variant="determinate"
             />
             <AppTypography color="text.secondary" variant="caption">
-              {formatFileSize(usedBytes)} used ·{" "}
-              {formatFileSize(Math.max(sizeBytes - usedBytes, 0))} free
+              {formatFileSize(usedBytes)} allocated
             </AppTypography>
           </div>
         );
@@ -389,7 +388,11 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
               />
             </div>
           }
-          subtitle={`${filesystem.devices.length} disk(s) in this filesystem`}
+          subtitle={
+            filesystem.devices.length === 1
+              ? "1 disk"
+              : `${filesystem.devices.length} disks`
+          }
           title="Disks"
         />
         {otherBalance && (

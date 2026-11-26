@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+  test,
+} from "@playwright/test";
 
 const DATA = 0x04;
 const BRIDGE_DATA = 0x81;
@@ -525,7 +531,7 @@ test("shows a subagent the agent reports as a session of its own", async ({
   await expect(page.getByText("The root disk is 40% full.")).toBeVisible();
   await expect(page.getByRole("button", { name: "0 agents" })).toBeVisible();
 
-  // Its name opens the Agents view on it: the prompt, its call, its report.
+  // Its name opens the Agents card on it: the prompt, its call, its report.
   await sentTo.getByRole("button", { name: "Disk check" }).click();
   const agents = page.getByRole("complementary", { name: "Agents" });
   await expect(
@@ -1093,6 +1099,154 @@ test("keeps a long answer with a code block inside the chat's own scroller", asy
   await expect(input).toBeInViewport();
 });
 
+test("opens a long saved chat at its newest message", async ({ page }) => {
+  // As on a first sign-in, the web fonts arrive after the replayed chat is
+  // drawn, and the column grows when they swap in without a render.
+  const fonts: Route[] = [];
+  await page.route(/\.woff2?$/, (route) => {
+    fonts.push(route);
+  });
+  const prose =
+    "A long paragraph wraps at different places in the fallback font and in Inter, ".repeat(
+      6,
+    );
+  const turn = (index: number) =>
+    `Answer ${index}. ${prose}\n\n\`\`\`bash\nsystemctl status unit-${index}\njournalctl -u unit-${index}\n\`\`\`\n\nThat is all for ${index}.`;
+  await serveAgent(page, (request, { send, notify }) => {
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { list: {} },
+            },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { sessions: [{ sessionId: "s1", cwd: "/home/alice" }] },
+        });
+        break;
+      case "session/load":
+        for (let index = 0; index < 40; index++) {
+          notify("s1", {
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text: `Question ${index}` },
+          });
+          notify("s1", {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: turn(index) },
+          });
+        }
+        send({ jsonrpc: "2.0", id: request.id, result: {} });
+        break;
+    }
+  });
+
+  await page.goto("/assistant");
+  await expect(page.getByLabel("Message")).toBeEnabled();
+  const transcript = page.getByRole("log").first();
+  const belowView = () =>
+    transcript.evaluate(
+      (el) => el.scrollHeight - el.scrollTop - el.clientHeight,
+    );
+  await expect.poll(belowView).toBeLessThanOrEqual(1);
+
+  expect(fonts.length).toBeGreaterThan(0);
+  await Promise.all(fonts.map((route) => route.continue()));
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(belowView).toBeLessThanOrEqual(1);
+  await expect(page.getByText("That is all for 39.")).toBeInViewport();
+
+  // A smaller window shrinks the scroller, again without a render.
+  const size = page.viewportSize();
+  if (!size) throw new Error("no viewport");
+  await page.setViewportSize({ width: size.width, height: size.height - 200 });
+  await expect.poll(belowView).toBeLessThanOrEqual(1);
+});
+
+test("keeps the open chat in the address, so a reload comes back to it", async ({
+  page,
+}) => {
+  const loads: string[] = [];
+  await serveAgent(page, (request, { send, notify }) => {
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { list: {} },
+            },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            sessions: [
+              { sessionId: "s-new", cwd: "/home/alice", title: "Newest chat" },
+              { sessionId: "s-old", cwd: "/home/alice", title: "Older chat" },
+            ],
+          },
+        });
+        break;
+      case "session/load": {
+        const sessionId = request.params?.sessionId ?? "";
+        loads.push(sessionId);
+        notify(sessionId, {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: `Answer in ${sessionId}` },
+        });
+        send({ jsonrpc: "2.0", id: request.id, result: {} });
+        break;
+      }
+    }
+  });
+
+  // With no chat in the address the newest opens, and the address names it.
+  await page.goto("/assistant");
+  await expect(page.getByText("Answer in s-new")).toBeVisible();
+  await expect(page).toHaveURL(/\/assistant\?chat=s-new$/);
+
+  // A chat picked on the Chats card takes its place in the address.
+  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await page
+    .getByRole("complementary", { name: "Chats" })
+    .getByRole("button", { name: /^Older chat/ })
+    .click();
+  await expect(page.getByText("Answer in s-old")).toBeVisible();
+  await expect(page).toHaveURL(/\/assistant\?chat=s-old$/);
+
+  // A reload opens that chat again, not the newest.
+  loads.length = 0;
+  await page.reload();
+  await expect(page.getByText("Answer in s-old")).toBeVisible();
+  expect(loads).not.toContain("s-new");
+  await expect(page).toHaveURL(/\/assistant\?chat=s-old$/);
+
+  // A chat the agent does not list is never asked for: the newest opens.
+  loads.length = 0;
+  await page.goto("/assistant?chat=s-gone");
+  await expect(page.getByText("Answer in s-new")).toBeVisible();
+  expect(loads).not.toContain("s-gone");
+  await expect(page).toHaveURL(/\/assistant\?chat=s-new$/);
+});
+
 test("types a command in a terminal tab beside the chat, and reuses that tab", async ({
   page,
 }) => {
@@ -1175,7 +1329,8 @@ test("types a command in a terminal tab beside the chat, and reuses that tab", a
   // A plain click now types into that tab; the chat stays where it is.
   await buttons.last().click();
   await expect.poll(() => typed).toBe("uptimedf -h");
-  await expect(page).toHaveURL(/\/assistant$/);
+  // The chat stayed in view, its address naming it.
+  await expect(page).toHaveURL(/\/assistant\?chat=s1$/);
   expect(page.context().pages()).toHaveLength(2);
   await expect(buttons).toHaveCount(2);
 

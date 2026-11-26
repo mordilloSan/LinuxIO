@@ -319,6 +319,24 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 	},
 	{
+		// Shows the server in Windows' Network (docs/shared-folders.md,
+		// "The SMB service"). Debian 13 and Ubuntu 25.04 on keep the
+		// service in wsdd-server, the releases before them and Fedora in
+		// wsdd; either is detected.
+		Name:    "wsdd",
+		LogName: "Windows discovery (WS-Discovery)",
+		Detect: func(ctx context.Context) (bool, string) {
+			return checkedCapability(nfsshares.CheckWindowsDiscoveryAvailability(ctx))
+		},
+		Install: &InstallSpec{
+			PackageDebian: "wsdd-server",
+			PackageRHEL:   "wsdd",
+			ServiceDebian: "wsdd-server.service",
+			ServiceRHEL:   "wsdd.service",
+			EnableService: true,
+		},
+	},
+	{
 		Name:    "wireguard",
 		LogName: "WireGuard tools",
 		Detect: func(_ context.Context) (bool, string) {

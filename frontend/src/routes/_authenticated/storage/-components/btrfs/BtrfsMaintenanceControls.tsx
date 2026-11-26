@@ -23,21 +23,21 @@ const TASK_INFO: Record<string, TaskInfo> = {
     label: "Scrub",
     icon: "mdi:shield-check-outline",
     description:
-      "Reads every block and checks it against its checksum to catch silent corruption. On RAID1 or DUP, bad copies are repaired from the good one.",
+      "Reads every block and checks it against its checksum, to catch silent corruption. Where a second copy exists, a bad copy is repaired from it.",
     suggested: "monthly",
   },
   balance: {
     label: "Balance",
     icon: "mdi:scale-balance",
     description:
-      "Btrfs hands out space in chunks. Balance repacks nearly empty chunks so their space can be reused, which prevents “no space left” errors while free space still shows. Only light filters are used, so runs stay short.",
+      "Repacks nearly empty areas so their space can be reused, which prevents “no space left” errors while free space still shows. Only light passes run, so they stay short.",
     suggested: "weekly",
   },
   trim: {
     label: "Trim",
     icon: "mdi:content-cut",
     description:
-      "Tells an SSD which blocks are free so it keeps write speed up. Hard drives don't need it, and on kernel 6.2 or later btrfs already discards freed space on SSDs by itself.",
+      "Tells an SSD which blocks are free so it keeps its write speed. Hard drives don't need it, and on kernel 6.2 or later btrfs already does this as files are deleted.",
     suggested: "none",
   },
   defrag: {
@@ -45,12 +45,13 @@ const TASK_INFO: Record<string, TaskInfo> = {
     icon: "mdi:puzzle-outline",
     description: "Rewrites fragmented files to speed up reads on hard drives.",
     caution:
-      "Breaks sharing with snapshots and reflinked copies, which can use a lot of extra space.",
+      "Undoes the sharing between files and their snapshots or copies, which can take a lot of extra space.",
     suggested: "none",
   },
 };
 
-const periodLabel = (period: string) =>
+/** A period as the page names it: "Off" for none, else capitalised. */
+export const periodLabel = (period: string) =>
   period === "none" ? "Off" : period.charAt(0).toUpperCase() + period.slice(1);
 
 interface BtrfsMaintenanceProps {
@@ -83,7 +84,7 @@ const BtrfsMaintenanceControls = ({
         style={{ display: "block", marginBottom: "var(--app-space-12)" }}
         variant="caption"
       >
-        Background jobs from btrfsmaintenance, run by systemd timers.
+        Runs in the background on a schedule.
       </AppTypography>
       {btrfsMaintenanceReason ? (
         <AppAlert severity="info">
@@ -158,18 +159,25 @@ const BtrfsMaintenanceControls = ({
                           {info.caution}
                         </AppTypography>
                       )}
-                      <AppTypography
-                        color="text.secondary"
-                        style={{
-                          display: "block",
-                          marginTop: "var(--app-space-4)",
-                        }}
-                        variant="caption"
-                      >
-                        Suggested: {periodLabel(info.suggested)}
-                        {sharedWith.length > 0 &&
-                          ` · Shared with ${sharedWith.join(", ")}, so a new period applies there too`}
-                      </AppTypography>
+                      {(value !== info.suggested || sharedWith.length > 0) && (
+                        <AppTypography
+                          color="text.secondary"
+                          style={{
+                            display: "block",
+                            marginTop: "var(--app-space-4)",
+                          }}
+                          variant="caption"
+                        >
+                          {[
+                            value !== info.suggested &&
+                              `Suggested: ${periodLabel(info.suggested)}`,
+                            sharedWith.length > 0 &&
+                              `Shared with ${sharedWith.join(", ")}, so a new period applies there too`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </AppTypography>
+                      )}
                     </div>
                   </div>
                   <div

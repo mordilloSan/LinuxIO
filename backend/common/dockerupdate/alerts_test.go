@@ -57,6 +57,20 @@ func TestRaiseAndResolveDockerUpdateAlert(t *testing.T) {
 	}
 }
 
+// The reason comes from a registry, the daemon or Compose: its escape
+// sequences and bidirectional controls are dropped, its lines kept.
+func TestDockerUpdateAlertKeepsOnlyPrintableText(t *testing.T) {
+	useTempAlertStore(t)
+	raiseDockerUpdateAlert(t.Context(), "/web", "nginx", errors.New("pull failed:\n\x1b[31mdenied\u202e"))
+	doc, err := alerts.Load()
+	if err != nil || len(doc.Alerts) != 1 {
+		t.Fatalf("store = %+v err = %v", doc, err)
+	}
+	if got, want := doc.Alerts[0].Message, "pull failed:\n[31mdenied (image nginx)"; got != want {
+		t.Fatalf("message = %q, want %q", got, want)
+	}
+}
+
 func TestDockerUpdateAlertFailureDoesNotPanic(t *testing.T) {
 	old := alerts.Path
 	alerts.Path = t.TempDir() // a directory: reads and writes fail
@@ -166,6 +180,7 @@ func TestDockerEveryRunReportsAQuietPass(t *testing.T) {
 	pass := func(report string, uncheckable, updated int, updateErr error) {
 		t.Helper()
 		_, err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(report, false), scheduledPassOperations{
+			freeSpace: noFreeSpaceMinimum,
 			list: func(context.Context) ([]container.Summary, error) {
 				return []container.Summary{{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning}}, nil
 			},
@@ -277,6 +292,7 @@ func TestDockerEveryRunReportsAnUpdatePassThatReplacedNothing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			useTempAlertStore(t)
 			_, err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(alerts.ReportEveryRun, tc.available), scheduledPassOperations{
+				freeSpace: noFreeSpaceMinimum,
 				list: func(context.Context) ([]container.Summary, error) {
 					return []container.Summary{
 						{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},

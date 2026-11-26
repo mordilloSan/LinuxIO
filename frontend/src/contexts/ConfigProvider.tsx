@@ -124,6 +124,7 @@ function buildUIPayload(ui: UIConfig): ConfigUISetPayload {
     collapsedSections: cloneNameLists(ui.collapsedSections),
     viewModes: { ...pruneViewModes(ui.viewModes, ui.viewModeDefault) },
     terminalFontSize: ui.terminalFontSize,
+    assistantFontSize: ui.assistantFontSize,
     layoutOrders: cloneNameLists(ui.layoutOrders),
   };
   if (ui.themeColors) {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
+	"unicode"
 
 	"github.com/moby/moby/api/types/container"
 
@@ -87,6 +88,11 @@ type PassReport struct {
 	Mode       DockerContainerAutoUpdateMode
 	Checked    DockerUpdateCheckResult
 	Containers []ContainerOutcome
+	// LowFreeSpace is why a pass updated nothing because Docker's disk had
+	// less free space than the settings ask for (lowFreeSpaceError); empty
+	// for a pass that had room. It raised its own alert, so the run completes
+	// and counts it as a failure.
+	LowFreeSpace string
 }
 
 // counts tells the containers the pass replaced, those it failed to, and
@@ -112,16 +118,20 @@ func (o ContainerOutcome) rolledBack() bool {
 }
 
 // Summary is the one line the history shows for the pass; ok is false for a
-// pass that neither finished its check nor reached a container.
+// pass that neither finished its check, reached a container nor found too
+// little free space to update.
 func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 	if r.Skipped != "" {
 		return scheduledrun.Summary{Message: "Skipped: " + r.Skipped, Skipped: true}, true
 	}
-	if r.Mode == "" && len(r.Containers) == 0 {
+	if r.Mode == "" && len(r.Containers) == 0 && r.LowFreeSpace == "" {
 		return scheduledrun.Summary{}, false
 	}
 	updated, failed, rolledBack := r.counts()
 	var parts []string
+	if r.LowFreeSpace != "" {
+		parts = append(parts, "Updates skipped for low free space")
+	}
 	if updated > 0 {
 		parts = append(parts, fmt.Sprintf("%d updated", updated))
 	}
@@ -144,15 +154,20 @@ func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 	if len(parts) == 0 {
 		return scheduledrun.Summary{Message: "Nothing to update"}, true
 	}
-	// A rolled back update failed, and raised its alert.
-	return scheduledrun.Summary{Message: strings.Join(parts, ", "), Failures: failed + rolledBack}, true
+	// A rolled back update failed, and raised its alert; so did a pass that
+	// had too little free space to update.
+	failures := failed + rolledBack
+	if r.LowFreeSpace != "" {
+		failures++
+	}
+	return scheduledrun.Summary{Message: strings.Join(parts, ", "), Failures: failures}, true
 }
 
-// Write prints the pass for the run's output: a line of totals, then one line
-// for each container the pass replaced or failed to. The log lines of the
+// Write prints the pass for the run's output: a line of totals, then why it
+// updated nothing when it had too little free space, or one line for each
+// container it replaced or failed to. The log lines of the
 // pass carry the same facts as journal fields, which the saved output of a
-// run does not show. It prints nothing for a pass that neither finished its
-// check nor reached a container.
+// run does not show. It prints nothing where Summary gives no line.
 func (r PassReport) Write(w io.Writer) {
 	summary, ok := r.Summary()
 	if !ok {
@@ -167,6 +182,9 @@ func (r PassReport) Write(w io.Writer) {
 		fmt.Fprintf(w, "Container updates: %s\n", lowerFirst(summary.Message))
 	} else {
 		fmt.Fprintf(w, "Container updates: %d checked, %s\n", r.Checked.Checked, lowerFirst(summary.Message))
+	}
+	if r.LowFreeSpace != "" {
+		fmt.Fprintf(w, "  %s\n", r.LowFreeSpace)
 	}
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, outcome := range r.Containers {
@@ -196,5 +214,37 @@ func lowerFirst(text string) string {
 
 // singleLine keeps an error that carries Compose output on one journal line.
 func singleLine(text string) string {
-	return strings.Join(strings.Fields(text), " ")
+	return strings.Join(strings.Fields(printableText(text)), " ")
+}
+
+// printableText drops, from text others write (an image's labels, the errors
+// of a registry, the daemon or Compose), the control characters other than a
+// line break or a tab and the invisible format characters, the bidirectional
+// controls among them: an escape sequence could change the terminal that
+// shows a run's output, and a bidirectional control make a line read as
+// another. Bytes that are not UTF-8 become U+FFFD.
+func printableText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(text, "\uFFFD"))
+}
+
+// maxVersionRunes bounds the version an image's label names in a report or
+// an alert; the image's author writes it.
+const maxVersionRunes = 64
+
+// printableVersion is an image's version label on one printable line, cut to
+// maxVersionRunes.
+func printableVersion(label string) string {
+	version := []rune(singleLine(label))
+	if len(version) > maxVersionRunes {
+		version = append(version[:maxVersionRunes-1], '…')
+	}
+	return string(version)
 }

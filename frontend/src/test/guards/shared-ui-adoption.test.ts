@@ -64,6 +64,13 @@ const nativeControlExceptions: ReviewedException[] = [
     protects: "tab semantics and selected state",
   },
   {
+    file: "components/tabbar/RoutedTabContainer.tsx",
+    tag: "button",
+    attribute: 'aria-haspopup="menu"',
+    reason: "tablist pill of a tab group, which opens a menu of its routes",
+    protects: "tab semantics, selected state and the menu popup",
+  },
+  {
     file: "components/tables/tableShared.tsx",
     tag: "button",
     attribute: 'className="app-dt__sort-button"',

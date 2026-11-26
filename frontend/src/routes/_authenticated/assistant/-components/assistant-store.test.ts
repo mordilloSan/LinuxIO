@@ -94,6 +94,7 @@ const selectOption = (value: string) => ({
 beforeEach(() => {
   assistantStore.disconnect();
   assistantStore.setChatDefaults(undefined);
+  assistantStore.setRequestedChat(undefined);
 });
 
 describe("assistantStore", () => {
@@ -777,6 +778,91 @@ describe("assistantStore", () => {
     assistantStore._setConnector(connector);
     await assistantStore.connect("claude");
     expect(conn.loadSession).toHaveBeenCalledWith("s-old");
+  });
+
+  it("opens the chat the address names when the agent lists it", async () => {
+    const { conn, connector } = fakeConnection({
+      listSessions: vi.fn(async () => [
+        { sessionId: "s-newest", cwd: "/home/alice", title: "Newest" },
+        { sessionId: "s-old", cwd: "/home/alice", title: "Old chat" },
+      ]),
+    });
+    assistantStore._setConnector(connector);
+    assistantStore.setRequestedChat("s-old");
+    await assistantStore.connect("claude");
+    expect(conn.loadSession).toHaveBeenCalledTimes(1);
+    expect(conn.loadSession).toHaveBeenCalledWith("s-old");
+    expect(assistantStore.getState()).toMatchObject({
+      status: "ready",
+      sessionId: "s-old",
+    });
+  });
+
+  it("opens the newest chat when the address names one the agent does not list", async () => {
+    const { conn, connector } = fakeConnection({
+      listSessions: vi.fn(async () => [
+        { sessionId: "s-newest", cwd: "/home/alice", title: "Newest" },
+      ]),
+    });
+    assistantStore._setConnector(connector);
+    // Another agent's chat, a deleted one, or a made-up id.
+    assistantStore.setRequestedChat("s-elsewhere");
+    await assistantStore.connect("claude");
+    expect(conn.loadSession).toHaveBeenCalledTimes(1);
+    expect(conn.loadSession).toHaveBeenCalledWith("s-newest");
+    expect(assistantStore.getState().sessionId).toBe("s-newest");
+  });
+
+  it("opens the newest chat on a restart after the named one failed to load", async () => {
+    const { conn, connector } = fakeConnection({
+      listSessions: vi.fn(async () => [
+        { sessionId: "s-newest", cwd: "/home/alice", title: "Newest" },
+        { sessionId: "s-broken", cwd: "/home/alice", title: "Broken" },
+      ]),
+      loadSession: vi.fn(async (sessionId: string) => {
+        if (sessionId === "s-broken") throw new Error("cannot replay");
+        return { sessionId, modes: null, configOptions: [] };
+      }),
+    });
+    assistantStore._setConnector(connector);
+    assistantStore.setRequestedChat("s-broken");
+    await assistantStore.connect("claude");
+    expect(assistantStore.getState()).toMatchObject({
+      status: "error",
+      error: "cannot replay",
+    });
+
+    await assistantStore.restart();
+    expect(conn.loadSession).toHaveBeenLastCalledWith("s-newest");
+    expect(assistantStore.getState()).toMatchObject({
+      status: "ready",
+      sessionId: "s-newest",
+    });
+  });
+
+  it("keeps the named chat for after the sign-in an agent asks for", async () => {
+    const authRequired = Object.assign(new Error("Authentication required"), {
+      code: -32000,
+    });
+    let signedIn = false;
+    const { conn, connector } = fakeConnection({
+      listSessions: vi.fn(async () => [
+        { sessionId: "s-newest", cwd: "/home/alice", title: "Newest" },
+        { sessionId: "s-old", cwd: "/home/alice", title: "Old chat" },
+      ]),
+      loadSession: vi.fn(async (sessionId: string) => {
+        if (!signedIn) throw authRequired;
+        return { sessionId, modes: null, configOptions: [] };
+      }),
+    });
+    assistantStore._setConnector(connector);
+    assistantStore.setRequestedChat("s-old");
+    await assistantStore.connect("claude");
+    expect(assistantStore.getState().status).toBe("auth_required");
+
+    signedIn = true;
+    await assistantStore.restart();
+    expect(conn.loadSession).toHaveBeenLastCalledWith("s-old");
   });
 
   it("loads a fork when nothing else exists", async () => {

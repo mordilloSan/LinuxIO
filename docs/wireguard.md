@@ -136,12 +136,38 @@ the unit, so one brought up by hand shows as up.
   is read from `/sys/class/net`, not from `wgctrl`: a unit is stopped only for
   an interface that is definitely not there, never because WireGuard could
   not be asked.
+- **The unit is active and the interface runs under another key than the
+  config's.** Its config was deleted or replaced while it was up: by hand, or
+  by a LinuxIO up to 0.56.0, whose remove deleted the config of an interface
+  it could not take down (on Ubuntu 26.04 it never could, see above). The
+  interface keeps the old private key and the old peers, the page shows it as
+  up, and no device of the config on disk completes a handshake with it. A
+  start of an active unit does nothing, so up compares the public key of the
+  interface that is up with the one the config's private key gives
+  (`deviceRunsConfig`), and where they differ stops the unit first. The stop
+  is `wg-quick down`, which deletes the link and runs the hooks of the config
+  on disk; the start then brings up that config. A stop that failed after
+  the link was deleted, in a PostDown line, has done what the up needs: the
+  unit it left failed is reset and the start goes on. For an up, a config or
+  an interface that cannot be read counts as matching: an interface that
+  works is not taken down on a guess. A create makes no such guess: its key
+  is new, so an interface its unit holds under the name is never its own and
+  is always stopped first (`leftoverOfTheName`), and a new interface never
+  ends up running a deleted one's keys. "Check Connection"
+  refuses such an interface with a 409 that says to turn it off and on, since
+  the probe uses the key of the interface that is up and would pass every
+  step.
 - **The interface is up and the unit does not hold it** (brought up with
   `wg-quick up` by hand, or by a LinuxIO from before this). Down runs
   `wg-quick down` from the job host, the only place LinuxIO still does. Where
   `wg-quick` is confined that fails, as above, and the error says to run
   `wg-quick down <name>` as root (see Known limits). Up fails with wg-quick's
-  "already exists", as it would by hand.
+  "already exists", as it would by hand. A create of that name is refused
+  with a 409 before anything is written (`leftoverOfTheName`): with no config
+  of the name, an interface no unit holds was made outside LinuxIO, by hand,
+  by systemd-networkd or by NetworkManager, and is its owner's to take down.
+  The error names `ip link delete <name>` for a WireGuard interface only; for
+  a bridge or a network card of that name it says to choose another.
 - **Both are down.** Down does nothing and succeeds.
 
 ### Failures and cancel
@@ -375,6 +401,10 @@ they were.
   take down an interface that was brought up outside its unit: the job fails
   and names the command to run. An interface LinuxIO brought up, or systemd
   at boot, is not affected.
+- An interface that ran under another key than its config is taken down with
+  the hooks of the config on disk. The PostDown lines of the config it came
+  up on went with that config, so its firewall rules stay until the next
+  boot.
 - A cancelled up does not undo the PostUp lines that had already run: the
   stop ends `wg-quick up` before the unit's stop command would run PostDown.
   Interrupting `wg-quick up` by hand does the same. Bringing the interface up

@@ -24,6 +24,9 @@ const (
 	RouteResync       = "scheduled.btrfs_resync"
 	RouteRebuild      = "scheduled.btrfs_rebuild"
 	RouteDockerUpdate = "scheduled.docker_update"
+	// RouteRecycle is the daily emptying of the shared folders' recycle
+	// bins (docs/shared-folders.md).
+	RouteRecycle      = "scheduled.shares_recycle"
 	RouteSystemUpdate = "scheduled.system_update"
 	// AlertSource is the source of the alerts a failed run raises.
 	AlertSource = "jobs"
@@ -39,6 +42,7 @@ const (
 	resyncUnitPrefix   = "linuxio-btrfs-resync@"
 	rebuildUnitPrefix  = "linuxio-btrfs-rebuild@"
 	dockerUpdateUnit   = "linuxio-docker-update.service"
+	recycleUnit        = "linuxio-shares-recycle.service"
 	unitSuffix         = ".service"
 	scriptFallback     = "Scheduled task"
 	maxDefinitionBytes = 512 << 10
@@ -76,6 +80,8 @@ func KindOf(unit, scheduleDir string) (Kind, bool) {
 		return Kind{Route: RouteReplicate, Label: "Replication", Link: "/storage/subvolumes?view=replication"}, true
 	case dockerUpdateUnit:
 		return Kind{Route: RouteDockerUpdate, Label: "Container updates", Link: "/docker/containers"}, true
+	case recycleUnit:
+		return Kind{Route: RouteRecycle, Label: "Recycle bins", Link: "/storage/shares", Alerts: true}, true
 	}
 	if slices.Contains(systemUpdateUnits, unit) {
 		return Kind{Route: RouteSystemUpdate, Label: "System updates", Link: "/updates"}, true

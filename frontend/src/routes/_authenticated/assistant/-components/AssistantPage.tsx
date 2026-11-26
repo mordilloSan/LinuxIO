@@ -15,10 +15,6 @@ import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 import { useAssistantRequirements } from "@/hooks/useAssistantRequirements";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useAlerts } from "@/routes/_authenticated/-components/footer/useAlerts";
-import {
-  readPersistedState,
-  writePersistedState,
-} from "@/utils/persistedState";
 import { openTerminalTab, typeInTerminalTab } from "@/utils/terminalTab";
 
 import {
@@ -44,20 +40,19 @@ import "./assistant.css";
 // Escape inside an overlay belongs to that overlay, not to the running turn.
 const OVERLAY_SELECTOR = `${OVERLAY_ROOT_SELECTOR}, .app-popover-root, [role="menu"], [role="listbox"]`;
 
-// Same bounds the terminal enforces for terminalFontSize.
+// The same bounds the backend enforces for assistantFontSize.
 const MIN_FONT = 10;
 const MAX_FONT = 28;
-const FONT_SIZE_KEY = "linuxio.assistant.fontSize";
-
-const isFontSize = (value: unknown): value is number =>
-  typeof value === "number" && value >= MIN_FONT && value <= MAX_FONT;
 
 export default function AssistantPage({
   agent,
   chatDefaults,
+  chat,
 }: {
   agent: AssistantAgentId | null;
   chatDefaults?: AssistantChatDefaults;
+  /** The chat the address names, opened when the agent connects. */
+  chat?: string;
 }) {
   const { isOpen } = useStreamMux();
   const state = useAssistantState();
@@ -95,22 +90,25 @@ export default function AssistantPage({
   // What the welcome screen of a new chat offers to look at.
   const { alerts } = useAlerts();
 
-  // Follows the terminal's font size until the user picks one here.
-  const [terminalFontSize] = useConfigValue("terminalFontSize");
-  const [ownFontSize, setOwnFontSize] = useState(() =>
-    readPersistedState(FONT_SIZE_KEY, isFontSize),
-  );
-  const fontSize = ownFontSize ?? terminalFontSize;
+  // The chat's text size, kept in the user's config (14px until they pick
+  // one).
+  const [fontSize, setConfigFontSize] = useConfigValue("assistantFontSize");
   const adjustFontSize = (delta: number) => {
-    const next = Math.min(MAX_FONT, Math.max(MIN_FONT, fontSize + delta));
-    setOwnFontSize(next);
-    writePersistedState(FONT_SIZE_KEY, next);
+    setConfigFontSize((prev) =>
+      Math.min(MAX_FONT, Math.max(MIN_FONT, prev + delta)),
+    );
   };
 
   // Ahead of connect, so the first chat already starts on them.
   useEffect(() => {
     assistantStore.setChatDefaults(chatDefaults);
   }, [chatDefaults]);
+
+  // Ahead of connect too: a reload, a reconnect or a restart opens the chat
+  // the address names rather than the newest.
+  useEffect(() => {
+    assistantStore.setRequestedChat(chat);
+  }, [chat]);
 
   // Starting an agent never installs anything, so it is only started once
   // everything it needs is installed.
@@ -209,9 +207,9 @@ export default function AssistantPage({
     );
   }
 
-  // New chat is the page's one action. The previous chats, the activity map
-  // and a plugin's pane are tabs on the chat's edge (dock/AssistantDock), and the text size is in
-  // the composer's menu.
+  // The page's actions, like the terminal's: the text size and a new chat. The
+  // previous chats, the activity map and a plugin's pane are tabs on the
+  // chat's edge (dock/AssistantDock).
   const actions = (
     <HeaderActions
       create={
@@ -224,41 +222,33 @@ export default function AssistantPage({
           onClick={() => void assistantStore.newSession()}
         />
       }
+      options={
+        <>
+          <AppActionIconButton
+            disabled={fontSize <= MIN_FONT}
+            icon="mdi:format-font-size-decrease"
+            iconSize={20}
+            label="Decrease font size"
+            onClick={() => adjustFontSize(-1)}
+          />
+          <AppTypography
+            align="center"
+            color="text.secondary"
+            style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
+            variant="body2"
+          >
+            {fontSize}
+          </AppTypography>
+          <AppActionIconButton
+            disabled={fontSize >= MAX_FONT}
+            icon="mdi:format-font-size-increase"
+            iconSize={20}
+            label="Increase font size"
+            onClick={() => adjustFontSize(1)}
+          />
+        </>
+      }
     />
-  );
-
-  const textSize = (
-    <div className="assistant__text-size">
-      <AppTypography
-        className="assistant__text-size-label"
-        color="text.secondary"
-        variant="body2"
-      >
-        Text size
-      </AppTypography>
-      <AppActionIconButton
-        disabled={fontSize <= MIN_FONT}
-        icon="mdi:format-font-size-decrease"
-        iconSize={20}
-        label="Decrease font size"
-        onClick={() => adjustFontSize(-1)}
-      />
-      <AppTypography
-        align="center"
-        color="text.secondary"
-        style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
-        variant="body2"
-      >
-        {fontSize}
-      </AppTypography>
-      <AppActionIconButton
-        disabled={fontSize >= MAX_FONT}
-        icon="mdi:format-font-size-increase"
-        iconSize={20}
-        label="Increase font size"
-        onClick={() => adjustFontSize(1)}
-      />
-    </div>
   );
 
   // The plugin manager stays reachable when the composer is disabled: a
@@ -438,7 +428,6 @@ export default function AssistantPage({
             connecting={status === "connecting"}
             modes={state.modes}
             disabled={state.status !== "ready" && state.status !== "running"}
-            menuExtra={textSize}
             onBtw={(text) => void assistantStore.openSide(text || undefined)}
             onPlugins={
               agentEntry?.plugins ? () => setPluginsOpen(true) : undefined

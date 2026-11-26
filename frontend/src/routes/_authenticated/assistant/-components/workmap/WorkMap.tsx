@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type RefObject,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -510,6 +511,9 @@ export default function WorkMap({
   useFlights(under, over, summary.tally);
   // The row with a long label that is shown whole; one at a time.
   const [opened, setOpened] = useState<string | null>(null);
+  // The words under the picture start closed.
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
 
   const full =
     usage && usage.size > 0
@@ -659,53 +663,70 @@ export default function WorkMap({
           />
         ) : null}
       </div>
-      {/* Only what runs: the context and the model are in the picture. */}
-      <p
-        className={`work-map__now ${ROW_TEXT}`}
-        title={summary.now ?? undefined}
+      {/* The picture stays pinned; the words under it open and close. */}
+      <AppButton
+        aria-controls={detailsId}
+        aria-expanded={expanded}
+        className="work-map__details-toggle"
+        color="inherit"
+        onClick={() => setExpanded(!expanded)}
       >
-        {summary.now ?? "Nothing is running."}
-      </p>
-      {summary.rows.length === 0 ? (
-        <p className="work-map__now assistant-pane-text assistant-pane-text--dim">
-          Nothing yet.
-        </p>
-      ) : (
-        <ol className="work-map__feed">
-          {/* One line a row: the words are cut at the card's edge and the
-              time keeps a column at the right, so a row neither wraps nor
-              moves while the work goes on. */}
-          {summary.rows.map((row) => {
-            const long = row.label.length > LONG_LABEL;
-            const whole = long && opened === row.id;
-            return (
-              <li
-                className={`work-map__row ${ROW_TEXT} assistant-pane-text--${ROW_TONE[row.status]}`}
-                key={row.id}
-              >
-                <span
-                  className={`work-map__row-text${whole ? " work-map__row-text--whole" : ""}`}
-                >
-                  {rowLine(row)}
-                </span>
-                {long ? (
-                  <AppButton
-                    aria-expanded={whole}
-                    aria-label="Show the whole row"
-                    className="work-map__row-open"
-                    color="inherit"
-                    onClick={() => setOpened(whole ? null : row.id)}
-                    title={whole ? "Shorten the row" : "Show the whole row"}
+        <span aria-hidden className="work-map__details-glyph">
+          {expanded ? "▾" : "▸"}
+        </span>
+        Details
+      </AppButton>
+      {expanded ? (
+        <div className="work-map__details" id={detailsId}>
+          {/* Only what runs: the context and the model are in the picture. */}
+          <p
+            className={`work-map__now ${ROW_TEXT}`}
+            title={summary.now ?? undefined}
+          >
+            {summary.now ?? "Nothing is running."}
+          </p>
+          {summary.rows.length === 0 ? (
+            <p className="work-map__now assistant-pane-text assistant-pane-text--dim">
+              Nothing yet.
+            </p>
+          ) : (
+            <ol className="work-map__feed">
+              {/* One line a row: the words are cut at the card's edge and the
+                  time keeps a column at the right, so a row neither wraps nor
+                  moves while the work goes on. */}
+              {summary.rows.map((row) => {
+                const long = row.label.length > LONG_LABEL;
+                const whole = long && opened === row.id;
+                return (
+                  <li
+                    className={`work-map__row ${ROW_TEXT} assistant-pane-text--${ROW_TONE[row.status]}`}
+                    key={row.id}
                   >
-                    {whole ? "▾" : "▸"}
-                  </AppButton>
-                ) : null}
-                <span className="work-map__row-time">{rowTime(row)}</span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
+                    <span
+                      className={`work-map__row-text${whole ? " work-map__row-text--whole" : ""}`}
+                    >
+                      {rowLine(row)}
+                    </span>
+                    {long ? (
+                      <AppButton
+                        aria-expanded={whole}
+                        aria-label="Show the whole row"
+                        className="work-map__row-open"
+                        color="inherit"
+                        onClick={() => setOpened(whole ? null : row.id)}
+                        title={whole ? "Shorten the row" : "Show the whole row"}
+                      >
+                        {whole ? "▾" : "▸"}
+                      </AppButton>
+                    ) : null}
+                    <span className="work-map__row-time">{rowTime(row)}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -23,7 +23,11 @@
   --wm-main: var(--wm-accent);
   --wm-hot: var(--wm-accent-hot);
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  /* The picture stays pinned at the top at its own proportions; what is under
+     it scrolls inside the card. */
+  min-height: 0;
   min-width: 0;
 }
 
@@ -460,6 +464,39 @@
 }
 
 /* ---- under the picture: what is running, then what happened ---- */
+
+/* The picture never shrinks with the card's height: it keeps the proportions
+   it is drawn in. */
+.work-map > .assistant-pane-picture {
+  flex: 0 0 auto;
+}
+
+/* Opens and closes the words under the picture; closed to begin with. */
+.work-map .work-map__details-toggle {
+  flex: none;
+  align-self: flex-start;
+  gap: 0.5ch;
+  min-width: 0;
+  margin-top: var(--app-space-8);
+  padding: var(--app-space-4) var(--app-space-8);
+  font: inherit;
+  font-weight: 600;
+}
+
+.work-map .work-map__details-toggle:focus-visible {
+  outline: 2px solid var(--wm-main);
+  outline-offset: 0;
+}
+
+.work-map__details {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-height: 0;
+  padding-top: var(--app-space-4);
+  overflow: auto;
+}
 
 .work-map__now,
 .work-map__feed {

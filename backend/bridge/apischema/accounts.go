@@ -114,6 +114,11 @@ type GroupNameRequest struct {
 type ChangePasswordRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password" secret:"true"`
+	// SMBSignIn says whether the user may sign in to shared folders from
+	// Windows and a Mac with this password: true writes it to Samba's user
+	// list, false takes the user out of it, and nil keeps a user already
+	// there in step.
+	SMBSignIn *bool `json:"smbSignIn,omitzero"`
 }
 
 type TerminateSessionRequest struct {
@@ -129,6 +134,9 @@ type CreateUserRequest struct {
 	Shell      *string  `json:"shell,omitzero"`
 	Groups     []string `json:"groups,omitempty"`
 	CreateHome *bool    `json:"createHome,omitzero"`
+	// SMBSignIn true also writes the password to Samba's user list, so the
+	// user can sign in to shared folders from Windows and a Mac.
+	SMBSignIn *bool `json:"smbSignIn,omitzero"`
 }
 
 type ModifyUserRequest struct {

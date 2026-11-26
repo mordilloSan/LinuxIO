@@ -171,12 +171,12 @@ func DeleteGroup(ctx context.Context, name string) error {
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, "groupdel", name)
-	output, err := cmd.CombinedOutput()
+	output, err := runAccountTool(ctx, "groupdel", name)
 	if err != nil {
 		return fmt.Errorf("failed to delete group: %s", strings.TrimSpace(string(output)))
 	}
 	slog.Info("group deleted", "group", name)
+	shareAccessChanged(ctx)
 	return nil
 }
 
@@ -256,11 +256,11 @@ func ModifyGroupMembers(ctx context.Context, req apischema.ModifyGroupMembersReq
 		return nil
 	}
 
-	cmd := exec.CommandContext(ctx, "gpasswd", "-M", strings.Join(members, ","), req.GroupName)
-	output, err := cmd.CombinedOutput()
+	output, err := runAccountTool(ctx, "gpasswd", "-M", strings.Join(members, ","), req.GroupName)
 	if err != nil {
 		return fmt.Errorf("failed to set group members for %s: %s", req.GroupName, strings.TrimSpace(string(output)))
 	}
 	slog.Info("group members modified", "group", req.GroupName)
+	shareAccessChanged(ctx)
 	return nil
 }

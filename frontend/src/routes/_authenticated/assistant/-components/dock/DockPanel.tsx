@@ -1,37 +1,18 @@
-import {
-  type KeyboardEvent,
-  type PointerEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppTypography from "@/components/ui/AppTypography";
-import {
-  readPersistedState,
-  writePersistedState,
-} from "@/utils/persistedState";
 
+import DockCard from "./DockCard";
 import { DOCK_INSET, DOCK_TABS } from "./dockLayout";
+import DockResize from "./DockResize";
 import DockTab from "./DockTab";
+import { useCardWidth } from "./dockWidth";
 
 import "../pane/pane.css";
 
-const WIDTH_KEY = "linuxio.assistant.paneWidth";
-const DEFAULT_WIDTH = 340;
-const MIN_WIDTH = 240;
-const MAX_WIDTH = 720;
-const KEY_STEP = 16;
 // Mirrors the reading column (--assistant-column) in assistant.css.
 const READING_COLUMN = 860;
-
-const isWidth = (value: unknown): value is number =>
-  typeof value === "number" && value >= MIN_WIDTH && value <= MAX_WIDTH;
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
 
 /**
  * A live view on a card that floats in the margin beside the chat, so the
@@ -48,7 +29,8 @@ export default function DockPanel({
   onOpenChange,
   running,
   drawClosed = true,
-  also,
+  order,
+  quiet = false,
   children,
 }: {
   title: string;
@@ -65,37 +47,18 @@ export default function DockPanel({
   running: boolean;
   /** false leaves the content out of the page while the card is closed. */
   drawClosed?: boolean;
-  /**
-   * A second tab under this one that opens the card on another view. While
-   * the card shows that view, this tab reads as closed and a click on it
-   * brings its own view back through `onOpenChange(true)`.
-   */
-  also?: {
-    label: string;
-    /** The card shows this tab's view. */
-    current: boolean;
-    /** Its dot pulses. */
-    running: boolean;
-    /** Its dot is grey. */
-    quiet: boolean;
-    /** Opens the card on this tab's view. */
-    onOpen: () => void;
-  };
+  /** Where the card stands in the stack of open cards: the lower, the higher. */
+  order?: number;
+  /** The tab's dot is grey: nothing it stands for is at work. */
+  quiet?: boolean;
   children: ReactNode;
 }) {
   const tabRef = useRef<HTMLButtonElement>(null);
-  const alsoRef = useRef<HTMLButtonElement>(null);
   const ringRef = useRef<HTMLSpanElement>(null);
   const glowRef = useRef<HTMLSpanElement>(null);
   const wasRunning = useRef(running);
   const drawn = useRef<unknown>(null);
-  const drag = useRef<{ x: number; width: number; latest: number } | null>(
-    null,
-  );
-  const [width, setWidth] = useState(
-    () => readPersistedState(WIDTH_KEY, isWidth) ?? DEFAULT_WIDTH,
-  );
-  const [dragging, setDragging] = useState(false);
+  const { width: shownWidth, maxWidth, setWidth } = useCardWidth(room);
 
   // One ripple from the tab's dot each time the view is redrawn.
   useEffect(() => {
@@ -114,11 +77,6 @@ export default function DockPanel({
     return () => ripple.cancel();
   }, [drawing]);
 
-  const maxWidth =
-    room === null
-      ? MAX_WIDTH
-      : clamp(room - DOCK_INSET - DOCK_TABS, MIN_WIDTH, MAX_WIDTH);
-  const shownWidth = Math.min(width, maxWidth);
   const fits =
     room === null ||
     room >= READING_COLUMN + 2 * (shownWidth + DOCK_INSET + DOCK_TABS);
@@ -143,128 +101,64 @@ export default function DockPanel({
     return () => lit.cancel();
   }, [running, shown]);
 
-  const resizeTo = (next: number) => {
-    const clamped = clamp(Math.round(next), MIN_WIDTH, maxWidth);
-    setWidth(clamped);
-    return clamped;
-  };
-
-  const startDrag = (event: PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    drag.current = { x: event.clientX, width: shownWidth, latest: shownWidth };
-    setDragging(true);
-  };
-  const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
-    const start = drag.current;
-    if (!start) return;
-    // The card is anchored on the left, so dragging right widens it.
-    start.latest = resizeTo(start.width + event.clientX - start.x);
-  };
-  const endDrag = () => {
-    const start = drag.current;
-    if (!start) return;
-    drag.current = null;
-    setDragging(false);
-    writePersistedState(WIDTH_KEY, start.latest);
-  };
-  const resizeByKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const next =
-      event.key === "ArrowRight"
-        ? shownWidth + KEY_STEP
-        : event.key === "ArrowLeft"
-          ? shownWidth - KEY_STEP
-          : event.key === "Home"
-            ? MIN_WIDTH
-            : event.key === "End"
-              ? maxWidth
-              : null;
-    if (next === null) return;
-    event.preventDefault();
-    writePersistedState(WIDTH_KEY, resizeTo(next));
-  };
-
-  const alsoShown = shown && also !== undefined && also.current;
-  const ownShown = shown && !alsoShown;
-
   return (
     <>
       <DockTab
         glowRef={glowRef}
         label={title}
-        onClick={() => onOpenChange(!ownShown)}
-        open={ownShown}
+        onClick={() => onOpenChange(!shown)}
+        open={shown}
+        quiet={quiet}
         ref={tabRef}
         ringRef={ringRef}
         running={running}
       />
-      {also ? (
-        <DockTab
-          label={also.label}
-          onClick={() => (alsoShown ? onOpenChange(false) : also.onOpen())}
-          open={alsoShown}
-          quiet={also.quiet}
-          ref={alsoRef}
-          running={also.running}
-        />
-      ) : null}
-      <aside
-        aria-hidden={!shown}
-        aria-label={heading}
-        className={[
-          "assistant-dock-card",
-          "assistant-pane-card",
-          !shown && "assistant-dock-card--closed",
-          dragging && "assistant-pane-card--dragging",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        inert={!shown}
-        style={{ width: shownWidth }}
-      >
-        <div
-          aria-label={`Resize ${title}`}
-          aria-orientation="vertical"
-          aria-valuemax={maxWidth}
-          aria-valuemin={MIN_WIDTH}
-          aria-valuenow={shownWidth}
-          className="assistant-pane-card__resize"
-          onDoubleClick={() =>
-            writePersistedState(WIDTH_KEY, resizeTo(DEFAULT_WIDTH))
-          }
-          onKeyDown={resizeByKey}
-          onLostPointerCapture={endDrag}
-          onPointerDown={startDrag}
-          onPointerMove={moveDrag}
-          onPointerUp={endDrag}
-          role="separator"
-          tabIndex={0}
-        />
-        <header className="assistant-dock-card__header">
-          <span aria-hidden className="assistant-pane-card__live" />
-          <AppTypography
-            className="assistant-dock-card__title"
-            fontWeight={600}
-            noWrap
-          >
-            {heading}
-          </AppTypography>
-          <AppActionIconButton
-            ariaLabel={`Close ${heading}`}
-            icon="mdi:close"
-            onClick={() => {
-              onOpenChange(false);
-              // The card goes inert; the tab of its view is where it went.
-              (alsoShown ? alsoRef : tabRef).current?.focus();
-            }}
-            size="small"
-            tooltip={false}
+      <DockCard>
+        <aside
+          aria-hidden={!shown}
+          aria-label={heading}
+          className={[
+            "assistant-dock-card",
+            "assistant-pane-card",
+            !shown && "assistant-dock-card--closed",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          inert={!shown}
+          style={{ width: shownWidth, order }}
+        >
+          <DockResize
+            maxWidth={maxWidth}
+            setWidth={setWidth}
+            title={title}
+            width={shownWidth}
           />
-        </header>
-        <div className="assistant-pane-card__body">
-          {shown || drawClosed ? children : null}
-        </div>
-      </aside>
+          <header className="assistant-dock-card__header">
+            <span aria-hidden className="assistant-pane-card__live" />
+            <AppTypography
+              className="assistant-dock-card__title"
+              fontWeight={600}
+              noWrap
+            >
+              {heading}
+            </AppTypography>
+            <AppActionIconButton
+              ariaLabel={`Close ${heading}`}
+              icon="mdi:close"
+              onClick={() => {
+                onOpenChange(false);
+                // The card goes inert; its tab is where it went.
+                tabRef.current?.focus();
+              }}
+              size="small"
+              tooltip={false}
+            />
+          </header>
+          <div className="assistant-pane-card__body">
+            {shown || drawClosed ? children : null}
+          </div>
+        </aside>
+      </DockCard>
     </>
   );
 }

@@ -77,6 +77,8 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 		// iptables too, though Detect asks only for wg-quick: the NAT hooks
 		// of an interface LinuxIO creates are iptables lines.
 		{name: "wireguard", wantDebian: "wireguard-tools iptables", wantRHEL: "wireguard-tools iptables-nft"},
+		// Debian 13 and Ubuntu 25.04 on keep the service in wsdd-server.
+		{name: "wsdd", wantDebian: "wsdd-server", wantRHEL: "wsdd"},
 		{
 			name:             "avahi",
 			wantDebian:       "avahi-daemon libnss-mdns",

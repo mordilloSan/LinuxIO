@@ -116,6 +116,7 @@ export function buildTestConfigSnapshots(
     viewModes: {},
     viewModeDefault: "card",
     terminalFontSize: 16,
+    assistantFontSize: 14,
     ...uiOverrides,
     layoutOrders: uiOverrides.layoutOrders ?? {},
   };
@@ -179,6 +180,8 @@ interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
   auth?: Partial<AuthContextType>;
   /** Capability flags to seed into the query cache (default: all unknown). */
   capabilities?: Partial<CapabilityState>;
+  /** Config actions to replace the inert ones (e.g. a `setKey` spy). */
+  config?: Partial<ConfigContextType>;
   queryClient?: QueryClient;
   /** Disable for trees that mount the real ConfigProvider and own its cache. */
   seedConfig?: boolean;
@@ -190,6 +193,7 @@ export function render(
     appSettings,
     auth,
     capabilities,
+    config,
     queryClient = createTestQueryClient(),
     seedConfig = true,
     ...options
@@ -202,7 +206,7 @@ export function render(
   if (capabilities) {
     seedCapabilityCache(queryClient, capabilities, cacheUserId(authValue.user));
   }
-  const configValue = createConfigContextValue();
+  const configValue = createConfigContextValue(config);
   const user = userEvent.setup();
 
   function Wrapper({ children }: { children: ReactNode }) {

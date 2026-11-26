@@ -6,6 +6,7 @@ import { render, screen, within } from "@/test/render";
 
 import { groupChats } from "./chatGroups";
 import ChatsCard from "./ChatsCard";
+import { DockWidthProvider } from "./dockWidth";
 
 // Local noon, so "today" and "yesterday" hold in any time zone.
 const NOW = new Date(2026, 10, 12, 12, 0, 0).getTime();
@@ -64,10 +65,15 @@ function setup(over: Partial<Parameters<typeof ChatsCard>[0]> = {}) {
     onDelete: vi.fn(),
     onSelect: vi.fn(),
     open: true,
+    room: null,
     sessions,
     ...over,
   };
-  render(<ChatsCard {...props} />);
+  render(
+    <DockWidthProvider>
+      <ChatsCard {...props} />
+    </DockWidthProvider>,
+  );
   return props;
 }
 

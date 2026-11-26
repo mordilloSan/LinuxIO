@@ -19,9 +19,16 @@ const ConfigPath = version.ConfigDir + "/docker-update.json"
 const (
 	dockerUpdateConfigVersion = 1
 	defaultDockerUpdateTime   = "04:00"
+	// maxMinFreeGiB bounds the free-space minimum at 1 PiB, far above any
+	// disk, so the bytes it stands for cannot overflow.
+	maxMinFreeGiB = 1 << 20
 )
 
 var dailyDockerUpdateTimePattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):([0-5][0-9])$`)
+
+// ErrInvalidSettings wraps a scheduled-update setting the settings refuse;
+// the bridge answers it as invalid arguments.
+var ErrInvalidSettings = errors.New("invalid Docker update settings")
 
 type containerAutoUpdateStore struct {
 	configPath string
@@ -90,17 +97,20 @@ func normalizeContainerAutoUpdateOptions(opts DockerContainerAutoUpdateOptions) 
 		mode = "update"
 	}
 	if mode != "update" && mode != "check_only" {
-		return DockerContainerAutoUpdateOptions{}, fmt.Errorf("invalid Docker update mode %q", opts.Mode)
+		return DockerContainerAutoUpdateOptions{}, fmt.Errorf("%w: mode %q", ErrInvalidSettings, opts.Mode)
 	}
 	timeOfDay := strings.TrimSpace(opts.Time)
 	if timeOfDay == "" {
 		timeOfDay = defaultDockerUpdateTime
 	}
 	if !dailyDockerUpdateTimePattern.MatchString(timeOfDay) {
-		return DockerContainerAutoUpdateOptions{}, fmt.Errorf("invalid Docker update time %q", opts.Time)
+		return DockerContainerAutoUpdateOptions{}, fmt.Errorf("%w: time %q", ErrInvalidSettings, opts.Time)
+	}
+	if opts.MinFreeGiB < 0 || opts.MinFreeGiB > maxMinFreeGiB {
+		return DockerContainerAutoUpdateOptions{}, fmt.Errorf("%w: free-space minimum %d GiB, which must be 0 to %d", ErrInvalidSettings, opts.MinFreeGiB, maxMinFreeGiB)
 	}
 	if opts.ReviveStopped && !opts.UpdateStopped {
-		return DockerContainerAutoUpdateOptions{}, errors.New("starting stopped containers after update requires stopped-container updates")
+		return DockerContainerAutoUpdateOptions{}, fmt.Errorf("%w: starting stopped containers after update requires stopped-container updates", ErrInvalidSettings)
 	}
 	out := opts
 	out.ContainerNames = normalizeContainerNames(opts.ContainerNames)

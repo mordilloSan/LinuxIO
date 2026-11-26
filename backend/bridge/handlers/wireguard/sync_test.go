@@ -63,3 +63,28 @@ func TestSyncDeviceConfigRejectsBadAllowedIP(t *testing.T) {
 		t.Fatal("syncDeviceConfig accepted an invalid allowed IP")
 	}
 }
+
+// wgctrl leaves a peer's preshared key and keepalive as they are unless it is
+// given a value, so what the config dropped has to be sent as zero. A server
+// that keeps a preshared key its device's file no longer has completes no
+// handshake with that device until the interface restarts.
+func TestSyncDeviceConfigClearsWhatTheConfigDropped(t *testing.T) {
+	serverKey, _ := wgtypes.GeneratePrivateKey()
+	peerKey, _ := wgtypes.GeneratePrivateKey()
+	cfg := WireGuardConfig{
+		PrivateKey: serverKey.String(),
+		Peers:      []PeerConfig{{PublicKey: peerKey.PublicKey().String(), AllowedIPs: []string{"10.7.0.2/32"}}},
+	}
+
+	got, err := syncDeviceConfig(context.Background(), cfg, []wgtypes.Peer{{PublicKey: peerKey.PublicKey()}})
+	if err != nil {
+		t.Fatalf("syncDeviceConfig: %v", err)
+	}
+	peer := got.Peers[0]
+	if peer.PresharedKey == nil || *peer.PresharedKey != (wgtypes.Key{}) {
+		t.Fatalf("preshared key = %v, want the zero key that clears it", peer.PresharedKey)
+	}
+	if peer.PersistentKeepaliveInterval == nil || *peer.PersistentKeepaliveInterval != 0 {
+		t.Fatalf("keepalive = %v, want the zero interval that turns it off", peer.PersistentKeepaliveInterval)
+	}
+}

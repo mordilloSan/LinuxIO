@@ -133,6 +133,9 @@ func validateUIPreferences(cfg *UIPreferences) []string {
 	if !ValidTerminalFontSize(cfg.TerminalFontSize) {
 		errs = append(errs, "terminalFontSize must be between 10 and 28")
 	}
+	if !ValidAssistantFontSize(cfg.AssistantFontSize) {
+		errs = append(errs, "assistantFontSize must be between 10 and 28")
+	}
 	errs = append(errs, validateThemeColors(cfg)...)
 	errs = append(errs, validateViewModes(cfg.ViewModes)...)
 	return errs

@@ -1,0 +1,30 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+import { linuxio } from "@/api";
+import { loadRouteQueries } from "@/routes/-loader";
+import { optionalString } from "@/routes/-search";
+
+import DiskOverview from "./-components/disk-overview/DiskOverview";
+
+// Advanced → Disks: every drive, what it builds and what is mounted.
+export const Route = createFileRoute("/_authenticated/storage/disks")({
+  validateSearch: (search) => ({
+    ...optionalString(search, "drive"),
+    ...optionalString(search, "fs"),
+    ...optionalString(search, "raid"),
+  }),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [
+      linuxio.storage.get_drive_info,
+      {
+        ...linuxio.monitoring.get_live,
+        select: (live) => live.filesystems ?? [],
+      },
+      linuxio.storage.list_nfs_mounts,
+    ]),
+  component: StorageDisksRoute,
+});
+
+function StorageDisksRoute() {
+  return <DiskOverview />;
+}

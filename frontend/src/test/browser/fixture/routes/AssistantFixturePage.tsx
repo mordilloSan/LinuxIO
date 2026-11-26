@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { closeStreamMux, initStreamMux } from "@/api";
@@ -12,15 +13,20 @@ import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import AssistantPage from "@/routes/_authenticated/assistant/-components/AssistantPage";
+import { useChatAddress } from "@/routes/_authenticated/assistant/-components/useChatAddress";
+
+// The app's own fonts, which swap in after the first paint as they do there.
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource/jetbrains-mono/400.css";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
 });
-// The font size controls follow terminalFontSize through useConfigValue,
+// The font size controls follow assistantFontSize through useConfigValue,
 // which reads the config snapshot from the query cache; there is no
 // ConfigProvider here to load one, so seed the one key the page reads.
 queryClient.setQueryData(uiConfigQueryKey(ANONYMOUS_USER_ID), {
-  terminalFontSize: 14,
+  assistantFontSize: 14,
 });
 // The page starts the agent only once what it needs is installed.
 queryClient.setQueryData(
@@ -42,6 +48,9 @@ const stubConfig = {
 const stubAuth = { privileged: false } as unknown as AuthContextType;
 
 export default function AssistantFixture() {
+  // As the real route does: the address names the open chat.
+  const { chat } = useSearch({ strict: false });
+  useChatAddress(chat);
   useEffect(() => {
     initStreamMux();
     return closeStreamMux;
@@ -54,6 +63,7 @@ export default function AssistantFixture() {
             <AssistantPage
               agent="claude"
               chatDefaults={{ model: "opus", effort: "high", mode: "plan" }}
+              chat={chat}
             />
           </main>
         </ConfigContext>

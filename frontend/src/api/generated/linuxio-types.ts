@@ -419,6 +419,8 @@ export interface BtrfsFilesystem {
   totalBytes: number;
   unallocatedBytes: number;
   usedBytes: number;
+  storedBytes: number;
+  freeBytes: number;
   allocation: BtrfsAllocation[];
   devices: BtrfsDevice[];
   scrub: BtrfsScrubStatus;
@@ -607,6 +609,7 @@ export interface BtrfsSnapshot {
   referencedBytes?: number;
   exclusiveBytes?: number;
   maxReferencedBytes?: number;
+  keptBy?: KeptReason;
 }
 
 export interface BtrfsSnapshotRequest {
@@ -772,6 +775,7 @@ export type CapabilityName =
   | "tuned"
   | "zram"
   | "avahi"
+  | "wsdd"
   | "wireguard"
   | "libvirt"
   | "btrfs_maintenance"
@@ -791,6 +795,7 @@ export interface CapabilityStatus {
 export interface ChangePasswordRequest {
   username: string;
   password: string;
+  smbSignIn?: boolean;
 }
 
 export interface ComposeActionResult {
@@ -923,6 +928,7 @@ export interface ConfigUISetPayload {
   viewModes?: Record<string, string>;
   layoutOrders?: Record<string, string[]>;
   terminalFontSize?: number;
+  assistantFontSize?: number;
 }
 
 export interface ContainerConfiguration {
@@ -1151,6 +1157,7 @@ export interface CreateUserRequest {
   shell?: string;
   groups?: string[];
   createHome?: boolean;
+  smbSignIn?: boolean;
 }
 
 export interface DeleteStackRequest {
@@ -1272,6 +1279,7 @@ export interface DockerContainerAutoUpdateOptions {
   cleanup: boolean;
   container_names: string[];
   include_stopped: boolean;
+  min_free_gib: number;
   mode: DockerContainerAutoUpdateMode;
   revive_stopped: boolean;
   time: string;
@@ -1328,6 +1336,7 @@ export interface DockerDaemonConfig {
   live_restore: boolean;
   log_max_file: string;
   log_max_size: string;
+  stop_before_shutdown: boolean;
   storage_driver: string;
   userland_proxy: boolean;
 }
@@ -1966,6 +1975,8 @@ export interface JobSettings {
   progressMinBytesMB: number;
   progressMinIntervalMs: number;
 }
+
+export type KeptReason = string;
 
 export interface LiveCPU {
   percent: number;
@@ -2813,9 +2824,21 @@ export interface RunReport {
   errors: string[];
 }
 
+export interface SMBSettings {
+  minProtocol: string;
+  encryption: string;
+  macDiscovery: boolean;
+  windowsDiscovery: boolean;
+}
+
 export interface SambaShare {
   name: string;
   properties: Record<string, string>;
+}
+
+export interface SambaUser {
+  username: string;
+  passwordStale: boolean;
 }
 
 export interface ScheduleCreateRequest {
@@ -2954,6 +2977,63 @@ export interface ShareUpdateSambaRequest {
   oldName: string;
   newName: string;
   properties: Record<string, string>;
+}
+
+export interface SharedFolder {
+  uuid: string;
+  path: string;
+  name: string;
+  access: SharedFolderAccess[];
+  everyone: string;
+  smb: boolean;
+  nfs: NFSClient[];
+  previousVersions: boolean;
+  recycleBin: boolean;
+  timeMachine: boolean;
+  timeMachineMaxBytes?: number;
+  folder?: string;
+}
+
+export interface SharedFolderAccess {
+  kind: string;
+  name: string;
+  level: string;
+  id?: number;
+}
+
+export interface SharedFolderCreateRequest {
+  uuid: string;
+  name: string;
+  maxReferencedBytes?: number;
+  snapshotRule?: BtrfsSnapshotRule;
+  access: SharedFolderAccess[];
+  everyone: string;
+  smb: boolean;
+  nfs: NFSClient[];
+  previousVersions: boolean;
+  recycleBin: boolean;
+  timeMachine: boolean;
+  timeMachineMaxBytes?: number;
+}
+
+export interface SharedFolderDeleteRequest {
+  uuid: string;
+  path: string;
+  confirmName: string;
+}
+
+export interface SharedFolderUpdateRequest {
+  uuid: string;
+  path: string;
+  name: string;
+  access: SharedFolderAccess[];
+  everyone: string;
+  smb: boolean;
+  nfs: NFSClient[];
+  previousVersions: boolean;
+  recycleBin: boolean;
+  timeMachine: boolean;
+  timeMachineMaxBytes?: number;
 }
 
 export interface SmartAttribute {
@@ -3601,6 +3681,7 @@ export interface UIConfig {
   primaryColor: string;
   sidebarCollapsed: boolean;
   terminalFontSize: number;
+  assistantFontSize: number;
   theme: Theme;
   themeColors?: ConfigThemeColorsByModePayload;
   viewModes: Record<string, TableCardViewMode>;
@@ -4849,6 +4930,11 @@ export interface LinuxIOSchema {
   };
 
   shares: {
+    create_folder: {
+      input: [request: SharedFolderCreateRequest];
+      request: SharedFolderCreateRequest;
+      result: SharedFolder;
+    };
     create_nfs_share: {
       input: [request: ShareNFSRequest];
       request: ShareNFSRequest;
@@ -4858,6 +4944,11 @@ export interface LinuxIOSchema {
       input: [request: ShareSambaRequest];
       request: ShareSambaRequest;
       result: SuccessNameResponse;
+    };
+    delete_folder: {
+      input: [request: SharedFolderDeleteRequest];
+      request: SharedFolderDeleteRequest;
+      result: void;
     };
     delete_nfs_share: {
       input: [path: string];
@@ -4875,14 +4966,32 @@ export interface LinuxIOSchema {
       request: RsyncSSHRequest;
       result: RsyncSSHStatus;
     };
+    get_smb_settings: { input: []; request: void; result: SMBSettings };
+    list_folders: { input: []; request: void; result: SharedFolder[] };
     list_nfs_shares: { input: []; request: void; result: NFSExport[] };
     list_samba_shares: { input: []; request: void; result: SambaShare[] };
+    list_samba_users: { input: []; request: void; result: SambaUser[] };
+    remove_samba_user: {
+      input: [username: string];
+      request: UsernameRequest;
+      result: void;
+    };
     save_rsync: {
       input: [request: RsyncSaveRequest];
       request: RsyncSaveRequest;
       result: RsyncStatus;
     };
+    set_smb_settings: {
+      input: [request: SMBSettings];
+      request: SMBSettings;
+      result: SMBSettings;
+    };
     stop_rsync: { input: []; request: void; result: RsyncStatus };
+    update_folder: {
+      input: [request: SharedFolderUpdateRequest];
+      request: SharedFolderUpdateRequest;
+      result: SharedFolder;
+    };
     update_nfs_share: {
       input: [request: ShareNFSRequest];
       request: ShareNFSRequest;
@@ -5737,8 +5846,11 @@ export interface LinuxIOCallSchema {
   "schedules.list": { request: void; result: SchedulesListResult };
   "shares.get_rsync": { request: void; result: RsyncStatus };
   "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
+  "shares.get_smb_settings": { request: void; result: SMBSettings };
+  "shares.list_folders": { request: void; result: SharedFolder[] };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };
+  "shares.list_samba_users": { request: void; result: SambaUser[] };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
   "storage.btrfs_pools_offline": { request: void; result: BtrfsOfflinePool[] };
   "storage.btrfs_replication_jobs": {

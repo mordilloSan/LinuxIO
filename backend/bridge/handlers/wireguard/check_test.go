@@ -445,6 +445,28 @@ func TestCheckInterfaceRefusals(t *testing.T) {
 	}
 }
 
+// The check talks to the interface that is up, with that interface's key. One
+// left running under another key than the config's would pass every step,
+// while no device of the config completes a handshake with it.
+func TestCheckInterfaceRefusesAnInterfaceRunningUnderAnotherKey(t *testing.T) {
+	newWireGuardTestEnv(t)
+	writeTestInterface(t, "wgtest", "10.7.0.1/24")
+	other, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("GeneratePrivateKey: %v", err)
+	}
+	kernel := &fakeKernel{dev: &wgtypes.Device{PublicKey: other.PublicKey(), ListenPort: 51820}}
+	useFakeKernel(t, kernel)
+
+	_, err = CheckInterface(context.Background(), apischema.NameRequest{Name: "wgtest"})
+	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "another key than its config") {
+		t.Fatalf("CheckInterface error = %v, want a conflict naming the key", err)
+	}
+	if len(kernel.opened) != 0 {
+		t.Fatalf("a refused check built a probe: %+v", kernel.opened)
+	}
+}
+
 // An interface whose own address is a /32 has no subnet to take a probe
 // address from.
 func TestCheckInterfaceWithAHostAddressIsRefused(t *testing.T) {

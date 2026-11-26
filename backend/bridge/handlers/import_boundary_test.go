@@ -15,9 +15,12 @@ const modulePrefix = "github.com/mordilloSan/LinuxIO/backend/"
 // the reason. Anything else two families need is a library and belongs in
 // bridge/internal (bridge-only) or common (shared with another binary).
 var allowedHandlerEdges = map[string]map[string]string{
-	"accounts": {"control": "logs the user out through logind when the account is deleted"},
-	"control":  {"packages": "control.version names the pending update to the linuxio package"},
-	"config":   {"docker": "the Docker startup drop-ins (mount ordering, host IP wait) are rewritten when their settings change"},
+	"accounts": {
+		"control": "logs the user out through logind when the account is deleted",
+		"shares":  "a password set with shared-folder sign-in on is also written to Samba, and a changed user or group has the shared folders' access applied again",
+	},
+	"control": {"packages": "control.version names the pending update to the linuxio package"},
+	"config":  {"docker": "the Docker startup drop-ins (mount ordering, host IP wait) are rewritten when their settings change"},
 	"capabilities": {
 		"docker": "capability probe", "memory": "capability probe", "monitoring": "the health probe reuses the daemon client",
 		"power": "capability probe", "shares": "capability probe", "storage": "capability probe", "virt": "capability probe",
@@ -26,6 +29,7 @@ var allowedHandlerEdges = map[string]map[string]string{
 	"filebrowser": {"indexer": "search and index maintenance use the indexer client"},
 	"memory":      {"power": "the swap status says whether a TuneD profile manages swappiness"},
 	"packages":    {"capabilities": "capability registry (CapabilitySpec, InstallSpec)", "docker": "Docker capability probe"},
+	"shares":      {"storage": "a shared folder is a pool subvolume with a size limit and a snapshot rule, made and removed through the storage operations"},
 	"system":      {"packages": "the health summary counts pending updates", "systemd": "the health summary lists services"},
 	"virt":        {"docker": "excludes Docker-owned bridges from VM bridge candidates", "network": "the VM preflight warns when the host firewall drops bridged VM traffic"},
 }

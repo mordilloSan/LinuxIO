@@ -329,10 +329,11 @@ the package's default of `/` does not leak into a schedule the user enables.
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
 installs the distro's `btrfs-progs` package through the existing privileged
-install path. It gates the **Storage → Subvolumes** tab (`/storage/subvolumes`),
-listed once a btrfs filesystem is mounted, which manages subvolumes,
-snapshots and replication, and the pools on the
-Disks overview, which manage devices, health and settings; see
+install path. It gates the **Storage → Pools** tab (`/storage/pools`), whose
+pool pages manage health, snapshots, devices and settings, and the
+**Storage → Snapshots** tab (`/storage/snapshots`), which manages snapshots,
+replication and subvolumes, both listed once a btrfs filesystem is mounted,
+and the pools on the Overview and the Disks page; see
 [Btrfs management](./btrfs.md).
 
 ## zram
@@ -481,7 +482,7 @@ scheme).
 
 The `e2fsprogs` and `xfsprogs` capabilities check for `mkfs.ext4` and
 `mkfs.xfs` and install the distro package of the same name on Debian and RHEL
-families. Formatting a partition in **Storage → Disks** needs the tool of the
+families. Formatting a partition in **Storage → Advanced → Disks** needs the tool of the
 chosen type; the `btrfs` capability above covers `mkfs.btrfs`.
 
 ## Node.js (Assistant)

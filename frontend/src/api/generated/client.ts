@@ -437,10 +437,16 @@ const linuxio = {
     update: defineMutation("schedules", "update", { kind: "object" }),
   },
   shares: {
+    create_folder: defineMutation("shares", "create_folder", {
+      kind: "object",
+    }),
     create_nfs_share: defineMutation("shares", "create_nfs_share", {
       kind: "object",
     }),
     create_samba_share: defineMutation("shares", "create_samba_share", {
+      kind: "object",
+    }),
+    delete_folder: defineMutation("shares", "delete_folder", {
       kind: "object",
     }),
     delete_nfs_share: defineMutation("shares", "delete_nfs_share", {
@@ -453,10 +459,23 @@ const linuxio = {
     }),
     get_rsync: defineCall("shares.get_rsync"),
     get_rsync_ssh: defineCallWithRequest("shares.get_rsync_ssh"),
+    get_smb_settings: defineCall("shares.get_smb_settings"),
+    list_folders: defineCall("shares.list_folders"),
     list_nfs_shares: defineCall("shares.list_nfs_shares"),
     list_samba_shares: defineCall("shares.list_samba_shares"),
+    list_samba_users: defineCall("shares.list_samba_users"),
+    remove_samba_user: defineMutation("shares", "remove_samba_user", {
+      kind: "field",
+      field: "username",
+    }),
     save_rsync: defineMutation("shares", "save_rsync", { kind: "object" }),
+    set_smb_settings: defineMutation("shares", "set_smb_settings", {
+      kind: "object",
+    }),
     stop_rsync: defineMutation("shares", "stop_rsync", { kind: "none" }),
+    update_folder: defineMutation("shares", "update_folder", {
+      kind: "object",
+    }),
     update_nfs_share: defineMutation("shares", "update_nfs_share", {
       kind: "object",
     }),

@@ -58,6 +58,7 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-btrfs-rebuild@.service",
 		"_SYSTEMD_UNIT=linuxio-btrfs-snapshot.service",
 		"_SYSTEMD_UNIT=linuxio-btrfs-replicate.service",
+		"_SYSTEMD_UNIT=linuxio-shares-recycle.service",
 		"_SYSTEMD_UNIT=linuxio-docker-update.service",
 	}
 

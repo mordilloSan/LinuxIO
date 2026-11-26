@@ -325,6 +325,10 @@ const errorMessage = (error: unknown) =>
 // step with the config.
 let chatDefaults: AssistantChatDefaults | undefined;
 
+// The chat the page's address names (`?chat=`), which a connect opens in place
+// of the newest while the agent still lists it; the page keeps it in step.
+let requestedChat: string | undefined;
+
 // Applies chatDefaults to a chat that was just created. The model goes first:
 // switching it rebuilds the effort levels. Best effort: anything the agent
 // does not offer or refuses stays at the agent's own choice.
@@ -390,10 +394,15 @@ async function openSession(
   try {
     let opened: SessionOpenResult;
     if (sessions.length > 0 && conn.canLoadSession) {
-      // Skip forks orphaned by a page reload unless they are all there is.
-      const newest = sessions.find((s) => !isFork(s)) ?? sessions[0];
-      setState({ ...sessionReset(), sessionId: newest.sessionId });
-      opened = await conn.loadSession(newest.sessionId);
+      // The chat the address names, only when the agent lists it; otherwise
+      // the newest, skipping forks orphaned by a page reload unless they are
+      // all there is.
+      const chosen =
+        sessions.find((s) => s.sessionId === requestedChat) ??
+        sessions.find((s) => !isFork(s)) ??
+        sessions[0];
+      setState({ ...sessionReset(), sessionId: chosen.sessionId });
+      opened = await conn.loadSession(chosen.sessionId);
     } else {
       opened = await conn.newSession();
       if (!isCurrent()) return;
@@ -416,6 +425,8 @@ async function openSession(
       setState({ status: "auth_required" });
       return;
     }
+    // Restart then opens the newest chat instead of failing on this one again.
+    requestedChat = undefined;
     throw error;
   }
 }
@@ -544,6 +555,10 @@ export const assistantStore = {
 
   setChatDefaults(defaults: AssistantChatDefaults | undefined) {
     chatDefaults = defaults;
+  },
+
+  setRequestedChat(sessionId: string | undefined) {
+    requestedChat = sessionId;
   },
 
   async connect(agent: AssistantAgentId) {

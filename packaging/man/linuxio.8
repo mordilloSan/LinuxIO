@@ -189,6 +189,9 @@ the file index under
 .I indexer/
 and the metrics history under
 .IR monitoring/ .
+Both folders stay when the package is removed. A Debian purge deletes them,
+except what the scheduled scripts, the rsync service, CIFS mounts and the
+swap file go on using after LinuxIO is gone.
 .TP
 .I /etc/pam.d/linuxio
 The PAM stack of the sign-in.

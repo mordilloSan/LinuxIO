@@ -179,16 +179,17 @@ func TestNotifyDropInIsTheOneTheRunRecordHookLooksFor(t *testing.T) {
 }
 
 // Removing the package deletes the alert drop-ins on the distribution's
-// update services and the schedule drop-ins on its update timers, which
-// LinuxIO wrote while it ran: each path is in the removal lists of both
-// packages.
-func TestPackageRemovalDeletesTheDropIns(t *testing.T) {
+// update services, the schedule drop-ins on its update timers and LinuxIO's
+// own APT files, which LinuxIO wrote while it ran, so the distribution's
+// settings return: each path is in the removal lists of both packages. The
+// keys it set in dnf's and Mint's own files stay.
+func TestPackageRemovalDeletesTheUpdateFiles(t *testing.T) {
 	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "..", "packaging", script))
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, path := range updateDropInPaths() {
+		for _, path := range append(updateDropInPaths(), aptPeriodicPath, aptUnattendedPath) {
 			if !slices.Contains(strings.Fields(string(data)), path) {
 				t.Errorf("packaging/%s does not delete %s", script, path)
 			}

@@ -104,6 +104,9 @@ func ValidChunkSizeMB(v int) bool { return v == 0 || (v >= 1 && v <= MaxChunkSiz
 // ValidTerminalFontSize reports whether v is within the supported range.
 func ValidTerminalFontSize(v int) bool { return v >= 10 && v <= 28 }
 
+// ValidAssistantFontSize reports whether v is within the supported range.
+func ValidAssistantFontSize(v int) bool { return v >= 10 && v <= 28 }
+
 // ParseDockerFolders cleans and validates Docker folder paths. They must be
 // structurally valid (absolute, not root, unique) but need not exist.
 func ParseDockerFolders[S ~string](values []S) ([]AbsolutePath, error) {

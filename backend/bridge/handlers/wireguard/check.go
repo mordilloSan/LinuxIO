@@ -160,6 +160,11 @@ func planCheck(name string, cfg WireGuardConfig, exported []PeerInfo, kernel che
 	if dev.ListenPort == 0 {
 		return probePlan{}, checkTargets{}, fmt.Errorf("%w: interface %s has no listen port", bridgeipc.ErrConflict, name)
 	}
+	// The probe uses the key of the interface that is up, so one left
+	// running under another key would pass every step.
+	if private, keyErr := wgtypes.ParseKey(cfg.PrivateKey); keyErr == nil && !keyMatches(private, dev.PublicKey) {
+		return probePlan{}, checkTargets{}, fmt.Errorf("%w: interface %s is running under another key than its config, so no device of the config can connect: turn it off and on", bridgeipc.ErrConflict, name)
+	}
 	// A disabled peer keeps its address in its exported file only.
 	reserved := make([]string, 0, len(exported))
 	for _, peer := range exported {

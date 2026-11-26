@@ -117,3 +117,22 @@ func TestHandleSetNTPRejectsUnparsableFlag(t *testing.T) {
 	err := handleSetNTP(context.Background(), apischema.EnabledRequest{Enabled: "maybe"})
 	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
 }
+
+// Removing the package deletes the time server file LinuxIO wrote, for
+// timesyncd and for chrony where it reads sources from /etc/chrony/sources.d
+// (Debian and Ubuntu), so the service's own servers return at its next
+// start: each path is in the removal lists of both packages. The block it
+// writes inside a chrony.conf that names no folder under /etc (Fedora's)
+// stays, and so does its file in a folder a hand-edited chrony.conf names.
+func TestPackageRemovalDeletesTheTimeServerFiles(t *testing.T) {
+	chrony, ok := chronyIncludedManagedPath("sourcedir /run/chrony-dhcp\nsourcedir /etc/chrony/sources.d\n")
+	require.True(t, ok)
+	for _, script := range []string{"debian/postrm", "rpm/linuxio.spec"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packaging", script))
+		require.NoError(t, err)
+		words := strings.Fields(string(data))
+		for _, path := range []string{timesyncdManagedConf, chrony} {
+			assert.Contains(t, words, path, "packaging/%s does not delete it", script)
+		}
+	}
+}

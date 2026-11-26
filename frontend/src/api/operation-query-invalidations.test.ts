@@ -251,6 +251,42 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     );
   });
 
+  // A password set in LinuxIO can switch shared-folder sign-in on or off,
+  // and a deleted user or group loses its rows in the folders' access.
+  it("refreshes shared folder sign-in and access after account mutations", () => {
+    const sambaUsers = ["linuxio", "shares", "list_samba_users"];
+    const folders = ["linuxio", "shares", "list_folders"];
+    for (const route of [
+      "accounts.create_user",
+      "accounts.change_password",
+      "accounts.delete_user",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toContainEqual(sambaUsers);
+    }
+    expect(
+      OPERATION_QUERY_INVALIDATIONS["shares.remove_samba_user"],
+    ).toContainEqual(sambaUsers);
+    for (const route of ["accounts.delete_user", "accounts.delete_group"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toContainEqual(folders);
+    }
+  });
+
+  it("refreshes the shares a shared folder is published as", () => {
+    for (const route of [
+      "shares.create_folder",
+      "shares.update_folder",
+      "shares.delete_folder",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(
+        expect.arrayContaining([
+          ["linuxio", "shares", "list_folders"],
+          ["linuxio", "shares", "list_samba_shares"],
+          ["linuxio", "shares", "list_nfs_shares"],
+        ]),
+      );
+    }
+  });
+
   it("refreshes selected account details after user mutations", () => {
     const expected = [
       ["linuxio", "accounts", "list_users"],
@@ -264,12 +300,19 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       "accounts.unlock_user",
       "accounts.change_password",
     ]) {
-      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(expected);
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(
+        expect.arrayContaining(expected),
+      );
     }
 
     expect(
       OPERATION_QUERY_INVALIDATIONS["accounts.modify_group_members"],
-    ).toEqual([["linuxio", "accounts", "list_groups"], ...expected]);
+    ).toEqual(
+      expect.arrayContaining([
+        ["linuxio", "accounts", "list_groups"],
+        ...expected,
+      ]),
+    );
   });
 
   it("refreshes saved VM templates after creation, download, or deletion", () => {

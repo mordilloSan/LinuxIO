@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BTRFS_PROFILES,
+  keptCopies,
   metadataProfiles,
   recommendedMetadata,
   usableBytes,
@@ -117,5 +118,24 @@ describe("metadata profiles", () => {
     expect(recommendedMetadata(all, 2)).toBe("raid1");
     expect(recommendedMetadata(all, 4)).toBe("raid1c3");
     expect(recommendedMetadata(["raid1c4"], 4)).toBe("raid1c4");
+  });
+});
+
+describe("keptCopies", () => {
+  it("says in words how each profile keeps data", () => {
+    expect(
+      ["single", "dup", "raid0", "raid1", "raid1c3", "raid1c4", "raid10"].map(
+        keptCopies,
+      ),
+    ).toEqual([
+      "data stored once",
+      "two copies on one disk",
+      "striped, no second copy",
+      "two copies on different disks",
+      "three copies",
+      "four copies",
+      "two copies, striped",
+    ]);
+    expect(keptCopies("raid5")).toBe("raid5");
   });
 });

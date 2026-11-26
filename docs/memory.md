@@ -1020,14 +1020,17 @@ The swap files and their lines:
 
 | Path | Written by | Content |
 |---|---|---|
-| `/var/lib/linuxio/swap` | Create, Move, a switch to disk or zswap on a host without disk swap | A folder `0755 root root`; on btrfs a subvolume with the SELinux context of `/var/lib/linuxio`. Never removed. |
+| `/var/lib/linuxio/swap` | Create, Move, a switch to disk or zswap on a host without disk swap | A folder `0755 root root`; on btrfs a subvolume with the SELinux context of `/var/lib/linuxio`. The memory page never removes it; a DEB purge deletes it when it is empty. |
 | `/var/lib/linuxio/swap/swapfile` | the same | LinuxIO's swap file, `0600 root root`, NOCOW on btrfs. |
 | `<path>.linuxio-resize`, beside a swap file | Resize | A temporary swap file, `0600 root root`, with no fstab line, deleted when the resize ends. |
 | `/etc/fstab` | Create adds `/var/lib/linuxio/swap/swapfile none swap sw,nofail 0 0`; Remove, Move and a switch to zram take out the swap lines of the file they remove | Every other byte stays as it was; written under the fstab lock with `atomicfile.Write`, mode `0644`, then a systemd reload. |
 
-The swap file and its fstab line stay when the package is removed or purged,
-as the rest of `/var/lib/linuxio` does, so the host keeps its swap
-([Packages](./packaging.md#removal) has the commands that take them away).
+The swap file and its fstab line stay when the package is removed or purged
+(a DEB purge deletes the rest of `/var/lib/linuxio` and keeps `swap/`), so
+the host keeps its swap, and so do the configuration files of the first
+table: with the swap file they are the host's memory setup
+([Packages](./packaging.md#removal) has the commands that take the swap file
+away).
 
 One more file lives only while zram-tools installs from Capabilities, and
 starts with its own header, `# Managed by LinuxIO (Settings, Capabilities);

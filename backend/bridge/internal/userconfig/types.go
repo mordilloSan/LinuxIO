@@ -37,6 +37,7 @@ type UIPreferences struct {
 	ViewModes         map[string]string   `json:"viewModes" yaml:"viewModes"`
 	LayoutOrders      map[string][]string `json:"layoutOrders" yaml:"layoutOrders"`
 	TerminalFontSize  int                 `json:"terminalFontSize" yaml:"terminalFontSize"`
+	AssistantFontSize int                 `json:"assistantFontSize" yaml:"assistantFontSize"`
 }
 
 // PersistedDismissals records per-user acknowledgements of one-shot health signals.

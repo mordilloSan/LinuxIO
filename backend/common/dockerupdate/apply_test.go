@@ -8,6 +8,7 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -88,6 +89,8 @@ func TestComposePullServicesRetriesTransientRegistryFailures(t *testing.T) {
 		{name: "throttle recovers", failures: 2, output: ghcrThrottle, wantPulls: 3, wantWait: 15 * time.Second},
 		{name: "persistent throttle", failures: 99, output: ghcrThrottle, wantPulls: 6, wantWait: 155 * time.Second, wantErr: true},
 		{name: "missing image", failures: 99, output: "Error response from daemon: manifest unknown", wantPulls: 1, wantErr: true},
+		// Docker Hub's quota is counted over hours: a retry only spends it.
+		{name: "docker hub pull limit", failures: 99, output: "Error response from daemon: toomanyrequests: You have reached your pull rate limit", wantPulls: 1, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -184,7 +187,7 @@ func TestUpdateComposeContainerTreatsSameImageAsCurrent(t *testing.T) {
 		context.Background(), fake, composeRollback{}, before,
 		ComposeTarget{Name: "project", ConfigFiles: []string{"compose.yml"}},
 		"web", updateResultFor(before),
-		func(context.Context, ComposeTarget, string, ComposeLineEmitter) error { return nil },
+		func(context.Context, ComposeTarget, string, []string, ComposeLineEmitter) error { return nil },
 		nil,
 	)
 	if err != nil {
@@ -501,6 +504,24 @@ func TestValidateComposeServiceScopeRejectsReplicas(t *testing.T) {
 	}
 }
 
+// A run of a Docker job carries its project's labels, and is no replica.
+func TestValidateComposeServiceScopeLeavesOutDockerJobRuns(t *testing.T) {
+	fake := newStandaloneUpdateFake()
+	labels := map[string]string{
+		"com.docker.compose.project": "media",
+		"com.docker.compose.service": "web",
+	}
+	jobRun := maps.Clone(labels)
+	jobRun[dockerJobLabel] = "nightly"
+	fake.containerItems = []container.Summary{
+		{ID: "web", Labels: labels},
+		{ID: "run", Labels: jobRun},
+	}
+	if err := validateComposeServiceScope(context.Background(), fake, "media", "web"); err != nil {
+		t.Fatalf("validateComposeServiceScope error = %v, want none", err)
+	}
+}
+
 func TestValidateStandaloneUpdateRejectsUnsafeOwnership(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -527,6 +548,13 @@ func TestValidateStandaloneUpdateRejectsUnsafeOwnership(t *testing.T) {
 				inspect.Config.Labels["com.docker.swarm.service.name"] = "web"
 			},
 			wantErr: "Docker Swarm",
+		},
+		{
+			name: "docker job run",
+			mutate: func(inspect *container.InspectResponse) {
+				inspect.Config.Labels[dockerJobLabel] = "backup"
+			},
+			wantErr: "run of a Docker job",
 		},
 	}
 
@@ -2167,12 +2195,12 @@ func TestRebuildComposeContainerLetsGoOfTheHold(t *testing.T) {
 func TestComposePullAndUpServicesBuildsNothing(t *testing.T) {
 	args := fakeComposeCLI(t, builtWebConfig, 0, 0)
 
-	if err := composePullAndUpServicesValidated(t.Context(), composeTestTarget, []string{"web", "worker"}, nil); err != nil {
+	if err := composePullAndUpServicesValidated(t.Context(), composeTestTarget, []string{"web", "worker"}, []string{"sidecar"}, nil); err != nil {
 		t.Fatalf("composePullAndUpServicesValidated: %v", err)
 	}
 	want := []string{
 		"compose --progress=json --project-name media --file compose.yml pull web worker",
-		"compose --progress=json --project-name media --file compose.yml up -d --no-deps --no-build --force-recreate web worker",
+		"compose --progress=json --project-name media --file compose.yml up -d --no-deps --no-build --force-recreate web worker sidecar",
 	}
 	if commands := composeCommandsRun(t, args); !slices.Equal(commands, want) {
 		t.Fatalf("commands = %q, want %q", commands, want)

@@ -20,7 +20,11 @@ Disks kept by a delete without that option appear on the **Disks** tab
 `linuxio/cloud-images` that no defined VM references by file name and whose VM
 name no longer exists. `virt.unused_disk_delete` re-checks that under a per-VM
 name file lock that `virt.create` also holds, so a disk a create is still
-writing is never removed.
+writing is never removed. The tab's header broom prunes them all at once: after
+one confirmation it calls `virt.unused_disk_delete`, one disk at a time, for
+each disk the tab listed when the broom was pressed, never one that turned up
+later, and reports how many failed; a disk a VM took in the meantime fails that
+re-check and stays.
 
 **Download update** explicitly checks the publisher and saves a new version
 when needed. Home Assistant OS records the release tag and uses versioned

@@ -183,10 +183,25 @@ async function checkLeftovers(page: Page) {
   };
 }
 
+// The key the interface that is up runs under, and the one its config gives.
+const runningKey = () => sh(`sudo wg show ${IFACE} public-key`);
+const configKey = async () =>
+  (
+    await vmSsh(
+      "sudo bash -s",
+      `awk '$1 == "PrivateKey" { print $3 }' ${CONFIG} | wg pubkey`,
+    )
+  ).trim();
+
+// A WireGuard link made outside LinuxIO, which no unit holds.
+const FOREIGN = "wge2eother";
+
 const cleanUp = async () => {
   await vmSsh(
     `sudo systemctl disable --now ${UNIT} >/dev/null 2>&1; sudo wg-quick down ${IFACE} >/dev/null 2>&1; ` +
+      `sudo ip link del ${IFACE} 2>/dev/null; sudo ip link del ${FOREIGN} 2>/dev/null; ` +
       `sudo systemctl reset-failed ${UNIT} >/dev/null 2>&1; sudo rm -rf ${CONFIG} /etc/wireguard/${IFACE}; ` +
+      `sudo rm -rf /etc/wireguard/${FOREIGN}.conf /etc/wireguard/${FOREIGN}; ` +
       `sudo ip netns del ${PEER_NS} 2>/dev/null; sudo ip link del ${PEER_LINK} 2>/dev/null; ` +
       `sudo rm -f ${PEER_KEYS}.key ${PEER_KEYS}.psk ${FORWARD_FILE}; true`,
   );
@@ -482,4 +497,119 @@ test("an interface goes up, down and away through its unit, also after a reboot"
     expect(await forwardFileExists(), FORWARD_FILE).toBe(false);
     expect(await forwarding(), "forwarding after the removal").toBe("1");
   });
+});
+
+// An interface whose config was deleted while it was up keeps running under
+// its old key, and its unit stays active: a LinuxIO up to 0.56.0 left that
+// behind on every remove of an interface it could not take down. A create of
+// the same name then started a unit that was already active, which does
+// nothing, so the page showed the new interface as up while no device of
+// its config ever completed a handshake (docs/wireguard.md, "When the unit
+// and the interface disagree").
+test("a create replaces the interface a deleted config left running", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  // Whatever the test above left when it failed part-way.
+  await cleanUp();
+  await signIn(page);
+  const egressNic = await sh(
+    "ip -o -4 route show default | awk '{ print $5; exit }'",
+  );
+  const request = {
+    name: IFACE,
+    addresses: "10.99.0.1/24",
+    listenPort: "51999",
+    egressNic,
+    numPeers: "1",
+  };
+
+  // On another subnet, so the stop of what it leaves runs the new config's
+  // hooks over an interface they were not written for.
+  await call(page, "add_interface", { ...request, addresses: "10.97.0.1/24" });
+  const oldKey = await runningKey();
+  expect(await peerPingsAnswered(), "pings through the first interface").toBe(
+    "2",
+  );
+
+  await test.step("the new config runs, not the deleted one's key", async () => {
+    // What the old remove left: no config, the interface up, the unit active.
+    await vmSsh(`sudo rm -rf ${CONFIG} /etc/wireguard/${IFACE}`);
+    expect(await linkExists(), "the interface without its config").toBe(true);
+    expect(await unitState(), UNIT).toBe("active");
+
+    await call(page, "add_interface", request);
+    const newKey = await runningKey();
+    expect(newKey, "the running key after the create").not.toBe(oldKey);
+    expect(newKey, "the running key and the config's").toBe(await configKey());
+    // The device of the new config connects, with the keys, the preshared
+    // key and the address of its exported file.
+    expect(await peerPingsAnswered(), "pings through the new interface").toBe(
+      "2",
+    );
+    expect((await checkConnection(page)).statuses.handshake).toBe("ok");
+  });
+
+  await test.step("an up restarts an interface that runs under another key", async () => {
+    // A config replaced by hand under a running interface: a new server key.
+    const before = await runningKey();
+    await vmSsh(
+      "sudo bash -s",
+      `key=$(wg genkey) && sed -i "s|^PrivateKey .*|PrivateKey = $key|" ${CONFIG}`,
+    );
+    expect(await configKey(), "the config's key after the edit").not.toBe(
+      before,
+    );
+    // The check would pass against the interface that is up: it says so.
+    const check = await bridgeCall(
+      page,
+      "wireguard.check_interface",
+      { name: IFACE },
+      randomUUID(),
+    );
+    expect(check.error ?? "", "wireguard.check_interface").toContain(
+      "another key than its config",
+    );
+
+    await call(page, "up_interface", { name: IFACE });
+    expect(await runningKey(), "the running key after the up").toBe(
+      await configKey(),
+    );
+    expect(await unitState(), UNIT).toBe("active");
+  });
+
+  await test.step("a name another network interface has is refused before anything is written", async () => {
+    await vmSsh(`sudo ip link add ${FOREIGN} type wireguard`);
+    const answer = await bridgeCall(
+      page,
+      "wireguard.add_interface",
+      {
+        ...request,
+        name: FOREIGN,
+        addresses: "10.98.0.1/24",
+        listenPort: "51998",
+      },
+      randomUUID(),
+    );
+    expect(answer.error ?? "", "wireguard.add_interface").toContain(
+      `ip link delete ${FOREIGN}`,
+    );
+    expect(
+      await sh(
+        `sudo test -e /etc/wireguard/${FOREIGN}.conf -o -e /etc/wireguard/${FOREIGN} && echo yes || echo no`,
+      ),
+      "files written for the refused name",
+    ).toBe("no");
+    // The link is its owner's: still there.
+    expect(
+      await sh(
+        `ip -o link show ${FOREIGN} >/dev/null 2>&1 && echo yes || echo no`,
+      ),
+      FOREIGN,
+    ).toBe("yes");
+    await vmSsh(`sudo ip link del ${FOREIGN}`);
+  });
+
+  await call(page, "remove_interface", { name: IFACE });
+  expect(await linkExists(), "the interface").toBe(false);
 });

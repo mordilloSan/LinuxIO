@@ -21,6 +21,27 @@ make check-backend-quiet
 make test-quiet quiet_failure_lines=80
 ```
 
+`make test` is the whole check of the tree on this machine: lint, types, the
+frontend and backend unit tests, the C auth tests, deadcode, the packaging
+fixtures, and `check-docs`, `check-actions` (actionlint) and `check-systemd`
+(`systemd-analyze verify` of the units). It leaves out what needs a browser,
+the network or the test VMs. `make test-full` runs everything: `make test`,
+`test-frontend-browser`, `test-assistant-agent-integration` and
+`test-vm-all`, one after another. Like `test-vm-all`, a failure does not stop
+it, it ends with each one's result and time and fails when one failed, Ctrl-C
+ends it once the target running stops, and it takes no `SUITES`,
+`PLAYWRIGHT_ARGS` or `DISTRO`. It runs as long as `test-vm-all` and a few
+minutes more, and it is the owner's to run. Its recap names each one's log
+and is also kept in `.cache/test-logs/test-full/recap.log`, beside `make
+test`'s output (`test.log`), which `make test` does not keep itself; the
+folder is emptied as `test-full` starts. `test-frontend-browser` and
+`test-assistant-agent-integration` write every line, whether run alone or by
+`test-full`, to `.cache/test-logs/test-frontend-browser.log` and
+`.cache/test-logs/test-assistant-agent-integration.log`, replaced by each run;
+`test-vm-all` keeps its own in `.cache/test-logs/test-vm-all/`.
+`test-packages` is not in it, since it checks packages a release build
+assembles.
+
 Do not invoke `go test`, Vitest, TypeScript, linters, or formatters directly;
 use the corresponding Make target.
 
@@ -36,9 +57,12 @@ pkill -f '^node .*vite preview --config config/browser.vite.config.ts'
 ```
 
 The `^node` anchor matters: without it `pkill -f` also matches the shell that
-runs it. Two runs at once slow each other down, so a timing assertion that
-fails while a second browser log in `.cache/test-logs` starts within seconds of
-yours is rerun when the machine is quiet;
+runs it. The spec files run side by side on half the CPUs (Playwright's
+default), each file's tests in order; every page mocks its own backend, so they
+share only the preview server. Two runs at once slow each other down, so a
+timing assertion that fails while a second browser log in `.cache/test-logs`
+starts within seconds of yours is rerun when the machine is quiet, or alone
+with `PLAYWRIGHT_ARGS="--workers=1"`;
 `PLAYWRIGHT_ARGS="<spec> --repeat-each 2"` confirms the spec is stable.
 
 ## Prerequisites
@@ -405,8 +429,9 @@ Fedora release (the domain `linuxio-e2e-fedora44`, the
 `Fedora-Cloud-Base-Generic-44-1.7` image), and `DISTRO=debian` selects
 Debian 13 (`linuxio-e2e-debian`, Debian's `debian-13-generic-amd64.qcow2`
 from `cloud.debian.org`, checked against the SHA-512 in its `SHA512SUMS`,
-and the Ubuntu seed with Debian's `docker-compose` for Ubuntu's
-`docker-compose-v2`). The Debian VM has a VGA card with no display: its
+and the Ubuntu seed with the distribution's Docker, `docker.io` with
+Debian's `docker-compose` and `docker-buildx`, where the Ubuntu VMs run
+Docker's own packages). The Debian VM has a VGA card with no display: its
 GRUB draws on `gfxterm`, and without a video device the VM resets at every
 "Booting `Debian GNU/Linux'". Debian is in the apt family for the rig and the
 specs.
@@ -465,7 +490,10 @@ Ubuntu's root suites and browser specs, then Fedora's. A failure does not
 stop it, since none of the four needs another (each reverts its VMs, and
 Fedora's VMs are not Ubuntu's). Each writes its logs to a folder of its own,
 `.cache/test-logs/test-vm-all/DISTRO-backend` or `DISTRO-browser`, emptied as
-it starts, so Fedora's logs do not overwrite Ubuntu's. The run ends with a
+it starts, so Fedora's logs do not overwrite Ubuntu's. A browser run's
+screenshots, traces and error context go in `results/` there
+(`LINUXIO_VM_RESULTS_DIR`) instead of `.cache/playwright/vm-results`, which
+Playwright empties as each run starts. The run ends with a
 recap of the four: each one's result and time, the folder of each one that
 failed, and the totals line of each browser run (the specs and the
 release-update spec). It fails when one of the four failed. Ctrl-C ends it
@@ -531,16 +559,24 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `192.168.122.1:8399` (8400 for VM 2, and so on; from 8409 for
   `VM_RELEASE=noble` and 8419 for Fedora, so that first boots of any VMs can
   run at once) that runs only during that boot. It creates the user
-  `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
-  Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
+  `linuxio-e2e` with passwordless sudo and installs
   `btrfs-progs`, the tools that assemble and publish the package, and what
   the DEB depends on (`libnss-systemd`, `libpam0g`, `packagekit`, `polkitd`),
   and `jq`, which the specs read job records with, so an install of
-  the package needs no download, and upgrades every package. The
+  the package needs no download, and upgrades every package. Docker is
+  Docker's own packages (`docker-ce` with `docker-compose-plugin` and
+  `docker-buildx-plugin`), from Docker's convenience script
+  (`get.docker.com`) as LinuxIO's Capability Manager installs it, so the
+  Ubuntu VMs run the Docker a host that installed it through LinuxIO has,
+  where the Debian and Fedora VMs keep their distribution's; the seed's
+  Docker lines end with the source they belong to, and `write_seed` keeps
+  the profile's (`DOCKER_SOURCE`). Docker's packages are whatever Docker
+  published when the VM was created or last updated, not a pinned version. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
   to the seed's packages reaches a VM only when it is created again
   (`vm-destroy`, then `vm-create`); `vm-update` upgrades what `clean` already
-  has.
+  has, and gives an Ubuntu VM created with the distribution's `docker.io`
+  Docker's packages in its place.
 - Every target that needs the VM starts it if it is stopped and shuts it
   down when it ends, passed or failed (`vm-install`, `vm-ssh`, the
   `test-vm-*` and the `vm-test-*` ones), so no VM runs unused. What was
@@ -620,6 +656,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   and container and leaves the setting off; a run that stops between its
   save and its last test leaves it on, with addresses the VM no longer has,
   and the next run switches it off first.
+  `docker-shutdown.spec.ts` is the reboot test of stopping containers before
+  shutdown ([Docker Shutdown](./docker-shutdown.md)). It turns live restore
+  and the setting on from the page, runs three busybox containers (an
+  `unless-stopped` one that ignores SIGTERM and records the stop signal
+  Docker sends it, an `always` one and one without a policy) and reboots the
+  VM once, then turns the setting off. It puts back the `daemon.json` it
+  found and removes the unit and the containers.
   `capability-install.spec.ts` installs zram from Capabilities
   ([Capabilities](./capabilities.md#zram)), and on Ubuntu cancels a second
   install while apt holds dpkg back for 30 s, through an apt drop-in it
@@ -689,13 +732,16 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
     or dnf, checks socket activation, idle exit and the index timer, and
     removes it again.
   - `docker` is `test-docker-update-integration`: real Compose replacements,
-    which pull alpine images from Docker Hub. Ubuntu's `docker.io` and
-    Fedora's `moby-engine` come without the Compose and buildx plugins, so
-    the seed installs them (`docker-compose-v2`, `docker-compose` on Fedora,
-    and `docker-buildx`), and the suite installs them in a VM created before
-    the seed did. With buildx Compose builds through Bake, as it does on a
-    host that has Docker's own packages; a host without buildx is covered by
-    the unit tests' recorded build output only.
+    which pull alpine images from Docker Hub. On Ubuntu it runs Docker's own
+    packages, which bring the Compose and buildx plugins; Debian's
+    `docker.io` and Fedora's `moby-engine` come without them, so the seed
+    installs them (`docker-compose` and `docker-buildx`). The suite installs
+    them in a VM created before the seed did, and gives an Ubuntu VM still
+    on `docker.io` Docker's packages, downloaded at every run until
+    `vm-update` keeps them in its snapshot. With buildx Compose builds
+    through Bake, as it does on a host that has Docker's own packages; a
+    host without buildx is covered by the unit tests' recorded build output
+    only.
   - `network` adds dummy and macvlan links and a network namespace as root
     (`TestVirtualChildrenByParentSeesOtherNamespaces`).
   - `userconfig` has a root bridge create config files for another user's
@@ -1033,7 +1079,8 @@ The full index groups the supported targets as follows:
 - setup: `setup`, `setup-frontend`, `ensure-node`, `ensure-go`,
   `ensure-golint`, `ensure-modernize`, `ensure-deadcode`, `ensure-govulncheck`,
   `update-deps`, `update-go-deps`, `update-build-pins`
-- frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
+- frontend checks: `lint`, `lint-only`, `format-frontend` (Oxfmt alone, for
+  when Oxlint fails on files you are not changing), `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
   `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,
   `update-frontend-screenshots`
@@ -1043,7 +1090,7 @@ The full index groups the supported targets as follows:
   `test-assistant-agent-integration`,
   `test-filebrowser-root`, `check-c-build-deps`
 - analysis: `bundle-metrics`, `compiler-coverage`, `analyze`, `analyze-auth`
-- builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,
+- builds and development: `test`, `test-full`, `build`, `build-nocheck`, `fastbuild`,
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `third-party-notices`,
   `generate`, `dev-prep`, `dev`, `dev-stop`, `dev-status-install`,

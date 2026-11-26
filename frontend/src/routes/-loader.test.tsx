@@ -723,6 +723,7 @@ describe("loadRouteUIConfig", () => {
       viewModeDefault: "card",
       layoutOrders: {},
       terminalFontSize: 16,
+      assistantFontSize: 14,
     } as const;
     queryClient.setQueryData(
       scopedConfigQueryKey(linuxio.config.get_ui.queryKey, "root"),

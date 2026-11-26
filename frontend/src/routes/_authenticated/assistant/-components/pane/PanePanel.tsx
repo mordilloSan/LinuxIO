@@ -13,18 +13,21 @@ export default function PanePanel({
   open,
   onOpenChange,
   running,
+  order,
 }: {
   pane: PaneView;
   room: number | null;
   open: boolean | null;
   onOpenChange: (open: boolean) => void;
   running: boolean;
+  order?: number;
 }) {
   return (
     <DockPanel
       drawing={pane.tree}
       onOpenChange={onOpenChange}
       open={open}
+      order={order}
       room={room}
       running={running}
       title={paneTitle(pane)}

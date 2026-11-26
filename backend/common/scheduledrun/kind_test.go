@@ -38,6 +38,8 @@ func TestKindOf(t *testing.T) {
 		{"linuxio-btrfs-resync@" + testPoolUUID + ".service", Kind{RouteResync, "Pool resync", testPoolUUID, "/storage?pool=" + testPoolUUID, false}},
 		{"linuxio-btrfs-rebuild@" + testPoolUUID + ".service", Kind{RouteRebuild, "Pool rebuild", testPoolUUID, "/storage?pool=" + testPoolUUID, false}},
 		{"linuxio-docker-update.service", Kind{RouteDockerUpdate, "Container updates", "", "/docker/containers", false}},
+		// Nothing else reports a recycle bin that could not be emptied.
+		{"linuxio-shares-recycle.service", Kind{RouteRecycle, "Recycle bins", "", "/storage/shares", true}},
 		{"apt-daily-upgrade.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},
 		{"dnf-automatic.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},
 		{"dnf5-automatic.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},

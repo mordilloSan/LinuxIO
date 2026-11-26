@@ -42,33 +42,79 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
-- On kernel 7.3 (Fedora 45's `7.3.4-300.fc45`, test VM, 2026-11-24) a pool
-  member whose disk is pulled off the bus is marked missing at once ("has
-  gone missing, continue as degraded"), and what was proven on 7.0 does not
-  all hold ([E2E testing](./e2e-testing.md#distributions)). With the target
-  pulled mid-rebuild the kernel finished the replace "from `<missing disk>`
-  (devid 2) to `<missing disk>`" rather than suspending it, so LinuxIO's
-  degraded mount found no replace to cancel (`TestBtrfsAutoRebuildIntegration`,
-  "dies again", replace state 2 at 100%), and the unmount before that mount
-  hit a kernel `WARNING` at `fs/btrfs/volumes.c:1208`
-  (`btrfs_close_one_device`). The rebuild proof
-  (`TestBtrfsRebuildProofIntegration`, `targetFailsMidReplace`) shows the
-  same finish and then a new replace onto the returned disk succeeding, so
-  the plain mount its 7.0 legs expect refused succeeds; its later legs did
-  not run on 7.3. `btrfs-rebuild.spec.ts` passes its first dropout on 7.3 and
-  then, after the reboot, pulls the mount's source disk and plugs it back:
-  the health runs see it, but no automatic rebuild starts within five
-  minutes, and why was not read. Starts from what changed in `dev-replace.c`
-  and `volumes.c` between 7.0 and 7.3.
+- A replace from the pool details whose target disk drops out mid-copy
+  fails its check ([Btrfs](../btrfs.md#devices-and-profiles), Replace
+  device) but, unlike the automatic rebuild, leaves no record, so nothing
+  handles that disk when it comes back carrying the replace target's
+  superblock (devid 0). Since 7.1 the kernel has finished the replace onto
+  the missing disk, and while that disk is connected every later mount of
+  the pool fails with `EUCLEAN` ("replace without active item, run 'device
+  scan --forget' on the target device", `btrfs_init_dev_replace`), LinuxIO's
+  boot check and **Mount degraded** included; 7.0 instead takes the replace
+  up at the next mount past every extent, leaving the disk's stale copies in
+  the member. Both are shown by `TestBtrfsRebuildProofIntegration`
+  (`targetFailsMidReplace`) in the test VM, on 7.0 and on Fedora's 7.3.4.
+  Worse, since 7.1, when the disk being replaced is still present the finish
+  also takes it out of the pool and erases its superblocks
+  (`btrfs_dev_replace_finishing` scratches a writeable source), so a
+  two-disk raid1 is left with one copy; read in 7.3.4's source, not run.
+  LinuxIO cancels a replace as soon as its target disk goes, which keeps
+  the kernel from that finish. Still open, decided 2026-11-25: a replace
+  from the pool details keeps a record as the rebuild does, which
+  LinuxIO's next mount acts on, since after the cancel too the disk comes
+  back with the target's superblock and the mount is refused. **checked**
+
+- Since 7.1 a replace whose target disk drops out mid-copy leaves the
+  kernel corrupting its own memory ([Btrfs](../btrfs.md#known-limits)): the
+  finish onto the missing disk leaves one more disk on the pool's
+  allocation list than it counts writable, and every recalculation of free
+  space then writes 32 bytes past an array (`alloc_virtual_chunk`); after
+  an unmount, a scan of the returned disk frees a device still on that
+  list. Seen with `slub_debug` on Fedora's 7.3.4 in the test VM, during
+  LinuxIO's degraded mount in `TestBtrfsAutoRebuildIntegration` ("dies
+  again") and with `btrfs` and `mount` alone; two of five runs without it
+  ended with the guest crashed. The automatic rebuild reaches it when its
+  disk drops out again, and so does a replace from the pool details.
+  LinuxIO now cancels such a replace within two seconds, and says to
+  restart the server, which the cancel needs too on these kernels: it
+  leaves the kernel's count of the pool's writable disks one short, so the
+  pool gets no new chunk and cannot be mounted read-write again
+  (`btrfs_remove_bdev` takes a replace target off a count it was never
+  in). Open: neither bug is
+  reported upstream (the steps are `btrfs replace start`, the target
+  removed from its bus mid-copy, `umount`, the disk back and scanned,
+  `mount`), and a replace the kernel continued at a mount is watched
+  without the cancel. **checked**
 
 ## Visible bugs
+
+- A plain SMB or NFS share makes the folders missing on its path by path, as
+  root (`mkdirShareDir`, `backend/bridge/handlers/shares/nfs.go`): a local
+  user who may write a folder on that path can swap the next one for a link
+  between the check and the `MkdirAll`, and root makes and opens up folders
+  where the link points. Refused inside a shared folder; elsewhere it should
+  go through handles, as the file browser's operations do
+  ([Privilege pattern](../privilege_pattern.md)). **checked**
 
 ## Tests that are missing
 
 ## Needs the owner
 
+- A change of a shared folder's access table reaches the folder and what is
+  made in it afterwards, not what is already inside: someone lowered from
+  read and write to read only keeps writing existing files locally and over
+  NFS ([Shared Folders](../shared-folders.md#change-stop-sharing)). For a
+  folder LinuxIO made, the table could also be applied to its contents, as
+  a job, or as a choice when saving; the owner decides which. **checked**
+
 ## Needs a real machine or a measurement
 
+- A shared folder or a plain SMB share on Fedora with SELinux enforcing:
+  LinuxIO neither labels the folder `samba_share_t` nor sets
+  `samba_export_all_rw`, so by the policy `smbd` is refused a folder on a
+  pool ([Shared Folders](../shared-folders.md)). Read from the policy, not
+  run: `shared-folders.spec.ts` skips Fedora. Run it there, then decide
+  between the label on each shared folder and the boolean.
 - The Gemini CLI and Codex profiles (`GEMINI_CLI_HOME`, `CODEX_HOME`,
   [Assistant](../AI-assistant.md#profile)) were read from the pinned packages
   and not run: a sign-in at each vendor from the Assistant should land in
@@ -80,11 +126,10 @@ after a change that issues ioctls).
 
 - The automatic btrfs rebuild onto a disk that comes back
   ([Btrfs](../btrfs.md#missing-disks)) ran only on the test VM's virtio
-  disks, 7.0, whose serials the rig sets. A SATA or SAS disk pulled and
-  reseated on a real machine (its WWN as udev reads it, `sd` naming while the
-  pool holds the dead disk, a hot-plug that resets the link rather than
-  removing the disk) is not run. On the VM's 7.3 it differs from 7.0
-  ([Storage safety](#storage-safety)).
+  disks, on 7.0 and 7.3, whose serials the rig sets. A SATA or SAS disk
+  pulled and reseated on a real machine (its WWN as udev reads it, `sd`
+  naming while the pool holds the dead disk, a hot-plug that resets the link
+  rather than removing the disk) is not run.
 
 - Docker's wait for published host IPs
   ([Bridge Configuration Storage](../config-storage.md#wait-for-published-host-ips))
@@ -106,6 +151,17 @@ after a change that issues ioctls).
 ## Later, no plan yet
 
 Do one of these only when something shows it is needed.
+
+- Adopt a folder that already exists as a shared folder (a pool subvolume,
+  shared or not), so it gets an access table
+  ([Shared Folders](../shared-folders.md)). Applied to the top folder only by
+  default, with a warning before saving when the folder is mounted into a
+  container or holds files owned by system accounts: access applied to
+  existing contents breaks a program that checks its own permissions
+  (PostgreSQL refuses a data folder that is not `0700` or `0750`).
+- Guest access to a shared folder: a **Guest** row in the access table, off
+  by default, which needs Samba's global `map to guest`. Windows 11 refuses
+  guest sign-in by default, so it often fails from Windows anyway.
 
 ## Rejected
 

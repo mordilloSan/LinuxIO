@@ -29,7 +29,9 @@ func runApplyDaemonStorageTask(ctx context.Context, task *bridgeipc.Task, req ap
 	report := func(phase, message string) {
 		task.ReportProgress(apischema.DockerDaemonStorageProgress{Phase: phase, Message: message})
 	}
-	return applyDaemonStorage(ctx, report, dockerDaemonConfigPath, dockerDataRootDropInPath, req)
+	return withDockerShutdownStop(ctx, req, func() (apischema.DockerDaemonConfigSetResult, error) {
+		return applyDaemonStorage(ctx, report, dockerDaemonConfigPath, dockerDataRootDropInPath, req)
+	})
 }
 
 // applyDaemonStorage stops the running containers, writes the files while

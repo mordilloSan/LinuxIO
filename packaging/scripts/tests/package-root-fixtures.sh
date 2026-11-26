@@ -64,6 +64,8 @@ expected_tree="\
 644 usr/lib/systemd/system/linuxio-docker-update.service.d/10-linuxio-run.conf
 755 usr/lib/systemd/system/linuxio-schedule-.service.d
 644 usr/lib/systemd/system/linuxio-schedule-.service.d/10-linuxio-run.conf
+755 usr/lib/systemd/system/linuxio-shares-recycle.service.d
+644 usr/lib/systemd/system/linuxio-shares-recycle.service.d/10-linuxio-run.conf
 755 usr/lib/systemd/system/mintupdate-automation-upgrade.service.d
 644 usr/lib/systemd/system/mintupdate-automation-upgrade.service.d/10-linuxio-run.conf
 755 usr/lib/tmpfiles.d

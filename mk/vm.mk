@@ -341,7 +341,8 @@ test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Pic
 # release-update spec). A failure does not end it, since none of the four
 # needs another: each reverts its VMs, and Fedora's VMs are not Ubuntu's.
 # Each writes its logs to a folder of its own under vm_all_logs, emptied as it
-# starts, so the four keep theirs and a total read from one is that run's.
+# starts, so the four keep theirs and a total read from one is that run's; a
+# browser run's screenshots and traces go in its results/ there too.
 # The run ends with each one's result and time and the totals of the browser
 # runs, and fails when one failed. Ctrl-C ends it once the target running
 # stops, and the rest are shown as not run. It takes no SUITES,
@@ -363,7 +364,7 @@ test-vm-all: ## Run the root suites and the browser specs in the test VMs on Ubu
 	  logs="$(vm_all_logs)/$$distro-$$kind"
 	  rm -rf "$$logs" && mkdir -p "$$logs" || exit 1
 	  begun=$$EPOCHSECONDS code=0
-	  $(MAKE) --no-print-directory "test-vm-$$kind" DISTRO="$${distro#ubuntu}" LINUXIO_VM_LOG_DIR="$$logs" || code=$$?
+	  LINUXIO_VM_RESULTS_DIR="$$logs/results" $(MAKE) --no-print-directory "test-vm-$$kind" DISTRO="$${distro#ubuntu}" LINUXIO_VM_LOG_DIR="$$logs" || code=$$?
 	  took=$$((EPOCHSECONDS - begun))
 	  line="$$name $$(printf '%3dm %02ds' $$((took / 60)) $$((took % 60)))"
 	  if ((code == 0)); then

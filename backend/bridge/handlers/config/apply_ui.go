@@ -59,7 +59,10 @@ func applyUISettingsUpdate(ui *userconfig.UIPreferences, payload *apischema.Conf
 	}
 	applyViewModes(ui, payload.ViewModes)
 	applyLayoutOrders(ui, payload.LayoutOrders)
-	return applyTerminalFontSizeSetting(ui, payload.TerminalFontSize)
+	if err := applyTerminalFontSizeSetting(ui, payload.TerminalFontSize); err != nil {
+		return err
+	}
+	return applyAssistantFontSizeSetting(ui, payload.AssistantFontSize)
 }
 
 func applyDockAccentGradientSetting(ui *userconfig.UIPreferences, payload *apischema.ConfigDockAccentGradient) error {
@@ -212,5 +215,17 @@ func applyTerminalFontSizeSetting(ui *userconfig.UIPreferences, fontSize *int) e
 		return fmt.Errorf("%w: terminalFontSize must be between 10 and 28", bridgeipc.ErrInvalidArgs)
 	}
 	ui.TerminalFontSize = *fontSize
+	return nil
+}
+
+// applyAssistantFontSizeSetting treats 0 as "keep the current size".
+func applyAssistantFontSizeSetting(ui *userconfig.UIPreferences, fontSize *int) error {
+	if fontSize == nil || *fontSize == 0 {
+		return nil
+	}
+	if !userconfig.ValidAssistantFontSize(*fontSize) {
+		return fmt.Errorf("%w: assistantFontSize must be between 10 and 28", bridgeipc.ErrInvalidArgs)
+	}
+	ui.AssistantFontSize = *fontSize
 	return nil
 }

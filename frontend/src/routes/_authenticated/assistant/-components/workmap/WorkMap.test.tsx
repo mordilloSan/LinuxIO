@@ -1,7 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen, within } from "@/test/render";
+import { fireEvent, render, screen, within } from "@/test/render";
 
 import type { TranscriptBlock } from "../transcript/transcript";
 import WorkMap from "./WorkMap";
@@ -35,8 +35,13 @@ const blocks: TranscriptBlock[] = [
   },
 ];
 
-const draw = (over: Partial<Parameters<typeof WorkMap>[0]> = {}) =>
-  render(
+// The words under the picture start closed; most cases read them, so they
+// are opened unless `details` is false.
+const draw = (
+  over: Partial<Parameters<typeof WorkMap>[0]> = {},
+  details = true,
+) => {
+  const drawn = render(
     <WorkMap
       agentLabel="Claude Code"
       model={null}
@@ -46,6 +51,11 @@ const draw = (over: Partial<Parameters<typeof WorkMap>[0]> = {}) =>
       {...over}
     />,
   );
+  if (details) {
+    fireEvent.click(screen.getByRole("button", { name: /Details/ }));
+  }
+  return drawn;
+};
 
 // Each row as its words and its time.
 const lines = () =>
@@ -57,6 +67,24 @@ const lines = () =>
     ]);
 
 describe("WorkMap", () => {
+  it("keeps the words under the picture closed until asked", async () => {
+    draw({}, false);
+    const toggle = screen.getByRole("button", { name: /Details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Nothing is running.")).toBeNull();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    // The picture is there all the while.
+    expect(screen.getByRole("img", { name: /^Activity map/ })).toBeVisible();
+
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Nothing is running.")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem").length).toBeGreaterThan(0);
+
+    await userEvent.click(toggle);
+    expect(screen.queryByText("Nothing is running.")).toBeNull();
+  });
+
   it("names the picture by where the work went", () => {
     draw();
     expect(

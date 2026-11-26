@@ -14,7 +14,6 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import InfoRow from "@/components/ui/InfoRow";
 import { useCapability } from "@/hooks/useCapabilities";
 import BtrfsMaintenanceControls from "@/routes/_authenticated/storage/-components/btrfs/BtrfsMaintenanceControls";
 
@@ -129,18 +128,7 @@ const CompressionControl = ({
             onChange={(_, force) => setEdited({ ...draft, force })}
           />
         }
-        label={
-          <>
-            Force
-            <AppTypography
-              color="text.secondary"
-              style={{ display: "block" }}
-              variant="caption"
-            >
-              Compress even data that looks incompressible
-            </AppTypography>
-          </>
-        }
+        label="Also compress data that looks incompressible"
       />
       <AppButton
         disabled={isPending || !levelValid}
@@ -153,7 +141,9 @@ const CompressionControl = ({
       <AppChip
         color={compression.fstabPersisted ? "success" : "default"}
         label={
-          compression.fstabPersisted ? "Persisted in fstab" : "Not in fstab"
+          compression.fstabPersisted
+            ? "Kept after a restart"
+            : "Until the next restart"
         }
         size="small"
         variant="soft"
@@ -197,30 +187,40 @@ const BtrfsSettingsCard = ({ uuid, mountpoint }: BtrfsSettingsCardProps) => {
         <CardIconHeader
           iconTint
           icon={<Icon height={24} icon="mdi:cog-outline" width={24} />}
-          subtitle="Quotas, compression and maintenance timers"
+          subtitle="Quotas, compression and maintenance"
           title="Settings"
         />
         {error && <AppAlert severity="error">{error.message}</AppAlert>}
         {settings && (
           <>
-            <InfoRow label="Quotas">
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--app-space-4)",
+                marginBottom: "var(--app-space-12)",
+              }}
+            >
               <AppFormControlLabel
                 control={
                   <AppSwitch
-                    aria-label="Quotas"
+                    aria-describedby={`btrfs-quotas-help-${uuid}`}
                     checked={settings.quotasEnabled}
                     disabled={isSettingQuotas}
                     onChange={(_, enabled) => setQuotas({ uuid, enabled })}
                   />
                 }
-                label={
-                  <AppTypography color="text.secondary" variant="caption">
-                    Enables per-subvolume usage and limits. Adds some write
-                    overhead.
-                  </AppTypography>
-                }
+                label="Quotas"
               />
-            </InfoRow>
+              <AppTypography
+                color="text.secondary"
+                id={`btrfs-quotas-help-${uuid}`}
+                variant="caption"
+              >
+                Shows how much space each subvolume and snapshot takes, and lets
+                you set size limits. Adds some write overhead.
+              </AppTypography>
+            </div>
             <CompressionControl
               compression={settings.compression}
               uuid={uuid}

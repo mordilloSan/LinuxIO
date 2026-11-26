@@ -19,12 +19,15 @@ package_update: true
 # about updates build their own package).
 package_upgrade: true
 packages:
-  - docker.io
-  # The Compose and buildx plugins docker.io comes without, which the docker
-  # suite needs: with buildx Compose builds through Bake, as on a host that
-  # has Docker's own packages.
-  - '@COMPOSE_PACKAGE@'
-  - docker-buildx
+  # Docker: on Ubuntu, Docker's own packages, which runcmd installs below as
+  # LinuxIO's Capability Manager does; on Debian, the distribution's, with
+  # the Compose and buildx plugins docker.io comes without, which the docker
+  # suite needs (with buildx Compose builds through Bake, as on a host that
+  # has Docker's own packages). linuxio-vm.sh write_seed keeps the lines of
+  # one and drops the other's, by the comment that ends them.
+  - docker.io # distribution Docker
+  - '@COMPOSE_PACKAGE@' # distribution Docker
+  - docker-buildx # distribution Docker
   - btrfs-progs
   # The specs read LinuxIO's job records with it; Ubuntu's image has it and
   # Debian's does not.
@@ -43,3 +46,4 @@ packages:
 runcmd:
   # Unattended apt runs stall the reboot and power-cut checks.
   - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
+  - [sh, -c, "curl -fsSL https://get.docker.com | sh"] # Docker's own packages

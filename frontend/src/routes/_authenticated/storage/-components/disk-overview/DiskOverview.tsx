@@ -41,10 +41,10 @@ import type { DriveInfo, SmartTestProgressEvent } from "./types";
 import UnmountFilesystemDialog from "./UnmountFilesystemDialog";
 import { findBackingDrive } from "./utils";
 
-const storageRouteApi = getRouteApi("/_authenticated/storage/");
+const storageRouteApi = getRouteApi("/_authenticated/storage/disks");
 const STORAGE_TOAST_META = {
   label: "Open storage",
-  to: "/storage",
+  to: "/storage/disks",
 } as const;
 
 interface DriveDetailsProps {
@@ -308,7 +308,7 @@ const DiskOverview = () => {
         setUnmounting(null);
         toast.success("Filesystem unmounted");
         void navigate({
-          to: "/storage",
+          to: "/storage/disks",
           search: (previous) => ({
             ...previous,
             fs: undefined,
@@ -319,15 +319,14 @@ const DiskOverview = () => {
       toast: STORAGE_TOAST_META,
     });
   useClearSelectionOnEscape(
-    Boolean(expanded || selectedMountpoint || search.pool || search.raid),
+    Boolean(expanded || selectedMountpoint || search.raid),
     () => {
       void navigate({
-        to: "/storage",
+        to: "/storage/disks",
         search: (previous) => ({
           ...previous,
           drive: undefined,
           fs: undefined,
-          pool: undefined,
           raid: undefined,
         }),
       });
@@ -335,7 +334,7 @@ const DiskOverview = () => {
   );
   const handleToggle = (driveName: string) => {
     void navigate({
-      to: "/storage",
+      to: "/storage/disks",
       search: (previous) => ({
         ...previous,
         drive: expanded === driveName ? undefined : driveName,
@@ -374,7 +373,7 @@ const DiskOverview = () => {
   });
   const handleFilesystemToggle = (filesystem: FilesystemInfo) => {
     void navigate({
-      to: "/storage",
+      to: "/storage/disks",
       search: (previous) => ({
         ...previous,
         fs:
@@ -386,7 +385,7 @@ const DiskOverview = () => {
   };
   const handleOpenVolume = (mountpoint: string) => {
     void navigate({
-      to: "/storage",
+      to: "/storage/disks",
       search: (previous) => ({ ...previous, fs: mountpoint }),
     });
   };
@@ -398,7 +397,7 @@ const DiskOverview = () => {
   };
   const handleInspectDrive = (driveName: string) => {
     void navigate({
-      to: "/storage",
+      to: "/storage/disks",
       search: (previous) => ({
         ...previous,
         drive: driveName,
@@ -504,21 +503,16 @@ const DiskOverview = () => {
           nfsMounts={nfsMounts}
           onInspectDrive={handleInspectDrive}
           onOpenVolume={handleOpenVolume}
-          onSelectPool={(pool) =>
-            void navigate({
-              to: "/storage",
-              search: (previous) => ({ ...previous, pool, raid: undefined }),
-              resetScroll: false,
-            })
+          onSelectPool={(uuid) =>
+            void navigate({ params: { uuid }, to: "/storage/pools/$uuid" })
           }
           onSelectRaid={(raid) =>
             void navigate({
-              to: "/storage",
-              search: (previous) => ({ ...previous, raid, pool: undefined }),
+              to: "/storage/disks",
+              search: (previous) => ({ ...previous, raid }),
               resetScroll: false,
             })
           }
-          selectedPool={search.pool}
           selectedRaid={search.raid}
         />
       )}

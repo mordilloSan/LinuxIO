@@ -3,7 +3,8 @@
 #   fix:   auto-fix in place (local workflow); records the warning count in
 #          $FRONTEND_LINT_WARNINGS_FILE when set.
 #   check: read-only (CI).
-# Usage: lint-frontend.sh fix|check FRONTEND_DIR
+#   format: Oxfmt alone, in place, for when Oxlint fails elsewhere.
+# Usage: lint-frontend.sh fix|check|format FRONTEND_DIR
 set -uo pipefail
 
 mode="$1"
@@ -21,6 +22,13 @@ if [ "$mode" = "check" ]; then
 	./node_modules/.bin/oxlint --type-aware "${oxlint_config[@]}" "${oxlint_paths[@]}"
 	"${oxfmt[@]}" --check --no-error-on-unmatched-pattern "${oxfmt_globs[@]}"
 	echo "✅ Frontend linting and formatting checks passed!"
+	exit 0
+fi
+
+if [ "$mode" = "format" ]; then
+	set -e
+	"${oxfmt[@]}" --no-error-on-unmatched-pattern "${oxfmt_globs[@]}"
+	printf "\033[1;32m   ✓\033[0m Oxfmt\n"
 	exit 0
 fi
 

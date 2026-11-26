@@ -14,8 +14,10 @@ import (
 	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/client"
 	digest "github.com/opencontainers/go-digest"
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func TestRegistryLookupCacheReusesOnlySuccessfulLookups(t *testing.T) {
@@ -174,6 +176,7 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 		Mode:           "update",
 		Cleanup:        true,
 		ContainerNames: []string{"web", "missing"}}, alerts.NotificationSettings{}, scheduledPassOperations{
+		freeSpace: noFreeSpaceMinimum,
 		list: func(context.Context) ([]container.Summary, error) {
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
@@ -197,10 +200,200 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 	}
 }
 
+// noFreeSpaceMinimum is the free-space step of a pass whose disk always has
+// room.
+func noFreeSpaceMinimum(context.Context, int) error { return nil }
+
+// The free-space step is asked by a pass in update mode with containers to
+// update, with the minimum (0 for none). Too little room, which the step
+// alerted on and marked reported, ends the pass before any update and the
+// run completes, its summary saying so; a free space that could not be read
+// fails the run.
+func TestRunScheduledPassRefusesUpdatesWithTooLittleFreeSpace(t *testing.T) {
+	lowSpace := scheduledrun.Reported(lowFreeSpaceError{folder: "/var/lib/docker", free: 1 << 30, minGiB: 5})
+	unreadable := errors.New("read the free space of /var/lib/docker: permission denied")
+	const notAsked = -1
+	for name, tc := range map[string]struct {
+		opts           DockerContainerAutoUpdateOptions
+		spaceErr       error
+		wantAsked      int
+		wantUpdate     bool
+		wantErr        error
+		wantRunFails   bool
+		wantLowSummary bool
+	}{
+		"no minimum":        {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true}, wantAsked: 0, wantUpdate: true},
+		"room enough":       {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true, MinFreeGiB: 5}, wantAsked: 5, wantUpdate: true},
+		"too little room":   {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true, MinFreeGiB: 5}, spaceErr: lowSpace, wantAsked: 5, wantErr: lowSpace, wantLowSummary: true},
+		"space unreadable":  {opts: DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true, MinFreeGiB: 5}, spaceErr: unreadable, wantAsked: 5, wantErr: unreadable, wantRunFails: true},
+		"check only":        {opts: DockerContainerAutoUpdateOptions{Mode: "check_only", UpdateAll: true, MinFreeGiB: 5}, spaceErr: lowSpace, wantAsked: notAsked},
+		"nothing to update": {opts: DockerContainerAutoUpdateOptions{Mode: "update", MinFreeGiB: 5}, spaceErr: lowSpace, wantAsked: notAsked},
+	} {
+		t.Run(name, func(t *testing.T) {
+			asked, updated := notAsked, false
+			pass, err := runScheduledPass(t.Context(), tc.opts, alerts.NotificationSettings{}, scheduledPassOperations{
+				list: func(context.Context) ([]container.Summary, error) {
+					return []container.Summary{{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning}}, nil
+				},
+				check: func(context.Context, []container.Summary) (DockerUpdateCheckResult, error) {
+					return DockerUpdateCheckResult{Checked: 1, Updates: 1}, nil
+				},
+				update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) ([]ContainerOutcome, error) {
+					updated = true
+					return nil, nil
+				},
+				freeSpace: func(_ context.Context, minGiB int) error {
+					asked = minGiB
+					return tc.spaceErr
+				},
+			}, nil)
+			if !errors.Is(err, tc.wantErr) || (tc.wantErr == nil && err != nil) {
+				t.Fatalf("runScheduledPass error = %v, want %v", err, tc.wantErr)
+			}
+			if asked != tc.wantAsked || updated != tc.wantUpdate {
+				t.Fatalf("asked for %d GiB, updated %v; want %d, %v", asked, updated, tc.wantAsked, tc.wantUpdate)
+			}
+			if fails := scheduledrun.Unreported(err) != nil; fails != tc.wantRunFails {
+				t.Fatalf("run fails = %v, want %v (error %v)", fails, tc.wantRunFails, err)
+			}
+			if pass.Checked.Updates != 1 {
+				t.Fatalf("report = %+v, want the check's result kept", pass)
+			}
+			if (pass.LowFreeSpace != "") != tc.wantLowSummary {
+				t.Fatalf("report LowFreeSpace = %q, want set %v", pass.LowFreeSpace, tc.wantLowSummary)
+			}
+		})
+	}
+}
+
+type fakeDockerInfo struct {
+	root string
+	err  error
+}
+
+func (f fakeDockerInfo) Info(context.Context, client.InfoOptions) (client.SystemInfoResult, error) {
+	var result client.SystemInfoResult
+	result.Info.DockerRootDir = f.root
+	return result, f.err
+}
+
+// Both Docker's root folder and containerd's are measured; a containerd
+// folder that does not exist is passed over.
+func TestCheckDockerFreeSpaceNamesTheFolderShortOfRoom(t *testing.T) {
+	for name, tc := range map[string]struct {
+		free    map[string]uint64
+		wantErr string
+	}{
+		"room in both":         {free: map[string]uint64{"/srv/docker": 20 << 30, containerdRoot: 20 << 30}},
+		"docker short":         {free: map[string]uint64{"/srv/docker": 3 << 30, containerdRoot: 20 << 30}, wantErr: "/srv/docker has 3.0 GiB free, less than the 5 GiB"},
+		"containerd short":     {free: map[string]uint64{"/srv/docker": 20 << 30, containerdRoot: 1 << 29}, wantErr: containerdRoot + " has 0.5 GiB free"},
+		"no containerd folder": {free: map[string]uint64{"/srv/docker": 20 << 30}},
+		"exactly the minimum":  {free: map[string]uint64{"/srv/docker": 5 << 30, containerdRoot: 5 << 30}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			old := freeBytesAt
+			t.Cleanup(func() { freeBytesAt = old })
+			freeBytesAt = func(path string) (uint64, error) {
+				free, ok := tc.free[path]
+				if !ok {
+					return 0, unix.ENOENT
+				}
+				return free, nil
+			}
+			err := checkDockerFreeSpace(t.Context(), fakeDockerInfo{root: "/srv/docker"}, 5)
+			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("checkDockerFreeSpace error = %v, want %q", err, tc.wantErr)
+			}
+			if err != nil && !errors.As(err, new(lowFreeSpaceError)) {
+				t.Fatalf("checkDockerFreeSpace error = %v, want a lowFreeSpaceError", err)
+			}
+		})
+	}
+	// Docker's own folder must be readable: its absence is an error.
+	old := freeBytesAt
+	t.Cleanup(func() { freeBytesAt = old })
+	freeBytesAt = func(string) (uint64, error) { return 0, unix.ENOENT }
+	if err := checkDockerFreeSpace(t.Context(), fakeDockerInfo{root: "/srv/docker"}, 5); err == nil || errors.As(err, new(lowFreeSpaceError)) {
+		t.Fatalf("unreadable Docker root folder: error = %v, want an error other than low free space", err)
+	}
+	if err := checkDockerFreeSpace(t.Context(), fakeDockerInfo{err: errors.New("daemon down")}, 5); err == nil || errors.As(err, new(lowFreeSpaceError)) {
+		t.Fatalf("daemon that does not answer: error = %v, want an error other than low free space", err)
+	}
+}
+
+// The low free space warning is raised by a pass short of room, once for
+// passes that keep finding the same folder short, kept by one whose free
+// space cannot be read, and cleared by one with room or with no minimum.
+func TestGateOnFreeSpaceKeepsTheLowFreeSpaceAlertInStep(t *testing.T) {
+	useTempAlertStore(t)
+	free := uint64(3 << 30)
+	var readErr error
+	old := freeBytesAt
+	t.Cleanup(func() { freeBytesAt = old })
+	freeBytesAt = func(path string) (uint64, error) {
+		if path != "/srv/docker" {
+			return 0, unix.ENOENT
+		}
+		return free, readErr
+	}
+	info := fakeDockerInfo{root: "/srv/docker"}
+	lowAlert := func() (alerts.Alert, bool) {
+		doc, err := alerts.Load()
+		if err != nil {
+			t.Fatalf("load alerts: %v", err)
+		}
+		for _, a := range doc.Alerts {
+			if a.ID == alerts.ID(dockerUpdateAlertSource, dockerUpdateLowSpaceAlertKey) {
+				return a, true
+			}
+		}
+		return alerts.Alert{}, false
+	}
+
+	err := gateOnFreeSpace(t.Context(), info, 5)
+	if !errors.As(err, new(lowFreeSpaceError)) || scheduledrun.Unreported(err) != nil {
+		t.Fatalf("short of room: error = %v, want a reported lowFreeSpaceError", err)
+	}
+	a, ok := lowAlert()
+	if !ok || a.Severity != alerts.SeverityWarning || a.Title != "Docker updates skipped: low free space" ||
+		a.Message != "No container was updated: the filesystem of /srv/docker has 3.0 GiB free, less than the 5 GiB the settings ask for." ||
+		a.Link != dockerUpdateSettingsLink {
+		t.Fatalf("alert = %+v, %v", a, ok)
+	}
+	free = 2 << 30
+	_ = gateOnFreeSpace(t.Context(), info, 5)
+	if a, _ := lowAlert(); a.OccurrenceCount != 1 {
+		t.Fatalf("occurrences = %d after a second pass short of the same room, want 1", a.OccurrenceCount)
+	}
+	readErr = unix.EACCES
+	if err := gateOnFreeSpace(t.Context(), info, 5); scheduledrun.Unreported(err) == nil {
+		t.Fatalf("unreadable: error = %v, want one that fails the run", err)
+	}
+	if _, ok := lowAlert(); !ok {
+		t.Fatal("a pass that could not read the free space cleared the alert")
+	}
+	readErr, free = nil, 20<<30
+	if err := gateOnFreeSpace(t.Context(), info, 5); err != nil {
+		t.Fatalf("room enough: error = %v", err)
+	}
+	if _, ok := lowAlert(); ok {
+		t.Fatal("a pass with room left the alert")
+	}
+	free = 1 << 30
+	_ = gateOnFreeSpace(t.Context(), info, 5)
+	if err := gateOnFreeSpace(t.Context(), info, 0); err != nil {
+		t.Fatalf("no minimum: error = %v", err)
+	}
+	if _, ok := lowAlert(); ok {
+		t.Fatal("a pass with no minimum left the alert")
+	}
+}
+
 func TestRunScheduledPassUpdateAllSkipsIneligibleContainers(t *testing.T) {
 	compose := map[string]string{"com.docker.compose.project": "p", "com.docker.compose.service": "s"}
 	var updated []string
 	_, err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true}, alerts.NotificationSettings{}, scheduledPassOperations{
+		freeSpace: noFreeSpaceMinimum,
 		list: func(context.Context) ([]container.Summary, error) {
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
@@ -230,7 +423,7 @@ func TestScheduledComposeGroupsContinueAfterIndependentFailures(t *testing.T) {
 	state := newScheduledUpdateState(context.Background(), nil)
 	calls := 0
 	composeErr := errors.New("compose failed")
-	state.composeUpdate = func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error {
+	state.composeUpdate = func(context.Context, ComposeTarget, []string, []string, ComposeLineEmitter) error {
 		calls++
 		return composeErr
 	}
@@ -279,7 +472,7 @@ func TestScheduledComposeGroupErrorRecordsEveryCandidate(t *testing.T) {
 	useTempAlertStore(t)
 	state := newScheduledUpdateState(context.Background(), nil)
 	composeErr := errors.New("compose failed")
-	state.composeUpdate = func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error {
+	state.composeUpdate = func(context.Context, ComposeTarget, []string, []string, ComposeLineEmitter) error {
 		return composeErr
 	}
 	target := ComposeTarget{Name: "media", ConfigFiles: []string{"compose.yml"}}
@@ -339,6 +532,7 @@ func TestCleanupUnusedUpdateImagesDeduplicatesAndSkipsInUseImages(t *testing.T) 
 func TestScheduledPassReportsItsSteps(t *testing.T) {
 	var messages []string
 	_, err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web", "db"}}, alerts.NotificationSettings{}, scheduledPassOperations{
+		freeSpace: noFreeSpaceMinimum,
 		list: func(context.Context) ([]container.Summary, error) {
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},

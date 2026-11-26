@@ -7,6 +7,7 @@ Plans for things that are not built yet each have their own document:
 
 - [Frontend test coverage](./e2e-testing.md)
 - [Watched conditions: checks that raise alerts on a schedule](./watched-conditions.md)
+- [Assistant agent host: chats that outlive the page](./assistant-agent-host.md)
 
 ## Dependency maintenance
 

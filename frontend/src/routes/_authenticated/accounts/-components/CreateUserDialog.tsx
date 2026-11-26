@@ -16,6 +16,8 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
+import { SMB_SIGN_IN_LABEL, useSambaSignIn } from "./useSambaSignIn";
+
 const ACCOUNTS_TOAST_META = {
   label: "Open accounts",
   to: "/accounts",
@@ -36,6 +38,8 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
   const [shell, setShell] = useState("/bin/bash");
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [createHome, setCreateHome] = useState(true);
+  const signIn = useSambaSignIn(false);
+  const [smbSignIn, setSMBSignIn] = useState(false);
 
   const { data: shells = [], isLoading: shellsLoading } = useQuery({
     ...linuxio.accounts.list_shells,
@@ -68,6 +72,7 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
     setShell("/bin/bash");
     setSelectedGroups([]);
     setCreateHome(true);
+    setSMBSignIn(false);
     onClose();
   };
 
@@ -93,6 +98,7 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
       shell: shell || undefined,
       groups: selectedGroups.length > 0 ? selectedGroups : undefined,
       createHome,
+      ...(signIn.offered && smbSignIn ? { smbSignIn: true } : {}),
     };
 
     createUser(request);
@@ -202,6 +208,17 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
             }
             label="Create home directory"
           />
+          {signIn.offered && (
+            <AppFormControlLabel
+              control={
+                <AppCheckbox
+                  checked={smbSignIn}
+                  onChange={(e) => setSMBSignIn(e.target.checked)}
+                />
+              }
+              label={SMB_SIGN_IN_LABEL}
+            />
+          )}
         </div>
       </AppDialogContent>
       <AppDialogActions>

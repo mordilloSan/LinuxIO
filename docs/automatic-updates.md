@@ -61,6 +61,15 @@ and semantics differ:
   keys in `/etc/dnf/automatic.conf`, preserving administrator-owned sections,
   comments, emitters, and network settings.
 
+Removing the package deletes LinuxIO's own files, `52linuxio-periodic` and
+`52linuxio-unattended-upgrades` under `/etc/apt/apt.conf.d` and the timer and
+alert drop-ins, so the distribution's own settings and schedule return. That
+includes a choice made in LinuxIO: on Ubuntu, whose `20auto-upgrades` turns
+unattended upgrades on, a host where LinuxIO had automatic installation off
+installs security updates each night again. The keys LinuxIO set in dnf's
+`automatic.conf` and in Mint's files stay, being those packages' own files
+([Removal](./packaging.md#removal)).
+
 Disabling LinuxIO-managed automatic installation does not require disabling
 `apt-daily.timer`. APT may continue using that timer to refresh package metadata;
 `apt-daily-upgrade.timer` is the unit that performs unattended installation.

@@ -28,6 +28,7 @@ func DefaultUIPreferences() UIPreferences {
 		ViewModes:          map[string]string{},
 		LayoutOrders:       map[string][]string{},
 		TerminalFontSize:   16,
+		AssistantFontSize:  14,
 	}
 }
 

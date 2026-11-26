@@ -103,6 +103,8 @@ const mocks = vi.hoisted(() => {
     listVMs: [alpha],
     networksCalls: 0,
     networks,
+    unusedDisks: [] as Array<{ name: string; path: string; sizeBytes: number }>,
+    unusedDisksCalls: 0,
     mutations: {
       forceOff: vi.fn(),
       reboot: vi.fn(),
@@ -334,6 +336,7 @@ vi.mock("@/api", async (importOriginal) => {
             }),
         ),
         create: actual.linuxio.virt.create,
+        unused_disk_delete: actual.linuxio.virt.unused_disk_delete,
         delete: Object.assign(mocks.virtDelete, { route: "virt.delete" }),
         update: Object.assign(mocks.virtUpdate, { route: "virt.update" }),
         force_off: Object.assign(mocks.mutations.forceOff, {
@@ -358,10 +361,16 @@ vi.mock("@/api", async (importOriginal) => {
             return Promise.resolve(mocks.networks);
           },
         ),
+        pools: callDescriptor("virt.pools", ["linuxio", "virt", "pools"], () =>
+          Promise.resolve([]),
+        ),
         unused_disks: callDescriptor(
           "virt.unused_disks",
           ["linuxio", "virt", "unused_disks"],
-          () => Promise.resolve([]),
+          () => {
+            mocks.unusedDisksCalls += 1;
+            return Promise.resolve(mocks.unusedDisks);
+          },
         ),
         preflight: requestCall(
           "virt.preflight",
@@ -449,6 +458,7 @@ async function renderVMPage(
   libvirtAvailable = true,
   queryClient = createTestQueryClient(),
   seedNetworks = true,
+  path = "/",
 ) {
   queryClient.setQueryData(linuxio.virt.list.queryKey, mocks.listVMs);
   if (seedNetworks) {
@@ -469,6 +479,7 @@ async function renderVMPage(
       },
       capabilities: { libvirtAvailable },
       queryClient,
+      tanstackRouter: { initialEntries: [path] },
     },
   );
   if (libvirtAvailable) {
@@ -516,6 +527,8 @@ beforeEach(() => {
     warnings: [],
   };
   mocks.networksCalls = 0;
+  mocks.unusedDisks = [];
+  mocks.unusedDisksCalls = 0;
   mocks.preflightRequests = [];
   mocks.routeNavigate.mockReset();
   mocks.routeParams = {};
@@ -575,6 +588,44 @@ describe("Virtual Machines page", () => {
     expect(
       screen.getByRole("tab", { name: /virtual machines/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Prune unused disks" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the Disks tab's prune from a broom left of Refresh", async () => {
+    mocks.unusedDisks = [
+      {
+        name: "linuxio-old.qcow2",
+        path: "/var/lib/libvirt/images/linuxio-old.qcow2",
+        sizeBytes: 1024 ** 3,
+      },
+    ];
+    const { user } = await renderVMPage(
+      true,
+      createTestQueryClient(),
+      true,
+      "/vm/disks",
+    );
+    const broom = await screen.findByRole("button", {
+      name: "Prune unused disks",
+    });
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    expect(
+      broom.compareDocumentPosition(refresh) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await waitFor(() => expect(broom).toBeEnabled());
+    await user.click(broom);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("linuxio-old.qcow2")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    const calls = mocks.unusedDisksCalls;
+    await user.click(refresh);
+    await waitFor(() => expect(mocks.unusedDisksCalls).toBe(calls + 1));
   });
 
   it("renders VM rows and dispatches lifecycle actions", async () => {

@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -277,14 +278,17 @@ func runComposeCommand(ctx context.Context, target ComposeTarget, emitter Compos
 	return cmd.Wait()
 }
 
-func composePullAndUpServices(ctx context.Context, target ComposeTarget, services []string, emitter ComposeLineEmitter) error {
+func composePullAndUpServices(ctx context.Context, target ComposeTarget, services, dependents []string, emitter ComposeLineEmitter) error {
 	if err := validateComposeUpdateInputs(ctx, target, emitter); err != nil {
 		return err
 	}
-	return composePullAndUpServicesValidated(ctx, target, services, emitter)
+	return composePullAndUpServicesValidated(ctx, target, services, dependents, emitter)
 }
 
-func composePullAndUpServicesValidated(ctx context.Context, target ComposeTarget, services []string, emitter ComposeLineEmitter) error {
+// composePullAndUpServicesValidated pulls services and brings them up, and
+// with them dependents, the services that join one of them (composeJoins),
+// which are recreated on the image they have and not pulled by the update.
+func composePullAndUpServicesValidated(ctx context.Context, target ComposeTarget, services, dependents []string, emitter ComposeLineEmitter) error {
 	seen := make(map[string]struct{}, len(services))
 	normalized := make([]string, 0, len(services))
 	for _, service := range services {
@@ -308,9 +312,10 @@ func composePullAndUpServicesValidated(ctx context.Context, target ComposeTarget
 	// service with pull_policy: build. The recreate is forced as in
 	// composeUpFromLocalImages: a tag moved to an index that differs only in
 	// its attestations or its other platforms is no change to Compose 5.
-	upArgs := append([]string{"up", "-d", "--no-deps", "--no-build", "--force-recreate"}, normalized...)
+	recreated := slices.Concat(normalized, dependents)
+	upArgs := append([]string{"up", "-d", "--no-deps", "--no-build", "--force-recreate"}, recreated...)
 	if err := RunComposeProject(ctx, target, emitter, upArgs...); err != nil {
-		return fmt.Errorf("reconcile compose services %q: %w", normalized, err)
+		return fmt.Errorf("reconcile compose services %q: %w", recreated, err)
 	}
 	return nil
 }

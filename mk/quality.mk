@@ -49,8 +49,60 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 
 ##@ Tests|green
 # See scripts/lanes.sh for the lane layout and why it is scheduled this way.
-test: setup dev-prep test-packaging-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
+test: setup dev-prep test-packaging-scripts check-docs check-actions check-systemd ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan + docs, workflow and unit checks
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" test "$(test_timer_start)"
+
+# Everything there is to run, on this machine and in the test VMs: make test,
+# the router browser specs, the real npm install of the assistant agents (needs
+# the network) and test-vm-all, one after another, so no two Make runs share
+# the tree. It is the owner's run, too long for an agent. A failure does not
+# end it, since none of the four needs another; it ends with each one's result
+# and time, and fails when one failed. Ctrl-C ends it once the target running
+# stops, and the rest are shown as not run. The recap, with where each one's
+# log is, is also kept in test_full_logs/recap.log, beside make test's output,
+# which make test does not keep itself; the other three keep their own.
+test_full_logs := $(cache_dir)/test-logs/test-full
+test_full_shown = $(patsubst $(repo_root)/%,%,$(1))
+test-full: ## Run make test, the browser tests, the assistant agent install test and test-vm-all in turn, and end with the result of each
+	@$(if $(filter command line environment,$(origin SUITES) $(origin PLAYWRIGHT_ARGS))$(strip $(DISTRO)),echo "❌ test-full takes no SUITES or PLAYWRIGHT_ARGS or DISTRO: run the target you want narrowed on its own" >&2; exit 1)
+	@set -o pipefail
+	@failed=0 stopped=0 recap=() started="$$(date '+%F %T')"
+	@if [[ -t 1 && -z $${NO_COLOR:-} ]]; then ok=$$'\e[32m✓\e[0m' bad=$$'\e[31m✘\e[0m'; else ok=✓ bad=✘; fi
+	@trap 'stopped=1' INT
+	@rm -rf "$(test_full_logs)" && mkdir -p "$(test_full_logs)" || exit 1
+	@for target in test test-frontend-browser test-assistant-agent-integration test-vm-all; do
+	  name="$$(printf '%-33s' "$$target")"
+	  if ((stopped)); then
+	    recap+=("  – $$name not run")
+	    continue
+	  fi
+	  case $$target in
+	    test) log="$(call test_full_shown,$(test_full_logs))/test.log" ;;
+	    test-frontend-browser) log="$(call test_full_shown,$(frontend_browser_log))" ;;
+	    test-assistant-agent-integration) log="$(call test_full_shown,$(agent_integration_log))" ;;
+	    test-vm-all) log="$(vm_all_logs_shown)/" ;;
+	  esac
+	  begun=$$EPOCHSECONDS code=0
+	  if [[ $$target == test ]]; then
+	    $(MAKE) --no-print-directory test 2>&1 | tee "$(test_full_logs)/test.log" || code=$$?
+	  else
+	    $(MAKE) --no-print-directory "$$target" || code=$$?
+	  fi
+	  took=$$((EPOCHSECONDS - begun))
+	  line="$$name $$(printf '%3dm %02ds' $$((took / 60)) $$((took % 60)))  $$log"
+	  if ((code == 0)); then
+	    recap+=("  $$ok $$line")
+	  else
+	    failed=1
+	    recap+=("  $$bad $$line")
+	  fi
+	done
+	@printf '%s\n' "" "test-full" "$${recap[@]}"
+	@printf '%s\n' "test-full of $(GIT_VERSION) at $(GIT_COMMIT_SHORT), started $$started, ended $$(date '+%F %T')" "$${recap[@]}" \
+	  | sed 's/\x1b\[[0-9;]*m//g' >"$(test_full_logs)/recap.log"
+	@echo "recap kept in $(call test_full_shown,$(test_full_logs))/recap.log"
+	@((stopped == 0)) || exit 130
+	@exit "$$failed"
 
 ##@ Quality checks|green
 check-frontend: ensure-node setup-frontend ## Run frontend lint + typecheck + unit tests
@@ -122,12 +174,19 @@ test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose 
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
 	  "$(GO_BIN)" test ./common/dockerupdate -run '$(DOCKER_UPDATE_RUN)' -count=1 -v
 
+# Every line also goes to agent_integration_log, replaced by each run, so the
+# result of a test-full run outlives the terminal.
+agent_integration_log := $(cache_dir)/test-logs/test-assistant-agent-integration.log
 test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install and launch of the assistant agents (needs Node.js and network)
+	@set -eo pipefail
+	@mkdir -p "$(dir $(agent_integration_log))"
 	@echo "🤖 Running assistant agent install integration test..."
 	@cd "$(backend_dir)" && \
 	  LINUXIO_RUN_ASSISTANT_AGENT_INTEGRATION=1 \
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
-	  "$(GO_BIN)" test ./bridge/handlers/packages -run '^TestAssistantAgentIntegration$$' -count=1 -v -timeout 10m
+	  "$(GO_BIN)" test ./bridge/handlers/packages -run '^TestAssistantAgentIntegration$$' -count=1 -v -timeout 10m 2>&1 \
+	  | tee "$(agent_integration_log)"
+	@echo "every line in full: $(patsubst $(repo_root)/%,%,$(agent_integration_log))"
 
 # The root btrfs and partition kernel tests, run on this host by
 # test-btrfs-integration and in the test VM by vm-test-btrfs-integration:
@@ -135,10 +194,12 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 # the bridge storage rules that decide which disks a pool may take
 # (TestBtrfsMemberIntegration) and destroy (TestBtrfsDestroyIntegration) and
 # which members Format, Delete and Initialize erase (TestPartitionMemberIntegration).
+# TestBtrfsSharedFolderIntegration acts as other accounts on a pool it mounts
+# under /run.
 # TestBtrfsRebuildProofIntegration and TestBtrfsAutoRebuildIntegration pull
 # the VM's virtio data disks off the PCI bus, so they run only in the test VM
 # and skip on a host.
-BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Dropout|Unready|Resume|Replicate|Member|ArrayMember|AddWipe|Destroy|MountRecord|RebuildProof|AutoRebuild)?|Partition(Claim|Member)?)Integration$$
+BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Dropout|Unready|Resume|Replicate|Member|ArrayMember|AddWipe|Destroy|MountRecord|RebuildProof|AutoRebuild|SharedFolder)?|Partition(Claim|Member)?)Integration$$
 BTRFS_INTEGRATION_PKGS := ./common/btrfs ./bridge/handlers/storage
 
 # -p 1: with two packages go test otherwise holds each one's output until it

@@ -1,11 +1,14 @@
 # Btrfs management
 
-The **Storage → Subvolumes** tab (`/storage/subvolumes`) manages subvolumes,
-and, under its Snapshots and Replication views (`?view=snapshots`,
-`?view=replication`), snapshots with rollback, automatic snapshots and
-replication to another filesystem or host. Each pool's details on the **Storage → Disks** overview
-(`/storage?pool=<uuid>`) hold the rest: health, devices and profiles, space,
-quotas, compression and maintenance timers.
+The **Storage → Snapshots** tab (`/storage/snapshots`) holds snapshots with
+rollback and automatic snapshots, and, under its Replication and Subvolumes
+views (`?view=replication`, `?view=subvolumes`), replication to another
+filesystem or host and the subvolumes themselves; `/storage/subvolumes`,
+which alerts and saved runs link to, redirects there with its view and pool.
+Each pool's page on the
+**Storage → Pools** tab (`/storage/pools/<uuid>`, see [Pool page](#pool-page))
+holds the rest: health, what protects its data, snapshots, devices and
+profiles, space, quotas, compression and maintenance timers.
 Everything on the host is read and driven through the kernel's btrfs ioctls,
 `mount(2)`, `/proc/self/mountinfo` and the disks' superblocks: devices,
 profiles, balance, scrub, space, health, pools and partition tables,
@@ -30,8 +33,12 @@ that **Force** never takes a disk of an unmounted pool
 zeroes a disk mounted or held after the checks (`TestBtrfsAddWipeIntegration`),
 that no writer touches a device claimed after its checks and that md and LVM2
 signatures are read as libblkid reads them (`TestPartitionClaimIntegration`),
-and that a pool whose top level a read mounted can be destroyed
-(`TestBtrfsDestroyIntegration`); it needs sudo.
+that a pool whose top level a read mounted can be destroyed
+(`TestBtrfsDestroyIntegration`), and, acting as other accounts, that the
+kernel decides by a [shared folder](./shared-folders.md)'s ACL, keeps its
+snapshots root's alone until its earlier versions open them, and that the
+recycle bin's emptying keeps a folder new to the bin and leaves a subvolume
+inside it alone (`TestBtrfsSharedFolderIntegration`); it needs sudo.
 
 Parsing command output is avoided because `btrfs-progs` prints JSON for only a
 few commands, and no Go btrfs library covers balance, scrub and devices. A new
@@ -48,12 +55,43 @@ verification.
 ## Capability and privileges
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
-gates the Subvolumes tab and the pools on the Disks overview; see
-[Capabilities](./capabilities.md#btrfs-tools). Both are
+gates the Pools and Snapshots tabs and the pools on the Overview and the Disks page; see
+[Capabilities](./capabilities.md#btrfs-tools). All are
 **administrator-only**: they require a privileged session, reads run
-`btrfs` as root and the configuration files are root `0600`. The Subvolumes
-tab is listed only while a btrfs filesystem is mounted; pools are created
-from the Disks overview.
+`btrfs` as root and the configuration files are root `0600`. The Pools and
+Snapshots tabs are listed only while a btrfs filesystem is mounted; pools are
+created from the Overview or the Disks page.
+
+## Pool page
+
+The **Pools** tab (`/storage/pools`) lists the mounted pools as cards: the
+pool's name, its health (the health banner's own verdict, `poolHealth`), its
+disks and how it keeps data ("two copies on different disks"), what it stores
+and about how much is free, and a chip per disk. Opening one goes to
+`/storage/pools/<uuid>`, built as the VM page is: the list folds into that
+pool's card beside a panel, Escape or the close button goes back, and a pool
+that is not mounted says so. `/storage?pool=<uuid>`, which the alerts link to,
+redirects there. A pool found on disk but not mounted is listed on the
+Overview's *Worth a look* and stays on the Disks page with **Mount** and
+**Destroy**.
+
+The panel leads with the health banner, then four tabs (`?tab=`):
+
+- **Overview**: *Protection* says what a disk failure costs, from the weakest
+  profile the pool keeps (single, dup and raid0 lose the pool; raid1 and
+  raid10 survive one disk, raid1c3 two, raid1c4 three), the last check's
+  result or that it was never checked, the newest snapshot or that there is
+  none, and whether an enabled replication job copies the pool elsewhere and
+  how its last copy went. *Disks* shows each device with its allocation and an
+  **Add a disk** tile that opens the Disks tab. *Maintenance* lists the scrub,
+  balance, trim and defrag periods of the pool's mountpoint.
+- **Snapshots**: the snapshot list with its schedule (see
+  [Snapshots](#snapshots)).
+- **Disks**: the devices card and the Space card.
+- **Settings**: quotas, compression and maintenance.
+
+**Rename…** and **Destroy…** are in the panel's menu; destroying names every
+disk it erases and returns to the list.
 
 Docker's btrfs storage-driver subvolumes are hidden from every list.
 
@@ -70,7 +108,7 @@ out coming before the errors its failed writes count, and the error counters
 of a missing disk (since 7.1 the kernel marks a pulled disk missing, with the
 writes it failed counted) reading as degraded, not errors; **Reclaim space** when
 metadata is nearly full. Health, scrub and space alerts link to those details;
-snapshot and replication alerts link to the Subvolumes tab's Snapshots and
+snapshot and replication alerts link to the Snapshots tab's Snapshots and
 Replication views.
 
 Alerts are updated whenever the list is loaded and, independently of the
@@ -304,7 +342,23 @@ itself (`btrfs_remove_bdev` in `super.c`, also in 6.19 and 7.0 built with
 `CONFIG_BTRFS_EXPERIMENTAL`, which Ubuntu's 7.0 is not), and continues
 degraded, or shuts the filesystem down when the remaining disks cannot keep
 it read-write; DEV_INFO names that disk `<missing disk>`, which LinuxIO
-lists as a missing disk with no path. An older kernel keeps the member with
+lists as a missing disk with no path. When it is the disk the mount names as
+its source, mountinfo shows that source as `<missing disk>` too
+(`btrfs_show_devname`), and keeps it after the disk comes back, which the
+mounted pool refuses as a duplicate. LinuxIO tells a pool's mounts by their
+source, so for such a mount it asks the mount itself (`ListMounts`): FS_INFO
+through an open of the mountpoint that must reach that mount, by the mount
+ID mountinfo gives it, so a mount over it or a parent folder renamed since
+is not taken for it; a source that is not a path is never looked up as a
+device, which would read a file of that name in the working directory.
+Mounting the top level, which subvolumes, snapshots, settings and
+replication need when no mount of it exists, and the remount of a rollback
+then name the mount's source while that block device exists, else a member
+DEV_INFO gives a path that exists (`deviceOf`), asked through one open of a
+mount that must still be that pool's by its FS_INFO; an older kernel names a
+source that dropped out by its old path, which no longer exists. Without
+all this the pool read as unmounted while the disk was gone, and no rebuild
+started once it was back. An older kernel keeps the member with
 its dead block device until the pool is unmounted: DEV_INFO still names it
 by its path (`btrfs_ioctl_dev_info`), sysfs calls it neither missing nor
 unwriteable, chunks are still allocated on it, and every write to it fails
@@ -329,7 +383,7 @@ health is unknown when they disagree. The next health run therefore opens
 the episode while the pool runs on the others, with the disk's counters as
 the pool was last seen whole, and the health alert and the pool's details
 say the disk dropped out and that the pool takes it back only when it is
-mounted again: unmounted and mounted from the Storage overview, which
+mounted again: unmounted and mounted from the Disks page, which
 registers the pool's disks first, or a reboot; with the automatic rebuild on
 (below), that LinuxIO rebuilds the pool onto the disk once it is back. Until then no resync starts,
 and one started anyway stops without counting a failed attempt; the mount
@@ -492,7 +546,30 @@ kernel: `num_write_errors` is read in `scrub.c` but raised nowhere (6.8, 7.0,
 7.1), so the copy ran to the end, the commit that installed the dead target
 could write neither its superblock nor the dead source's, aborted, and forced
 the two-disk pool read-only, and the ioctl still returned success with the
-replace finished and `DEV_INFO` naming the dead target. So the runner, and a
+replace finished and `DEV_INFO` naming the dead target. Since 7.1 the kernel
+marks the pulled target missing (`btrfs_remove_bdev`), so the commit that
+installs it skips it rather than failing (`write_all_supers` writes no
+superblock to a device that is not writeable), and the replace finishes "from
+`<missing disk>` (devid 2) to `<missing disk>`" with the pool writable and
+the member missing (test VM, Fedora's 7.3.4), takes a source disk that is
+still present out of the pool and erases its superblocks, and corrupts
+kernel memory from then on (see [Known limits](#known-limits)). LinuxIO
+therefore cancels a replace whose new disk goes away, the rebuild's and one
+from the pool details alike (`replaceDevice`): every two seconds while the
+kernel copies it looks at the kernel's link to the new disk under the
+pool's devices, and when that reaches nothing it sends the cancel, on which
+the kernel destroys the target and keeps the source, and the replace fails
+saying the new disk went away. On 7.0 the pool still goes read-only, since
+the dead target, which that kernel does not mark missing, fails the commit
+of the cancel; LinuxIO's next mount cancels the replace the kernel then
+suspends, as before. On 7.1 and later the pool stays writable with the
+member as it was, but the kernel has taken the target off its count of
+writable disks, where a target was never counted (`btrfs_remove_bdev`), and
+the count stays one short until the kernel forgets the pool: the pool is
+given no new chunk, and a read-write mount of it is refused (`EACCES`). So
+where the kernel had marked the target missing, the failure also says to
+restart the server. A disk that goes within the last two seconds of the
+copy is not caught. So the runner, and a
 replace started from the pool details (`ReplaceResult`, `ResumeReplace`),
 check that the kernel reports the replace finished, that the devid is in use
 at the new disk's path and not dropped out, that the pool is not read-only
@@ -597,12 +674,13 @@ spare replaces that member at once, reading the other mirror.
 `make vm-test-btrfs-integration` runs this path on the test VM's kernel
 (`TestBtrfsAutoRebuildIntegration`; it skips on a host, since it pulls the
 VM's virtio disks off the PCI bus): a rebuild onto the returned disk with the
-member dropped out and with the member missing after a degraded mount, a
+member dropped out, the same with the disk the mount names as its source,
+and with the member missing after a degraded mount, a
 clone of the member on another disk refused by its identity and left as it
 was, two disks claiming the member refused, a replace onto the hot spare, and
-the returned disk pulled again mid-rebuild, after which the rebuild fails with
-its record kept, LinuxIO's degraded mount erases the disk and cancels the
-suspended replace, and a replace from the pool details makes the pool whole;
+the returned disk pulled again mid-rebuild, after which the rebuild cancels
+its replace and fails with its record kept, LinuxIO's degraded mount erases
+the disk, and a replace from the pool details makes the pool whole;
 each ends whole by the same checks as the proof.
 
 A disk whose writes fail while it stays attached, as when its cable comes
@@ -830,11 +908,30 @@ once it is fixed repairs what it missed.
   as one missing since before the first health run of a release that
   records identities, are never rebuilt onto automatically; the alert says
   why.
-- The rebuild was run on 7.0 only (the test VM). On 6.8 and 7.1 it rests on
-  their source: 7.1 marks a dropped member missing itself
-  (`btrfs_remove_bdev`) and a target that dies mid-replace may then be
-  installed without the pool going read-only, which the check after the
-  replace still refuses, as the target is gone.
+- The rebuild was run in the test VM on Ubuntu's 7.0 and Fedora's 7.3.4;
+  on 6.8 it rests on its source.
+- Since 7.1 a replace whose target is pulled mid-copy finishes onto the
+  missing disk, and the kernel then corrupts its own memory: the finish
+  puts that disk on the pool's allocation list without counting it writable
+  (`btrfs_dev_replace_finishing`), and each recalculation of the pool's free
+  space fills an array sized for the writable disks with every disk on that
+  list (`alloc_virtual_chunk` in `volumes.c`, new in 7.1), 32 bytes past its
+  end. An unmount leaves the disk on the list (the `WARNING` in
+  `btrfs_close_one_device`), and a scan of the returned disk under the same
+  device number frees it while linked, so the next mount writes to freed
+  memory. Shown in the test VM on Fedora's 7.3.4 booted with `slub_debug`,
+  the second with `btrfs` and `mount` alone, the first during LinuxIO's own
+  degraded mount after a rebuild whose disk dropped out again; without
+  `slub_debug` two of five runs of the root tests ended with the guest
+  crashed. An upstream bug, as is the count of writable disks the cancel
+  leaves one short (above): after either, only a restart of the server
+  puts the kernel's view of the pool right. LinuxIO cancels the replace
+  when it sees the disk go, which keeps the kernel from finishing it; when
+  the copy ends
+  within two seconds of the disk going, or a replace the kernel continued
+  at a mount is only watched (`ResumeReplace`), the kernel finishes first,
+  LinuxIO's check refuses the result and its error says to restart the
+  server, until which the kernel may crash or corrupt data.
 - A pool unmounted by hand while its rebuild copies fails that rebuild, and
   when the pool is then mounted by systemd at boot, where the kernel takes
   the copy up and ends it, the record still says failed: LinuxIO did not
@@ -1051,9 +1148,51 @@ Layout under the top level:
 `<kind>` is `manual`, `timeline`, `pre-update` or `pre-rollback`. Snapshots
 are read-only. Nested subvolumes are not included in a snapshot.
 
-**Browse** opens the file browser at
-`/run/linuxio/btrfs/<uuid>/linuxio-snapshots/...`. **Restore files** is a copy
-in the file browser; there is no separate restore operation.
+A snapshot holds the files as they were, permissions included, so whoever
+could read a file then could read it there for as long as the snapshot is
+kept. `linuxio-snapshots` and each `linuxio-snapshots/<source>` are
+therefore root's alone: they are made `0700` whatever the umask of what
+makes them (the timer's service runs with systemd's `022`, under which they
+were `0755`), and one found more open is narrowed, every source's folder
+at once, at the next snapshot of any source (`ensureSnapshotDir`) and at
+each health pass of `linuxio-worker` (`btrfs.NarrowSnapshotDirs`), so the
+folder of a source that takes no snapshot any more does not stay open. The
+one exception is a shared folder that offers earlier versions, whose
+`linuxio-snapshots/<source>` carries an ACL that lets read who may read the
+folder ([Shared Folders](./shared-folders.md#network)); for it
+`linuxio-snapshots` itself is `0711`, passed through and listed by nobody
+but root. Narrowing leaves a folder with an ACL as it is, and takes
+`linuxio-snapshots` down to `0711` and no further, so one that was `0755`
+ends `0711` whether or not a shared folder uses it: the names of the
+sources can be probed there, their snapshots cannot be reached. It touches
+only what LinuxIO made: root's folders, on the subvolume of a
+`linuxio-snapshots` that is root's own. A subvolume or a mount put there,
+a folder of another owner, and everything in a `linuxio-snapshots` that is
+a user's (the top level of a disk they mounted) are left alone. A source's
+folder that cannot be narrowed does not fail the snapshot of another
+source; the health pass names it in its output.
+
+The snapshot list, on the pool page's Snapshots tab and in the Subvolumes
+tab's Snapshots view, groups them under the local day they were taken (Today,
+Yesterday, then the date), newest first. Chips narrow it to one kind present:
+*Scheduled* (`timeline`), *Before updates*, *By hand* (`manual`, never pruned)
+and *Before rollbacks*. A row gives the time, with its age today and
+yesterday, and names its subvolume only when the pool has snapshots of more
+than one; selecting it opens a panel with its date, its subvolume, why it is
+kept, its size when quotas give one, and **Browse files** (the file browser
+at `/run/linuxio/btrfs/<uuid>/linuxio-snapshots/...`), **Roll back…** and
+**Delete…**. **Restore files** is a copy in the file browser; there is no
+separate restore operation.
+
+**Why it is kept** (`KeptBy` in `retention.go`, set by the list route with
+`ExplainKept`) mirrors the snapshot pass: taken by hand and never pruned; no
+rule covers its subvolume; its rule is off, which leaves its scheduled
+snapshots (a rule off with **Snapshot before updates** still prunes those);
+one of the newest three before updates or rollbacks; the newest of an hour,
+day, week or month the rule keeps, the smallest named; the parent the next
+incremental replication needs; or removed at the next pass.
+`TestKeptByAgreesWithPrune` holds it to `Prune`, which it does not change.
+When the rules or replication jobs cannot be read the reason is left out.
 
 ## Rollback
 
@@ -1143,7 +1282,7 @@ Manual `apt` or `dnf` runs are not hooked.
 ## Pools
 
 A pool is one btrfs filesystem over one or more whole disks. **Create pool**
-on the Storage overview formats free disks with `mkfs.btrfs`, with the data
+on the Overview or the Disks page formats free disks with `mkfs.btrfs`, with the data
 and metadata profiles chosen from `single`, `dup`, `raid0`, `raid1`,
 `raid1c3`, `raid1c4` and `raid10` (`raid5` and `raid6` are refused),
 registers the disks with the kernel, mounts the pool and records it in
@@ -1265,11 +1404,11 @@ after. The rollback removes only what the create made: what was on a disk
 before, such as a filesystem overwritten with **Force** or the old contents
 of a disk given a new GPT, is not restored.
 
-A shared folder can be created on a pool from **Shares → Add Folder Share →
-New folder on a pool**: it creates a subvolume under the pool's top-level
-mount, optionally limits its size (turning quotas on) and adds the default
-automatic snapshot rule, then shares it over SMB and/or NFS. Only pools with
-a permanent top-level mount are offered.
+A shared folder is a subvolume under the pool's top-level mount with a size
+limit (which turns quotas on), the default automatic snapshot rule and an
+access table, made in one operation from **Storage → Shared folders → Add
+Share → Create shared folder** ([Shared Folders](./shared-folders.md)). Only
+pools with a permanent top-level mount are offered.
 
 `nofail` keeps a pool with a missing disk from blocking boot. Such a pool is
 not mounted, since btrfs refuses that without `degraded`, so the overview
@@ -1412,8 +1551,8 @@ primary superblock at 64 KiB.
 | Replace device | Replaces one member with a free, blank device, or with the pool's own [hot spare](#hot-spare). A missing member, one that dropped out included, is copied from the other mirrors (`cont_reading_from_srcdev_mode` AVOID), and so is one whose disk an automatic rebuild left unverified (a rebuild of that device on record), which may hold stale copies no checksum finds; a present one is read first, as `btrfs replace start` does. The result is checked as the automatic rebuild's is: finished, the new disk in use and held by the pool, the pool writable ([Missing disks](#missing-disks)); a replace the kernel reports done that fails this check fails the job. A bigger replacement disk is grown into automatically. |
 | Hot spare | Sets, changes the delay of, or removes the pool's hot spare (see [Hot spare](#hot-spare)). |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
-| Rename | Sets the filesystem label from the pool details. |
-| Balance | **Balance** on the pool's Disks card asks what to balance. *Lightly used data chunks* (the default) balances data chunks at most 10, 25, 50 (the default) or 75% full, which turns slack into unallocated space. *Everything* balances every chunk with no filter, which spreads data and metadata over all disks, as after adding one. *Change profile* converts: see the next row. On a pool missing a disk only *Change profile* is offered, and `Balance` refuses any balance that is not a convert: the kernel writes every chunk it moves as `single` on the disks present (`btrfs_reduce_alloc_profile`), which the resync would then have to convert back. |
+| Rename | Sets the filesystem label from the pool page's menu. |
+| Balance | **Balance** on the pool's Disks card asks what to balance. *Lightly used areas* (the default) balances data chunks at most 10, 25, 50 (the default) or 75% full, which turns slack into unallocated space. *Everything* balances every chunk with no filter, which spreads data and metadata over all disks, as after adding one. *Change profile* converts: see the next row. On a pool missing a disk only *Change profile* is offered, and `Balance` refuses any balance that is not a convert: the kernel writes every chunk it moves as `single` on the disks present (`btrfs_reduce_alloc_profile`), which the resync would then have to convert back. |
 | Change profile | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
 | Reclaim space | The health banner's action when metadata is nearly full: a balance of data chunks at most 50% full. |
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`, with a running scrub's progress (see [Scrub progress](#scrub-progress)); scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. A scrub is refused while the kernel already scrubs the pool, for another scrub or a device replace, while LinuxIO's own scrub of it still runs, and when a device could not be read. |
@@ -1451,7 +1590,8 @@ it, so a spare carries no signature another system or tool could misread.
 **What may be a spare.** Only a pool whose every profile keeps a second copy
 (`raid1`, `raid1c3`, `raid1c4`, `raid10`) is offered one: a `single`,
 `raid0` or `dup` pool cannot run with a member missing, so there is nothing
-for a spare to stand in for, and the card says so. The disk must be:
+for a spare to stand in for, and the card says so; a pool of one disk shows
+no hot spare row at all. The disk must be:
 
 1. a whole disk, never a partition, device-mapper, md, loop or RAM device,
    that rules 1 to 6 of [Which disks a pool may take](#which-disks-a-pool-may-take)
@@ -1877,6 +2017,41 @@ Connections use `StrictHostKeyChecking=yes`, `BatchMode=yes`,
 `ConnectTimeout=15` and `ServerAliveInterval=30`; an unknown or changed host
 key fails the job.
 
+## Space
+
+The pool page's **Space** card, the pool's card on the Pools tab and its card
+on the Disks page give two figures, each byte counted once however many copies the profiles
+keep (`StoredBytes` and `FreeBytes` in `inventory.go`):
+
+- **stored**: the used bytes of every data, metadata and system row, as the
+  kernel's `SPACE_INFO` reports them;
+- **about N free**: the kernel's own room for more data, the figure `df`
+  shows (statfs's `f_bavail`, `poolFreeBytes` in `inventory.go`). btrfs
+  counts it disk by disk for the profile new data gets
+  (`btrfs_calc_avail_data_space`), so a raid1 pool's free space is about half
+  its raw free space, a mirror of a 1 TB and a 4 TB disk has about 1 TB to
+  give, not 2.5, and a missing disk adds nothing. `btrfs filesystem usage`
+  divides the unallocated space of all disks together and overstates the
+  uneven mirror, which is why LinuxIO does not use its estimate.
+
+The bar is stored against stored plus free. **Details: how the disk is laid
+out** opens the rows behind them: each kind and profile with what is used of
+what is set aside, the space not set aside yet, and the UUID. A disk's row
+on the Disks card says how much of it is **allocated** to the pool. When the
+space cannot be read, the Space card says so and shows no figures, and the
+pool's card on the Disks page says **Space unknown**.
+
+### Known limits
+
+- A pool running without a disk writes new data as `single` on the disks
+  present (`btrfs_reduce_alloc_profile`), and the free figure counts that
+  room, as `df` does: it is room without a second copy.
+- The kernel's figure drops toward 0 when metadata is nearly full, before the
+  data chunks are; the `btrfs/space` alert says why.
+- The Snapshots view's Today and Yesterday are worked out when the list
+  loads, so a page left open past midnight keeps them until the list is read
+  again.
+
 ## Quotas and compression
 
 Both are in the **Settings** card of the pool details, with the
@@ -1893,7 +2068,8 @@ btrfsmaintenance timers.
   persisted into every existing `/etc/fstab` entry of the filesystem (matched
   by mountpoint or `UUID=` source); only the options field is rewritten, and
   comments and dump/pass fields are preserved. **Off** persists as removal of
-  the option. "Persisted in fstab" means every such entry carries it.
+  the option. The card says **Kept after a restart** when every such entry
+  carries it, and **Until the next restart** otherwise.
 - **Compression per subvolume** sets the `btrfs.compression` extended
   attribute, which is that property.
 
@@ -1902,7 +2078,7 @@ btrfsmaintenance timers.
 | Path | Owner | Purpose |
 |---|---|---|
 | `/run/linuxio/btrfs/<uuid>` | root, tmpfs | Mount of the filesystem's top level; gone at reboot |
-| `<top>/linuxio-snapshots/` | root | Snapshots |
+| `<top>/linuxio-snapshots/` | root, `0700` when made (`0711` once a shared folder offers earlier versions, and where an earlier version made it `0755`) | Snapshots, each source's folder `0700`, or with an ACL while a shared folder offers earlier versions |
 | `/etc/linuxio/btrfs-snapshots.json` | `root:root` `0600` | Snapshot rules |
 | `/etc/linuxio/btrfs-replication.json` | `root:root` `0600` | Replication jobs |
 | `/etc/linuxio/btrfs-replication/id_ed25519` (`.pub`) | root, key `0600` | SSH key for replication |

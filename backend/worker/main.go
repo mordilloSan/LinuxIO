@@ -33,6 +33,7 @@ var program = version.Program{
 		"linuxio-worker degraded",
 		"linuxio-worker resync <uuid>",
 		"linuxio-worker rebuild <uuid>",
+		"linuxio-worker recycle",
 		"linuxio-worker scheduled-run begin|end --unit <unit>",
 		"linuxio-worker alert raise|resolve|auto-update|pending-updates [flags]",
 	},
@@ -101,6 +102,8 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runResync(ctx, args[1:], stderr)
 	case "rebuild":
 		return runRebuild(ctx, args[1:], stderr)
+	case "recycle":
+		return runRecycle(ctx, args[1:], stdout, stderr)
 	case "scheduled-run":
 		return runScheduledRun(ctx, args[1:], os.Getenv, scheduledrun.DefaultHooks(), stderr)
 	case "alert":

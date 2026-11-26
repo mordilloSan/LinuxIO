@@ -17,6 +17,7 @@ func TestPassReportSummary(t *testing.T) {
 	updated := ContainerOutcome{Name: "web", NewImageID: "sha256:new"}
 	failed := ContainerOutcome{Name: "proxy", Err: errors.New("container keeps restarting")}
 	rolledBack := ContainerOutcome{Name: "app", Err: rolledBackError{err: errors.New("container health is unhealthy"), to: "image old"}}
+	lowSpace := lowFreeSpaceError{folder: "/var/lib/docker", free: 1 << 30, minGiB: 5}.Error()
 	tests := map[string]struct {
 		report PassReport
 		want   scheduledrun.Summary
@@ -52,6 +53,21 @@ func TestPassReportSummary(t *testing.T) {
 			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 3}, Containers: []ContainerOutcome{updated}},
 			want:   scheduledrun.Summary{Message: "1 updated"},
 		},
+		// Too little free space: nothing was updated, so what waits is named.
+		// It raised its own alert, and counts as the run's one failure.
+		"low free space": {
+			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 2}, LowFreeSpace: lowSpace},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space, 2 waiting", Failures: 1},
+		},
+		// The check failed, then the pass found too little room to update.
+		"failed check, low free space": {
+			report: PassReport{LowFreeSpace: lowSpace},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space", Failures: 1},
+		},
+		"low free space, nothing waiting": {
+			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4}, LowFreeSpace: lowSpace},
+			want:   scheduledrun.Summary{Message: "Updates skipped for low free space", Failures: 1},
+		},
 		// The check failed, so the pass has no mode, but it reached a container.
 		"failed check, one container failed": {
 			report: PassReport{Containers: []ContainerOutcome{failed}},
@@ -74,7 +90,7 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 		Checked: DockerUpdateCheckResult{Checked: 14, Updates: 2},
 		Containers: []ContainerOutcome{
 			{Name: "nginx", Image: "nginx:1.27", OldImageID: "sha256:1a2b3c4d5e6f0000", NewImageID: "sha256:4d5e6f7081920000", OldVersion: "1.27.2", NewVersion: "1.27.3"},
-			{Name: "docker-proxy", Project: "infra", Image: "example/proxy:latest", OldImageID: "sha256:aaaa", Err: errors.New("update Compose project \"infra\":\n pull failed")},
+			{Name: "docker-proxy", Project: "infra", Image: "example/proxy:latest", OldImageID: "sha256:aaaa", Err: errors.New("update Compose project \"infra\":\n pull\x1b failed\u2066")},
 			{Name: "app", Project: "infra", Image: "example/app:1", OldImageID: "sha256:bbbb", Err: rolledBackError{err: errors.New("container health is \"unhealthy\""), to: "image bbbb"}},
 		},
 	}
@@ -90,7 +106,8 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 	if fields := strings.Join(strings.Fields(lines[1]), " "); fields != "updated nginx nginx:1.27 1.27.2 -> 1.27.3 (1a2b3c4d5e6f -> 4d5e6f708192)" {
 		t.Fatalf("updated line = %q", lines[1])
 	}
-	// An error that carries Compose output stays on one journal line.
+	// An error that carries Compose output stays on one journal line, without
+	// the control and bidirectional characters others wrote into it.
 	if fields := strings.Join(strings.Fields(lines[2]), " "); fields != `failed docker-proxy (infra) update Compose project "infra": pull failed` {
 		t.Fatalf("failed line = %q", lines[2])
 	}
@@ -106,6 +123,15 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 	PassReport{Skipped: passSkippedBusy}.Write(&out)
 	if out.String() != "Container updates: skipped, another Docker update was running\n" {
 		t.Fatalf("skipped report = %q", out.String())
+	}
+	out.Reset()
+	// The reason is printed: the run completes, so nothing else writes it.
+	low := lowFreeSpaceError{folder: "/var/lib/docker", free: 3 << 30, minGiB: 5}.Error()
+	PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 1}, LowFreeSpace: low}.Write(&out)
+	want := "Container updates: 1 checked, updates skipped for low free space\n" +
+		"  no container was updated: the filesystem of /var/lib/docker has 3.0 GiB free, less than the 5 GiB the settings ask for\n"
+	if out.String() != want {
+		t.Fatalf("low free space report = %q, want %q", out.String(), want)
 	}
 }
 
@@ -167,8 +193,19 @@ func TestImageVersionOfReadsTheImagesLabel(t *testing.T) {
 	images := fakeImageInspector{
 		"sha256:labelled": {imageVersionLabel: "2.4.1"},
 		"sha256:plain":    {},
+		// The image's author writes the label: an escape sequence, a line
+		// break and a bidirectional override are dropped or joined.
+		"sha256:hostile": {imageVersionLabel: "1.0\x1b]0;owned\x07\nupdated: all\u202e"},
+		"sha256:long":    {imageVersionLabel: strings.Repeat("9", 100)},
 	}
-	for imageID, want := range map[string]string{"sha256:labelled": "2.4.1", "sha256:plain": "", "sha256:gone": "", "": ""} {
+	for imageID, want := range map[string]string{
+		"sha256:labelled": "2.4.1",
+		"sha256:plain":    "",
+		"sha256:gone":     "",
+		"":                "",
+		"sha256:hostile":  "1.0]0;owned updated: all",
+		"sha256:long":     strings.Repeat("9", maxVersionRunes-1) + "…",
+	} {
 		if got := imageVersionOf(t.Context(), images, imageID); got != want {
 			t.Errorf("imageVersionOf(%q) = %q, want %q", imageID, got, want)
 		}

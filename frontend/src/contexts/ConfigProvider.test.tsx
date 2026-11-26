@@ -147,6 +147,7 @@ function remoteUI(overrides: Partial<TestUIConfig> = {}): TestUIConfig {
     },
     viewModeDefault: "card",
     terminalFontSize: 16,
+    assistantFontSize: 14,
     ...overrides,
   };
 }

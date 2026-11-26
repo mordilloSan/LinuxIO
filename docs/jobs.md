@@ -670,7 +670,7 @@ middle of an update, when no host is sure to be up or of the same build,
 while a file write needs nothing else running. The same holds for the timer
 jobs, which also keep their own unit, limits and journal that way. The units:
 
-| Record `route` | Unit | Label | Page |
+| Record `route` | Unit | Label | Page (the record's link; old storage paths redirect, and the task tray opens the snapshot runs at `/storage/snapshots`) |
 |---|---|---|---|
 | `scheduled.script` | `linuxio-schedule-<id>.service` | the schedule's name | `/services/schedules?schedule=<id>` |
 | `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | Snapshots | `/storage/subvolumes?view=snapshots` |
@@ -678,6 +678,7 @@ jobs, which also keep their own unit, limits and journal that way. The units:
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | Pool resync | `/storage?pool=<uuid>` |
 | `scheduled.btrfs_rebuild` | `linuxio-btrfs-rebuild@<uuid>.service` | Pool rebuild | `/storage?pool=<uuid>` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | Container updates | `/docker/containers` |
+| `scheduled.shares_recycle` | `linuxio-shares-recycle.service` (daily, while a shared folder has its recycle bin on) | Recycle bins | `/storage/shares` |
 | `scheduled.system_update` | `apt-daily-upgrade`, `dnf-automatic`, `dnf5-automatic` or `mintupdate-automation-upgrade.service` | System updates | `/updates` |
 
 Every unit of the table but the schedules' and the distribution's is a
@@ -786,7 +787,7 @@ What the run did is in two places:
 
   | Worker | Messages |
   |---|---|
-  | Docker updates | *1 updated, 1 failed, 1 rolled back*, *2 waiting*, *Nothing to update*, *Skipped: another Docker update was running* |
+  | Docker updates | *1 updated, 1 failed, 1 rolled back*, *2 waiting*, *Nothing to update*, *Updates skipped for low free space* (one failure, with its own alert), *Skipped: another Docker update was running* |
   | Snapshots (the timer's pass) | *2 taken, 3 pruned, 1 failed*, *Nothing to do* |
   | Replication | *1 sent, 1 failed*, *Nothing to do*, *Skipped: another run held every job* |
   | Pool resync | *Resynced*, *Resync failed* (the pool's alerts say why, and the health run retries it) |

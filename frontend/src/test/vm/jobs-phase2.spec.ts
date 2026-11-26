@@ -179,8 +179,9 @@ const DOCKER_DIR = `${HOME}/docker`;
 /**
  * Removes the stack's containers and folder. Saving names the fixture's
  * containers after its services, so the containers of every earlier stack go
- * too. The VM's clean snapshot has docker.io without the Compose plugin and no
- * Docker folder, so this adds both, and pulls the fixture's image.
+ * too. The VM's clean snapshot has no Docker folder, and one made before its
+ * seed installed the Compose plugin (an Ubuntu VM still on docker.io) lacks
+ * it, so this adds them, and pulls the fixture's image.
  */
 async function resetStack(name: string) {
   await vmSsh(

@@ -51,6 +51,11 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		}
 	}
 
+	leftover, err := leftoverOfTheName(ctx, req.name)
+	if err != nil {
+		return nil, err
+	}
+
 	// The NAT rules of a new interface are iptables lines in its hooks.
 	// Without the command the first of them fails and wg-quick takes the
 	// interface down again, leaving a config that never comes up.
@@ -85,6 +90,13 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		return nil, fmt.Errorf("write config: %w", err)
 	}
 
+	if leftover {
+		// Whatever its key: a new interface's key is new, so what runs under
+		// its name is never its own, also where the key cannot be read.
+		if stopErr := stopOtherKeysInterface(ctx, req.name); stopErr != nil {
+			return nil, stopErr
+		}
+	}
 	if err := bringUpInterface(ctx, req.name); err != nil {
 		return nil, err
 	}
@@ -96,6 +108,32 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		"public_key":  privKey.PublicKey().String(),
 		"peers":       peers,
 	}, nil
+}
+
+// leftoverOfTheName reports whether the name's unit holds a network
+// interface although no config of the name is on disk: one the unit brought up
+// from a config that is gone, which the create replaces with its own. Any
+// other network interface of the name is refused: it was made outside
+// LinuxIO, by hand, systemd-networkd or NetworkManager, and is its owner's to
+// take down. Without this, wg-quick refuses the up with "already exists"
+// after the config and the client files are written.
+func leftoverOfTheName(ctx context.Context, name string) (bool, error) {
+	if interfaceGoneFunc(name) {
+		return false, nil
+	}
+	unit := unitName(name)
+	state, err := units.activeState(ctx, unit)
+	if err != nil {
+		return false, fmt.Errorf("read the state of %s: %w", unit, err)
+	}
+	if state == "active" {
+		return true, nil
+	}
+	if !isInterfaceUpFunc(name) {
+		// A bridge or a network card: nothing here is to be deleted.
+		return false, fmt.Errorf("%w: a network interface named %s already exists and is not a WireGuard interface: choose another name", bridgeipc.ErrConflict, name)
+	}
+	return false, fmt.Errorf("%w: a WireGuard interface named %s is already up and LinuxIO has no config for it: take it down as root (ip link delete %s) or choose another name", bridgeipc.ErrConflict, name, name)
 }
 
 func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addInterfaceRequest, error) {

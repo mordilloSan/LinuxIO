@@ -44,10 +44,23 @@ once the agent has been reaped.
 
 Chat lifetime: the stream is not cached by the multiplexer (so the settings
 probe never shares the page's stream); the chat and its connection live in a
-module-level store, so it survives navigation but is lost on page reload. After a reconnect the frontend loads the newest session from
-`session/list` with `session/load` when the agent advertises it, otherwise it
-starts `session/new`. There is no bridge-side session registry, so a lost
-websocket ends the agent process.
+module-level store, so it survives navigation but is lost on page reload. The
+page's address names the open chat (`/assistant?chat=<session id>`), replaced
+rather than pushed whenever another chat opens, so Back leaves the page. After
+a reload, a reconnect or a restart the frontend loads, with `session/load`
+when the agent advertises it, the chat the address names if `session/list`
+has it, and the newest session otherwise; it starts `session/new` when there
+is nothing to load. A named chat that fails to load for any reason but a
+sign-in is forgotten, so Restart opens the newest. An id the list lacks (another agent's chat, a deleted one,
+a made-up one) is never sent to the agent, and a crafted link can only open
+one of the user's own chats: nothing is typed or sent. Once the page is
+connected the open chat wins over the address: an older history entry naming
+another chat is rewritten, not loaded. There is no bridge-side session
+registry, so a lost websocket ends the agent process.
+
+Known limit: every tab starts an agent of its own, so a chat's address opened
+in a second tab gives two agent processes on one session, and LinuxIO does
+not stop both from sending to it.
 
 ## Agents
 
@@ -216,7 +229,8 @@ the user installed another way satisfies it as well. See
 
 `make test-assistant-agent-integration` installs all three agents with the
 real npm into a temporary home and starts each far enough to answer
-`initialize`. It needs Node.js, network access and `claude` on the PATH.
+`initialize`. It needs Node.js, network access and `claude` on the PATH. Its
+output is also kept in `.cache/test-logs/test-assistant-agent-integration.log`.
 
 ## Client behavior
 
@@ -312,8 +326,8 @@ advertises the matching capability.
   chat's own, and appear there as they run; the calls after a second message
   stand under the second row. A subagent that the subagent started shows the
   same way one level deeper. What a subagent said and thought stays out of
-  the chat: it is in the Agents view. Its report is a row `← <title>
-  reported` with the text as Markdown. The title opens the Agents view on
+  the chat: it is in the Agents card. Its report is a row `← <title>
+  reported` with the text as Markdown. The title opens the Agents card on
   that subagent. A message whose subagent is not known reads `a subagent`.
 - **Read-only commands.** `transcript/readOnlyCommand.ts` decides which
   commands only read: a list of readers (`cat`, `ls`, `ss`, `df`, ...),
@@ -337,10 +351,14 @@ advertises the matching capability.
   store appends a `turn` block when the prompt resolves; a failed prompt
   gets none, and replayed history has no footer, since the agent does not
   replay the numbers.
-- **Reading column.** The transcript scrolls across the page, but its rows,
-  the permission card, the status line and the prompt share one centred
-  860 px column. The user's prompt is a bubble sized to its text on the
-  right; answers take the column.
+- **Reading column.** The transcript's scroller, the permission card, the
+  status line and the prompt share one centred 860 px column, so the
+  scrollbar sits on the edge of the prompt's box and the margins stay free
+  for the dock's tabs. Wheel scrolling over a margin does not scroll the
+  transcript. The area keeps the width of the tabs clear on both sides, so
+  on a narrow window the column shrinks and the tabs never lie over the
+  scrollbar. The user's prompt is a bubble sized to its text on
+  the right; answers take the column.
 - **Side question.** When the agent advertises `session/fork`, typing
   `/btw <question>` in the composer opens a panel beside the chat (below it on
   narrow screens), also while a turn is running. It forks the
@@ -402,15 +420,22 @@ advertises the matching capability.
 - **Diff view.** Tool calls that carry a diff show it as a line diff with the
   file path as header, additions and removals tinted.
 - **Chats.** The page header holds one action, New chat. The previous chats
-  are a tab on the chat's left edge: it opens a card that floats beside the
+  are a tab on the page's right edge: it opens a card that floats beside the
   chat, as tall as its list, with a search field and the chats grouped under
   Today, Yesterday and Earlier by when they were last used. The open chat is
-  marked, and clicking another loads it. The tab is disabled when the agent
-  cannot list sessions. The tabs stay in place while a card is open, and one
-  card is open at a time (the chats, the activity map or a
-  [plugin pane](#plugin-panes)), so two cards never run past the bottom of a
-  short window.
-- **Activity map.** The Activity tab, under Chats, opens a card that draws
+  marked, and clicking another loads it and puts it in the page's address
+  (see Chat lifetime above). The tab is disabled when the agent
+  cannot list sessions. The tabs stay in place while a card is open. Opening a
+  card never closes another (the chats, the agents, the activity map, a
+  [plugin pane](#plugin-panes)): the open cards stack in one column beside the
+  tabs (`dock/DockCard.tsx` places each in `.assistant-dock-cards`), always in
+  the same order from the top (chats, agents, activity, then a pane), whichever
+  was opened first, and closing a card moves the ones below it up, with no
+  gap. All the cards have one width, 340 px to begin with, which the user
+  changes by dragging the left edge of any of them or with the arrow keys; the
+  browser remembers it (`dock/dockWidth.tsx`). On a short window the cards
+  share the height and scroll inside.
+- **Activity map.** The Activity tab, under Agents, opens a card that draws
   where the chat's work went. It is LinuxIO's own (`-components/workmap`),
   computed from the transcript and `usage_update` the page already holds: it
   asks the agent for nothing, needs no plugin, and works for any agent that
@@ -565,21 +590,26 @@ advertises the matching capability.
     LinuxIO does (read from the source of `claude-agent-acp` 0.102.0). A subagent's
     own calls fly from the core, not from the Agents station; a call a hook
     refused is an ordinary failure; and compaction is not a step.
-  - *Card.* It shares the plugin pane's box, blending, width and resizing,
-    is drawn only while open, and the browser remembers that it was open and
-    reopens it where it fits beside the chat. Opening it closes a plugin's
-    pane and the reverse; an open side question hides both.
-- **Agents.** Under the Activity tab, a tab counts the subagents at work
+  - *Card.* It shares the plugin pane's box, blending and resizing, is
+    drawn only while open, and the browser remembers that it was open and
+    reopens it where it fits beside the chat. The picture stays pinned at the
+    top of the card at its own proportions; what runs now and the list of
+    what happened are under a **Details** button, closed until it is
+    clicked, and scroll inside the card. Opening it leaves the other cards
+    open; an open side question hides them.
+- **Agents.** The tab under Chats counts the subagents at work
   (`0 agents`, `2 agents`); its dot is grey while none runs and pulses while
-  one does. It opens the activity card on its other view
+  one does. It opens a card of its own
   (`-components/workmap/AgentMap.tsx`), which the map's Agents station opens
-  too. The view draws the chat's agent, with its model and the tokens in its
+  too, and which stays open beside the Activity card: each tab opens and
+  closes only its card, and the browser remembers that each was open. The
+  card draws the chat's agent, with its model and the tokens in its
   context, and the subagents it sent off joined to it by lines: beside it on
   a wide card, under it on a narrow one, and the subagents they sent off
   under them. Each subagent shows how it stands when it is not simply
   finished (`running`, `waiting for you`, `stopped`, `failed`, `ended`,
   `disconnected`), its kind, and how long it has run or took. Choosing the
-  chat's agent goes back to the map; choosing a subagent, here or by its
+  chat's agent opens the map; choosing a subagent, here or by its
   title in the transcript, shows under its name:
   - how it stands, its kind and the model it ran on; why it failed, when
     the agent says; which agent started it; its time and `tokens not
@@ -721,14 +751,22 @@ advertises the matching capability.
   such as one that lands on the sign-in page, drops its command without a
   message.
 - **Auto-scroll.** The transcript follows new content while it is scrolled to
-  the bottom and pauses when the user scrolls up.
+  the bottom, pauses when the user scrolls up and follows again once they are
+  back at the bottom, so a loaded chat opens at its newest message
+  (`useFollowBottom`). It also follows what grows without a render, watched by
+  a `ResizeObserver` on the scroller and its column: web fonts swapping in
+  after the first paint, code being coloured, the window shrinking. Only a
+  move up pauses it, since the scroll event of its own jump can arrive after
+  more content landed and read as "not at the bottom".
 - **Shortcuts.** Enter sends, Shift+Enter inserts a newline, Escape stops a
   running turn, Shift+Tab cycles the mode, Ctrl/Cmd+Shift+O starts a new chat.
   The header tooltips show them.
 - **Text size.** The transcript and composer use the app body size, and code
-  uses a smaller monospace size. The chat starts at the terminal's font size;
-  the Text size row at the foot of the composer's `+` menu changes it, and
-  the choice is kept in the browser.
+  uses a smaller monospace size. The chat starts at the app's
+  body size (14px); the decrease and increase buttons in the page header, beside
+  New chat, change it (10 to 28px), and the choice is kept in the user's config as
+  `assistantFontSize`, so it follows them to another browser. The dock (its
+  tabs and cards) keeps the app's body size whatever the chat's text size is.
 - **Titles.** A `session_info_update` title renames the chat on the Chats
   card; untitled chats show their session id.
 
@@ -821,7 +859,7 @@ How LinuxIO keeps it (`-components/subagents.ts`, `assistant-store.ts`):
   so a loaded chat reads message, then report, as the live one did.
 - A subagent's call with no end on record counts as running only while the
   subagent does; after that it reads as done, in the transcript, the map
-  and the Agents view.
+  and the Agents card.
 
 What the form does not give:
 
@@ -959,9 +997,9 @@ untouched.
   queued. The pane of the Claude Code process whose `session_id` equals the
   chat's ACP session id is drawn on a card that floats in the margin beside
   the chat, so the conversation keeps its centred column. Dragging the card's
-  right edge (or the arrow keys on it) resizes it between 240 and 720 px, a
+  left edge (or the left and right arrow keys on it) resizes it between 240 and 720 px, a
   double click restores 340 px, and the width is kept in the browser. The
-  pane has a tab on the chat's left edge, under the Chats tab: the card's
+  pane has a tab on the page's right edge, under the Chats tab: the card's
   one header button closes it to that tab, and the tab opens it again. Where
   the margin cannot hold the card beside the tabs it starts closed and opens
   over the chat on request. What the user chose holds for that pane; another
@@ -1045,7 +1083,8 @@ The chosen agent starts only when its own capability is available, and
 - Terminal panes for commands the agent runs; the agent keeps its own
   terminal tools.
 - Persisted "allow always" permission choices.
-- A bridge-side session registry that survives websocket loss.
+- Chats that survive websocket loss: planned as a per-user agent host in
+  [Assistant agent host](./TODO/assistant-agent-host.md).
 - Proactive alerts.
 - Automatic agent updates: a newer agent arrives with a LinuxIO release and
   is installed when the user presses Install.

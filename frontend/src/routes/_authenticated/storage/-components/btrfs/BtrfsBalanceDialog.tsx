@@ -25,16 +25,16 @@ type BalanceMode = "usage" | "all" | "convert";
 
 const MODES: Record<BalanceMode, { label: string; help: string }> = {
   usage: {
-    label: "Lightly used data chunks",
-    help: "Rewrites only the data chunks filled up to the limit below, so their space can be used again. Quick; use it when the pool reports full while free space still shows.",
+    label: "Lightly used areas",
+    help: "Repacks only the data areas filled up to the limit below, so their space can be used again. Quick; use it when the pool reports full while free space still shows.",
   },
   all: {
     label: "Everything",
-    help: "Rewrites every chunk, which spreads data and metadata over all disks, as after adding one. Takes the longest.",
+    help: "Rewrites everything, which spreads data and metadata over all disks, as after adding one. Takes the longest.",
   },
   convert: {
     label: "Change profile",
-    help: "Rewrites chunks into another profile, such as raid1 after adding a second disk.",
+    help: "Rewrites everything into another profile, such as raid1 after adding a second disk.",
   },
 };
 
@@ -134,7 +134,7 @@ const BtrfsBalanceDialog = ({
       <AppDialogTitle>Balance</AppDialogTitle>
       <AppDialogContent>
         <AppAlert severity="warning">
-          A balance rewrites chunks and can take hours on a large pool. The
+          A balance rewrites data and can take hours on a large pool. The
           filesystem stays usable, and the Disks card can cancel the balance.
         </AppAlert>
         <AppSelect
@@ -151,7 +151,7 @@ const BtrfsBalanceDialog = ({
         </AppSelect>
         <AppTypography color="text.secondary" variant="caption">
           {filesystem.degraded
-            ? "The pool is missing a disk, so it can only change profile: any other balance would rewrite chunks with fewer copies. Replace the disk first."
+            ? "The pool is missing a disk, so it can only change profile: any other balance would rewrite data with fewer copies. Replace the disk first."
             : MODES[mode].help}
         </AppTypography>
         {mode === "usage" && (
@@ -163,7 +163,7 @@ const BtrfsBalanceDialog = ({
           >
             {USAGE_LIMITS.map((limit) => (
               <option key={limit} value={String(limit)}>
-                {`Chunks up to ${limit}% full`}
+                {`Areas up to ${limit}% full`}
               </option>
             ))}
           </AppSelect>

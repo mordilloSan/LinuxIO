@@ -74,6 +74,8 @@ const filesystem = (
   totalBytes: 0,
   unallocatedBytes: 0,
   usedBytes: 0,
+  storedBytes: 0,
+  freeBytes: 0,
   allocation: [],
   devices: [],
   scrub: {} as BtrfsFilesystem["scrub"],

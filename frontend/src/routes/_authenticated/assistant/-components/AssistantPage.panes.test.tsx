@@ -79,8 +79,11 @@ describe("AssistantPage plugin panes", () => {
     expect(panel).toHaveTextContent("Nothing is running");
     // The card floats over the chat from the dock on its edge; it never takes
     // a column from it.
-    expect(panel.parentElement).toHaveClass("assistant-dock");
-    expect(panel.parentElement?.parentElement).toHaveClass("assistant__main");
+    expect(panel.parentElement).toHaveClass("assistant-dock-cards");
+    expect(panel.parentElement?.parentElement).toHaveClass("assistant-dock");
+    expect(panel.parentElement?.parentElement?.parentElement).toHaveClass(
+      "assistant__main",
+    );
     expect(container.querySelector(".assistant__body")).not.toHaveClass(
       "assistant__body--split",
     );

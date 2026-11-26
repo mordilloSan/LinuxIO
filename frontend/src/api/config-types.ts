@@ -31,6 +31,7 @@ export interface EffectiveUISettings {
   viewModeDefault: TableCardViewMode;
   layoutOrders: Record<string, string[]>;
   terminalFontSize: number;
+  assistantFontSize: number;
 }
 
 export type EffectiveAppSettings = AppSettings & EffectiveUISettings;

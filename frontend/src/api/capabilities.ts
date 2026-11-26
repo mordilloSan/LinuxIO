@@ -154,7 +154,7 @@ export const CAPABILITIES = [
     reasonUnknown: "smartmontools dependency check is still running.",
     reasonUnavailable: "smartmontools dependency is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open storage", to: "/storage" },
+    route: { label: "Open disks", to: "/storage/disks" },
   },
   {
     wire: "packagekit",
@@ -349,6 +349,19 @@ export const CAPABILITIES = [
     installable: { requiresPackageKit: true },
   },
   {
+    wire: "wsdd",
+    state: "wsddAvailable",
+    label: "Windows discovery",
+    description: "Show this server in the Network view of Windows",
+    readyText: "The WS-Discovery service (wsdd) is installed.",
+    dependency: "wsdd",
+    icon: "mdi:lan",
+    reasonUnknown: "Windows discovery availability is still being checked.",
+    reasonUnavailable: "The WS-Discovery service (wsdd) is not installed.",
+    installable: { requiresPackageKit: true },
+    route: { label: "Open shares", to: "/storage/shares" },
+  },
+  {
     wire: "wireguard",
     state: "wireguardAvailable",
     label: "WireGuard",
@@ -373,7 +386,7 @@ export const CAPABILITIES = [
     reasonUnknown: "btrfsmaintenance availability is still being checked.",
     reasonUnavailable: "btrfsmaintenance is not installed.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open storage", to: "/storage" },
+    route: { label: "Open pools", to: "/storage/pools" },
   },
   {
     wire: "btrfs",
@@ -387,7 +400,7 @@ export const CAPABILITIES = [
     reasonUnknown: "btrfs-progs availability is still being checked.",
     reasonUnavailable: "btrfs-progs is not installed.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open subvolumes", to: "/storage/subvolumes" },
+    route: { label: "Open pools", to: "/storage/pools" },
   },
   {
     wire: "e2fsprogs",
@@ -400,7 +413,7 @@ export const CAPABILITIES = [
     reasonUnknown: "e2fsprogs dependency check is still running.",
     reasonUnavailable: "e2fsprogs dependency is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open storage", to: "/storage" },
+    route: { label: "Open disks", to: "/storage/disks" },
   },
   {
     wire: "xfsprogs",
@@ -413,7 +426,7 @@ export const CAPABILITIES = [
     reasonUnknown: "xfsprogs dependency check is still running.",
     reasonUnavailable: "xfsprogs dependency is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open storage", to: "/storage" },
+    route: { label: "Open disks", to: "/storage/disks" },
   },
 ] as const satisfies readonly CapabilityDef[];
 

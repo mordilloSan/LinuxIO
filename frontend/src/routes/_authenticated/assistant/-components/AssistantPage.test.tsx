@@ -53,25 +53,27 @@ describe("AssistantPage", () => {
     expect(connectSpy).not.toHaveBeenCalled();
   });
 
-  it("starts at the terminal font size and lets the user resize the chat", async () => {
-    window.localStorage.removeItem("linuxio.assistant.fontSize");
-    const { container } = render(<AssistantPage agent="claude" />);
+  it("starts at the saved text size and saves the chat's size to the config", async () => {
+    const setKey = vi.fn();
+    const { container } = render(<AssistantPage agent="claude" />, {
+      appSettings: { assistantFontSize: 15 },
+      config: { setKey },
+    });
     setState({ status: "ready", sessionId: "s" });
     const root = container.querySelector<HTMLElement>(".assistant")!;
-    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("16px");
+    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("15px");
 
-    // The size lives in the composer's menu, not in the page header.
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Attach" }),
-    );
+    // The size buttons are in the page header, like the terminal's.
     await userEvent.click(
       await screen.findByRole("button", { name: /increase font size/i }),
     );
-    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("17px");
-    expect(window.localStorage.getItem("linuxio.assistant.fontSize")).toBe(
-      "17",
+    expect(setKey).toHaveBeenCalledWith(
+      "assistantFontSize",
+      expect.any(Function),
     );
-    window.localStorage.removeItem("linuxio.assistant.fontSize");
+    const update = setKey.mock.calls[0][1] as (prev: number) => number;
+    expect(update(15)).toBe(16);
+    expect(update(28)).toBe(28);
   });
 
   it("connects to the configured agent on mount", () => {
@@ -82,6 +84,21 @@ describe("AssistantPage", () => {
       },
     });
     expect(connectSpy).toHaveBeenCalledWith("claude");
+  });
+
+  it("hands the store the chat the address names before it connects", () => {
+    const setRequestedChat = vi.spyOn(assistantStore, "setRequestedChat");
+    render(<AssistantPage agent="claude" chat="s-old" />, {
+      capabilities: {
+        claudeCodeAvailable: true,
+        assistantClaudeAvailable: true,
+      },
+    });
+    expect(setRequestedChat).toHaveBeenCalledWith("s-old");
+    expect(connectSpy).toHaveBeenCalledWith("claude");
+    expect(setRequestedChat.mock.invocationCallOrder[0]).toBeLessThan(
+      connectSpy.mock.invocationCallOrder[0],
+    );
   });
 
   it("says what to install instead of starting an agent that is not ready", () => {
@@ -252,12 +269,13 @@ describe("AssistantPage", () => {
     setState({ status: "ready", sessionId: "s", canListSessions: true });
     const actions = document.querySelector<HTMLElement>(".assistant__actions");
     expect(actions).not.toBeNull();
-    // New chat is the page's one action; chats and panes are on the dock.
+    // The text size and New chat are the page's actions; chats and panes are
+    // on the dock.
     expect(
       (await within(actions!).findAllByRole("button")).map((button) =>
         button.getAttribute("aria-label"),
       ),
-    ).toEqual(["New chat"]);
+    ).toEqual(["Decrease font size", "Increase font size", "New chat"]);
     expect(
       within(screen.getByTestId("header-host")).queryAllByRole("button"),
     ).toHaveLength(0);

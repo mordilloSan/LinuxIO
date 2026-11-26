@@ -286,18 +286,23 @@ type DockerSystemInfo struct {
 
 // DockerDaemonConfig is the subset of /etc/docker/daemon.json LinuxIO edits.
 // Keys the form does not cover are preserved untouched on save.
+// StopBeforeShutdown is the one field that is not in the file.
 type DockerDaemonConfig struct {
 	AddressPoolBase string `json:"address_pool_base"`
 	AddressPoolSize int    `json:"address_pool_size"`
 	DataRoot        string `json:"data_root"`
 	// ImageStore is "classic" (graph drivers, everything under DataRoot),
 	// "containerd" (snapshotters in containerd's root) or "" for Docker's choice.
-	ImageStore    string `json:"image_store"`
-	LiveRestore   bool   `json:"live_restore"`
-	LogMaxFile    string `json:"log_max_file"`
-	LogMaxSize    string `json:"log_max_size"`
-	StorageDriver string `json:"storage_driver"`
-	UserlandProxy bool   `json:"userland_proxy"`
+	ImageStore  string `json:"image_store"`
+	LiveRestore bool   `json:"live_restore"`
+	LogMaxFile  string `json:"log_max_file"`
+	LogMaxSize  string `json:"log_max_size"`
+	// StopBeforeShutdown says whether linuxio-docker-shutdown.service is
+	// enabled: the unit that stops containers through Docker before the host
+	// shuts down. See docs/docker-shutdown.md.
+	StopBeforeShutdown bool   `json:"stop_before_shutdown"`
+	StorageDriver      string `json:"storage_driver"`
+	UserlandProxy      bool   `json:"userland_proxy"`
 }
 
 type DockerDaemonConfigSetResult struct {

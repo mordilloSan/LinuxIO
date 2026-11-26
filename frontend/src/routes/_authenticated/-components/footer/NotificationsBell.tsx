@@ -35,7 +35,6 @@ import { useAlerts } from "./useAlerts";
 const PEEK_DURATION_MS = 3000;
 
 interface CompletedTransfer {
-  completedAt: Date;
   id: string;
   label?: string;
   type:
@@ -414,18 +413,16 @@ export function NotificationsBell() {
     CompletedTransfer[]
   >([]);
 
-  // Track completed transfers
-  const prevTransfersRef = useRef(transfers);
-  useEffect(() => {
-    const prevTransfers = prevTransfersRef.current;
+  // A transfer that left the list at 100% joins the completed history.
+  const [prevTransfers, setPrevTransfers] = useState(transfers);
+  if (transfers !== prevTransfers) {
+    setPrevTransfers(transfers);
     const currentTransferIds = new Set(transfers.map((t) => t.id));
-
     const completedNow = prevTransfers.filter(
       (prevTransfer) =>
         prevTransfer.progress === 100 &&
         !currentTransferIds.has(prevTransfer.id),
     );
-
     if (completedNow.length > 0) {
       setCompletedTransfers((prev) =>
         [
@@ -433,15 +430,12 @@ export function NotificationsBell() {
             id: t.id,
             type: t.type,
             label: t.label,
-            completedAt: new Date(),
           })),
           ...prev,
         ].slice(0, 10),
       );
     }
-
-    prevTransfersRef.current = transfers;
-  }, [transfers]);
+  }
 
   // Auto-peek when a new transfer starts (only react to id changes, not progress)
   const transferIds = transfers.map((t) => t.id).join(",");
