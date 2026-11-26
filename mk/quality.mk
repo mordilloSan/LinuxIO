@@ -98,7 +98,7 @@ test-full: ## Run make test, the browser tests, the assistant agent install test
 	  fi
 	done
 	@printf '%s\n' "" "test-full" "$${recap[@]}"
-	@printf '%s\n' "test-full of $(GIT_VERSION), started $$started, ended $$(date '+%F %T')" "$${recap[@]}" \
+	@printf '%s\n' "test-full of $(GIT_VERSION) at $(GIT_COMMIT_SHORT), started $$started, ended $$(date '+%F %T')" "$${recap[@]}" \
 	  | sed 's/\x1b\[[0-9;]*m//g' >"$(test_full_logs)/recap.log"
 	@echo "recap kept in $(call test_full_shown,$(test_full_logs))/recap.log"
 	@((stopped == 0)) || exit 130
