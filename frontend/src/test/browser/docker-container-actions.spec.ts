@@ -47,6 +47,29 @@ test("keeps inspect labels on one line and running state green", async ({
   await page.screenshot({ path: testInfo.outputPath("container-details.png") });
 });
 
+test("keeps the selected container card at its full height above the logs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 2522, height: 1300 });
+  await page.goto("/docker/container-actions");
+  await page.getByRole("button", { name: "Open container details" }).click();
+  const card = page.locator("#container-card-example-id");
+  await expect(card.getByText("Overview", { exact: true })).toBeVisible();
+  await expect(page.getByText("Container Logs", { exact: true })).toBeVisible();
+  // The summary card clips its content, so a squashed row shows as a card
+  // shorter than what it holds.
+  const clipped = await card.evaluate((element) => {
+    let frame = element.parentElement;
+    while (frame && getComputedStyle(frame).overflow === "visible") {
+      frame = frame.parentElement;
+    }
+    return frame
+      ? Math.round(frame.scrollHeight - frame.clientHeight)
+      : Number.NaN;
+  });
+  expect(clipped).toBe(0);
+});
+
 test("keeps destructive container actions keyboard-safe and explicit", async ({
   page,
 }) => {

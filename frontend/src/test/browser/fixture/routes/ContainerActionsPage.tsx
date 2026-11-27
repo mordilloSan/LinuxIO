@@ -19,11 +19,12 @@ import {
 } from "@/api";
 import { bridgeConfigQueryKey } from "@/api/config-query";
 import SortableCard from "@/components/cards/SortableCard";
+import { RoutedTabLayout } from "@/components/tabbar";
 import AppButton from "@/components/ui/AppButton";
 import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import ContainerCard from "@/routes/_authenticated/docker/-components/cards/ContainerCard";
-import ContainerResourceDetails from "@/routes/_authenticated/docker/-components/containers/ContainerResourceDetails";
+import { SelectedContainerDetails } from "@/routes/_authenticated/docker/-components/containers/ContainerList";
 
 const auth: AuthContextType = {
   isAuthenticated: true,
@@ -197,10 +198,19 @@ export default function ContainerActionsPage() {
           <main style={{ padding: "var(--app-space-24)" }}>
             <h1>Container lifecycle fixture</h1>
             {selected ? (
-              <ContainerResourceDetails
-                container={container}
-                onClose={() => setSelected(false)}
-              />
+              // MainLayout's scrollport and the Docker tab layout, whose panel
+              // makes its only child a flex item with a definite height.
+              <div style={{ height: "80vh", overflow: "auto" }}>
+                <div style={{ height: "100%", minHeight: "100%" }}>
+                  <RoutedTabLayout tabs={[]}>
+                    <SelectedContainerDetails
+                      container={container}
+                      onClose={() => setSelected(false)}
+                      stopping={false}
+                    />
+                  </RoutedTabLayout>
+                </div>
+              </div>
             ) : (
               <>
                 <AppButton

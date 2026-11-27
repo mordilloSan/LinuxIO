@@ -151,7 +151,7 @@ const applyPreviewOrder = (
   return [...ordered, ...remaining.values()];
 };
 
-const SelectedContainerDetails = ({
+export const SelectedContainerDetails = ({
   container,
   onClose,
   stopping,
@@ -174,15 +174,20 @@ const SelectedContainerDetails = ({
         stopping={stopping}
       />
       <ContainerHistoryCards containerId={container.Id} />
-      <UnitLogsCard
-        createStream={(tail) =>
-          openChannel("docker.logs.follow", {
-            containerId: container.Id,
-            tail,
-          })
-        }
-        title="Container Logs"
-      />
+      {/* The tab panel gives this column a definite height, so the logs card's
+          `height: 100%` would claim all of it and squash the details row
+          (minHeight 0) to a strip; the block keeps it at its own height. */}
+      <div>
+        <UnitLogsCard
+          createStream={(tail) =>
+            openChannel("docker.logs.follow", {
+              containerId: container.Id,
+              tail,
+            })
+          }
+          title="Container Logs"
+        />
+      </div>
     </div>
   );
 };
