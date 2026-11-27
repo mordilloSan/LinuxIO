@@ -123,5 +123,6 @@ export function buildPrompt(
   const pasted = attachments.flatMap((a) =>
     a.kind === "text" ? [textBlock(a.text)] : [],
   );
-  return [...images, ...files, ...pasted, textBlock(text)];
+  // The API refuses an empty text block, so a message of attachments alone has none.
+  return [...images, ...files, ...pasted, ...(text ? [textBlock(text)] : [])];
 }

@@ -391,6 +391,11 @@ advertises the matching capability.
 - **Images.** Paste or drop an image into the composer when the agent accepts
   image prompts. Thumbnails with a remove button appear above the text, and
   the image blocks are sent before the text.
+- **Long pastes.** A paste of more than 8 lines or 1000 characters becomes a
+  "Pasted text" chip instead of filling the field, and is sent as a text block
+  of its own before the typed text. A message may be attachments alone: Send
+  and Enter take it with an empty field, and no empty text block is sent,
+  since the API refuses one.
 - **Slash commands.** Typing `/` at the start of the composer lists the
   agent's `availableCommands`, filtered by what was typed. Enter or a click
   inserts `/name `, and the message is sent as ordinary text. Two entries are

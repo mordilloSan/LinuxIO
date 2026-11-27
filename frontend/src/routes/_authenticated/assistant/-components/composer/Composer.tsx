@@ -174,6 +174,8 @@ export default function Composer({
   ];
   // Attachments need a send that can actually happen.
   const locked = disabled || (running && !canSteer);
+  // A pasted image or long paste is a message by itself.
+  const empty = !draft.trim() && attachments.length === 0;
 
   const slashPrefix = SLASH_PREFIX.exec(draft)?.[1];
   const slashMatches =
@@ -242,7 +244,7 @@ export default function Composer({
 
   const submit = () => {
     const text = draft.trim();
-    if (!text || disabled) return;
+    if (empty || disabled) return;
     const btw = BTW.exec(text);
     if (btw) {
       runBtw(btw[1] ?? "");
@@ -491,7 +493,7 @@ export default function Composer({
                 />
               ) : null}
               <SendButton
-                disabled={running ? false : locked || !draft.trim()}
+                disabled={running ? false : locked || empty}
                 onClick={running ? onStop : submit}
                 running={running}
               />

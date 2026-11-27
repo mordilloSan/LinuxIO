@@ -185,6 +185,40 @@ describe("Composer", () => {
     ).toBeNull();
   });
 
+  it("sends a pasted image without any text from the Send button", async () => {
+    const { onSend } = setup();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    fireEvent.paste(screen.getByLabelText("Message"), {
+      clipboardData: { files: [png()], types: ["Files"], getData: () => "" },
+    });
+    await screen.findByAltText("shot.png");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledWith(
+      [{ type: "image", data: "YWJj", mimeType: "image/png" }],
+      {
+        text: "",
+        attachments: [
+          expect.objectContaining({ kind: "image", name: "shot.png" }),
+        ],
+      },
+    );
+  });
+
+  it("sends a long paste without any text on Enter", async () => {
+    const { onSend } = setup();
+    const input = screen.getByLabelText("Message");
+    const pasted = Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n");
+    fireEvent.paste(input, {
+      clipboardData: { files: [], getData: () => pasted },
+    });
+    await screen.findByRole("button", { name: "Open Pasted text" });
+    await userEvent.type(input, "{Enter}");
+    expect(onSend).toHaveBeenCalledWith([{ type: "text", text: pasted }], {
+      text: "",
+      attachments: [expect.objectContaining({ kind: "text", text: pasted })],
+    });
+  });
+
   it("ignores pasted images when the agent does not take images", async () => {
     setup({ canImages: false });
     fireEvent.paste(screen.getByLabelText("Message"), {

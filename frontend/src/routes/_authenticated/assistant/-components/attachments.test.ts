@@ -110,4 +110,18 @@ describe("buildPrompt", () => {
       "text",
     ]);
   });
+
+  it("sends no empty text block when only attachments are sent", () => {
+    const attachments: Attachment[] = [
+      {
+        id: "a",
+        kind: "file",
+        path: "/a",
+        block: { type: "resource_link", uri: "file:///a", name: "a" },
+      },
+    ];
+    expect(buildPrompt("", attachments)).toEqual([
+      { type: "resource_link", uri: "file:///a", name: "a" },
+    ]);
+  });
 });
