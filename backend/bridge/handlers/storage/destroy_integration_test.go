@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -32,6 +33,9 @@ func TestBtrfsDestroyIntegration(t *testing.T) {
 	useTempFstab(t, "") // destroy drops the pool's fstab lines
 	ctx := context.Background()
 	dir := t.TempDir()
+	statePath := btrfs.PoolStatePath
+	btrfs.PoolStatePath = filepath.Join(dir, "pools.json")
+	t.Cleanup(func() { btrfs.PoolStatePath = statePath })
 	disk := memberLoopDevice(t, filepath.Join(dir, "disk.img"), 1<<30)
 	must := func(what string, err error) {
 		t.Helper()
@@ -91,9 +95,19 @@ func TestBtrfsDestroyIntegration(t *testing.T) {
 		t.Fatalf("pool mounted at %v, want %s and %s", at, data, helper)
 	}
 
+	// What LinuxIO recorded about the pool goes with it, and nothing else.
+	const otherPool = "11111111-2222-4333-8444-555555555555"
+	must("write the pool records", os.WriteFile(btrfs.PoolStatePath,
+		[]byte(`{"`+uuid+`":{"generation":9,"degraded":true,"present":[1]},"`+otherPool+`":{"generation":7}}`), 0o644))
+
 	must("destroy the pool", DestroyBtrfsPool(ctx, uuid))
 	if at := mounted(); len(at) != 0 {
 		t.Fatalf("pool still mounted at %v after destroy", at)
+	}
+	records, err := os.ReadFile(btrfs.PoolStatePath)
+	must("read the pool records", err)
+	if strings.Contains(string(records), uuid) || !strings.Contains(string(records), otherPool) {
+		t.Fatalf("pool records after destroy = %s, want %s gone and %s kept", records, uuid, otherPool)
 	}
 	f, err := os.Open(disk)
 	must("open the disk", err)

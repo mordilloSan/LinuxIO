@@ -33,8 +33,8 @@ that **Force** never takes a disk of an unmounted pool
 zeroes a disk mounted or held after the checks (`TestBtrfsAddWipeIntegration`),
 that no writer touches a device claimed after its checks and that md and LVM2
 signatures are read as libblkid reads them (`TestPartitionClaimIntegration`),
-that a pool whose top level a read mounted can be destroyed
-(`TestBtrfsDestroyIntegration`), and, acting as other accounts, that the
+that a pool whose top level a read mounted can be destroyed, its record
+with it (`TestBtrfsDestroyIntegration`), and, acting as other accounts, that the
 kernel decides by a [shared folder](./shared-folders.md)'s ACL, keeps its
 snapshots root's alone until its earlier versions open them, and that the
 recycle bin's emptying keeps a folder new to the bin and leaves a subvolume
@@ -296,6 +296,12 @@ mounted is only recorded by the next health run, so a crash within those ten
 minutes, followed by only the dead disk coming back, is not caught. The
 recorded generation can belong to a transaction a crash then loses, which
 makes the check refuse a set that was in fact current: the safe side.
+Only **Destroy pool** removes a record (a health run that listed the pool
+before the destroy can write it once more). The record of a pool whose disks are
+disconnected stays however long they are away, since it is what refuses the
+stale one when a single disk comes back; the record of a pool wiped outside
+LinuxIO stays too, and nothing reads it: a record is looked up only by the
+UUID of a pool that is mounted or found on a disk.
 
 **When the disk is back.** A disk that reappears while the pool is mounted is
 listed by the kernel but never opened, so it is shown as missing until the
@@ -1439,7 +1445,8 @@ LinuxIO's own top-level mount under `/run/linuxio/btrfs/<uuid>` (see
 settings read, is not one: it is unmounted with the rest. An
 unmounted pool is destroyed the same way from its superblocks, with the disks
 that are present when some are missing, which is how a disk of an old pool is
-freed for a new one.
+freed for a new one. A destroy that wiped every disk it found also drops the
+pool's hot spare and its record in `btrfs-pools.json` (`ForgetPool`).
 
 ### Which disks a pool may take
 

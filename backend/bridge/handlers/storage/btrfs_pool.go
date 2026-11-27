@@ -304,6 +304,13 @@ func DestroyBtrfsPool(ctx context.Context, uuid string) error {
 	if _, err := btrfsClearSpare(ctx, uuid); err != nil {
 		slog.Warn("failed to remove the hot spare of a destroyed btrfs pool", "uuid", uuid, "error", err)
 	}
+	// Nor does its record say anything once its disks are wiped. A member
+	// that was missing keeps its superblock, and may come back as a pool of
+	// one stale disk: nothing mounts it at boot, since its fstab lines are
+	// gone, and Mount degraded is a person's choice with or without a record.
+	if err := btrfs.ForgetPool(ctx, uuid); err != nil {
+		slog.Warn("failed to remove the record of a destroyed btrfs pool", "uuid", uuid, "error", err)
+	}
 	return nil
 }
 

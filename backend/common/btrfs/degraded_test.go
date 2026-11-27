@@ -1657,3 +1657,26 @@ func TestResyncRefusesAPoolThatWentDegradedDuringTheConvert(t *testing.T) {
 		t.Fatalf("state = %+v, want no failed attempt", states[dataUUID])
 	}
 }
+
+// A destroyed pool's record goes, and no other pool's with it.
+func TestForgetPoolDropsOnlyItsRecord(t *testing.T) {
+	stubStatePaths(t, t.TempDir())
+	kept := poolState{Generation: 7, Degraded: true, Present: []uint64{2}}
+	if err := updatePoolStates(t.Context(), func(s map[string]poolState) {
+		s[dataUUID] = poolState{Generation: 11, Degraded: true, Present: []uint64{1}}
+		s[otherUUID] = kept
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ForgetPool(t.Context(), dataUUID); err != nil {
+		t.Fatal(err)
+	}
+	states, err := loadPoolStates()
+	if err != nil || !reflect.DeepEqual(states, map[string]poolState{otherUUID: kept}) {
+		t.Fatalf("states = %+v, %v, want only %s", states, err, otherUUID)
+	}
+	// A pool LinuxIO never recorded is no error.
+	if err := ForgetPool(t.Context(), dataUUID); err != nil {
+		t.Fatal(err)
+	}
+}

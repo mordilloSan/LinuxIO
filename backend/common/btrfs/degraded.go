@@ -180,6 +180,14 @@ func updatePoolStates(ctx context.Context, fn func(map[string]poolState)) error 
 	}, filelock.WithTimeout(rulesLockWait))
 }
 
+// ForgetPool drops the record of pool uuid. Destroy calls it once the pool's
+// disks are wiped: a pool that is on no disk is never looked up again, and
+// nothing else removes a record. A health run that listed the pool before
+// the destroy can write the record once more; it is read by nothing either.
+func ForgetPool(ctx context.Context, uuid string) error {
+	return updatePoolStates(ctx, func(s map[string]poolState) { delete(s, uuid) })
+}
+
 // mountedInfo returns the FS_INFO of the filesystem mounted at mnt, with its
 // current generation.
 func mountedInfo(mnt string) (fsInfoArgs, error) {
