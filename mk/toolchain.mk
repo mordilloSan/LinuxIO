@@ -76,3 +76,8 @@ update-build-pins: ## Move the release images, Node, the Go tools and the action
 # notes of every release in between go to .cache/agent-pins/release-notes.md.
 update-agent-pins: ## Move the Assistant's agent pins to the versions the ACP registry lists
 	@"$(scripts_dir)/update-agent-pins.sh" "$(repo_root)"
+
+# Starts a real chat on the owner's Claude login, so the owner runs it, never
+# an agent. Needs the pinned Claude adapter installed for the Assistant.
+record-subagent-trace: ## Record the Assistant's subagent chat again with the pinned Claude adapter
+	@cd "$(frontend_dir)" && node scripts/record-subagent-trace.mjs

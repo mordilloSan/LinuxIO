@@ -274,7 +274,7 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 # placeholder assets, the auth frame tool) are deliberately not phony.
 .PHONY: default help help-full help-overrides $(quiet_aliases)
 .PHONY: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck
-.PHONY: setup setup-frontend update-deps update-go-deps update-build-pins ci-frontend-deps
+.PHONY: setup setup-frontend update-deps update-go-deps update-build-pins update-agent-pins record-subagent-trace ci-frontend-deps
 .PHONY: lint lint-only lint-ci lint-ci-only tsc tsc-only tsc-ci golint golint-only
 .PHONY: test test-full check-actions check-docs check-systemd check-frontend check-backend
 .PHONY: test-frontend test-frontend-only test-frontend-ci setup-frontend-browser test-frontend-browser update-frontend-screenshots

@@ -73,7 +73,15 @@ not stop both from sending to it.
 The table is `agents` in `backend/bridge/internal/acpagents`, which the
 capability installer, the config handler and the Terminal agent login also
 use. Packages and versions come from the ACP registry; a new version reaches
-users only when a LinuxIO release changes the pin. The browser only ever sends
+users only when a LinuxIO release changes the pin. `make update-agent-pins`
+(`scripts/update-agent-pins.sh`) moves each pin to the version the registry
+lists for its npm package, writes the release notes of every release in
+between to `.cache/agent-pins/release-notes.md` (read with `gh` when it is
+installed, since GitHub allows 60 reads an hour without a sign-in), marks a
+move whose notes say BREAKING, and names any file that mentions an agent at
+another version than its pin, such as the recorded subagent chat below. It
+moves nothing the registry has not listed, so a preview never becomes a pin;
+a pin is tried in a chat before it is committed. The browser only ever sends
 an agent id;
 it never supplies a command, and unknown ids are rejected before anything
 spawns. Settings: `config.get` returns `assistant.agent`; `config.set`
@@ -806,17 +814,27 @@ replays none of it in a loaded chat. The types are `SubagentUpdate`,
 The form is unstable, so a new adapter pin can change it. What follows was
 read from the source of `claude-agent-acp` (`dist/acp-agent.js`,
 `native-subagents.js`, `subagent-replay.js`) and checked against a chat
-with the real adapter, recorded on 2026-11-13 with every update it sent:
-two subagents started at once, one of them in the background and starting
-one of its own, a `SendMessage` to a finished one, a subagent stopped with
-`session/cancel`, and the same chat loaded again. The recording is
+with the real adapter, recorded with every update it sent (the adapter's
+version and the date are at the top of the unit test below): two subagents
+started at once, one of them in the background and starting one of its own,
+a `SendMessage` to a finished one, a subagent stopped with `session/cancel`,
+and the same chat loaded again. The recording is
 `frontend/src/test/assistantSubagentTrace.json`, with paths and session ids
 replaced. A unit test replays it through the store
 (`-components/subagentTrace.test.ts`) and the browser spec through the page
 (`test/browser/assistant.spec.ts`), so a new pin is checked by recording the
-chat again. The recording ran in the `auto` mode and asked nothing; a
-permission request from a subagent was seen in a chat set to Manual on the
-same day, with two subagents asking at once. No chat has shown whether a
+chat again with `make record-subagent-trace`
+(`frontend/scripts/record-subagent-trace.mjs`). It starts the installed
+adapter with the Assistant's profile and client capabilities, reads every
+message off the wire, stops the Sleeper a few seconds into its work as the
+Stop button would, and loads the chat in a second adapter. It replaces the
+recording and moves the test's header only when the sessions, marks and the
+stopped subagent are what the tests replay and nothing asked for permission;
+otherwise it leaves the recording in `.cache/subagent-trace/trace.json`.
+Since it is a chat on the owner's Claude login, the owner runs it. The
+recording runs in the `auto` mode and asks nothing; a permission request from
+a subagent was seen in a chat set to Manual on 2026-11-13, with two subagents
+asking at once. No chat has shown whether a
 subagent Claude Code moves to the background by itself gets its launch note
 as a report.
 

@@ -23,7 +23,9 @@ import (
 // Agent is one ACP agent: the npm package that provides it, pinned to the
 // version LinuxIO installs and runs, and how to start it in stdio mode.
 // Packages and versions come from the ACP registry
-// (https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json).
+// (https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json);
+// make update-agent-pins moves the Version lines below, and reads each pair
+// as a Package line followed by its Version line.
 type Agent struct {
 	Package string
 	Version string

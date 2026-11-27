@@ -1058,6 +1058,20 @@ Action is pinned to (`packaging/build/pins.env`, `.github/workflows`). It
 shows what changed and prints a commit message, and changes nothing when all
 are current ([Releases](./releases.md)).
 
+Run `make update-agent-pins` to move the Assistant's agents (the `Version` of
+each agent in `backend/bridge/internal/acpagents/acpagents.go`) to what the
+ACP registry lists. It saves the release notes in between to
+`.cache/agent-pins/release-notes.md`, shows the diff and prints a commit
+message ([AI Assistant](./AI-assistant.md#agents)).
+
+A moved Claude pin is checked by recording the subagent chat again with
+`make record-subagent-trace` (`frontend/scripts/record-subagent-trace.mjs`):
+a real chat on the owner's Claude login, so the owner runs it, after
+installing the pinned adapter. It replaces
+`frontend/src/test/assistantSubagentTrace.json` and the version in its test's
+header only when the chat went as the tests replay it
+([AI Assistant](./AI-assistant.md#subagent-sessions)).
+
 ## Distro and WireGuard icons
 
 The existing icon generator bundles the literal IDs in
@@ -1085,7 +1099,8 @@ The full index groups the supported targets as follows:
 
 - setup: `setup`, `setup-frontend`, `ensure-node`, `ensure-go`,
   `ensure-golint`, `ensure-modernize`, `ensure-deadcode`, `ensure-govulncheck`,
-  `update-deps`, `update-go-deps`, `update-build-pins`
+  `update-deps`, `update-go-deps`, `update-build-pins`, `update-agent-pins`,
+  `record-subagent-trace`
 - frontend checks: `lint`, `lint-only`, `format-frontend` (Oxfmt alone, for
   when Oxlint fails on files you are not changing), `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,

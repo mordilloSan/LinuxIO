@@ -10,10 +10,10 @@ set -uo pipefail
 mode="$1"
 cd "$2" || exit 1
 oxlint_config=(-c config/.oxlintrc.json)
-oxlint_paths=(src config scripts/compiler-coverage.mjs scripts/run-browser-fixture.mjs)
+oxlint_paths=(src config scripts/compiler-coverage.mjs scripts/run-browser-fixture.mjs scripts/record-subagent-trace.mjs)
 oxfmt_globs=("src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html"
 	"!src/routeTree.gen.ts" "config/**/*.ts"
-	scripts/compiler-coverage.mjs scripts/run-browser-fixture.mjs)
+	scripts/compiler-coverage.mjs scripts/run-browser-fixture.mjs scripts/record-subagent-trace.mjs)
 oxfmt=(./node_modules/.bin/oxfmt -c config/.oxfmtrc.json)
 
 if [ "$mode" = "check" ]; then
