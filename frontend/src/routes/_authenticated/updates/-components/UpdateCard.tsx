@@ -34,7 +34,6 @@ const UpdateCard = ({
 }: UpdateCardProps) => {
   const isDeferred = isDeferredUpdate(update);
   const packageName = updatePackageName(update.package_id);
-  // The version is in the details panel's header, not on the card.
   const subtitle = update.summary.trim();
 
   return (
@@ -110,15 +109,16 @@ const UpdateCard = ({
           </AppTypography>
         ) : null}
 
-        {!onOpen && onUpdate ? (
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              marginTop: "auto",
-              paddingTop: 16,
-            }}
-          >
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: 8,
+            marginTop: "auto",
+            paddingTop: 16,
+          }}
+        >
+          {!onOpen && onUpdate ? (
             <AppButton
               disabled={isDeferred}
               onClick={onUpdate}
@@ -127,8 +127,17 @@ const UpdateCard = ({
             >
               Update
             </AppButton>
-          </div>
-        ) : null}
+          ) : null}
+          <AppTypography
+            color="text.secondary"
+            component="div"
+            noWrap
+            style={{ marginLeft: "auto", minWidth: 0 }}
+            variant="caption"
+          >
+            {update.version}
+          </AppTypography>
+        </div>
       </FrostedCard>
     </SelectableCard>
   );

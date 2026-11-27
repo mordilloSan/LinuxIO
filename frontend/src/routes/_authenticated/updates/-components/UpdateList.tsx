@@ -88,7 +88,6 @@ const UpdateList = ({ updates, onUpdateClick, isUpdating }: Props) => {
       <ResourceDetailsLayout
         onClose={() => focusPackage(null)}
         resourceLabel="update"
-        subtitle={focusedUpdate.version}
         summary={
           // Its own height, not the changelog panel's.
           <div style={{ alignSelf: "flex-start", width: "100%" }}>

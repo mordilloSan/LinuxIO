@@ -19,7 +19,7 @@ interface ResourceDetailsLayoutProps {
   children: ReactNode;
   onClose: () => void;
   resourceLabel: string;
-  subtitle: string;
+  subtitle?: string;
   summary: ReactNode;
   /**
    * "share" gives the summary a third of the row; "content" sizes it to its
@@ -144,14 +144,16 @@ const ResourceDetailsLayout = ({
                 >
                   {title}
                 </AppTypography>
-                <AppTypography
-                  color="text.secondary"
-                  component="div"
-                  noWrap
-                  variant="caption"
-                >
-                  {subtitle}
-                </AppTypography>
+                {subtitle ? (
+                  <AppTypography
+                    color="text.secondary"
+                    component="div"
+                    noWrap
+                    variant="caption"
+                  >
+                    {subtitle}
+                  </AppTypography>
+                ) : null}
               </div>
               <AppIconButton
                 aria-label={`Close ${resourceLabel} details`}

@@ -568,11 +568,11 @@ neither package manager reads from the package itself:
 
 This holds for every package on the Updates page, not only LinuxIO's
 (`getSingleUpdateDetail` in `backend/bridge/handlers/packages`). The card
-names the package, with PackageKit's summary of it below. Clicking the card
-opens the update: the card, with its Update action, beside a panel headed by
-the version, which is the PackageKit package ID's, with the changelog, and
-the address keeps the open update (`/updates?package=<package ID>`). The
-changelog is every entry PackageKit
+names the package, with PackageKit's summary of it below and the version,
+which is the PackageKit package ID's, at its foot. Clicking the card opens
+the update: the card, with its Update action, beside a panel with the
+changelog, and the address keeps the open update
+(`/updates?package=<package ID>`). The changelog is every entry PackageKit
 sends, which the apt backend limits to the versions newer than the one
 installed, so an update over several versions shows all of them. Where the
 apt backend has no changelog it sends "Changelog for this version is not yet

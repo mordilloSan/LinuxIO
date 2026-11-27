@@ -28,7 +28,7 @@ describe("UpdateCard", () => {
     expect(availabilityChip).toBeInTheDocument();
     expect(screen.getByText("demo")).toBeInTheDocument();
     expect(screen.getByText("Demo update")).toBeInTheDocument();
-    expect(screen.queryByText(/1\.0/)).not.toBeInTheDocument();
+    expect(screen.getByText("1.0", { exact: true })).toBeInTheDocument();
     expect(
       screen.getByText(/commonly happens during phased rollouts/i),
     ).toBeInTheDocument();
