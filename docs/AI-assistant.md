@@ -285,6 +285,16 @@ advertises the matching capability.
   Pieces the agent does not offer are hidden, and so is the `agent` option
   (Claude Code's main-thread persona picker): it lists subagent definitions
   such as `web-fetch`, which fail when they run a whole conversation.
+- **Next prompt.** LinuxIO declares `clientCapabilities.session.promptSuggestions`,
+  so an agent may send `prompt_suggestions_update` with the prompt it
+  predicts comes next. The first suggestion made of text alone shows as the
+  empty message field's placeholder, with "Tab to use the suggestion" under
+  it, and Tab puts it in the field without sending it; it stays hidden while
+  a turn runs or once something is typed or attached. A sent prompt, an empty
+  list and another chat clear it. Claude Code's adapter sends one from 0.109.0,
+  after a turn's result and not after the first turn, an API error, plan mode
+  or the usage limit; turning the capability on makes Claude Code ask its
+  model for the prediction, one more request each turn.
 - **Chat defaults.** Settings → Assistant lists the models, effort levels and
   permission modes from a chat the probe opens, so a new model shows up as
   soon as the agent offers it, with no LinuxIO release. The values stored are

@@ -109,7 +109,7 @@ describe("connectAssistant", () => {
     expect(init?.params).toMatchObject({
       clientCapabilities: {
         auth: { terminal: true },
-        session: { configOptions: { boolean: {} } },
+        session: { configOptions: { boolean: {} }, promptSuggestions: {} },
         // An agent that has subagents then sends each one as a session.
         subagents: {},
       },

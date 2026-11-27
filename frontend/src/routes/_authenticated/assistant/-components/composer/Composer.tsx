@@ -45,6 +45,8 @@ export interface ComposerProps {
   modes: acp.SessionModeState | null;
   connecting: boolean;
   usage: AssistantState["usage"];
+  /** The agent's guess at the next prompt, offered while the field is empty. */
+  suggestion?: string | null;
   onBtw: (text: string) => void;
   /** Opens the plugin manager; absent when the agent's plugins cannot be managed. */
   onPlugins?: () => void;
@@ -135,6 +137,7 @@ export default function Composer({
   modes,
   connecting,
   usage,
+  suggestion = null,
   onBtw,
   onPlugins,
   onSetConfigOption,
@@ -184,6 +187,16 @@ export default function Composer({
   const activeSlash = Math.min(slashIndex, slashMatches.length - 1);
   const hint = commands.find((command) => draft === `/${command.name} `)?.input
     ?.hint;
+  // The suggestion stands in for the placeholder until the user writes or
+  // attaches something; Tab takes it.
+  const offered =
+    suggestion &&
+    !disabled &&
+    !running &&
+    draft === "" &&
+    attachments.length === 0
+      ? suggestion
+      : null;
 
   // After every render, so a send clearing the draft or a command filling it in also resizes.
   useLayoutEffect(() => fitHeight(inputRef.current));
@@ -291,6 +304,12 @@ export default function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Tab" && !event.shiftKey && offered) {
+      event.preventDefault();
+      setAttachError(null);
+      setDraft(offered);
+      return;
+    }
     if (event.key === "Tab" && event.shiftKey && modes) {
       // bypassPermissions stays a deliberate pick from the menu.
       const cycle = modes.availableModes.filter(
@@ -397,16 +416,18 @@ export default function Composer({
           ) : null}
           <div className="assistant__composer-input">
             <AppTextField
-              aria-keyshortcuts="Shift+Tab"
+              aria-keyshortcuts={offered ? "Tab Shift+Tab" : "Shift+Tab"}
               aria-label="Message"
               disabled={disabled}
               fullWidth
               size="small"
-              helperText={hint}
+              helperText={
+                hint ?? (offered ? "Tab to use the suggestion" : undefined)
+              }
               multiline
               onChange={(event) => changeDraft(event.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Ask about this server"
+              placeholder={offered ?? "Ask about this server"}
               ref={inputRef}
               rows={1}
               value={draft}

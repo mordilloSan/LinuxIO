@@ -533,6 +533,34 @@ describe("Composer", () => {
     expect(onSetMode).toHaveBeenCalledWith("plan");
   });
 
+  it("offers the agent's suggestion in an empty field and fills it on Tab", async () => {
+    const { onSend } = setup({ suggestion: "Check the disks" });
+    const field = screen.getByLabelText("Message");
+    expect(field).toHaveAttribute("placeholder", "Check the disks");
+    expect(screen.getByText("Tab to use the suggestion")).toBeVisible();
+    field.focus();
+    await userEvent.tab();
+    expect(field).toHaveValue("Check the disks");
+    expect(field).toHaveFocus();
+    // Filling it in does not send it.
+    expect(onSend).not.toHaveBeenCalled();
+    expect(field).toHaveAttribute("placeholder", "Ask about this server");
+  });
+
+  it("offers no suggestion once the user writes, or while a turn runs", async () => {
+    const { rerender } = setup({ suggestion: "Check the disks" });
+    const field = screen.getByLabelText("Message");
+    await userEvent.type(field, "x");
+    expect(field).toHaveAttribute("placeholder", "Ask about this server");
+    await userEvent.clear(field);
+    rerender({ running: true });
+    expect(field).toHaveAttribute("placeholder", "Ask about this server");
+    field.focus();
+    await userEvent.tab();
+    expect(field).toHaveValue("");
+    expect(field).not.toHaveFocus();
+  });
+
   it("cycles to the next mode on Shift+Tab", async () => {
     const { onSetMode } = setup({
       modes: {

@@ -208,7 +208,9 @@ export async function connectAssistant(
       // of its own (the store keeps them); the others ignore it.
       clientCapabilities: {
         auth: { terminal: true },
-        session: { configOptions: { boolean: {} } },
+        // promptSuggestions: the agent may predict the next prompt after a
+        // turn; Claude Code's adapter then asks its model for one each turn.
+        session: { configOptions: { boolean: {} }, promptSuggestions: {} },
         subagents: {},
       },
     });

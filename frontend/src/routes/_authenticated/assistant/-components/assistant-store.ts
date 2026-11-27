@@ -86,6 +86,11 @@ export interface AssistantState {
   configOptions: acp.SessionConfigOption[];
   modes: acp.SessionModeState | null;
   commands: acp.AvailableCommand[];
+  /**
+   * The prompt the agent predicts the user sends next, offered in an empty
+   * composer; null when there is none.
+   */
+  suggestion: string | null;
   usage: {
     used: number;
     size: number;
@@ -125,6 +130,7 @@ const sessionReset = (): Partial<AssistantState> => ({
   configOptions: [],
   modes: null,
   commands: [],
+  suggestion: null,
   usage: null,
   queuedPrompt: null,
   side: null,
@@ -155,6 +161,7 @@ const initialState = (): AssistantState => ({
   configOptions: [],
   modes: null,
   commands: [],
+  suggestion: null,
   usage: null,
   queuedPrompt: null,
   turnStartedAt: null,
@@ -246,6 +253,19 @@ function flushUpdates() {
   if (Object.keys(patch).length > 0) setState(patch);
 }
 
+// The first suggestion the composer can fill in: one made of text alone.
+function suggestionText(suggestions: acp.PromptSuggestion[]): string | null {
+  for (const { prompt } of suggestions) {
+    if (!prompt.every((block) => block.type === "text")) continue;
+    const text = prompt
+      .map((block) => block.text)
+      .join("")
+      .trim();
+    if (text) return text;
+  }
+  return null;
+}
+
 // Updates that describe the chat rather than add to the transcript.
 function statePatch(
   update: acp.SessionUpdate,
@@ -260,6 +280,8 @@ function statePatch(
         : {};
     case "config_option_update":
       return { configOptions: update.configOptions };
+    case "prompt_suggestions_update":
+      return { suggestion: suggestionText(update.suggestions) };
     case "usage_update":
       return {
         usage: {
@@ -678,6 +700,7 @@ export const assistantStore = {
     setState({
       status: "running",
       turnStartedAt: now,
+      suggestion: null,
       blocks: appendUserMessage(
         state.blocks,
         display.text,

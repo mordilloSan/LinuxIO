@@ -576,6 +576,40 @@ describe("assistantStore", () => {
     expect(state.blocks).toEqual([]);
   });
 
+  it("keeps the agent's next-prompt suggestion until a prompt is sent", async () => {
+    const { connector, handlers } = fakeConnection({
+      listSessions: vi.fn(async () => []),
+    });
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    const suggest = (suggestions: acp.PromptSuggestion[]) => {
+      handlers().onUpdate({
+        sessionId: "s-new",
+        update: { sessionUpdate: "prompt_suggestions_update", suggestions },
+      });
+      assistantStore._flush();
+      return assistantStore.getState().suggestion;
+    };
+    // The first one made of text alone, trimmed.
+    expect(
+      suggest([
+        {
+          prompt: [{ type: "resource_link", name: "a", uri: "file:///a" }],
+        },
+        { prompt: [{ type: "text", text: "  Check the disks " }] },
+      ]),
+    ).toBe("Check the disks");
+    expect(assistantStore.getState().blocks).toEqual([]);
+    // An empty list withdraws it.
+    expect(suggest([])).toBeNull();
+    suggest([{ prompt: [{ type: "text", text: "Restart nginx" }] }]);
+    await assistantStore.send([{ type: "text", text: "hi" }], {
+      text: "hi",
+      attachments: [],
+    });
+    expect(assistantStore.getState().suggestion).toBeNull();
+  });
+
   it("renames the matching session on session_info_update", async () => {
     const { connector, handlers } = fakeConnection();
     assistantStore._setConnector(connector);

@@ -444,6 +444,7 @@ export default function AssistantPage({
             onSetMode={(modeId) => void assistantStore.setMode(modeId)}
             onStop={() => assistantStore.stop()}
             running={state.status === "running"}
+            suggestion={state.suggestion}
             usage={state.usage}
           />
           <AssistantDock
