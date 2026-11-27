@@ -1,6 +1,6 @@
 /**
- * A real chat with Claude Code's adapter (claude-agent-acp 0.102.0), recorded
- * on 2026-11-13 with `subagents` declared, replayed through the store: two
+ * A real chat with Claude Code's adapter (claude-agent-acp 0.113.0), recorded
+ * on 2026-11-27 with `subagents` declared, replayed through the store: two
  * subagents started at once (one in the background, which starts one of its
  * own), a second message to the first, then one that is stopped; and the same
  * chat loaded again. See `@/test/assistantSubagentTrace.json`.
