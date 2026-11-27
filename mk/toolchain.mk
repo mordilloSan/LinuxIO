@@ -71,3 +71,8 @@ setup: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensu
 # keep their own targets (update-go-deps, update-deps).
 update-build-pins: ## Move the release images, Node, the Go tools and the action commits to their newest
 	@"$(scripts_dir)/update-build-pins.sh" "$(repo_root)"
+
+# Needs only curl and jq (gh, when installed, reads the release notes). The
+# notes of every release in between go to .cache/agent-pins/release-notes.md.
+update-agent-pins: ## Move the Assistant's agent pins to the versions the ACP registry lists
+	@"$(scripts_dir)/update-agent-pins.sh" "$(repo_root)"
