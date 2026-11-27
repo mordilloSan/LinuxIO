@@ -53,7 +53,7 @@ const UpdateChangelog = ({ packageId }: { packageId: string }) => {
         marginTop: "auto",
       }}
     >
-      <AppTypography component="div" variant="body2">
+      <AppTypography color="text.secondary" component="div" variant="caption">
         {isError
           ? "Failed to load changelog"
           : "No changelog is available for this update"}
