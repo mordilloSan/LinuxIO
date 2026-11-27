@@ -11,7 +11,6 @@ import { useFocusedResourceParam } from "@/routes/_authenticated/docker/-hooks/u
 import { up } from "@/theme/breakpoints";
 import { DASHBOARD_CARD_SPACING, GAP_XS } from "@/theme/constants";
 
-import { updatePackageName } from "./packageUpdates";
 import UpdateCard from "./UpdateCard";
 import UpdateChangelog from "./UpdateChangelog";
 
@@ -99,7 +98,8 @@ const UpdateList = ({ updates, onUpdateClick, isUpdating }: Props) => {
           </div>
         }
         summaryWidth={`calc((100% - ${(columns - 1) * GRID_GAP}px) / ${columns})`}
-        title={`${updatePackageName(focusedUpdate.package_id)} changelog`}
+        title="Changelog"
+        titleVariant="subtitle1"
       >
         <UpdateChangelog packageId={focusedUpdate.package_id} />
       </ResourceDetailsLayout>

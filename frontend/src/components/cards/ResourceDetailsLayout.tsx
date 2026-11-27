@@ -28,6 +28,8 @@ interface ResourceDetailsLayoutProps {
    */
   summaryWidth?: "share" | "content" | `calc(${string})`;
   title: string;
+  /** "subtitle1" matches the title of a card such as the summary's. */
+  titleVariant?: "body2" | "subtitle1";
 }
 
 /**
@@ -43,6 +45,7 @@ const ResourceDetailsLayout = ({
   summary,
   summaryWidth = "share",
   title,
+  titleVariant = "body2",
 }: ResourceDetailsLayoutProps) => {
   const isCompactLayout = useMediaQuery(down("md"));
   const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
@@ -139,8 +142,13 @@ const ResourceDetailsLayout = ({
                   component="div"
                   fontWeight={700}
                   noWrap
+                  style={
+                    titleVariant === "subtitle1"
+                      ? { lineHeight: 1.25 }
+                      : undefined
+                  }
                   title={title}
-                  variant="body2"
+                  variant={titleVariant}
                 >
                   {title}
                 </AppTypography>
