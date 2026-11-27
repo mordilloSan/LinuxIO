@@ -1066,8 +1066,9 @@ message ([AI Assistant](./AI-assistant.md#agents)).
 
 A moved Claude pin is checked by recording the subagent chat again with
 `make record-subagent-trace` (`frontend/scripts/record-subagent-trace.mjs`):
-a real chat on the owner's Claude login, so the owner runs it, after
-installing the pinned adapter. It replaces
+a real chat on the owner's Claude login, so the owner runs it. It installs
+the pinned adapter in `.cache/subagent-trace/agent` with npm, so the one the
+installed LinuxIO runs is untouched. It replaces
 `frontend/src/test/assistantSubagentTrace.json` and the version in its test's
 header only when the chat went as the tests replay it
 ([AI Assistant](./AI-assistant.md#subagent-sessions)).

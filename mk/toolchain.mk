@@ -78,6 +78,7 @@ update-agent-pins: ## Move the Assistant's agent pins to the versions the ACP re
 	@"$(scripts_dir)/update-agent-pins.sh" "$(repo_root)"
 
 # Starts a real chat on the owner's Claude login, so the owner runs it, never
-# an agent. Needs the pinned Claude adapter installed for the Assistant.
-record-subagent-trace: ## Record the Assistant's subagent chat again with the pinned Claude adapter
-	@cd "$(frontend_dir)" && node scripts/record-subagent-trace.mjs
+# an agent. Installs the pinned adapter in .cache/subagent-trace/agent; the
+# chat runs on Sonnet unless MODEL= names another of the adapter's models.
+record-subagent-trace: ## Record the Assistant's subagent chat again with the pinned Claude adapter (MODEL=sonnet)
+	@cd "$(frontend_dir)" && MODEL="$(MODEL)" node scripts/record-subagent-trace.mjs

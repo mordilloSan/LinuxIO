@@ -2,9 +2,10 @@
 /**
  * Records src/test/assistantSubagentTrace.json again: a real chat with Claude
  * Code's adapter at the version LinuxIO pins, run as the Assistant runs it
- * (the agent installed under ~/.local/share/linuxio/agents/claude, its
- * profile, `subagents` declared), with every update it sent and the same chat
- * loaded again. The chat is on the owner's Claude login, so the owner runs it:
+ * (the Assistant's Claude profile, `subagents` declared), with every update it
+ * sent and the same chat loaded again. The adapter is installed at the pin in
+ * .cache/subagent-trace/agent, so the copy the installed LinuxIO runs is left
+ * alone. The chat is on the owner's Claude login, so the owner runs it:
  * `make record-subagent-trace`. See docs/AI-assistant.md, "Subagent sessions".
  *
  * Messages are read off the wire, before the SDK parses them, so the recording
@@ -48,6 +49,7 @@ const LOAD_SETTLE_MS = 1_500;
 const NAMES = ["chat", "reader-a", "reader-b", "nested-c", "sleeper"];
 const MARKS = ["prompt", "answered", "prompt", "cancel:sleeper", "answered"];
 const WORKDIR = "/srv/work";
+const MODEL = process.env.MODEL || "sonnet";
 
 const FILES = {
   "a.txt": "alpha\nbeta\ngamma\n",
@@ -372,51 +374,67 @@ function layout(trace) {
   return `{\n "live": [\n${list(trace.live)}\n ],\n "load": [\n${list(trace.load)}\n ]\n}\n`;
 }
 
-async function main() {
-  const version = await pinnedVersion();
-  const home = os.homedir();
-  const agentDir = path.join(home, ".local/share/linuxio/agents/claude");
-  const profile = path.join(home, ".local/share/linuxio/profiles/claude");
-  const manifest = path.join(agentDir, "node_modules", PACKAGE, "package.json");
-
-  let installed;
+async function installedVersion(dir) {
   try {
-    installed = JSON.parse(await fs.readFile(manifest, "utf8")).version;
+    const manifest = path.join(dir, "node_modules", PACKAGE, "package.json");
+    return JSON.parse(await fs.readFile(manifest, "utf8")).version;
   } catch {
-    installed = null;
+    return null;
   }
-  if (installed !== version) {
-    fail(
-      `${PACKAGE} ${installed ?? "is not installed"}${installed ? " is installed" : ""}, the pin is ${version}.\n` +
-        `   Install the pin from the Capability Manager of a LinuxIO built with it, or:\n` +
-        `   rm -rf ${agentDir}.new && npm install --prefix ${agentDir}.new --no-audit --no-fund --no-progress --omit=optional ${PACKAGE}@${version} && rm -rf ${agentDir} && mv ${agentDir}.new ${agentDir}`,
-    );
-  }
-  try {
-    await fs.access(profile);
-  } catch {
-    fail(
-      `no Claude profile at ${profile}: sign in on the Assistant page first`,
-    );
-  }
-  const cli = await onPath("claude");
-  if (!cli) fail("claude is not on PATH");
-  const bin = path.join(agentDir, "node_modules/.bin/claude-agent-acp");
+}
 
-  await fs.mkdir(cacheDir, { recursive: true });
-  const logPath = path.join(cacheDir, "adapter.log");
-  const logFile = createWriteStream(logPath);
-  const workdir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "linuxio-subagent-trace-"),
+/**
+ * Installs the pinned adapter in dir as the bridge does (install_assistant.go):
+ * into dir.new, swapped in only after npm succeeded.
+ */
+async function installPin(dir, version) {
+  const installed = await installedVersion(dir);
+  if (installed === version) return;
+  console.log(
+    `📦 Installing ${PACKAGE} ${version} in ${path.relative(repo, dir)}` +
+      (installed ? ` (it has ${installed})` : ""),
   );
-  const realWorkdir = await fs.realpath(workdir);
-  for (const [name, text] of Object.entries(FILES)) {
-    await fs.writeFile(path.join(workdir, name), text);
+  const next = `${dir}.new`;
+  await fs.rm(next, { recursive: true, force: true });
+  const code = await new Promise((resolve, reject) => {
+    const npm = spawn(
+      "npm",
+      [
+        "install",
+        "--prefix",
+        next,
+        "--no-audit",
+        "--no-fund",
+        "--no-progress",
+        "--omit=optional",
+        `${PACKAGE}@${version}`,
+      ],
+      { stdio: "inherit" },
+    );
+    npm.once("error", reject);
+    npm.once("exit", resolve);
+  });
+  if (code !== 0) fail(`npm install exited with ${code}`);
+  if ((await installedVersion(next)) !== version) {
+    fail(`npm installed something other than ${PACKAGE} ${version}`);
   }
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.rename(next, dir);
+}
 
-  console.log(`🎙️  Recording a chat with ${PACKAGE} ${version} in ${workdir}`);
+/** Runs the chat in a temporary folder, then loads it in a second adapter. */
+async function recordChat({
+  bin,
+  env,
+  realWorkdir,
+  logFile,
+  logPath,
+  version,
+}) {
+  console.log(
+    `🎙️  Recording a chat with ${PACKAGE} ${version} in ${realWorkdir}`,
+  );
   log(`adapter stderr: ${path.relative(repo, logPath)}`);
-  const env = agentEnv(profile, cli, realWorkdir);
   const trace = { live: [], load: [] };
   let chatId = null;
   let permissions = [];
@@ -473,11 +491,12 @@ async function main() {
       },
     );
     chatId = session.sessionId;
-    // The recording ran in Auto and asked nothing.
+    // The recording runs in Auto and asks nothing.
     await live.connection.agent.request(acp.methods.agent.session.setMode, {
       sessionId: chatId,
       modeId: "auto",
     });
+    await chooseModel(live.connection, session);
     for (const [index, text] of PROMPTS.entries()) {
       log(`prompt ${index + 1} of ${PROMPTS.length}`);
       const answer = await withTimeout(
@@ -524,6 +543,77 @@ async function main() {
   } finally {
     load.state.entries = null;
     await load.stop();
+  }
+  return { trace, chatId, permissions };
+}
+
+/**
+ * Sets the chat's model to MODEL (sonnet unless given): the profile's own
+ * default may be one whose usage limit is spent, and the subagents of the
+ * recording have always run on Sonnet.
+ */
+async function chooseModel(connection, session) {
+  const option = session.configOptions?.find((o) => o.id === "model");
+  const values = (option?.options ?? [])
+    .flatMap((o) => ("options" in o ? o.options : [o]))
+    .map((o) => o.value);
+  if (!values.includes(MODEL)) {
+    throw new Error(
+      `the adapter offers no model "${MODEL}"; give MODEL=<one of ${values.join(", ")}>`,
+    );
+  }
+  log(`model: ${MODEL}`);
+  if (option.currentValue === MODEL) return;
+  await connection.agent.request(acp.methods.agent.session.setConfigOption, {
+    sessionId: session.sessionId,
+    configId: "model",
+    value: MODEL,
+  });
+}
+
+async function main() {
+  const version = await pinnedVersion();
+  const home = os.homedir();
+  // The adapter is the script's own copy, so the one the installed LinuxIO
+  // runs (~/.local/share/linuxio/agents/claude, at that release's pin) stays
+  // as it is; the profile is the Assistant's, which holds the sign-in.
+  const agentDir = path.join(cacheDir, "agent");
+  const profile = path.join(home, ".local/share/linuxio/profiles/claude");
+  await fs.mkdir(cacheDir, { recursive: true });
+  await installPin(agentDir, version);
+  try {
+    await fs.access(profile);
+  } catch {
+    fail(
+      `no Claude profile at ${profile}: sign in on the Assistant page first`,
+    );
+  }
+  const cli = await onPath("claude");
+  if (!cli) fail("claude is not on PATH");
+  const bin = path.join(agentDir, "node_modules/.bin/claude-agent-acp");
+
+  const logPath = path.join(cacheDir, "adapter.log");
+  const logFile = createWriteStream(logPath);
+  const workdir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "linuxio-subagent-trace-"),
+  );
+  const realWorkdir = await fs.realpath(workdir);
+  for (const [name, text] of Object.entries(FILES)) {
+    await fs.writeFile(path.join(workdir, name), text);
+  }
+  let trace;
+  let chatId;
+  let permissions;
+  try {
+    ({ trace, chatId, permissions } = await recordChat({
+      bin,
+      env: agentEnv(profile, cli, realWorkdir),
+      realWorkdir,
+      logFile,
+      logPath,
+      version,
+    }));
+  } finally {
     logFile.end();
     await fs.rm(workdir, { recursive: true, force: true });
   }

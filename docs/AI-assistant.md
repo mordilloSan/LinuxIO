@@ -824,15 +824,18 @@ replaced. A unit test replays it through the store
 (`-components/subagentTrace.test.ts`) and the browser spec through the page
 (`test/browser/assistant.spec.ts`), so a new pin is checked by recording the
 chat again with `make record-subagent-trace`
-(`frontend/scripts/record-subagent-trace.mjs`). It starts the installed
-adapter with the Assistant's profile and client capabilities, reads every
+(`frontend/scripts/record-subagent-trace.mjs`). It installs the pinned
+adapter in `.cache/subagent-trace/agent`, leaving the copy the installed
+LinuxIO runs at that release's pin, starts it with the Assistant's profile
+(which holds the sign-in) and client capabilities, reads every
 message off the wire, stops the Sleeper a few seconds into its work as the
 Stop button would, and loads the chat in a second adapter. It replaces the
 recording and moves the test's header only when the sessions, marks and the
 stopped subagent are what the tests replay and nothing asked for permission;
 otherwise it leaves the recording in `.cache/subagent-trace/trace.json`.
 Since it is a chat on the owner's Claude login, the owner runs it. The
-recording runs in the `auto` mode and asks nothing; a permission request from
+recording runs in the `auto` mode on Sonnet, whatever the profile's default
+model is (`MODEL=` names another of the adapter's models), and asks nothing; a permission request from
 a subagent was seen in a chat set to Manual on 2026-11-13, with two subagents
 asking at once. No chat has shown whether a
 subagent Claude Code moves to the background by itself gets its launch note
