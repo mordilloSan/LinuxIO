@@ -59,10 +59,10 @@ func TestEveryAgentKeepsAProfileOfItsOwn(t *testing.T) {
 	require.ElementsMatch(t, []string{"claude", "codex", "gemini"}, acpagents.IDs(), "a new agent needs its profile variable here")
 }
 
-func TestGeminiAndCodexWorkInTheirProfile(t *testing.T) {
-	// Each reads a .gemini or .codex folder where it works as project
-	// settings, which in the home is the user's own profile.
-	for _, id := range []string{"gemini", "codex"} {
+func TestAgentsWorkInTheirProfile(t *testing.T) {
+	// Each reads a .claude, .gemini or .codex folder where it works as
+	// project settings, which in the home is the user's own profile.
+	for _, id := range []string{"claude", "gemini", "codex"} {
 		agent, ok := acpagents.Lookup(id)
 		require.True(t, ok, id)
 		require.True(t, agent.WorkInProfile, id)
@@ -70,9 +70,9 @@ func TestGeminiAndCodexWorkInTheirProfile(t *testing.T) {
 	gemini, _ := acpagents.Lookup("gemini")
 	require.Equal(t, "--include-directories", gemini.IncludeDirFlag)
 	require.Contains(t, gemini.Args, "--skip-trust")
-	// Claude Code is kept to the profile by settingSources instead.
+	// claude-agent-acp takes the home as a session's additionalDirectories.
 	claude, _ := acpagents.Lookup("claude")
-	require.False(t, claude.WorkInProfile)
+	require.Empty(t, claude.IncludeDirFlag)
 	// The relay starts the agent in a folder only Profile makes.
 	for _, id := range acpagents.IDs() {
 		agent, _ := acpagents.Lookup(id)

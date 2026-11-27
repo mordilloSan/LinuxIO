@@ -48,12 +48,13 @@ type Agent struct {
 	// no profile, which keeps its usual folder in the user's home.
 	ProfileEnv string
 	// WorkInProfile runs the agent's chats in its profile folder rather than
-	// in the user's home. An agent that reads a .gemini or .codex folder in
-	// the folder it works in as project settings would otherwise read the
-	// user's own ~/.gemini or ~/.codex there, the folder its profile keeps it
-	// away from. The home is then given to the agent as a further folder of
-	// its workspace: through IncludeDirFlag, or by the page on each session
-	// (additionalDirectories) for an agent that advertises it.
+	// in the user's home. An agent that reads a .claude, .gemini or .codex
+	// folder in the folder it works in as project settings would otherwise
+	// read the user's own ~/.claude, ~/.gemini or ~/.codex there, the folder
+	// its profile keeps it away from. The home is then given to the agent as
+	// a further folder of its workspace: through IncludeDirFlag, or by the
+	// page on each session (additionalDirectories) for an agent that
+	// advertises it.
 	WorkInProfile bool
 	// IncludeDirFlag is the flag that adds a folder to the agent's workspace
 	// on its command line.
@@ -93,7 +94,11 @@ var (
 			CLI:         "claude",
 			CLIEnv:      "CLAUDE_CODE_EXECUTABLE",
 			ProfileEnv:  "CLAUDE_CONFIG_DIR",
-			Panes:       true,
+			// The adapter reads the model, permission mode and effort from
+			// .claude/settings.json where a chat works, whatever the setting
+			// sources the CLI is given. The page adds the home to each session.
+			WorkInProfile: true,
+			Panes:         true,
 		},
 		"gemini": {
 			Package: "@google/gemini-cli",

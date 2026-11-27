@@ -296,9 +296,8 @@ describe("connectAssistant", () => {
     await conn.newSession();
     await conn.loadSession("s1");
     await conn.forkSession("s1");
-    // A chat works in the home folder, whose `.claude` is the profile of the
-    // user's own Claude Code: read as project settings, its model and hooks
-    // would be the chat's.
+    // A chat works in the profile folder inside the home: the home's
+    // `CLAUDE.md`, above it, would otherwise be the chat's project memory.
     for (const method of [
       "session/new",
       "session/load",
@@ -325,45 +324,49 @@ describe("connectAssistant", () => {
     });
   });
 
-  it("gives an agent that runs in its profile the home as a further folder", async () => {
-    const profile = "/home/alice/.local/share/linuxio/profiles/codex";
-    const agent = fakeAgent(
-      {
-        initialize: () => ({
-          protocolVersion: 1,
-          agentCapabilities: {
-            sessionCapabilities: {
-              additionalDirectories: {},
-              fork: {},
-              resume: {},
+  it.each(["codex", "claude"] as const)(
+    "gives %s, which runs in its profile, the home as a further folder",
+    async (id) => {
+      const profile = `/home/alice/.local/share/linuxio/profiles/${id}`;
+      const agent = fakeAgent(
+        {
+          initialize: () => ({
+            protocolVersion: 1,
+            agentCapabilities: {
+              sessionCapabilities: {
+                additionalDirectories: {},
+                fork: {},
+                resume: {},
+              },
             },
-          },
-        }),
-        "session/new": () => ({ sessionId: "s1" }),
-        "session/load": () => ({}),
-        "session/fork": () => ({ sessionId: "s2" }),
-        "session/resume": () => ({}),
-      },
-      JSON.stringify({ linuxio: "ready", cwd: profile, home: "/home/alice" }),
-    );
-    const conn = await connectAssistant("codex", handlers(), agent.open);
-    expect(conn.cwd).toBe(profile);
-    await conn.newSession();
-    await conn.loadSession("s1");
-    await conn.forkSession("s1");
-    for (const method of [
-      "session/new",
-      "session/load",
-      "session/fork",
-      "session/resume",
-    ]) {
-      const params = agent.sent.find((m) => m.method === method)?.params;
-      expect(params, method).toMatchObject({
-        cwd: profile,
-        additionalDirectories: ["/home/alice"],
-      });
-    }
-  });
+          }),
+          "session/new": () => ({ sessionId: "s1" }),
+          "session/load": () => ({}),
+          "session/fork": () => ({ sessionId: "s2" }),
+          "session/resume": () => ({}),
+        },
+        JSON.stringify({ linuxio: "ready", cwd: profile, home: "/home/alice" }),
+      );
+      const conn = await connectAssistant(id, handlers(), agent.open);
+      expect(conn.cwd).toBe(profile);
+      await conn.newSession();
+      await conn.loadSession("s1");
+      await conn.forkSession("s1");
+      for (const method of [
+        "session/new",
+        "session/load",
+        "session/fork",
+        "session/resume",
+      ]) {
+        const params = agent.sent.find((m) => m.method === method)?.params;
+        expect(params, method).toMatchObject({
+          cwd: profile,
+          additionalDirectories: ["/home/alice"],
+          ...(id === "claude" ? { _meta: claudeMeta } : {}),
+        });
+      }
+    },
+  );
 
   it("adds no folder when the agent runs in the home or cannot take one", async () => {
     for (const [ready, caps] of [

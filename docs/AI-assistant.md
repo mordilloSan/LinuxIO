@@ -143,19 +143,19 @@ Each agent reads a folder in the folder it works in as that folder's project
 settings: `.claude/`, `.gemini/` or `.codex/`. In the user's home that is the
 user's own profile, whose model, hooks and plugins would be the chat's again.
 
-Gemini CLI and Codex have no option to leave project settings out, so their
-chats work in the profile folder (`WorkInProfile`): the relay starts the
-agent there and sends it as `cwd` in the ready line, and the page starts every
-session there. Gemini CLI then takes the folder as its own home and reads no
-project settings at all; Codex finds no `.codex/` there. The user's home is
-added to the workspace, so the agent's file tools and its write sandbox reach
-it as they did when the chat worked in it: Gemini CLI gets
-`--include-directories <home>` on its command line (`IncludeDirFlag`), since
-its ACP side takes no further folders, and the page sends Codex the home as
-`additionalDirectories` on every session request, which it does for any agent
-that advertises `sessionCapabilities.additionalDirectories` and works
-elsewhere than the home. Settings come only from the folder a session works
-in, not from a folder added to it. Gemini CLI is also started with
+So every agent's chats work in the profile folder (`WorkInProfile`): the relay
+starts the agent there and sends it as `cwd` in the ready line, and the page
+starts every session there. Gemini CLI then takes the folder as its own home
+and reads no project settings at all; Codex finds no `.codex/` there, and
+Claude Code no `.claude/`. The user's home is added to the workspace, so the
+agent's file tools and its write sandbox reach it as they did when the chat
+worked in it: Gemini CLI gets `--include-directories <home>` on its command
+line (`IncludeDirFlag`), since its ACP side takes no further folders, and the
+page sends Codex and Claude Code the home as `additionalDirectories` on every
+session request, which it does for any agent that advertises
+`sessionCapabilities.additionalDirectories` and works elsewhere than the home.
+Settings come only from the folder a session works in, not from a folder added
+to it. Gemini CLI is also started with
 `--skip-trust`: it keeps its list of trusted folders in the profile, where the
 profile folder itself would start untrusted, and in an untrusted folder it
 turns off every MCP server and all approval modes but the default. The folder
@@ -163,41 +163,40 @@ is the user's own (0700) and is LinuxIO's to name, which is what the trust
 check is there to ask about. `codex-acp` marks the folders of every session it
 starts as trusted itself.
 
-Claude Code's chat works in the user's home, and Claude Code reads `.claude/` in the
-folder it works in as that folder's project settings: there, `~/.claude`, the
-other profile, whose model, hooks and plugins would be the chat's again. So
-every session request to Claude Code (`session/new`, `load`, `fork`, `resume`)
-carries `_meta.claudeCode.options.settingSources: ["user"]` (`SESSION_META` in
+Claude Code could leave project settings out (`settingSources`), but its
+adapter cannot: `claude-agent-acp` reads `.claude/settings.json` of the folder
+a chat works in by itself, whatever the CLI is told, and takes the model, the
+default permission mode, the switches that turn auto and bypass modes off, the
+`availableModels` and `modelOverrides` lists and the effort level from it. In
+the home that is the user's own `~/.claude/settings.json`. A `model` there is
+the worst of it: the adapter reports that model as a new chat's without
+switching the CLI to it, so the page shows that model, sees no need to apply
+the [chat defaults](#features), and the chat runs on the account's default
+model. Claude Code also reads the `CLAUDE.md` of every folder above the one it
+works in as project memory, and the profile folder is inside the home, so
+every session request to Claude Code (`session/new`, `load`, `fork`, `resume`) still carries
+`_meta.claudeCode.options.settingSources: ["user"]` (`SESSION_META` in
 `frontend/src/api/acp/connection.ts`), and the CLI loads the profile's
-user-level settings alone. A chat therefore reads no project file of the home
-folder: not `~/CLAUDE.md`, `~/.claude/CLAUDE.md` or `~/.mcp.json`. The
-`claude plugin` commands take no such option, so they run in the profile's
-folder, where there is no `.claude/` to read: run in the home they list a
-plugin as `~/.claude/settings.json` switches it, and change it there.
+user-level settings alone: not `~/CLAUDE.md`. The `claude plugin` commands
+take no such option and run in the profile's folder too: run in the home they
+list a plugin as `~/.claude/settings.json` switches it, and change it there.
 
 Shared with every other `claude` on the host: the managed settings under
 `/etc/claude-code`, and the `claude` program itself.
 
 Known limits:
 
-- The adapter resolves a few settings by itself, for the folder the chat works
-  in and whatever the setting sources: the default permission mode, the
-  switches that turn auto and bypass modes off, the `availableModels` and
-  `modelOverrides` lists and the effort level still come from
-  `~/.claude/settings.json` when it sets them. A new chat's mode and effort
-  are then replaced by the [chat defaults](#features), except that a mode
-  switched off there is not offered.
 - The Terminal sign-in is an interactive `claude` in the home folder, which
   loads project settings as any terminal session does; it signs in and is
   closed.
-- Gemini CLI and Codex chats start in the profile folder, so a relative path
-  or "look here" in a prompt starts there, not in the home.
+- Chats start in the profile folder, so a relative path or "look here" in a
+  prompt starts there, not in the home.
 - Gemini CLI looks for `.gemini/.env` in each folder from the one it works in
   up to `/`: when the profile has none, it reads the user's own
   `~/.gemini/.env` (which often holds `GEMINI_API_KEY`, and then signs the
   Assistant in with it). `~/.env` is read in the same walk.
-- When the user's home is itself a git repository (dotfiles), both agents take
-  it as the project root above the profile folder: Codex may read
+- When the user's home is itself a git repository (dotfiles), Gemini CLI and
+  Codex take it as the project root above the profile folder: Codex may read
   `~/.codex/config.toml` as project settings and `~/AGENTS.md`, and Gemini CLI
   `~/GEMINI.md`.
 - Gemini CLI 0.67.0 reads one setting, `advanced.autoConfigureMemory`, from

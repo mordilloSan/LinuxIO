@@ -156,11 +156,10 @@ const newestFirst = (a: acp.SessionInfo, b: acp.SessionInfo) =>
 const defaultOpen: AssistantOpen = (agent, { panes }) =>
   openChannel("assistant.open", panes ? { agent, panes } : { agent });
 
-// Claude Code reads `.claude/` in the folder a chat works in as that folder's
-// project settings. A chat works in the user's home, where that folder is the
-// profile of the user's own Claude Code and not a project's, so a chat loads
-// the user-level settings alone: those of the Assistant's profile
-// (docs/AI-assistant.md, "Profile").
+// Claude Code reads the `CLAUDE.md` of every folder above the one a chat works
+// in as project memory. A chat works in the profile folder, inside the user's
+// home, so it loads the user-level settings alone: those of the Assistant's
+// profile (docs/AI-assistant.md, "Profile").
 const SESSION_META: Partial<
   Record<AssistantAgentId, NonNullable<acp.NewSessionRequest["_meta"]>>
 > = {
@@ -238,9 +237,9 @@ export async function connectAssistant(
   const canResume = Boolean(caps.sessionCapabilities?.resume);
   // Sent with every request that starts or reopens a session: an agent
   // rebuilds its instructions each time, so a reopened chat would lose them.
-  // An agent that runs in its LinuxIO profile (Gemini CLI, Codex) works
-  // there, away from the user's own settings in the home, and gets the home
-  // as a further folder of the session.
+  // An agent that runs in its LinuxIO profile works there, away from the
+  // user's own settings in the home, and gets the home as a further folder
+  // of the session.
   const sessionSetup: Pick<
     acp.NewSessionRequest,
     "cwd" | "additionalDirectories" | "mcpServers" | "systemPrompt" | "_meta"
