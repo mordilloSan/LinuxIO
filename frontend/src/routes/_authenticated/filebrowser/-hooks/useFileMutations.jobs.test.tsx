@@ -119,7 +119,9 @@ describe("useFileMutations with several jobs of one kind", () => {
       await second;
     });
     expect(onDeleteSuccess.mock.calls).toEqual([[[B, C]]]);
-    expect(mocks.toast.success).toHaveBeenCalledWith("Moved 2 items to Trash");
+    expect(mocks.toast.success).toHaveBeenCalledWith("Moved 2 items to Trash", {
+      action: expect.objectContaining({ label: "Open Trash" }),
+    });
 
     await act(async () => {
       mocks.jobs[0].resolve({

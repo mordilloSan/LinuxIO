@@ -685,6 +685,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `/srv/e2e-indexer`. It also checks that a file made and one deleted in the
   VM appear and go in an open folder without a reload
   ([File Browser Live Listing](./filebrowser-live-listing.md)).
+  `trash-size.spec.ts` moves a folder of the test user's home to the Trash
+  through the page and follows what the Trash takes on disk, which is read
+  from the index and so needs the daemon: the question and the toast name the
+  folder's size, `filebrowser.trash_usage` grows by it, the Trash button and
+  the Trash show it, and an emptied Trash takes nothing
+  ([Trash](./trash.md#disk-space)). It scans the whole VM and empties the
+  test user's Trash.
   `wireguard.spec.ts` creates an interface `wge2e` through the page's create
   dialog, setting its port, CIDR and NIC under Advanced, checks that the
   first device's QR code opens with `iface` and `qr` in the URL, then calls

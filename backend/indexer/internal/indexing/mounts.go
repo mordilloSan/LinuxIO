@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 // loadMountPointsFn is swappable in tests.
@@ -46,7 +47,7 @@ func loadMountPoints() map[string]string {
 			}
 			continue
 		}
-		if isExternalFilesystem(fsType, source) {
+		if indexerapi.ExternalFilesystem(fsType, source) {
 			mounts[mountPoint] = fsType
 		}
 	}

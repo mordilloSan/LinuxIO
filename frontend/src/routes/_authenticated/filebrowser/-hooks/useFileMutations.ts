@@ -1,5 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import {
   actionErrorMessage,
@@ -19,6 +20,7 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { batchFailureOpts } from "@/tasks/batchFailures";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
+import { formatFileSize } from "@/utils/formatters";
 import { toastFileError } from "@/utils/linkRefusal";
 import {
   baseName,
@@ -28,6 +30,7 @@ import {
   stripTrailingSlash,
 } from "@/utils/path";
 
+import { knownDiskSize } from "./knownDiskSize";
 import { askToDeleteForGood } from "./noTrashPrompts";
 import {
   CONFLICT_PROMPT_CANCELLED,
@@ -42,8 +45,14 @@ export const FILES_TOAST_META = {
   to: "/filebrowser/$",
 } as const;
 
-/** Every read of the Trash's list, which a move to Trash changes. */
-const TRASH_LIST_KEY = endpointQueryPrefix("filebrowser.trash_list");
+/**
+ * Every read of the Trash's list and of what the Trash takes on disk, which
+ * a move to Trash changes.
+ */
+const TRASH_KEYS = [
+  endpointQueryPrefix("filebrowser.trash_list"),
+  endpointQueryPrefix("filebrowser.trash_usage"),
+];
 
 interface UseFileMutationsParams {
   normalizedPath: string;
@@ -104,6 +113,10 @@ export const useFileMutations = ({
     useBackgroundTaskActions();
 
   const invalidateListing = useListingInvalidation(normalizedPath);
+  const queryClient = useQueryClient();
+  // What each running move to Trash's items take on disk, by its paths: read
+  // as the job starts, since the listing no longer holds them when it ends.
+  const trashedSizes = useRef(new Map<string, number>());
 
   const createFileMutation = linuxio.filebrowser.resource_post.useMutation({
     success: () => {
@@ -163,6 +176,7 @@ export const useFileMutations = ({
     result: FileBatchResult | undefined,
     verb: "delete" | "trash",
     paths: string[],
+    size?: number,
   ) => {
     invalidateListing();
     onDeleteSuccess?.(paths);
@@ -193,11 +207,40 @@ export const useFileMutations = ({
     const moved = result?.succeeded ?? 0;
     // Only the question is left to show when nothing went to the Trash.
     if (noTrash.length > 0 && moved === 0) return;
+    if (verb === "delete") {
+      toast.success("Items deleted successfully");
+      return;
+    }
+    // A move to Trash frees no disk space: the toast says what the items
+    // still take, when every one of them moved and the page knew their
+    // sizes, and leads to the Trash, where it can be emptied.
+    const stillUsed = moved === paths.length && size ? size : 0;
     toast.success(
-      verb === "trash"
-        ? `Moved ${moved} item${moved === 1 ? "" : "s"} to Trash`
-        : "Items deleted successfully",
+      `Moved ${moved} item${moved === 1 ? "" : "s"} to Trash${
+        stillUsed ? `, ${formatFileSize(stillUsed, 1)} still used` : ""
+      }`,
+      {
+        action: {
+          label: "Open Trash",
+          onClick: () =>
+            void navigate({
+              params: {
+                _splat: normalizedPath.split("/").filter(Boolean).join("/"),
+              },
+              search: { trash: true },
+              to: "/filebrowser/$",
+            }),
+        },
+      },
     );
+  };
+
+  // The size a move to Trash's items had as it started, taken once.
+  const takeTrashedSize = (paths: string[]) => {
+    const key = paths.join("\n");
+    const size = trashedSizes.current.get(key);
+    trashedSizes.current.delete(key);
+    return size;
   };
 
   // One batch task deletes the whole selection; the bridge loops server-side
@@ -244,10 +287,17 @@ export const useFileMutations = ({
   const trashBatchAction = linuxio.filebrowser.trash_batch.useMutation({
     // invalidateListing below is more precise than the manifest entry for
     // the folder; the Trash's own list is read again as well.
-    invalidates: [TRASH_LIST_KEY],
+    invalidates: TRASH_KEYS,
     onStart: (task) => void markTerminalFeedbackEmitted(task.id),
-    success: (result, request) => reportRemoval(result, "trash", request.paths),
+    success: (result, request) =>
+      reportRemoval(
+        result,
+        "trash",
+        request.paths,
+        takeTrashedSize(request.paths),
+      ),
     error: (error, request) => {
+      takeTrashedSize(request.paths);
       if (isTaskCancellationError(error)) {
         invalidateListing();
         onDeleteSuccess?.(request.paths);
@@ -265,10 +315,15 @@ export const useFileMutations = ({
   const trashItems = useCallback(
     async (paths: string[]): Promise<FileBatchResult | undefined> => {
       if (!paths.length) return;
+      // Set or cleared: a size left by an earlier move of the same paths is
+      // never this one's.
+      const size = knownDiskSize(queryClient, paths);
+      if (size === undefined) trashedSizes.current.delete(paths.join("\n"));
+      else trashedSizes.current.set(paths.join("\n"), size);
       onDeleteSuccess?.(paths);
       return startTrash({ paths });
     },
-    [startTrash, onDeleteSuccess],
+    [startTrash, onDeleteSuccess, queryClient],
   );
 
   const compressItems = useCallback(

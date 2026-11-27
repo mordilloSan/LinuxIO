@@ -146,7 +146,8 @@ async function checkSurface(page: Page, admin: boolean, ownName: string) {
   // The file browser: search and Index filesystem read the root indexer.
   await page.goto("/filebrowser/tmp");
   await expect(
-    page.getByRole("button", { name: "Trash", exact: true }),
+    // An admin's button also says what the Trash takes: "Trash, 34 GB".
+    page.getByRole("button", { name: /^Trash(,|$)/ }),
   ).toBeVisible({ timeout: 15_000 });
   await expectOnlyFor(
     page.getByPlaceholder("Search files and folders..."),

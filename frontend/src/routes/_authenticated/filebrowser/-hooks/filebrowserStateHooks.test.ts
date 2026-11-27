@@ -85,6 +85,29 @@ describe("filebrowser state hooks", () => {
     expect(result.current.deleteMode).toBe("permanent");
   });
 
+  it("keeps what the items take with a delete, until it closes", () => {
+    const { result } = renderHook(() => useFileDialogs());
+
+    act(() =>
+      result.current.actions.requestDelete(["/tmp/old.txt"], "trash", 2048),
+    );
+    expect(result.current.pendingDeleteSize).toBe(2048);
+
+    act(() => result.current.actions.closeDelete());
+    expect(result.current.pendingDeleteSize).toBe(undefined);
+  });
+
+  it("turns a move to Trash into a delete for good of the same items", () => {
+    const { result } = renderHook(() => useFileDialogs());
+
+    act(() => result.current.actions.requestDelete(["/tmp/old.txt"], "trash"));
+    act(() => result.current.actions.deleteForGoodInstead());
+
+    expect(result.current.deleteDialog).toBe(true);
+    expect(result.current.deleteMode).toBe("permanent");
+    expect(result.current.pendingDeletePaths).toEqual(["/tmp/old.txt"]);
+  });
+
   it("clears pending delete paths without closing the dialog", () => {
     const { result } = renderHook(() => useFileDialogs());
 

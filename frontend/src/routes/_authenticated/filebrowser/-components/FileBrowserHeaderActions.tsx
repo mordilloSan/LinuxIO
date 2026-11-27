@@ -15,6 +15,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMobileActionsMenu from "@/components/ui/AppMobileActionsMenu";
 import AppPopover from "@/components/ui/AppPopover";
+import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import useAuth from "@/hooks/useAuth";
@@ -23,7 +24,9 @@ import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/tasks/useIsIndexing";
 import { iconSize } from "@/theme/constants";
 
+import { useTrashUsage } from "../-hooks/useTrashSizes";
 import { acceptInternalDrop, hasInternalDrag } from "../-internalDrag";
+import { trashUsageText } from "../-trashEntries";
 import type { ViewMode } from "../-types";
 import FileBrowserSearch from "./FileBrowserSearch";
 
@@ -69,6 +72,9 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
   const isIndexing = useIsIndexing();
   // Indexing and search run through privileged routes.
   const { privileged } = useAuth();
+  // What the Trash holds still takes its disk space: said where the Trash is
+  // opened from, in every folder.
+  const trashUsage = trashUsageText(useTrashUsage());
 
   const handleIndexer = useCallback(() => {
     setActionsAnchorEl(null);
@@ -153,21 +159,36 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
             // The move to Trash reports its own failure.
           });
         }}
-        style={{ display: "inline-flex" }}
+        style={{
+          alignItems: "center",
+          display: "inline-flex",
+          gap: "var(--app-space-2)",
+        }}
       >
         <AppActionIconButton
-          ariaLabel="Trash"
+          ariaLabel={trashUsage ? `Trash, ${trashUsage}` : "Trash"}
           color={
             trashDropTarget ? "var(--app-palette-primary-main)" : undefined
           }
           icon="mdi:trash-can-outline"
           iconSize={20}
-          label="Trash"
+          label={trashUsage ? `Trash (${trashUsage})` : "Trash"}
           onClick={() => {
             onDone?.();
             void navigate({ search: { trash: true }, to: "." });
           }}
         />
+        {/* The button's name says it too; a phone's menu has no room. */}
+        {trashUsage && !isMobile ? (
+          <AppTypography
+            aria-hidden
+            color="text.secondary"
+            noWrap
+            variant="caption"
+          >
+            {trashUsage}
+          </AppTypography>
+        ) : null}
       </span>
     </>
   );

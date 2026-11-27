@@ -7,15 +7,19 @@ import (
 	"log/slog"
 	"os"
 	"os/user"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 // sessionOwner holds the session user's ids, which the trash needs to find
@@ -84,7 +88,90 @@ func listTrash(ctx context.Context, owner sessionOwner) (apischema.TrashListResp
 		}
 		response.Entries = append(response.Entries, entry)
 	}
+	if owner.sudo {
+		refreshTrashesInIndexer(ctx, items)
+	}
 	return response, nil
+}
+
+// refreshTrashesInIndexer asks the indexer, for a session that may use the
+// index, to refresh the files folder of every trash the list read an item
+// from, as the listing of a folder does (see listOpenedDirectory): an item
+// another program trashed then gets a size in the Trash. The list does not
+// wait for it.
+func refreshTrashesInIndexer(ctx context.Context, items []services.TrashItem) {
+	var refreshed []string
+	for _, item := range items {
+		files := filepath.Dir(item.Path)
+		if slices.Contains(refreshed, files) {
+			continue
+		}
+		refreshed = append(refreshed, files)
+		// The indexer knows a folder by its real path.
+		resolved, err := indexedPath(ctx, files)
+		if err != nil {
+			slog.Debug("failed to resolve a trash for the indexer", "path", files, "error", err)
+			continue
+		}
+		refreshInIndexerDetached(resolved)
+	}
+}
+
+// trashUsage is the disk space the session user's trashes take, read from
+// the index and never walked: the page shows it wherever the Trash button is.
+// A trash with nothing in it is not asked about, so an emptied Trash takes
+// nothing. What the index holds for a trash is its files folder's size among
+// the subfolders of the trash, a read of rows the index keeps sizes for,
+// where the folder's own details would count every entry below it.
+func trashUsage(ctx context.Context, owner sessionOwner) (apischema.TrashUsageResponse, error) {
+	u, err := trashUserOrError(owner)
+	if err != nil {
+		return apischema.TrashUsageResponse{}, err
+	}
+	inUse, err := services.TrashFilesInUse(ctx, u.home, u.uid)
+	if err != nil {
+		return apischema.TrashUsageResponse{}, fmt.Errorf("find trashes: %w", err)
+	}
+	// Read before the indexer is asked: see indexerUpdatesInFlight.
+	usage := apischema.TrashUsageResponse{Pending: len(inUse) > 0 && indexerUpdatesInFlight()}
+	for _, files := range inUse {
+		trash := filepath.Dir(files)
+		size, pending, known, err := indexedTrashSize(ctx, trash, files)
+		if err != nil {
+			return apischema.TrashUsageResponse{}, err
+		}
+		if !known {
+			// A trash made since the last scan, as by the first move into it,
+			// has rows for its items and none for its own folders. The indexer
+			// reads it as it reads a folder someone opens, at most once in a
+			// while; asked again, it says whether that read is still to run.
+			if err = indexer.Refresh(ctx, trash); err != nil {
+				return apischema.TrashUsageResponse{}, fmt.Errorf("size trash: %w", indexerError("refresh", err))
+			}
+			if size, pending, known, err = indexedTrashSize(ctx, trash, files); err != nil {
+				return apischema.TrashUsageResponse{}, err
+			}
+		}
+		usage.Pending = usage.Pending || pending
+		usage.Partial = usage.Partial || !known
+		usage.Size += size
+	}
+	return usage, nil
+}
+
+// indexedTrashSize is the size the index holds for files, the files folder of
+// trash, read among the subfolders of trash; known is false when it holds no
+// row for it.
+func indexedTrashSize(ctx context.Context, trash, files string) (size int64, pending, known bool, err error) {
+	found, err := indexer.Subfolders(ctx, trash)
+	if err != nil {
+		return 0, false, false, fmt.Errorf("size trash: %w", indexerError("subfolders", err))
+	}
+	i := slices.IndexFunc(found.Subfolders, func(folder indexerapi.SubfolderResult) bool { return folder.Path == files })
+	if i < 0 {
+		return 0, found.Pending, false, nil
+	}
+	return found.Subfolders[i].Size, found.Pending, true, nil
 }
 
 // trashSize sizes a folder in the session user's trash for its properties;

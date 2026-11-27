@@ -13,6 +13,7 @@ func TestIndexerRoutesArePrivileged(t *testing.T) {
 		"filebrowser.index",
 		"filebrowser.search",
 		"filebrowser.subfolders",
+		"filebrowser.trash_usage",
 	} {
 		if !privileged[route] {
 			t.Errorf("route %s is not privileged", route)

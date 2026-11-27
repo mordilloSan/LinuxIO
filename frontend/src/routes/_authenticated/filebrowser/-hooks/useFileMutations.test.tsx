@@ -1,8 +1,14 @@
+import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LinuxIOError, TASK_CANCELED_CODE } from "@/api";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
-import { act, renderHook } from "@/test/render";
+import {
+  act,
+  createTestQueryClient,
+  renderHook as renderBareHook,
+} from "@/test/render";
 
 import { nextNoTrashPrompt, settleNoTrashPrompt } from "./noTrashPrompts";
 import { useFileMutations } from "./useFileMutations";
@@ -53,6 +59,9 @@ vi.mock("@/api", async (importOriginal) => {
     call: mocks.call,
     linuxio: {
       filebrowser: {
+        // What a move to Trash reads its items' sizes from.
+        list_directory: actual.linuxio.filebrowser.list_directory,
+        subfolders: actual.linuxio.filebrowser.subfolders,
         exists_batch: { route: "filebrowser.exists_batch" },
         chmod_batch: jobEndpoint("chmod"),
         delete_batch: jobEndpoint("delete"),
@@ -93,9 +102,21 @@ vi.mock("./useFileConflicts", () => ({
   CONFLICT_PROMPT_CANCELLED: Symbol("conflict prompt cancelled"),
 }));
 
+// What the page holds of the folders it has shown, which a move to Trash
+// reads its items' sizes from.
+let queryClient: QueryClient;
+const renderHook: typeof renderBareHook = (callback, options) =>
+  renderBareHook(callback, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+    ...options,
+  });
+
 describe("useFileMutations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    queryClient = createTestQueryClient();
     mocks.router.state.location.pathname = "/filebrowser/srv/projects";
   });
 
@@ -361,7 +382,10 @@ describe("useFileMutations", () => {
       const refusal =
         "forbidden: /srv/projects/docs is a link to /mnt/data/docs. Open that folder to make this change";
 
-      mocks.taskOptions.trash.error?.(new Error(refusal));
+      // A job's error comes with its request, as its result does.
+      mocks.taskOptions.trash.error?.(new Error(refusal), {
+        paths: ["/srv/projects/docs/a.txt"],
+      });
       mocks.taskOptions.chmod.error?.(new Error("permission denied"));
 
       expect(mocks.toast.error.mock.calls).toEqual([
@@ -427,7 +451,109 @@ describe("useFileMutations", () => {
       expect(mocks.invalidateListing).toHaveBeenCalledTimes(1);
       expect(mocks.toast.success).toHaveBeenCalledWith(
         "Moved 2 items to Trash",
+        { action: expect.objectContaining({ label: "Open Trash" }) },
       );
+    });
+
+    it("says what the moved items still take, and opens the Trash from the toast", async () => {
+      const paths = ["/srv/projects/go-build/", "/srv/projects/notes.txt"];
+      queryClient.setQueryData(
+        ["linuxio", "filebrowser", "subfolders", { path: "/srv/projects" }],
+        {
+          pending: false,
+          subfolders: [
+            { path: "/srv/projects/go-build", size: 36_507_222_016 },
+          ],
+        },
+      );
+      queryClient.setQueryData(
+        ["linuxio", "filebrowser", "list_directory", { path: "/srv/projects" }],
+        { files: [{ name: "notes.txt", size: 10 }], folders: [] },
+      );
+      const { result } = renderHook(() =>
+        useFileMutations({ normalizedPath: "/srv/projects" }),
+      );
+
+      await act(() => result.current.trashItems(paths));
+      mocks.taskOptions.trash.success?.(
+        { failed: [], succeeded: 2, total: 2 },
+        { paths },
+      );
+
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Moved 2 items to Trash, 34 GB still used",
+        { action: expect.objectContaining({ label: "Open Trash" }) },
+      );
+      mocks.toast.success.mock.calls[0][1].action.onClick();
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        params: { _splat: "srv/projects" },
+        search: { trash: true },
+        to: "/filebrowser/$",
+      });
+    });
+
+    it("says no size the page did not know when this move started", async () => {
+      const paths = ["/srv/projects/build/"];
+      const sized = (size: number, pending: boolean) =>
+        queryClient.setQueryData(
+          ["linuxio", "filebrowser", "subfolders", { path: "/srv/projects" }],
+          { pending, subfolders: [{ path: "/srv/projects/build", size }] },
+        );
+      const { result } = renderHook(() =>
+        useFileMutations({ normalizedPath: "/srv/projects" }),
+      );
+
+      // A first move of the folder, whose end is never reported here.
+      sized(36_507_222_016, false);
+      await act(() => result.current.trashItems(paths));
+      // The folder is made again and trashed before the index has its size.
+      sized(0, true);
+      await act(() => result.current.trashItems(paths));
+      mocks.taskOptions.trash.success?.(
+        { failed: [], succeeded: 1, total: 1 },
+        { paths },
+      );
+
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Moved 1 item to Trash",
+        { action: expect.objectContaining({ label: "Open Trash" }) },
+      );
+    });
+
+    it("says no size when some of the items stayed where they were", async () => {
+      const paths = ["/srv/projects/notes.txt", "/srv/projects/b.txt"];
+      queryClient.setQueryData(
+        ["linuxio", "filebrowser", "list_directory", { path: "/srv/projects" }],
+        {
+          files: [
+            { name: "notes.txt", size: 10 },
+            { name: "b.txt", size: 2048 },
+          ],
+          folders: [],
+        },
+      );
+      const { result } = renderHook(() =>
+        useFileMutations({ normalizedPath: "/srv/projects" }),
+      );
+
+      await act(() => result.current.trashItems(paths));
+      mocks.taskOptions.trash.success?.(
+        {
+          failed: [{ error: "no trash", path: paths[1], reason: "no_trash" }],
+          succeeded: 1,
+          total: 2,
+        },
+        { paths },
+      );
+
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Moved 1 item to Trash",
+        { action: expect.objectContaining({ label: "Open Trash" }) },
+      );
+      // The question about the item that stayed is not this test's.
+      for (let next = nextNoTrashPrompt(); next; next = nextNoTrashPrompt()) {
+        settleNoTrashPrompt(next.id);
+      }
     });
   });
 
@@ -483,6 +609,7 @@ describe("useFileMutations", () => {
       expect(mocks.toast.error).not.toHaveBeenCalled();
       expect(mocks.toast.success).toHaveBeenCalledWith(
         "Moved 2 items to Trash",
+        { action: expect.objectContaining({ label: "Open Trash" }) },
       );
       // Nothing is deleted without the answer.
       expect(mocks.mutateAsync).not.toHaveBeenCalled();

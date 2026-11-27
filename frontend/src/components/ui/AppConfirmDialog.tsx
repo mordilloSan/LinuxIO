@@ -36,6 +36,11 @@ interface AppConfirmDialogProps {
   onExited?: () => void;
   pendingText?: string;
   progress?: TaskProgress<ConfirmProgressDetail> | null;
+  /**
+   * Another way to go on, offered apart from Cancel and the confirm button:
+   * it leads to a question of its own, so it never does the work itself.
+   */
+  secondaryAction?: { label: string; onClick: () => void };
   title: string;
 }
 
@@ -53,6 +58,7 @@ const AppConfirmDialog = ({
   onExited,
   pendingText = "Deleting…",
   progress,
+  secondaryAction,
 }: AppConfirmDialogProps) => {
   const handleConfirm: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
@@ -111,12 +117,26 @@ const AppConfirmDialog = ({
           )}
         </AppDialogContent>
         <AppDialogActions>
+          {secondaryAction ? (
+            <AppButton
+              disabled={isPending}
+              onClick={secondaryAction.onClick}
+              style={{ marginRight: "auto" }}
+              type="button"
+            >
+              {secondaryAction.label}
+            </AppButton>
+          ) : null}
           <AppButton disabled={held} onClick={onClose} type="button">
             {isPending && closeWhilePending ? "Close" : cancelText}
           </AppButton>
+          {/* The other way to go on leaves the dialog when it is taken, and
+              the focus with it: keyed by it, this button mounts again and
+              takes the focus for the question that follows. */}
           <AppButton
             autoFocus
             color={destructive ? "error" : "primary"}
+            key={secondaryAction ? "beside-another" : "alone"}
             disabled={isPending}
             startIcon={
               isPending ? (

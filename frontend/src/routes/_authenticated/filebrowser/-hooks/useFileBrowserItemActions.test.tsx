@@ -75,6 +75,7 @@ function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
       closeDelete: vi.fn(),
       closeDetails: vi.fn(),
       closePermissions: vi.fn(),
+      deleteForGoodInstead: vi.fn(),
       openCreateFile: vi.fn(),
       openPermissions: vi.fn(),
       requestDelete: vi.fn(),
@@ -372,11 +373,14 @@ describe("useFileBrowserItemActions", () => {
         1,
         ["/srv/projects/a"],
         "trash",
+        // What the items take, which the page knows nothing of here.
+        undefined,
       );
       expect(params.dialogs.actions.requestDelete).toHaveBeenNthCalledWith(
         2,
         ["/srv/projects/a"],
         "permanent",
+        undefined,
       );
     });
 

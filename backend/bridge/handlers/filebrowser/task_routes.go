@@ -89,6 +89,12 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 				return trashSize(ctx, owner, req)
 			},
 		),
+		// The index is root's: its socket takes no other user.
+		apischema.Call[apischema.NoRequest, apischema.TrashUsageResponse]("filebrowser.trash_usage", apischema.RetrySafe(), apischema.Privileged()).Handle(
+			func(ctx context.Context, _ apischema.NoRequest) (apischema.TrashUsageResponse, error) {
+				return trashUsage(ctx, owner)
+			},
+		),
 		apischema.MutationTask("filebrowser.index", runIndexerTask, apischema.Privileged(), apischema.Progress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgeipc.TaskMetadata {
 			path := ""
 			if req.Path != nil {

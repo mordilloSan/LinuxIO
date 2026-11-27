@@ -57,6 +57,7 @@ const props = {
   onDropped: vi.fn(),
   onLeave: vi.fn(),
   onOpen: vi.fn(),
+  folderSizes: new Map<string, number>(),
   onSelectionChange: vi.fn(),
   onSortChange: vi.fn(),
   sortField: "name" as const,

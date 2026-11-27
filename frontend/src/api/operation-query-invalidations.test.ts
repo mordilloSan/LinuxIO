@@ -132,7 +132,12 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     const trashList = ["linuxio", "filebrowser", "trash_list"];
     // A trashed folder's size too: the next item may take a purged name.
     const trashSize = ["linuxio", "filebrowser", "trash_size"];
+    // And what the Trash takes on disk, beside its button.
+    const trashUsage = ["linuxio", "filebrowser", "trash_usage"];
     for (const route of ["trash_batch", "trash_restore", "trash_purge"]) {
+      expect(
+        OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
+      ).toContainEqual(trashUsage);
       expect(
         OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
       ).toContainEqual(trashList);

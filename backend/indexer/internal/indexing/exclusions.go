@@ -56,45 +56,6 @@ func isContainerOverlay(mountPoint, options string) bool {
 // duplicates content already present under its "diff" directory.
 const dockerOverlayRoot = "/var/lib/docker/overlay2"
 
-// externalFSTypes are the network filesystems. A local disk reached through
-// FUSE (fuseblk for NTFS, fuse.mergerfs, fuse.gocryptfs) is not one of them.
-var externalFSTypes = map[string]struct{}{
-	"nfs":            {},
-	"nfs4":           {},
-	"cifs":           {},
-	"smbfs":          {},
-	"smb2":           {},
-	"smb3":           {},
-	"ceph":           {},
-	"glusterfs":      {},
-	"9p":             {},
-	"davfs":          {},
-	"fuse.cifs":      {},
-	"fuse.smb":       {},
-	"fuse.smb3":      {},
-	"fuse.nfs":       {},
-	"fuse.ceph":      {},
-	"fuse.iscsi":     {},
-	"fuse.sshfs":     {},
-	"fuse.rclone":    {},
-	"fuse.s3fs":      {},
-	"fuse.glusterfs": {},
-}
-
-func isExternalFilesystem(fsType, source string) bool {
-	if _, ok := externalFSTypes[fsType]; ok {
-		return true
-	}
-	if strings.Contains(fsType, "iscsi") || strings.Contains(source, "iscsi") {
-		return true
-	}
-	// An SMB share, or a WebDAV one, which davfs2 mounts as plain "fuse".
-	if strings.HasPrefix(source, "//") || strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
-		return true
-	}
-	return false
-}
-
 // shouldSkip reports whether traversal leaves fullCombined out of the index.
 // Only directories are excluded; the root never is.
 func (idx *Index) shouldSkip(isDir bool, fullCombined string) bool {

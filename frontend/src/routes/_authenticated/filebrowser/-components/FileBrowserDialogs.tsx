@@ -272,9 +272,11 @@ const FileBrowserDialogs = ({
       />
 
       <FileBrowserDeleteDialog
+        knownSize={deleteDialog.knownSize}
         mode={deleteDialog.mode}
         onClose={deleteDialog.onClose}
         onConfirm={deleteDialog.onConfirm}
+        onDeleteForGoodInstead={deleteDialog.onDeleteForGoodInstead}
         open={deleteDialog.open}
         pendingDeletePaths={deleteDialog.pendingDeletePaths}
       />

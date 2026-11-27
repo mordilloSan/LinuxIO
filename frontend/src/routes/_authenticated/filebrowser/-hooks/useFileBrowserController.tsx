@@ -59,6 +59,7 @@ export function useFileBrowserController(
     detailItems = [],
     detailTarget,
     pendingDeletePaths,
+    pendingDeleteSize,
     permissionsDialog,
     permissionsDialogOpen,
   } = dialogs;
@@ -490,10 +491,12 @@ export function useFileBrowserController(
 
   const deleteDialogProps = useMemo(
     () => ({
+      knownSize: pendingDeleteSize,
       onClose: handleCloseDeleteDialog,
       onConfirm: handleConfirmDelete,
       // What the question about a disk without a trash deletes for good.
       onDeleteForGood: deleteItems,
+      onDeleteForGoodInstead: dialogs.actions.deleteForGoodInstead,
       mode: deleteMode,
       open: deleteDialog,
       pendingDeletePaths,
@@ -502,9 +505,11 @@ export function useFileBrowserController(
       deleteDialog,
       deleteItems,
       deleteMode,
+      dialogs.actions,
       handleCloseDeleteDialog,
       handleConfirmDelete,
       pendingDeletePaths,
+      pendingDeleteSize,
     ],
   );
 

@@ -21,13 +21,15 @@ planted, and everything below them is reached through open handles.
 | `filebrowser.trash_purge` | `BatchPathRequest` | Deletes each trashed item for good. |
 | `filebrowser.trash_list` | none | Lists everything in the user's trashes, newest first. |
 | `filebrowser.trash_size` | `PathRequest` | Sizes one trashed folder: its files' total size and how many files and folders it holds (`DirectorySizeData`). |
+| `filebrowser.trash_usage` | none | What the user's trashes take on disk, as the index holds it (`TrashUsageResponse`). Privileged. |
 
 The three changes are jobs that report a count of items and answer with
 `FileBatchResult`: one failed item does not stop the others, and each failure
 in `failed` carries the item's path, a message, and for the two cases below a
-`reason` the page can act on without reading the message. None of the routes
-declares `Privileged()`: the trash is the user's own, and a session without
-sudo runs them as the user.
+`reason` the page can act on without reading the message. Of the routes only
+`filebrowser.trash_usage` declares `Privileged()`, since it reads the index,
+which only root reaches (see [Disk space](#disk-space)): the trash is the
+user's own, and a session without sudo runs the others as the user.
 
 | `reason` | Route | Meaning | What the page can offer |
 |----------|-------|---------|-------------------------|
@@ -100,8 +102,9 @@ chosen folder sends it in `names`. The original location is the folder of
 `originalPath`. Sorting is the page's.
 
 The list gives no size for a folder, since it would have to walk every
-trashed folder. `filebrowser.trash_size` sizes one when the page asks, which
-it does when the folder's properties open. It takes only an item directly in
+trashed folder. The page fills the sizes in from the index instead (see
+[Disk space](#disk-space)). `filebrowser.trash_size` sizes one by walking it
+when the page asks, which it does when the folder's properties open. It takes only an item directly in
 the `files/` folder of one of the session user's own trashes, the ones the
 list reads, so it measures nothing the list would not show. What it answers:
 
@@ -135,6 +138,86 @@ and a file with several links in the folder counts once. Every entry that is
 not a folder counts as a file, each link included. The walk stops when the
 request is cancelled. Like the list it is a read of the user's own trash
 and declares no `Privileged()`; a session without sudo runs it as the user.
+
+## Disk space
+
+A move to the trash is a rename on the item's own filesystem, so it frees
+nothing: the item takes the same space until it is deleted for good. LinuxIO
+says so where the move is made and shows what the trash holds wherever the
+Trash is reached, so that a full disk is not "emptied" into its own trash
+without anyone seeing it.
+
+The sizes come from the index, as a folder's do in a listing
+([Indexer](./indexer.md#sizes-that-are-still-catching-up)), and nothing walks
+a trash for them:
+
+- **A trashed folder's size.** The index keeps the size of every folder, so
+  the sizes of the subfolders of a trash's `files/` folder are the sizes of
+  every folder trashed there. The page asks for them with
+  `filebrowser.subfolders`, once per trash that holds a folder, and fills
+  them into the list (`useTrashFolderSizes`, `withFolderSizes`).
+- **What the trash takes.** `filebrowser.trash_usage` adds up, for every
+  trash of the user that holds an item, the size the index has for its
+  `files/` folder, read from the subfolders of the trash, a read of rows the
+  index keeps sizes for, where the folder's own details would count every
+  entry below it. It answers `size`, `pending` as a folder's size does, and
+  `partial` when the index holds nothing for a trash in use (an excluded
+  path, a network mount, a trash not indexed yet): `size` is then a lower
+  bound and the page says "at least". A trash made since the last scan, as
+  by the first move into it, has rows in the index for its items and none
+  for its own folders ([Indexer](./indexer.md#known-limits)): the route then
+  asks the indexer to refresh the trash, as it does for a folder someone
+  opens, which reads a folder it has no row for whole, at most once in 30
+  seconds, and asks for the size again, so the answer is `pending` while
+  that read waits and the page asks once more. A trash with nothing in it is not asked
+  about, so an emptied Trash takes nothing and not the few blocks of its
+  empty folders. It reaches the trashes as the list does, so one a root
+  bridge refuses (a link where a folder of the trash goes, another user's
+  folder) is not measured, and asks the index about each by the real path of
+  the handle it opened (`TrashFilesInUse`), never by a name looked up again.
+  Every folder the file browser shows asks for it, so unlike the list it
+  looks for trashes on local mounts only (`localMountPoints`): not on a
+  network filesystem, which blocks whoever touches it while its server does
+  not answer, and not on an automount point with nothing mounted on it, which
+  looking at would mount. The index's own rule says which filesystems are
+  network ones (`ExternalFilesystem` in `backend/indexer/api`).
+
+Listing the Trash tells the indexer to refresh the `files/` folder of each
+trash it read an item from (`refreshTrashesInIndexer`), as listing a folder
+does, so an item another program trashed is indexed and gets a size; the list
+does not wait for it. The page marks the sizes it holds stale when the list
+arrives (`markTrashSizesStale`) and after every trash job, and asks again
+while an answer says `pending`.
+
+The index is root's and its socket takes no other user, so all of this is for
+a session with sudo. Without it the page asks the index for nothing: a
+trashed folder shows no size and the Trash no total, as a folder's listing
+shows no sizes there, and a trashed folder's properties still walk it.
+
+What the page shows:
+
+- **In a folder**, beside the header's Trash button, what the Trash takes
+  ("34 GB", "at least 34 GB"), and in the button's name ("Trash, 34 GB");
+  on a phone, where the button sits in the actions menu, in its name alone.
+  Nothing is shown for an empty Trash or while no size is known.
+- **When items are deleted**, the question says it: "Move go-build to Trash?
+  It stays on the disk (34 GB) until the Trash is emptied.", with the size
+  when the page knows it for every item (a file's from the folder's listing,
+  a folder's from the index: `knownDiskSize`, read as the delete is asked
+  for) and without it otherwise, as while the index is still catching up
+  with the folder, when the size it holds may be from before a copy. **Delete permanently instead** turns the
+  same dialog into the question of a permanent delete, about the same items,
+  so deleting for good still takes its own answer.
+- **When the move ends**, the toast says what still takes space, "Moved 3
+  items to Trash, 34 GB still used", when every item moved and their sizes
+  were known as the job started, and **Open Trash** leads to the Trash from
+  whatever page the toast is read on.
+- **In the Trash**, beside its header's actions, how many items it holds and
+  what they take ("12 items, 41 GB"), which is what Empty Trash frees.
+
+`frontend/src/test/vm/trash-size.spec.ts` follows all of it on a real host,
+with the daemon answering: `make test-vm-browser VMS=1
+PLAYWRIGHT_ARGS=trash-size.spec.ts`.
 
 ## Restore
 
@@ -255,11 +338,12 @@ too. The items are one listbox of options, the heading outside it, and each
 option says where it stands in the whole Trash (`aria-posinset`,
 `aria-setsize`), so a screen reader hears the full count however few rows
 are in the page. A card shows the shown name, the original location
-("Unknown" without one), a file's size and the date deleted. The
+("Unknown" without one), the size and the date deleted. The
 list has the columns Name (the shown name, see [The list](#the-list)),
 Original location (the folder of `originalPath`, "Unknown" without one),
-Date deleted ("Unknown" without one) and Size (a file's; a folder's is not
-listed). Folders and files are one list under one heading, Items, sorted by
+Date deleted ("Unknown" without one) and Size (a file's, and a folder's when
+the index holds one; see [Disk space](#disk-space)). A card shows a folder's
+size the same way. Folders and files are one list under one heading, Items, sorted by
 any column, again by the same column the other way, newest deleted first
 when the Trash opens. The sort is in the URL beside `trash`, `sort`
 (`name`, `originalPath`, `deletedAt` or `size`) and `order` (`asc` or
@@ -396,6 +480,19 @@ Open work on the Trash is in the [backlog](./TODO/backlog.md).
 - A trashed folder whose walk takes longer than a request may wait (30
   seconds) shows "Unavailable" with "Request timeout"; it is walked once, not
   again, until its properties open again.
+- A session without sudo sees no size for a trashed folder in the list and
+  no total for the Trash, since both come from the index; a folder's
+  properties measure it there.
+- The Trash's total and a trashed folder's size in the list are the index's:
+  they lag a change made outside LinuxIO until the Trash is next opened, and
+  say nothing for a trash on a path the index leaves out, where the total
+  reads "at least".
+- A trash on a network mount is listed in the Trash and not counted in the
+  Trash's total, also where the index is set to include network mounts; the
+  total does not say so.
+- The size in the delete question and its toast is the size the page held
+  when the delete was asked for, a file's as listed and a folder's as
+  indexed; it is left out when one of the items has none.
 - A folder inside a trashed folder that cannot be opened or read (on a
   session without sudo, one the user may not read) adds nothing to its size,
   and the size does not say it is partial.

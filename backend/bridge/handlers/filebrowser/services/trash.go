@@ -23,6 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 const (
@@ -468,6 +469,59 @@ func ListTrash(ctx context.Context, home string, uid int) ([]TrashItem, error) {
 		return strings.Compare(a.Name, b.Name)
 	})
 	return items, nil
+}
+
+// TrashFilesInUse returns the files folder of each of the user's trashes
+// that holds an item, by the real path of the handle it was reached through,
+// as ListTrash reaches it: a trash that cannot be opened safely is left out,
+// as its items are left out of the list. It is called for every folder the
+// file browser shows, so unlike the list it looks for trashes on local mounts
+// only (see localMountPoints).
+func TrashFilesInUse(ctx context.Context, home string, uid int) ([]string, error) {
+	if home == "" {
+		return nil, errors.New("home directory unknown")
+	}
+	root, err := fsroot.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	var points []string
+	if data, err := os.ReadFile("/proc/self/mountinfo"); err == nil {
+		points = localMountPoints(string(data))
+	}
+
+	owner := Owner{UID: uint32(uid), Set: os.Geteuid() == 0}
+	var inUse []string
+	for _, trash := range trashDirsOn(root, filepath.Clean(home), uid, points) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		files, info, err := openTrash(root, trash, home, owner, false)
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				slog.Debug("skipped a trash folder that cannot be opened safely", "component", "filebrowser", "subsystem", "trash", "trash", trash, "error", err)
+			}
+			continue
+		}
+		names, readErr := files.Readdirnames(1)
+		// The index knows a folder by its real path, which is the handle's.
+		realPath, linkErr := os.Readlink(procPath(files))
+		_ = files.Close()
+		if info != nil {
+			_ = info.Close()
+		}
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return nil, fmt.Errorf("read trash %s: %w", trash, readErr)
+		}
+		if linkErr != nil {
+			return nil, fmt.Errorf("resolve trash %s: %w", trash, linkErr)
+		}
+		if len(names) > 0 {
+			inUse = append(inUse, realPath)
+		}
+	}
+	return inUse, nil
 }
 
 // listTrashItems appends what trash's files folder holds, as fstatat sees it
@@ -1125,8 +1179,13 @@ func removeAllAtIf(ctx context.Context, dir *os.File, name string, ours func(lin
 // plus the per-filesystem trashes on every mount point, as the spec lays them
 // out, so items trashed by other tools show up too.
 func trashDirs(root *fsroot.FSRoot, home string, uid int) []string {
+	return trashDirsOn(root, home, uid, mountPoints())
+}
+
+// trashDirsOn is trashDirs for the given mount points.
+func trashDirsOn(root *fsroot.FSRoot, home string, uid int, points []string) []string {
 	dirs := []string{homeTrashDir(home)}
-	for _, point := range mountPoints() {
+	for _, point := range points {
 		for _, candidate := range []string{
 			filepath.Join(point, ".Trash", strconv.Itoa(uid)),
 			filepath.Join(point, ".Trash-"+strconv.Itoa(uid)),
@@ -1158,6 +1217,31 @@ func mountPoints() []string {
 		points = append(points, octalescape.Unescape(fields[4]))
 	}
 	return points
+}
+
+// localMountPoints lists the mount points of mountinfo, the text of
+// /proc/self/mountinfo, that are safe to look at unasked: not a network
+// filesystem, which blocks whoever touches it while its server does not
+// answer, and not an automount point with nothing mounted on it, which
+// looking at would mount. Mounts stack, and the last one named for a mount
+// point is the one on top, which decides.
+func localMountPoints(mountinfo string) []string {
+	var points []string
+	local := map[string]bool{}
+	for line := range strings.SplitSeq(mountinfo, "\n") {
+		pre, post, ok := strings.Cut(line, " - ")
+		before, after := strings.Fields(pre), strings.Fields(post)
+		if !ok || len(before) < 5 || len(after) < 2 {
+			continue
+		}
+		point := octalescape.Unescape(before[4])
+		if _, seen := local[point]; !seen {
+			points = append(points, point)
+		}
+		fsType, source := strings.ToLower(after[0]), strings.ToLower(after[1])
+		local[point] = fsType != "autofs" && !indexerapi.ExternalFilesystem(fsType, source)
+	}
+	return slices.DeleteFunc(points, func(point string) bool { return !local[point] })
 }
 
 // trashedEntry checks that path is an item directly inside one of uid's trash

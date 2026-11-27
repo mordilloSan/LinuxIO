@@ -64,6 +64,8 @@ interface TrashRowProps {
   onDoubleClick: () => void;
   onDragStart: (event: DragEvent) => void;
   selected: boolean;
+  /** Whether the entry carries a size: a file's own, a folder's from the index. */
+  sized: boolean;
 }
 
 /** One item as a row of the list, under the Trash's own columns. */
@@ -75,6 +77,7 @@ const TrashRow = ({
   onDragStart,
   position,
   selected,
+  sized,
 }: TrashRowProps) => {
   const background = getFileEntryBackground({ selected });
   const shownName = trashShownName(entry);
@@ -164,8 +167,7 @@ const TrashRow = ({
         style={cellStyle}
         variant="body2"
       >
-        {/* A trashed folder's size is not listed. */}
-        {entry.isDir ? "" : formatFileSize(entry.size, 1, "")}
+        {sized ? formatFileSize(entry.size, 1, "") : ""}
       </AppTypography>
     </div>
   );
@@ -175,6 +177,11 @@ interface TrashListProps {
   /** The card view's size step, as the header's slider shows it. */
   cardSize: number;
   entries: TrashEntry[];
+  /**
+   * The trashed folders the index holds a size for, which `entries` carry;
+   * any other folder is shown without one.
+   */
+  folderSizes: ReadonlyMap<string, number>;
   /** Marks the list while files dragged from a folder are over it. */
   isDropTarget?: boolean;
   /** Delete and Shift+Delete: deletes the selection for good, after asking. */
@@ -204,6 +211,7 @@ interface TrashListProps {
 const TrashList = ({
   cardSize,
   entries,
+  folderSizes,
   isDropTarget = false,
   onDelete,
   onDropped,
@@ -356,6 +364,7 @@ const TrashList = ({
           onDragStart={onDragStart}
           position={position}
           selected={selected}
+          sized={!entry.isDir || folderSizes.has(entry.path)}
         />
       );
     }
@@ -372,8 +381,10 @@ const TrashList = ({
         path={entry.path}
         option={position}
         selected={selected}
-        // A trashed folder's size is not listed.
-        size={entry.isDir ? undefined : entry.size}
+        // A trashed folder has a size when the index holds one.
+        size={
+          entry.isDir && !folderSizes.has(entry.path) ? undefined : entry.size
+        }
         type={item.type}
       />
     );

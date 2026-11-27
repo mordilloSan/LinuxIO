@@ -123,7 +123,7 @@ fail strict configuration decoding.
 Network mounts are skipped unless `include_network_mounts` is true. A mount
 counts as one by its filesystem type (NFS, SMB/CIFS, Ceph, GlusterFS, 9p,
 sshfs, rclone, s3fs, WebDAV, iSCSI) or by a source that is a share or a URL
-(`externalFSTypes` in `backend/indexer/internal/indexing/exclusions.go`). A
+(`ExternalFilesystem` in `backend/indexer/api/mounts.go`). A
 local disk reached through FUSE, such as an NTFS drive or a mergerfs pool, is
 not a network mount and is indexed.
 
@@ -368,6 +368,8 @@ by `POST /refresh` for that folder's real path, from a session with sudo; a
 session without it cannot use the index and asks for nothing. The listing is
 answered first and never waits for the refresh
 (`listOpenedDirectory` in `backend/bridge/handlers/filebrowser/resource_read.go`).
+The Trash's list does the same for the `files/` folder of each trash it read
+an item from ([Trash](./trash.md#disk-space)).
 The listing of an open folder is watched, by the session's bridge and not by
 the indexer: one inotify watch on the folder the page shows tells the page to
 read the listing again ([File Browser Live Listing](./filebrowser-live-listing.md)),
@@ -694,6 +696,7 @@ bridge before an indexer request is made.
 | `filebrowser.search` | Call | `query`, optional `basePath`, optional compatibility `limit` | `results` (matching entries; `size` absent for a folder of unknown size) and, for a search inside a folder, `walk`: `complete` or `partial` ([Search inside a folder](#search-inside-a-folder)) |
 | `filebrowser.dir_size` | Call | `path` | `size`, `fileCount`, `folderCount`, and `pending` while an update for the folder has not been applied |
 | `filebrowser.subfolders` | Call | `path`; empty means `/` | direct subfolder paths and sizes, and `pending` as above |
+| `filebrowser.trash_usage` | Call | none | `size` of what the session user's trashes on local mounts hold, `pending` as above, and `partial` when the index holds nothing for a trash in use ([Trash](./trash.md#disk-space)) |
 
 The daemon always caps search at 100 results. The public `limit` field remains
 in the bridge request shape for compatibility but cannot raise or lower that

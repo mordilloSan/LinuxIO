@@ -197,6 +197,16 @@ type TrashListResponse struct {
 	Entries []TrashEntry `json:"entries"`
 }
 
+// TrashUsageResponse is the disk space the session user's trashes take, as
+// the index holds it. Pending is set as in DirectorySizeData. Partial is set
+// when the index holds nothing for a trash that has items in it (an excluded
+// path, a network mount, an item not indexed yet): Size is then a lower bound.
+type TrashUsageResponse struct {
+	Size    int64 `json:"size"`
+	Pending bool  `json:"pending"`
+	Partial bool  `json:"partial"`
+}
+
 type ActionSourceDestinationRequest struct {
 	Action string `json:"action"`
 	Source string `json:"src"`

@@ -27,8 +27,11 @@ vi.mock("@/hooks/useGridColumnCount", async (importOriginal) => ({
 const mocks = vi.hoisted(() => ({
   entries: [] as unknown[],
   error: null as Error | null,
+  folderSizes: [] as { path: string; size: number }[],
+  indexReads: [] as string[],
   sizeError: null as Error | null,
   sized: [] as string[],
+  usage: { partial: false, pending: false, size: 0 },
   toastError: vi.fn(),
 }));
 
@@ -72,6 +75,20 @@ vi.mock("@/api", async (importOriginal) => {
             return { entries: mocks.entries };
           },
           queryKey: ["linuxio", "filebrowser", "trash_list"],
+        },
+        subfolders: ({ path }: { path: string }) => ({
+          queryFn: async () => {
+            mocks.indexReads.push(`subfolders ${path}`);
+            return { pending: false, subfolders: mocks.folderSizes };
+          },
+          queryKey: ["linuxio", "filebrowser", "subfolders", { path }],
+        }),
+        trash_usage: {
+          queryFn: async () => {
+            mocks.indexReads.push("trash_usage");
+            return mocks.usage;
+          },
+          queryKey: ["linuxio", "filebrowser", "trash_usage"],
         },
         trash_size: ({ path }: { path: string }) => ({
           queryFn: async () => {
@@ -173,7 +190,11 @@ const Place = ({
 const renderPlace = (
   initialSort: TrashSort = DEFAULT_TRASH_SORT,
   initialView: ViewMode = "list",
-) => render(<Place initialSort={initialSort} initialView={initialView} />);
+  privileged = false,
+) =>
+  render(<Place initialSort={initialSort} initialView={initialView} />, {
+    auth: { privileged },
+  });
 
 const rowOrder = () =>
   screen
@@ -191,8 +212,11 @@ describe("TrashPlace", () => {
     vi.clearAllMocks();
     mocks.entries = all;
     mocks.error = null;
+    mocks.folderSizes = [];
+    mocks.indexReads = [];
     mocks.sizeError = null;
     mocks.sized = [];
+    mocks.usage = { partial: false, pending: false, size: 0 };
     areaWidth = 1200;
     const width = vi
       .spyOn(HTMLElement.prototype, "clientWidth", "get")
@@ -216,6 +240,52 @@ describe("TrashPlace", () => {
     // A trashed folder lists no size; an item of unknown origin says so.
     expect(within(row(mystery)).getAllByText("Unknown")).toHaveLength(2);
     expect(within(row(report)).getByText("2 KB")).toBeVisible();
+  });
+
+  it("lists a trashed folder's size from the index and sorts by it", async () => {
+    mocks.folderSizes = [{ path: photos.path, size: 36_507_222_016 }];
+    const { user } = renderPlace(DEFAULT_TRASH_SORT, "list", true);
+
+    await screen.findByRole("listbox", { name: "Trash" });
+    expect(await within(row(photos)).findByText("34 GB")).toBeVisible();
+    // One read sizes every folder of a trash.
+    expect(
+      mocks.indexReads.filter((read) => read.startsWith("subfolders")),
+    ).toEqual([`subfolders ${TRASH}`]);
+
+    // Ascending first: the folder is the largest, and so the last.
+    await user.click(screen.getByRole("button", { name: "Sort by Size" }));
+    expect(rowOrder().at(-1)).toBe(photos.path);
+  });
+
+  it("shows a trashed folder's size on its card", async () => {
+    mocks.folderSizes = [{ path: photos.path, size: 36_507_222_016 }];
+    renderPlace(DEFAULT_TRASH_SORT, "card", true);
+
+    await screen.findByRole("listbox", { name: "Trash" });
+    expect(await within(row(photos)).findByText(/34 GB/)).toBeVisible();
+  });
+
+  it("says how many items the Trash holds and what they take on disk", async () => {
+    mocks.usage = { partial: false, pending: false, size: 36_507_222_016 };
+    renderPlace(DEFAULT_TRASH_SORT, "list", true);
+
+    expect(await screen.findByText("4 items, 34 GB")).toBeVisible();
+  });
+
+  it("says when what the Trash takes is a lower bound", async () => {
+    mocks.usage = { partial: true, pending: false, size: 2048 };
+    renderPlace(DEFAULT_TRASH_SORT, "list", true);
+
+    expect(await screen.findByText("4 items, at least 2 KB")).toBeVisible();
+  });
+
+  it("asks the index for nothing on a session without sudo", async () => {
+    mocks.usage = { partial: false, pending: false, size: 36_507_222_016 };
+    renderPlace();
+
+    expect(await screen.findByText("4 items")).toBeVisible();
+    expect(mocks.indexReads).toEqual([]);
   });
 
   it("moves by the column count in card view and a row at a time in the list", async () => {

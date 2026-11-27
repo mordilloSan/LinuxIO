@@ -1,5 +1,6 @@
-import type { TrashEntry } from "@/api";
+import type { TrashEntry, TrashUsageResponse } from "@/api";
 import type { SearchInput } from "@/routes/-search";
+import { formatFileSize } from "@/utils/formatters";
 import { baseName, parentPath } from "@/utils/path";
 
 import type { SortOrder } from "./-types";
@@ -115,3 +116,40 @@ export const sortTrashEntries = (
       a.path.localeCompare(b.path)
     );
   });
+
+/**
+ * The `files` folder of every trash that holds a trashed folder: the index
+ * keeps the sizes of a folder's subfolders, so one read per trash sizes all
+ * of them.
+ */
+export const trashFilesFolders = (entries: readonly TrashEntry[]): string[] => [
+  ...new Set(
+    entries
+      .filter((entry) => entry.isDir)
+      .map((entry) => parentPath(entry.path)),
+  ),
+];
+
+/**
+ * The entries with each folder's size filled in from `sizes`, by trashed
+ * path, so the list sorts and shows them beside the files' own. A folder
+ * `sizes` does not hold keeps the list's 0 and is shown without a size.
+ */
+export const withFolderSizes = (
+  entries: readonly TrashEntry[],
+  sizes: ReadonlyMap<string, number>,
+): TrashEntry[] =>
+  entries.map((entry) => {
+    const size = entry.isDir ? sizes.get(entry.path) : undefined;
+    return size === undefined ? entry : { ...entry, size };
+  });
+
+/**
+ * What the Trash takes on disk, as the Trash button and the Trash say it;
+ * "" for an empty Trash and while the index gives no size. A trash the index
+ * does not hold makes the size a lower bound.
+ */
+export const trashUsageText = (usage: TrashUsageResponse | undefined): string =>
+  usage && usage.size > 0
+    ? `${usage.partial ? "at least " : ""}${formatFileSize(usage.size, 1)}`
+    : "";

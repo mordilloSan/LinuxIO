@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import {
@@ -13,6 +14,7 @@ import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
 
 import { isImageFile, validateFileName } from "../-fileUtils";
 import type { FileItem, FileResource } from "../-types";
+import { knownDiskSize } from "./knownDiskSize";
 import type { DeleteMode, DialogsSlice } from "./useFileDialogs";
 import type { EditorSlice } from "./useFileEditor";
 import { useFilePathUtilities } from "./useFilePathUtilities";
@@ -80,6 +82,7 @@ export const useFileBrowserItemActions = ({
     permissionsDialog,
   } = dialogs;
   const { actions: editorActions } = editor;
+  const queryClient = useQueryClient();
   const { clearSearch, closeContextMenu } = view.actions;
   const { joinPath, getParentPath } = useFilePathUtilities();
   const resourceItemsRef = useLatestRef(resource?.items);
@@ -265,12 +268,16 @@ export const useFileBrowserItemActions = ({
       closeContextMenu();
       const paths = Array.from(selectedPaths);
       if (paths.length > 0) {
-        dialogActions.requestDelete(paths, mode);
+        dialogActions.requestDelete(
+          paths,
+          mode,
+          knownDiskSize(queryClient, paths),
+        );
       } else {
         toast.error("No items selected");
       }
     },
-    [dialogActions, closeContextMenu, selectedPaths, toast],
+    [dialogActions, closeContextMenu, queryClient, selectedPaths, toast],
   );
 
   const handleDelete = useCallback(

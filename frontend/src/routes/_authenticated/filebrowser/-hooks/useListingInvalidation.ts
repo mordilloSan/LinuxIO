@@ -26,6 +26,29 @@ export function markDirectorySizesStale(
 }
 
 /**
+ * The sizes the page holds for the Trash are kept for minutes, as a
+ * folder's are. The bridge tells the indexer to refresh each trash it lists,
+ * so the Trash list's query calls this when its answer arrives, with the
+ * `files` folder of each trash that holds a folder: the sizes are asked for
+ * again, an item another program trashed gets its size, and the Trash button
+ * its total. An answer that comes before the indexer is done says so, and the
+ * size queries ask once more.
+ */
+export function markTrashSizesStale(
+  queryClient: QueryClient,
+  filesFolders: readonly string[],
+) {
+  for (const path of filesFolders) {
+    void queryClient.invalidateQueries({
+      queryKey: linuxio.filebrowser.subfolders({ path }).queryKey,
+    });
+  }
+  void queryClient.invalidateQueries({
+    queryKey: linuxio.filebrowser.trash_usage.queryKey,
+  });
+}
+
+/**
  * The folder's watch saw its entries change, or missed a while: mark its
  * listing stale. Only the listing, since its own query marks the folder's
  * sizes stale when its answer arrives. With `fetch` false the listing is

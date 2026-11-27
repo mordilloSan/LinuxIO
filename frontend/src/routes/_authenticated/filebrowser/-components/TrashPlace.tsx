@@ -11,7 +11,6 @@ import {
 
 import {
   getMutationErrorMessage,
-  linuxio,
   type TrashEntry,
   type TrashRestoreRequest,
 } from "@/api";
@@ -22,6 +21,7 @@ import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSkeleton from "@/components/ui/AppSkeleton";
+import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useLatestRef } from "@/hooks/useLatestRef";
@@ -32,6 +32,11 @@ import { useFileListKeyboardNavigation } from "../-hooks/useFileListKeyboardNavi
 import { useShownCardSize } from "../-hooks/useShownCardSize";
 import type { TrashJobs } from "../-hooks/useTrashJobs";
 import {
+  trashListQueryOptions,
+  useTrashFolderSizes,
+  useTrashUsage,
+} from "../-hooks/useTrashSizes";
+import {
   acceptInternalDrop,
   hasInternalDrag,
   refuseFileDrop,
@@ -41,6 +46,8 @@ import {
   sortTrashEntries,
   type TrashSort,
   trashShownName,
+  trashUsageText,
+  withFolderSizes,
 } from "../-trashEntries";
 import type { ViewMode } from "../-types";
 import CardSizeSlider from "./CardSizeSlider";
@@ -151,9 +158,11 @@ const TrashPlace = ({
   sort,
   viewMode,
 }: TrashPlaceProps) => {
-  const { data, error, isLoading, refetch } = useQuery(
-    linuxio.filebrowser.trash_list,
-  );
+  const { data, error, isLoading, refetch } = useQuery(trashListQueryOptions());
+  // A trashed folder's size and the Trash's total come from the index, as a
+  // folder's sizes do.
+  const folderSizes = useTrashFolderSizes(data?.entries ?? noItems);
+  const usage = trashUsageText(useTrashUsage());
   // The list fills the area under the header, in an empty Trash too: the
   // slider is offered where a step can change the cards there.
   const listAreaRef = useRef<HTMLDivElement>(null);
@@ -185,7 +194,11 @@ const TrashPlace = ({
   const confirmOpenRef = useLatestRef(confirm.open);
   const [dropTarget, setDropTarget] = useState(false);
 
-  const entries = sortTrashEntries(data?.entries ?? [], sort.field, sort.order);
+  const entries = sortTrashEntries(
+    withFolderSizes(data?.entries ?? [], folderSizes),
+    sort.field,
+    sort.order,
+  );
   // Derived from the live list, so items that left the Trash leave the
   // selection with it.
   const selectedEntries = entries.filter((entry) => selected.has(entry.path));
@@ -422,6 +435,7 @@ const TrashPlace = ({
       <TrashList
         cardSize={shownCardSize.size}
         entries={entries}
+        folderSizes={folderSizes}
         isDropTarget={dropTarget}
         onDelete={() => askDelete(selectedEntries)}
         onDropped={deselect}
@@ -476,8 +490,21 @@ const TrashPlace = ({
         </div>
         <div
           className="file-browser-header__actions"
-          style={{ alignItems: "center", display: "flex", justifySelf: "end" }}
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: "var(--app-space-8)",
+            justifySelf: "end",
+          }}
         >
+          {/* What Empty Trash would free, beside it. */}
+          {entries.length > 0 ? (
+            <AppTypography color="text.secondary" noWrap variant="body2">
+              {usage
+                ? `${itemCount(entries.length)}, ${usage}`
+                : itemCount(entries.length)}
+            </AppTypography>
+          ) : null}
           {actions}
         </div>
       </div>

@@ -23,6 +23,11 @@ interface DialogsState {
   detailTarget: string[] | null;
   detailItems?: FileItem[];
   pendingDeletePaths: string[];
+  /**
+   * What the items to delete take on disk, when the page knew it as the
+   * delete was asked for (see knownDiskSize).
+   */
+  pendingDeleteSize?: number;
   permissionsDialog: PermissionsDialogState | null;
   permissionsDialogOpen: boolean;
 }
@@ -34,9 +39,15 @@ type DialogsEvent =
   | { type: "closeDetails" }
   | { type: "closePermissions" }
   | { type: "clearPermissions" }
+  | { type: "deleteForGoodInstead" }
   | { type: "openCreateFile" }
   | { dialog: PermissionsDialogState; type: "openPermissions" }
-  | { mode: DeleteMode; paths: string[]; type: "requestDelete" }
+  | {
+      knownSize?: number;
+      mode: DeleteMode;
+      paths: string[];
+      type: "requestDelete";
+    }
   | { items: FileItem[]; paths: string[]; type: "showDetails" };
 
 const initialDialogsState: DialogsState = {
@@ -60,13 +71,21 @@ function dialogsReducer(
     case "closeCreateFile":
       return { ...state, createFileDialog: false };
     case "closeDelete":
-      return { ...state, deleteDialog: false, pendingDeletePaths: [] };
+      return {
+        ...state,
+        deleteDialog: false,
+        pendingDeletePaths: [],
+        pendingDeleteSize: undefined,
+      };
     case "closeDetails":
       return { ...state, detailItems: [], detailTarget: null };
     case "closePermissions":
       return { ...state, permissionsDialogOpen: false };
     case "clearPermissions":
       return { ...state, permissionsDialog: null };
+    case "deleteForGoodInstead":
+      // The same dialog asks again, about the same items.
+      return { ...state, deleteMode: "permanent" };
     case "openCreateFile":
       return { ...state, createFileDialog: true };
     case "openPermissions":
@@ -81,6 +100,7 @@ function dialogsReducer(
         deleteDialog: true,
         deleteMode: event.mode,
         pendingDeletePaths: event.paths,
+        pendingDeleteSize: event.knownSize,
       };
     case "showDetails":
       return { ...state, detailItems: event.items, detailTarget: event.paths };
@@ -94,9 +114,15 @@ interface DialogsActions {
   closeDetails: () => void;
   closePermissions: () => void;
   clearPermissions: () => void;
+  /** Turns the open move to Trash into a delete for good, asked again. */
+  deleteForGoodInstead: () => void;
   openCreateFile: () => void;
   openPermissions: (dialog: PermissionsDialogState) => void;
-  requestDelete: (paths: string[], mode: DeleteMode) => void;
+  requestDelete: (
+    paths: string[],
+    mode: DeleteMode,
+    knownSize?: number,
+  ) => void;
   showDetails: (paths: string[], items?: FileItem[]) => void;
 }
 
@@ -120,11 +146,12 @@ export const useFileDialogs = (): DialogsSlice => {
       closeDetails: () => dispatch({ type: "closeDetails" }),
       closePermissions: () => dispatch({ type: "closePermissions" }),
       clearPermissions: () => dispatch({ type: "clearPermissions" }),
+      deleteForGoodInstead: () => dispatch({ type: "deleteForGoodInstead" }),
       openCreateFile: () => dispatch({ type: "openCreateFile" }),
       openPermissions: (dialog) =>
         dispatch({ dialog, type: "openPermissions" }),
-      requestDelete: (paths, mode) =>
-        dispatch({ mode, paths, type: "requestDelete" }),
+      requestDelete: (paths, mode, knownSize) =>
+        dispatch({ knownSize, mode, paths, type: "requestDelete" }),
       showDetails: (paths, items = []) =>
         dispatch({ items, paths, type: "showDetails" }),
     }),

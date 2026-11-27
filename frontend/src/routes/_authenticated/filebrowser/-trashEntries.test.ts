@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import type { TrashEntry } from "@/api";
+
 import {
   DEFAULT_TRASH_SORT,
   nextTrashSort,
+  sortTrashEntries,
+  trashFilesFolders,
+  trashUsageText,
   trashSortFromSearch,
   trashSortSearch,
   validateTrashSort,
+  withFolderSizes,
 } from "./-trashEntries";
 
 describe("the Trash's sort in the URL", () => {
@@ -64,5 +70,65 @@ describe("the Trash's sort in the URL", () => {
       field: "size",
       order: "asc",
     });
+  });
+});
+
+describe("a trashed folder's size", () => {
+  const HOME = "/home/alice/.local/share/Trash/files";
+  const DISK = "/mnt/data/.Trash-1000/files";
+  const entry = (path: string, isDir: boolean, size = 0): TrashEntry => ({
+    confirmRestore: false,
+    deletedAt: "",
+    isDir,
+    name: path.slice(path.lastIndexOf("/") + 1),
+    originalPath: "",
+    path,
+    size,
+  });
+  const entries = [
+    entry(`${HOME}/go-build`, true),
+    entry(`${HOME}/notes.txt`, false, 10),
+    entry(`${DISK}/gitea`, true),
+    entry(`${HOME}/photos`, true),
+  ];
+
+  it("is asked for once per trash that holds a folder", () => {
+    expect(trashFilesFolders(entries)).toEqual([HOME, DISK]);
+    expect(trashFilesFolders([entry(`${HOME}/notes.txt`, false)])).toEqual([]);
+  });
+
+  it("is filled in from the index and sorts with the files' sizes", () => {
+    const sizes = new Map([
+      [`${HOME}/go-build`, 36_507_222_016],
+      [`${DISK}/gitea`, 4096],
+    ]);
+    const sized = withFolderSizes(entries, sizes);
+    expect(sized.map((item) => item.size)).toEqual([
+      36_507_222_016, 10, 4096, 0,
+    ]);
+    // A folder the index holds nothing for keeps its place among the smallest.
+    expect(
+      sortTrashEntries(sized, "size", "desc").map((item) => item.name),
+    ).toEqual(["go-build", "gitea", "notes.txt", "photos"]);
+    // The list's entries are the query's own: they are not written to.
+    expect(entries[0].size).toBe(0);
+  });
+});
+
+describe("what the Trash takes on disk", () => {
+  it("is said only when the index holds a size for it", () => {
+    expect(trashUsageText(undefined)).toBe("");
+    expect(trashUsageText({ partial: false, pending: false, size: 0 })).toBe(
+      "",
+    );
+    expect(
+      trashUsageText({ partial: false, pending: false, size: 36_507_222_016 }),
+    ).toBe("34 GB");
+  });
+
+  it("is a lower bound when a trash is not in the index", () => {
+    expect(trashUsageText({ partial: true, pending: false, size: 2048 })).toBe(
+      "at least 2 KB",
+    );
   });
 });

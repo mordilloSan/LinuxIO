@@ -1,4 +1,4 @@
-import { createRef } from "react";
+import { createRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
@@ -256,12 +256,19 @@ describe("file browser upload dialog", () => {
 });
 
 describe("file browser delete dialog", () => {
-  const renderDelete = (mode: "permanent" | "trash", paths: string[]) =>
+  const onDeleteForGoodInstead = vi.fn();
+  const renderDelete = (
+    mode: "permanent" | "trash",
+    paths: string[],
+    knownSize?: number,
+  ) =>
     render(
       <FileBrowserDeleteDialog
+        knownSize={knownSize}
         mode={mode}
         onClose={vi.fn()}
         onConfirm={vi.fn()}
+        onDeleteForGoodInstead={onDeleteForGoodInstead}
         open
         pendingDeletePaths={paths}
       />,
@@ -270,8 +277,67 @@ describe("file browser delete dialog", () => {
   it("names up to three items", () => {
     renderDelete("trash", ["/srv/report.txt", "/srv/photos/"]);
     expect(
-      screen.getByText("Move report.txt and photos to Trash?"),
+      screen.getByText(/^Move report\.txt and photos to Trash\?/),
     ).toBeInTheDocument();
+  });
+
+  it("says what a move to Trash leaves on the disk", () => {
+    renderDelete("trash", ["/srv/go-build/"], 36_507_222_016);
+    expect(
+      screen.getByText(
+        "Move go-build to Trash? It stays on the disk (34 GB) until the Trash is emptied.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says it without a size when the page knows none", () => {
+    renderDelete("trash", ["/srv/report.txt", "/srv/photos/"]);
+    expect(
+      screen.getByText(
+        "Move report.txt and photos to Trash? They stay on the disk until the Trash is emptied.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("offers to delete for good instead, from a move to Trash only", async () => {
+    onDeleteForGoodInstead.mockClear();
+    const { user, unmount } = renderDelete("trash", ["/srv/go-build/"]);
+    await user.click(
+      screen.getByRole("button", { name: "Delete permanently instead" }),
+    );
+    expect(onDeleteForGoodInstead).toHaveBeenCalledOnce();
+    unmount();
+
+    renderDelete("permanent", ["/srv/go-build/"]);
+    expect(
+      screen.queryByRole("button", { name: "Delete permanently instead" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("asks about the permanent delete in the same dialog, with the focus on Delete", async () => {
+    const Asking = () => {
+      const [mode, setMode] = useState<"permanent" | "trash">("trash");
+      return (
+        <FileBrowserDeleteDialog
+          mode={mode}
+          onClose={vi.fn()}
+          onConfirm={vi.fn()}
+          onDeleteForGoodInstead={() => setMode("permanent")}
+          open
+          pendingDeletePaths={["/srv/go-build/"]}
+        />
+      );
+    };
+    const { user } = render(<Asking />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Delete permanently instead" }),
+    );
+
+    expect(
+      screen.getByText("Permanently delete go-build? This cannot be undone."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toHaveFocus();
   });
 
   it("collapses long selections into 'and N more'", () => {
@@ -283,7 +349,7 @@ describe("file browser delete dialog", () => {
       "/srv/c",
     ]);
     expect(
-      screen.getByText("Move report.txt, photos and 3 more to Trash?"),
+      screen.getByText(/^Move report\.txt, photos and 3 more to Trash\?/),
     ).toBeInTheDocument();
   });
 

@@ -279,9 +279,13 @@ export const FileBrowserSaveConflictDialog = ({
 );
 
 export interface FileBrowserDeleteDialogProps {
+  /** What the items take on disk, when the page knows it. */
+  knownSize?: number;
   mode: DeleteMode;
   onClose: () => void;
   onConfirm: () => void;
+  /** Asks, in this dialog, to delete the items for good instead. */
+  onDeleteForGoodInstead?: () => void;
   open: boolean;
   pendingDeletePaths: string[];
 }
@@ -289,10 +293,16 @@ export interface FileBrowserDeleteDialogProps {
 // Moving to the trash asks as well: the wording is what tells the two modes
 // apart. Either is a job: confirming closes the dialog and starts it, and the
 // task tray shows its progress and can cancel it.
+//
+// A move to Trash frees no disk space, which is what someone clearing a full
+// disk is after: the question says so, with what the items take when the
+// page knows it, and offers the delete for good, which asks again here.
 export const FileBrowserDeleteDialog = ({
+  knownSize,
   mode,
   onClose,
   onConfirm,
+  onDeleteForGoodInstead,
   open,
   pendingDeletePaths,
 }: FileBrowserDeleteDialogProps) => {
@@ -315,12 +325,22 @@ export const FileBrowserDeleteDialog = ({
       destructive={!isTrash}
       message={
         isTrash
-          ? `Move ${subject} to Trash?`
+          ? `Move ${subject} to Trash? ${count === 1 ? "It stays" : "They stay"} on the disk${
+              knownSize ? ` (${formatFileSize(knownSize, 1)})` : ""
+            } until the Trash is emptied.`
           : `Permanently delete ${subject}? This cannot be undone.`
       }
       onClose={onClose}
       onConfirm={onConfirm}
       open={open}
+      secondaryAction={
+        isTrash && onDeleteForGoodInstead
+          ? {
+              label: "Delete permanently instead",
+              onClick: onDeleteForGoodInstead,
+            }
+          : undefined
+      }
       title={isTrash ? "Move to Trash" : "Delete permanently"}
     />
   );

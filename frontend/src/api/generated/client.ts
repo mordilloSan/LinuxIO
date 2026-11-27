@@ -284,6 +284,7 @@ const linuxio = {
       kind: "object",
     }),
     trash_size: defineCallWithRequest("filebrowser.trash_size"),
+    trash_usage: defineCall("filebrowser.trash_usage"),
     upload: defineMutation("filebrowser", "upload", { kind: "object" }),
     upload_batch: defineMutation("filebrowser", "upload_batch", {
       kind: "object",

@@ -12,7 +12,17 @@ import FileBrowserHeader from "./FileBrowserHeader";
 
 const headerActionsRender = vi.hoisted(() => vi.fn());
 const navigate = vi.hoisted(() => vi.fn());
-const mocks = vi.hoisted(() => ({ toastError: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  trashUsage: undefined as
+    | { partial: boolean; pending: boolean; size: number }
+    | undefined,
+}));
+
+// What the Trash takes is read from the index; here it is what a test says.
+vi.mock("../-hooks/useTrashSizes", () => ({
+  useTrashUsage: () => mocks.trashUsage,
+}));
 
 vi.mock("sonner", async (importOriginal) => ({
   ...(await importOriginal<typeof import("sonner")>()),
@@ -105,6 +115,7 @@ const SearchableMobileHeader = () => {
 describe("FileBrowserHeader", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    mocks.trashUsage = undefined;
   });
 
   it("disables absent quick-save callbacks and enables supplied handlers", async () => {
@@ -142,6 +153,14 @@ describe("FileBrowserHeader", () => {
       screen.getByRole("button", { name: "Index filesystem" }),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
+  });
+
+  it("says what the Trash takes on disk beside its button", () => {
+    mocks.trashUsage = { partial: false, pending: false, size: 36_507_222_016 };
+    render(<FileBrowserHeader {...defaultProps} showQuickSave={false} />);
+
+    expect(screen.getByRole("button", { name: "Trash, 34 GB" })).toBeVisible();
+    expect(screen.getByText("34 GB")).toBeVisible();
   });
 
   it("opens the Trash as a place, and moves items dropped on it there", async () => {
@@ -427,5 +446,19 @@ describe("FileBrowserHeader", () => {
       screen.queryByRole("textbox", { name: "Search files and folders..." }),
     ).not.toBeInTheDocument();
     expect(actionsTrigger).toHaveFocus();
+  });
+
+  it("says it in the Trash button's name alone on a phone", async () => {
+    mockMobileViewport();
+    mocks.trashUsage = { partial: true, pending: false, size: 2048 };
+    const { user } = render(
+      <FileBrowserHeader {...defaultProps} showQuickSave={false} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(
+      screen.getByRole("button", { name: "Trash, at least 2 KB" }),
+    ).toBeVisible();
+    expect(screen.queryByText("at least 2 KB")).not.toBeInTheDocument();
   });
 });

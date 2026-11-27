@@ -3666,6 +3666,12 @@ export interface TrashRestoreRequest {
   keepBoth?: string[];
 }
 
+export interface TrashUsageResponse {
+  size: number;
+  pending: boolean;
+  partial: boolean;
+}
+
 export interface TunedProfile {
   active: boolean;
   description?: string;
@@ -4641,6 +4647,7 @@ export interface LinuxIOSchema {
       request: PathRequest;
       result: DirectorySizeData;
     };
+    trash_usage: { input: []; request: void; result: TrashUsageResponse };
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
@@ -5769,6 +5776,7 @@ export interface LinuxIOCallSchema {
   };
   "filebrowser.trash_list": { request: void; result: TrashListResponse };
   "filebrowser.trash_size": { request: PathRequest; result: DirectorySizeData };
+  "filebrowser.trash_usage": { request: void; result: TrashUsageResponse };
   "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
   "indexer.get_config": { request: void; result: IndexerConfig };
   "indexer.get_status": { request: void; result: IndexerDaemonStatus };
