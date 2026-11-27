@@ -274,10 +274,11 @@ advertises the matching capability.
   and effort of the agent's config options ("Opus 5.5 High"), any other
   select or boolean option, and on the right the mode select and Send (a red
   Stop button while a turn runs). The chip opens a menu as wide as the prompt:
-  the models with their descriptions, then the model settings (Fast mode) as
-  rows and effort as a stepped slider, which stay in view while the list
-  scrolls. Picking a model closes the menu; the slider leaves it open and
-  sends the level once the drag or key press ends. The slider is a stop of
+  the models with their descriptions, then the model settings (options of
+  category `speed` or `model_config`: Fast mode, ultracode) as rows and
+  effort as a stepped slider, which stay in view while the list scrolls.
+  Picking a model closes the menu; the slider leaves it open and sends the
+  level once the drag or key press ends. The slider is a stop of
   the menu's Up and Down keys, and Left, Right, Home and End move its level.
   Changing one sends `session/set_config_option` or
   `session/set_mode` and replaces the local options with the agent's reply.

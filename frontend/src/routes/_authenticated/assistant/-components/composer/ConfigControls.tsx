@@ -73,6 +73,10 @@ function renderControl(
   );
 }
 
+// Options that change how the chosen model runs: Claude Code's adapter files
+// Fast mode under "speed" and ultracode under "model_config".
+const MODEL_SETTINGS = ["model_config", "speed"];
+
 const isSelect = (
   option: acp.SessionConfigOption | undefined,
 ): option is SelectOption => option?.type === "select";
@@ -104,7 +108,7 @@ export default function ConfigControls({
   const extras = hasChip
     ? sorted.filter(
         (option) =>
-          option.category === "model_config" &&
+          MODEL_SETTINGS.includes(option.category ?? "") &&
           option !== chipModel &&
           option !== chipEffort,
       )

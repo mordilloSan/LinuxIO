@@ -444,6 +444,13 @@ describe("Composer", () => {
           name: "Fast mode",
           description: "Faster responses on supported models",
           type: "boolean",
+          category: "speed",
+          currentValue: false,
+        },
+        {
+          id: "ultracode",
+          name: "Ultracode",
+          type: "boolean",
           category: "model_config",
           currentValue: false,
         },
@@ -463,6 +470,12 @@ describe("Composer", () => {
       await screen.findByRole("menuitem", { name: "Fast mode, off" }),
     );
     expect(onSetConfigOption).toHaveBeenCalledWith("fast", true);
+    expect(
+      screen.queryByRole("checkbox", { name: "Ultracode" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Ultracode, off" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps other options next to the chip and renders booleans as switches", async () => {
