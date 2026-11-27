@@ -286,6 +286,7 @@ const VMList = () => {
 const VirtualMachinesCard = () => (
   <DashboardCard
     avatarIcon="mdi:monitor-multiple"
+    contentLayout="auto"
     stats={<VMStats />}
     stats2={<VMList />}
     title="Virtual Machines"
