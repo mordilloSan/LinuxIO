@@ -1402,3 +1402,100 @@ func TestSetSwapModeToZramLeavesAFileWhoseTemporaryFileStays(t *testing.T) {
 		})
 	}
 }
+
+// zswap turned on by hand reads as the mode, and nothing turns it on at the
+// next start. Applying the mode the host is in writes what does, and keeps
+// the swappiness the admin set: it is no choice of a preset.
+func TestSetSwapModeAgainSavesTheModeForBootAndKeepsSwappiness(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(zswapEnabledParam, "Y\n")
+	f.write(zswapCompressorParam, "zstd\n")
+	f.writeVMSysctls("10", "3", "15000", "10")
+	dropIn := managedHeader + "vm.swappiness = 10\n"
+	f.write(sysctlDropInPath, dropIn)
+	before, _, err := sys.status(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Mode != apischema.SwapModeZswap || before.ModeSavedForBoot {
+		t.Fatalf("before: mode %q, saved for boot %v, want zswap that is not saved", before.Mode, before.ModeSavedForBoot)
+	}
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZswap})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertCalls(t, sys.calls, []string{
+		"disable " + zramService,
+		"write " + sysctlDropInPath,
+		"set " + zswapCompressorParam + "=zstd",
+		"set " + zswapEnabledParam + "=Y",
+		"write " + zswapTmpfilesPath,
+	})
+	if got.Mode != apischema.SwapModeZswap || !got.ModeSavedForBoot {
+		t.Errorf("after: mode %q, saved for boot %v, want zswap that is saved", got.Mode, got.ModeSavedForBoot)
+	}
+	if got, want := f.read(zswapTmpfilesPath), string(renderZswapTmpfiles("zstd")); got != want {
+		t.Errorf("tmpfiles = %q, want %q", got, want)
+	}
+	if got := f.param(swappinessParam); got != "10" {
+		t.Errorf("swappiness = %q, want the admin's 10", got)
+	}
+	if got := f.read(sysctlDropInPath); got != dropIn {
+		t.Errorf("drop-in = %q, want %q", got, dropIn)
+	}
+}
+
+// The drop-in can hold another mode's swappiness, as after a switch that
+// left the host where it was: applying the mode again saves the swappiness
+// the host runs with, so the next start does not bring the other one.
+func TestSetSwapModeAgainSavesTheSwappinessTheHostRunsWith(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(zswapEnabledParam, "Y\n")
+	f.writeVMSysctls("45", "3", "15000", "10")
+	f.write(sysctlDropInPath, managedHeader+"vm.swappiness = 180\n")
+
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZswap}); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range sys.calls {
+		if strings.HasPrefix(call, "set "+swappinessParam) {
+			t.Fatalf("calls = %v, want the live swappiness untouched", sys.calls)
+		}
+	}
+	if got, want := f.read(sysctlDropInPath), managedHeader+"vm.swappiness = 45\n"; got != want {
+		t.Errorf("drop-in = %q, want %q", got, want)
+	}
+}
+
+// Under TuneD the drop-in's swappiness is left alone on such a run too.
+func TestSetSwapModeAgainUnderTunedLeavesTheDropInSwappiness(t *testing.T) {
+	f, sys := diskHost(t)
+	sys.tuned = true
+	f.write(zswapEnabledParam, "Y\n")
+	f.writeVMSysctls("45", "3", "15000", "10")
+	dropIn := managedHeader + "vm.swappiness = 30\n"
+	f.write(sysctlDropInPath, dropIn)
+
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZswap}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.read(sysctlDropInPath); got != dropIn {
+		t.Errorf("drop-in = %q, want %q", got, dropIn)
+	}
+}
+
+// A switch to another mode still applies that mode's preset.
+func TestSetSwapModeToAnotherModeAppliesItsSwappiness(t *testing.T) {
+	f, sys := diskHost(t)
+	f.writeVMSysctls("10", "3", "15000", "10")
+	f.write(sysctlDropInPath, managedHeader+"vm.swappiness = 10\n")
+
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZswap}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.param(swappinessParam); got != "60" {
+		t.Errorf("swappiness = %q, want zswap's 60", got)
+	}
+}

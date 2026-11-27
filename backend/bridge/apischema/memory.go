@@ -395,7 +395,10 @@ type SwapModePreset struct {
 // its configuration files other than LinuxIO's define. Devices lists every
 // active swap device; SwapFiles lists every swap file, active or named by
 // /etc/fstab: the active ones in the order of Devices, then the others in
-// fstab order.
+// fstab order. Mode is what the host does now; ModeSavedForBoot is false
+// for zswap or disk when what LinuxIO can read of the next start (its own
+// zswap file, then the kernel command line) does not bring zswap up the way
+// Mode has it, and applying Mode again saves it.
 type SwapStatus struct {
 	CanDrain              bool                   `json:"can_drain"`
 	Create                SwapFileCreate         `json:"create"`
@@ -405,6 +408,7 @@ type SwapStatus struct {
 	MemAvailable          uint64                 `json:"mem_available"`
 	MemTotal              uint64                 `json:"mem_total"`
 	Mode                  SwapMode               `json:"mode"`
+	ModeSavedForBoot      bool                   `json:"mode_saved_for_boot"`
 	PageCluster           int                    `json:"page_cluster"`
 	Presets               []SwapModePreset       `json:"presets"`
 	RecommendedMode       SwapMode               `json:"recommended_mode"`

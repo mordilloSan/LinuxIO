@@ -289,3 +289,42 @@ func TestReadSwapStatusRefusesBrokenRequiredFiles(t *testing.T) {
 		})
 	}
 }
+
+// The mode is what the host does now. Whether the next start does the same
+// is read from LinuxIO's zswap file and, without one, the command line.
+func TestReadSwapStatusSaysWhetherTheModeIsSavedForBoot(t *testing.T) {
+	tests := []struct {
+		name     string
+		enabled  string
+		tmpfiles string
+		cmdline  string
+		mode     apischema.SwapMode
+		saved    bool
+	}{
+		{name: "disk on a host LinuxIO never changed", enabled: "N", mode: apischema.SwapModeDisk, saved: true},
+		{name: "zswap turned on by hand", enabled: "Y", mode: apischema.SwapModeZswap},
+		{name: "zswap LinuxIO applied", enabled: "Y", tmpfiles: string(renderZswapTmpfiles("zstd")), mode: apischema.SwapModeZswap, saved: true},
+		{name: "zswap from the command line", enabled: "Y", cmdline: "ro zswap.enabled=1\n", mode: apischema.SwapModeZswap, saved: true},
+		{name: "zswap on over LinuxIO's file that keeps it off", enabled: "Y", tmpfiles: string(renderZswapOffTmpfiles()), cmdline: "ro zswap.enabled=1\n", mode: apischema.SwapModeZswap},
+		{name: "zswap turned off by hand", enabled: "N", tmpfiles: string(renderZswapTmpfiles("zstd")), mode: apischema.SwapModeDisk},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, sys := diskHost(t)
+			f.write(zswapEnabledParam, test.enabled+"\n")
+			if test.tmpfiles != "" {
+				f.write(zswapTmpfilesPath, test.tmpfiles)
+			}
+			if test.cmdline != "" {
+				f.write(kernelCmdlinePath, test.cmdline)
+			}
+			status, _, err := sys.status(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status.Mode != test.mode || status.ModeSavedForBoot != test.saved {
+				t.Errorf("mode %q, saved for boot %v, want %q, %v", status.Mode, status.ModeSavedForBoot, test.mode, test.saved)
+			}
+		})
+	}
+}

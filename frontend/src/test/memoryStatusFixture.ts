@@ -108,6 +108,7 @@ export const swapStatus = (
   mem_available: 12 * GIB,
   mem_total: 16 * GIB,
   mode: "zram",
+  mode_saved_for_boot: true,
   page_cluster: 0,
   presets: [
     { mode: "zram", swappiness: 180 },

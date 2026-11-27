@@ -27,6 +27,11 @@ export interface RowView {
   /** A plain note under the description: what else choosing the row does. */
   note?: string;
   recommended: boolean;
+  /**
+   * Warning-coloured note on the current zswap or disk row while the next
+   * start would not bring the mode back: Apply is then for this row too.
+   */
+  unsaved?: string;
   /** The technical name, shown once as a secondary caption. */
   technical: string;
 }
@@ -258,6 +263,11 @@ const needsDiskSwapReason = (state: DiskSwap): string | undefined => {
   }
 };
 
+// The mode is read from what the server does now. zswap switched by hand, or
+// a file of LinuxIO's that was removed, leaves a mode nothing brings back.
+const UNSAVED_TEXT = "On now, but not set for the next start.";
+const UNSAVED_APPLY_TEXT = "Apply to keep it after a restart.";
+
 export function rowViews(status: SwapStatus): RowView[] {
   const disk = diskSwap(status);
   const planned = formatFileSize(status.zram_planned_size);
@@ -297,6 +307,11 @@ export function rowViews(status: SwapStatus): RowView[] {
     name: rowName(mode),
     recommended: status.recommended_mode === mode,
   });
+  // Apply is named only on a row that can be applied.
+  const unsaved = (mode: RowMode, disabled: string | undefined) => {
+    if (status.mode !== mode || status.mode_saved_for_boot) return undefined;
+    return disabled ? UNSAVED_TEXT : `${UNSAVED_TEXT} ${UNSAVED_APPLY_TEXT}`;
+  };
   return [
     {
       ...base("zswap"),
@@ -306,6 +321,7 @@ export function rowViews(status: SwapStatus): RowView[] {
       disabledReason: zswapDisabled,
       note: createsFile(zswapDisabled),
       technical: "zswap",
+      unsaved: unsaved("zswap", zswapDisabled),
     },
     {
       ...base("zram"),
@@ -329,6 +345,7 @@ export function rowViews(status: SwapStatus): RowView[] {
       disabledReason: diskDisabled,
       note: createsFile(diskDisabled),
       technical: "swap file",
+      unsaved: unsaved("disk", diskDisabled),
     },
   ];
 }
@@ -339,11 +356,18 @@ export function initialSelection(status: SwapStatus): RowMode {
   return isRowMode(status.recommended_mode) ? status.recommended_mode : "zram";
 }
 
-/** Apply is for a different row, or for finishing a switch left mixed. */
+/**
+ * Apply is for a different row, for finishing a switch left mixed, or for
+ * the current row while the next start would not bring it back.
+ */
 export function canApply(status: SwapStatus, selected: RowMode): boolean {
   const row = rowViews(status).find((view) => view.mode === selected);
   if (!row || row.disabledReason || row.capabilitiesLink) return false;
-  return status.mode === "mixed" || selected !== status.mode;
+  return (
+    status.mode === "mixed" ||
+    selected !== status.mode ||
+    !status.mode_saved_for_boot
+  );
 }
 
 /** A size field's limits and starting value, in whole MiB. */

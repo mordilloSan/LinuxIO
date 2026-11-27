@@ -2,6 +2,7 @@ package memory
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
@@ -129,6 +130,85 @@ func deriveMode(devices []apischema.SwapDevice, removable []string, zswapEnabled
 	default:
 		return apischema.SwapModeDisk
 	}
+}
+
+// modeSavedForBoot reports whether the next start brings zswap up the way
+// mode has it now, as far as LinuxIO can read it. Only zswap and disk are
+// judged, the two modes deriveMode tells apart by zswap's switch: zswap
+// needs it on at the next start, and disk needs it not on. zram is zram
+// whatever zswap says, so nothing about zswap makes it unsaved, and none and
+// mixed are not modes a host is left in. on is what the next start sets
+// zswap to and set whether anything LinuxIO reads sets it (zswapAtBoot);
+// with nothing set the kernel's own default decides, which no file reliably
+// tells, so zswap counts as not saved (the default is off on the kernels
+// LinuxIO is packaged for) and disk as saved. A kernel without zswap has
+// nothing to bring up.
+func modeSavedForBoot(mode apischema.SwapMode, zswapAvailable, on, set bool) bool {
+	switch mode {
+	case apischema.SwapModeZswap:
+		return set && on
+	case apischema.SwapModeDisk:
+		return !zswapAvailable || !set || !on
+	default:
+		return true
+	}
+}
+
+// zswapAtBoot is what the next start sets zswap's enabled parameter to:
+// LinuxIO's tmpfiles file when it writes the parameter, since
+// systemd-tmpfiles runs after the kernel read its command line, or else the
+// zswap.enabled of the command line this kernel was started with. set is
+// false when neither names it.
+func zswapAtBoot(tmpfiles, cmdline string) (on, set bool) {
+	for line := range strings.Lines(tmpfiles) {
+		// "w <path> - - - - <value>", as renderZswapTmpfiles writes it.
+		if f := strings.Fields(line); len(f) == 7 && f[0] == "w" && f[1] == zswapEnabledParam {
+			if value, ok := kernelBool(f[6]); ok {
+				on, set = value, true
+			}
+		}
+	}
+	if set {
+		return on, true
+	}
+	for word := range strings.FieldsSeq(cmdline) {
+		name, value, hasValue := strings.Cut(word, "=")
+		if name != "zswap.enabled" {
+			continue
+		}
+		// A bool parameter named without a value is set.
+		if !hasValue {
+			on, set = true, true
+		} else if parsed, ok := kernelBool(value); ok {
+			on, set = parsed, true
+		}
+	}
+	return on, set
+}
+
+// kernelBool reads a value as the kernel's kstrtobool does: by its first
+// character ("enabled" and "disabled" count since Linux 6.4), or its second
+// after an "o" ("on", "off").
+func kernelBool(value string) (parsed, ok bool) {
+	if value == "" {
+		return false, false
+	}
+	switch value[0] {
+	case 'y', 'Y', 't', 'T', 'e', 'E', '1':
+		return true, true
+	case 'n', 'N', 'f', 'F', 'd', 'D', '0':
+		return false, true
+	case 'o', 'O':
+		if len(value) > 1 {
+			switch value[1] {
+			case 'n', 'N':
+				return true, true
+			case 'f', 'F':
+				return false, true
+			}
+		}
+	}
+	return false, false
 }
 
 // recommendMode picks the mode for the host, first match wins: zram with no

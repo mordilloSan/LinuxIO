@@ -638,6 +638,35 @@ describe("MemoryOverflowDialog apply", () => {
     expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
   });
 
+  // zswap turned on by hand reads as the mode, and a restart loses it.
+  it("applies the mode already chosen while the next start would not bring it back", async () => {
+    const unsaved = diskStatus({
+      mode: "zswap",
+      mode_saved_for_boot: false,
+      swappiness: 10,
+    });
+    mocks.results["memory.set_swap_mode"] = swapModeResult({
+      ...unsaved,
+      mode_saved_for_boot: true,
+    });
+    const { user } = await renderSection(unsaved);
+
+    expect(radio("Compressed memory with the disk as backup")).toBeChecked();
+    expect(
+      screen.getByText(
+        "On now, but not set for the next start. Apply to keep it after a restart.",
+      ),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() =>
+      expect(mocks.requests).toEqual([
+        { request: { mode: "zswap" }, route: "memory.set_swap_mode" },
+      ]),
+    );
+    expect(confirmStep()).not.toBeInTheDocument();
+  });
+
   it("sends the selected mode without a dialog for zswap", async () => {
     mocks.results["memory.set_swap_mode"] = swapModeResult(
       diskStatus({ mode: "zswap", swappiness: 60 }),

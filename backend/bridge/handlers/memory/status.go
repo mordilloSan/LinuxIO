@@ -180,6 +180,7 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 		status.SwapFiles = append(status.SwapFiles, *row)
 	}
 	status.Mode = deriveMode(devices, removableSwapFiles(status.SwapFiles), zswap.Enabled)
+	status.ModeSavedForBoot = h.modeSavedForBoot(status.Mode, zswap.Available)
 	status.RecommendedMode = recommendMode(devices, status.SwapFiles, zswap.Available)
 	status.RecommendedSwappiness = recommendedSwappiness(status.Mode, status.RecommendedMode)
 	status.ZramUnavailableReason = zramUnavailableReason(zramAvailable)
@@ -187,6 +188,28 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 	status.DrainBlockedReason = drainBlockedReason(status)
 	status.CanDrain = status.DrainBlockedReason == ""
 	return status, fstab, nil
+}
+
+// kernelCmdlinePath is the command line the running kernel was started with.
+const kernelCmdlinePath = "/proc/cmdline"
+
+// modeSavedForBoot is modeSavedForBoot for the host: it reads LinuxIO's
+// zswap file and the kernel command line. One that cannot be read says
+// nothing, and the mode then counts as saved: the status does not report a
+// mode as unsaved on what it could not read.
+func (h hostRoot) modeSavedForBoot(mode apischema.SwapMode, zswapAvailable bool) bool {
+	tmpfiles, _, err := h.readOptional(zswapTmpfilesPath)
+	if err != nil {
+		slog.Debug("read zswap boot setting failed", "path", zswapTmpfilesPath, "error", err)
+		return true
+	}
+	cmdline, _, err := h.readOptional(kernelCmdlinePath)
+	if err != nil {
+		slog.Debug("read zswap boot setting failed", "path", kernelCmdlinePath, "error", err)
+		return true
+	}
+	on, set := zswapAtBoot(tmpfiles, cmdline)
+	return modeSavedForBoot(mode, zswapAvailable, on, set)
 }
 
 // removableSwapFiles are the paths of the swap files LinuxIO can remove:

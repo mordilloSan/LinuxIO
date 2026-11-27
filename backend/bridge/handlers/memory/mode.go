@@ -239,15 +239,30 @@ func (r *modeRun) writeConfig() error {
 	return r.writeDropIn()
 }
 
+// reapplies reports whether the run applies the mode the host is already in,
+// which saves that mode for the next start (ModeSavedForBoot). It is no
+// choice of a preset: the run saves the swappiness the host runs with, and
+// leaves the live value as it is. A host left mixed is in neither mode.
+func (r *modeRun) reapplies() bool {
+	return r.target == r.before.Mode
+}
+
 // writeDropIn writes the target mode's sysctls into the drop-in, keeping
-// any other key it holds.
+// any other key it holds; the swappiness is the live one when the run
+// applies the mode the host is in (reapplies).
 func (r *modeRun) writeDropIn() error {
 	entries, err := r.root.readSysctlDropIn()
 	if err != nil {
 		return err
 	}
 	set, remove := dropInChanges(r.target, r.before.TunedActive)
-	for _, setting := range set {
+	for i, setting := range set {
+		// The drop-in can hold the swappiness of a mode the host is not in,
+		// as after a switch that left zram running: the live value is what
+		// the host runs with, and what the next start should bring back.
+		if setting.name == sysctlSwappiness && r.reapplies() {
+			set[i].value = r.before.Swappiness
+		}
 		r.dropInHeld[setting.name] = true
 	}
 	return r.writeFile(sysctlDropInPath, renderSysctlDropIn(mergeSysctlDropIn(entries, set, remove)))
@@ -569,9 +584,13 @@ func (r *modeRun) applySysctls() error {
 }
 
 // setLiveSysctls writes what mode sets in /proc/sys/vm on a host whose
-// values are status's. A sysctl the kernel does not have is skipped.
+// values are status's. A sysctl the kernel does not have is skipped, and so
+// is swappiness when the run applies the mode the host was in (reapplies).
 func (r *modeRun) setLiveSysctls(mode apischema.SwapMode, status apischema.SwapStatus) error {
 	for _, setting := range liveSysctls(mode, status, r.dropInHeld) {
+		if setting.name == sysctlSwappiness && mode == r.target && r.reapplies() {
+			continue
+		}
 		name := filepath.Join(vmSysctlDir, setting.name)
 		// A kernel without the sysctl (watermark_boost_factor came in 5.0)
 		// has nothing to write; the drop-in keeps the key.

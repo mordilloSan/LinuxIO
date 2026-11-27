@@ -3354,6 +3354,7 @@ export interface SwapModeResult {
   mem_available: number;
   mem_total: number;
   mode: SwapMode;
+  mode_saved_for_boot: boolean;
   page_cluster: number;
   presets: SwapModePreset[];
   recommended_mode: SwapMode;
@@ -3392,6 +3393,7 @@ export interface SwapStatus {
   mem_available: number;
   mem_total: number;
   mode: SwapMode;
+  mode_saved_for_boot: boolean;
   page_cluster: number;
   presets: SwapModePreset[];
   recommended_mode: SwapMode;

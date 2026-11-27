@@ -1095,6 +1095,45 @@ func assertZswapRoundTrip(t *testing.T, e *executor) {
 	if entry, readErr := os.ReadFile(zswapTmpfilesPath); readErr != nil || string(entry) != string(renderZswapOffTmpfiles()) {
 		t.Errorf("%s = %q, %v; want zswap off at boot", zswapTmpfilesPath, entry, readErr)
 	}
+	if !got.ModeSavedForBoot {
+		t.Error("disk reads as not saved for boot after switching to it")
+	}
+	assertSavesZswapTurnedOnByHand(t, e, got)
+	switchTo(t, apischema.SwapModeDisk)
+}
+
+// assertSavesZswapTurnedOnByHand turns zswap on as an admin does by hand, on
+// a host in disk mode whose tmpfiles entry keeps zswap off at boot: the host
+// reads zswap, not saved for the next start, and applying zswap again writes
+// the entry and keeps the swappiness the admin set.
+func assertSavesZswapTurnedOnByHand(t *testing.T, e *executor, disk apischema.SwapStatus) {
+	t.Helper()
+	const admins = 33
+	if !disk.TunedActive {
+		if _, err := SetSwappiness(t.Context(), admins); err != nil {
+			t.Fatalf("set swappiness: %v", err)
+		}
+	}
+	if err := e.sys.writeParam(zswapEnabledParam, zswapSwitch(true)); err != nil {
+		t.Fatalf("turn zswap on by hand: %v", err)
+	}
+	byHand, _, err := e.sys.status(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byHand.Mode != apischema.SwapModeZswap || byHand.ModeSavedForBoot {
+		t.Errorf("zswap turned on by hand: mode %s, saved for boot %v; want zswap, not saved", byHand.Mode, byHand.ModeSavedForBoot)
+	}
+	got := switchTo(t, apischema.SwapModeZswap)
+	if !got.ModeSavedForBoot {
+		t.Error("zswap reads as not saved for boot after applying it again")
+	}
+	if entry, readErr := os.ReadFile(zswapTmpfilesPath); readErr != nil || string(entry) != string(renderZswapTmpfiles(got.Zswap.Compressor)) {
+		t.Errorf("%s = %q, %v; want zswap on at boot with %s", zswapTmpfilesPath, entry, readErr, got.Zswap.Compressor)
+	}
+	if !disk.TunedActive && got.Swappiness != admins {
+		t.Errorf("swappiness = %d after applying zswap again, want the admin's %d kept", got.Swappiness, admins)
+	}
 }
 
 // assertStartsZramAStopLeftSetUp has a stop of the provider's unit leave

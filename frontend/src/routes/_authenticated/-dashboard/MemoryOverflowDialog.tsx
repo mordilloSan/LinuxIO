@@ -216,6 +216,11 @@ const ModeRow = ({
           </label>
         )}
         <div className="memory-row__note" id={`${id}-note`}>
+          {row.unsaved ? (
+            <AppTypography color="warning" variant="caption">
+              {row.unsaved}
+            </AppTypography>
+          ) : null}
           {row.caution ? (
             <AppTypography color="warning" variant="caption">
               {row.caution}

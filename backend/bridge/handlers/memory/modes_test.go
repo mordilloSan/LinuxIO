@@ -256,3 +256,61 @@ func TestZramUnavailableReason(t *testing.T) {
 		t.Errorf("zram unavailable reason without a tool = %q, want package_missing", got)
 	}
 }
+
+func TestZswapAtBoot(t *testing.T) {
+	tests := []struct {
+		name              string
+		tmpfiles, cmdline string
+		on, set           bool
+	}{
+		{name: "nothing names it"},
+		{name: "LinuxIO's file turns it on", tmpfiles: string(renderZswapTmpfiles("zstd")), on: true, set: true},
+		{name: "LinuxIO's file turns it off", tmpfiles: string(renderZswapOffTmpfiles()), set: true},
+		{name: "the command line turns it on", cmdline: "BOOT_IMAGE=/vmlinuz root=UUID=0a1b ro zswap.enabled=1 quiet\n", on: true, set: true},
+		{name: "the command line names it without a value", cmdline: "ro zswap.enabled quiet", on: true, set: true},
+		{name: "the last word on the command line counts", cmdline: "zswap.enabled=1 zswap.enabled=off", set: true},
+		{name: "the command line says enabled", cmdline: "zswap.enabled=enabled", on: true, set: true},
+		{name: "the command line says disabled", cmdline: "zswap.enabled=1 zswap.enabled=Disabled", set: true},
+		{name: "a value the kernel does not read is no setting", cmdline: "zswap.enabled=maybe"},
+		{name: "another zswap parameter is not the switch", cmdline: "zswap.compressor=zstd zswap.max_pool_percent=25"},
+		{name: "the file is applied after the command line", tmpfiles: string(renderZswapOffTmpfiles()), cmdline: "zswap.enabled=Y", set: true},
+		{name: "a file that does not write the switch leaves the command line", tmpfiles: managedHeader, cmdline: "zswap.enabled=y", on: true, set: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if on, set := zswapAtBoot(test.tmpfiles, test.cmdline); on != test.on || set != test.set {
+				t.Errorf("zswapAtBoot = on %v, set %v, want on %v, set %v", on, set, test.on, test.set)
+			}
+		})
+	}
+}
+
+func TestModeSavedForBoot(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      apischema.SwapMode
+		noZswap   bool
+		on, set   bool
+		wantSaved bool
+	}{
+		{name: "zswap turned on by hand", mode: apischema.SwapModeZswap},
+		{name: "zswap kept off at boot", mode: apischema.SwapModeZswap, set: true},
+		{name: "zswap on at boot", mode: apischema.SwapModeZswap, on: true, set: true, wantSaved: true},
+		{name: "disk with nothing set", mode: apischema.SwapModeDisk, wantSaved: true},
+		{name: "disk kept off at boot", mode: apischema.SwapModeDisk, set: true, wantSaved: true},
+		{name: "disk with zswap back at boot", mode: apischema.SwapModeDisk, on: true, set: true},
+		{name: "disk on a kernel without zswap", mode: apischema.SwapModeDisk, noZswap: true, on: true, set: true, wantSaved: true},
+		// zram is zram whatever zswap says: a switch to zswap that had to
+		// leave zram running must not send the admin back to zram.
+		{name: "zram with zswap on at boot", mode: apischema.SwapModeZram, on: true, set: true, wantSaved: true},
+		{name: "no swap", mode: apischema.SwapModeNone, on: true, set: true, wantSaved: true},
+		{name: "mixed", mode: apischema.SwapModeMixed, wantSaved: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := modeSavedForBoot(test.mode, !test.noZswap, test.on, test.set); got != test.wantSaved {
+				t.Errorf("modeSavedForBoot = %v, want %v", got, test.wantSaved)
+			}
+		})
+	}
+}

@@ -80,6 +80,40 @@ parameter (`deriveMode`), first match wins:
 So a host that runs zram beside a swap partition reads `zram`, and can
 choose any mode.
 
+### Whether the next start brings the mode back
+
+The mode is what the host does now, and zswap can be on now with nothing
+that turns it on again: switched by hand with `echo Y`, or by a file that
+was since removed. `mode_saved_for_boot` says whether the next start brings
+zswap up the way the mode has it (`modeSavedForBoot`, `zswapAtBoot`), from
+what LinuxIO can read:
+
+1. LinuxIO's own `/etc/tmpfiles.d/linuxio-zswap.conf`, when it writes
+   zswap's `enabled`: systemd-tmpfiles runs after the kernel read its command
+   line, so the file decides;
+2. otherwise `zswap.enabled` on the command line the kernel was started with
+   (`/proc/cmdline`), read as the kernel reads a bool;
+3. otherwise nothing is set, and the kernel's own default decides, which
+   LinuxIO does not read.
+
+Only `zswap` and `disk` are judged, the two modes `deriveMode` tells apart
+by zswap's switch. `zswap` is saved when one of the first two turns zswap on.
+`disk` is saved unless one of them turns it on, on a kernel that has zswap.
+`zram` always reads saved: it is `zram` whatever zswap says, and a switch to
+zswap that had to leave zram running writes zswap on for the next start,
+which must not send the admin back to zram. `none` and `mixed` always read
+saved, and so does a mode whose files could not be read. With nothing set,
+`zswap` reads as not saved, since zswap is off by default on the kernels
+LinuxIO is packaged for.
+
+While it is false the current row says so, and Apply is enabled for it:
+applying the mode the host is in runs the same steps as a switch to it, which
+write the file. Such a run is no choice of a preset (`reapplies`): it leaves
+the live swappiness as it is and writes that value into the drop-in, so the
+next start brings back the swappiness the host runs with, also where the
+drop-in held another mode's. Under TuneD the drop-in's swappiness is left
+alone, as on any switch.
+
 ### Recommendation and presets
 
 The backend picks the recommended mode, first match wins (`recommendMode`):
@@ -135,6 +169,7 @@ or of the recommended one when the host is `none` or `mixed`.
 | `/proc/meminfo` | `MemTotal`, `MemAvailable`, `SwapTotal`, `SwapFree` |
 | `/proc/sys/vm/{swappiness,page-cluster,watermark_boost_factor,watermark_scale_factor}` | the four sysctls |
 | `/sys/module/zswap/parameters/{enabled,compressor,max_pool_percent}` | zswap; no directory means `zswap.available` is false |
+| `/etc/tmpfiles.d/linuxio-zswap.conf`, `/proc/cmdline` | `mode_saved_for_boot` (see [Whether the next start brings the mode back](#whether-the-next-start-brings-the-mode-back)) |
 | `/sys/block/zram<N>/{disksize,mm_stat}` | each zram device's size, stored data, compressed size and memory used |
 | `/etc/fstab` | the swap files it names: each line of type `swap` whose first field, with octal escapes undone, is an absolute path outside `/dev`, with the options of the first line that names it (`fstabSwaps` in `fstab.go`) |
 | `/proc/self/mountinfo` | the filesystem and disk of each swap file and of LinuxIO's swap folder (`fs_type`, `disk_hint`) |
@@ -735,7 +770,10 @@ To `zswap` or `disk`:
    nothing can take zram away later, and a start would run the provider's
    start against a device that is set up and swapping, so zram stays. Either
    way the step then fails and the run rolls back.
-3. `apply_sysctls`: write the preset to the drop-in and live.
+3. `apply_sysctls`: write the preset to the drop-in and live. A run that
+   applies the mode the host is already in writes the live swappiness into
+   the drop-in in place of the preset's, and leaves the live one
+   (see [Whether the next start brings the mode back](#whether-the-next-start-brings-the-mode-back)).
 4. `enable_zswap` (zswap) or `disable_zswap` (disk).
 
 A swap partition, an LVM volume and a swap file that fails the strict check
@@ -1010,7 +1048,7 @@ that file's content and mode, header or not. Every write is atomic
 
 | Path | Written by | Content |
 |---|---|---|
-| `/etc/sysctl.d/90-linuxio-memory.conf` | every mode, and `set_swappiness` | `vm.<name> = <value>` lines. Keys the admin added stay. Leaving zram drops `vm.page-cluster`, `vm.watermark_boost_factor` and `vm.watermark_scale_factor`. Under TuneD `vm.swappiness` is neither written nor dropped. |
+| `/etc/sysctl.d/90-linuxio-memory.conf` | every mode, and `set_swappiness` | `vm.<name> = <value>` lines. Keys the admin added stay. Leaving zram drops `vm.page-cluster`, `vm.watermark_boost_factor` and `vm.watermark_scale_factor`. Under TuneD `vm.swappiness` is neither written nor dropped. A run that applies the mode the host is already in writes the live `vm.swappiness`, not the preset's. |
 | `/etc/tmpfiles.d/linuxio-zswap.conf` | every mode, on a kernel with zswap | For `zswap`, `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. For `zram` and `disk`, one `w` line setting `enabled` to `N`, so a kernel that starts with zswap on does not return to it. |
 | `/etc/default/zramswap` | `zram`, with zram-tools | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
 | `/etc/systemd/zram-generator.conf` | `zram`, and leaving zram, with zram-generator | For `zram`: one `[zram0]` section with `zram-size = <MiB>`, `compression-algorithm = zstd` and `swap-priority = 100`. Leaving zram: comments only, so the generator makes no device. Either way it replaces what was there, and takes the place of the file a package puts in `/usr/lib/systemd`. |
@@ -1278,8 +1316,13 @@ hold is a condition and not a mask, and what the test VM showed.
   Swap files to choose this") or LinuxIO cannot create its swap file (the
   reason); with zram-generator as the provider they also say why the plan
   refuses them while another of its files defines a swap device, naming the
-  first, and how to turn it off, as the refusal does. Apply is enabled for a
-  different row, or for the current one while the host is `mixed`.
+  first, and how to turn it off, as the refusal does. The current row says
+  "On now, but not set for the next start. Apply to keep it after a restart."
+  while `mode_saved_for_boot` is false, without its second sentence when the
+  row cannot be chosen; the banner stays with its own conditions, so the
+  action it offers is not hidden. Apply is enabled for a different row, or
+  for the current one while the host is `mixed` or its mode is not saved for
+  boot.
 - **Swap files**, under the rows (`swapFileViews`, `otherSwapViews`,
   `createView`): one row per swap file with its path and its size and use
   ("1 GiB, 200 MiB used"), or the state it is in ("Missing", "Not a swap
@@ -1557,8 +1600,10 @@ a row with Resize and Remove.
     the switch made first still on; with zram-generator a drop-in device
     is listed and refuses a switch to disk, and the generator's units after
     a reload match the devices the status lists; last the zswap round trip
-    with its tmpfiles entry, and a compressor the kernel does not have
-    refused with `ENOENT` or `EINVAL`. The test starts and stops zram
+    with its tmpfiles entry, a compressor the kernel does not have
+    refused with `ENOENT` or `EINVAL`, and zswap turned on by hand, which
+    reads as not saved for boot until zswap is applied again, with the
+    swappiness set before it kept. The test starts and stops zram
     faster than systemd's start limit allows (five starts in ten seconds,
     and zramswap's stop fails whenever it cannot unload the module), so it
     clears the units' failed state before each switch.
@@ -1734,6 +1779,18 @@ Each is by design or unlikely to be met, or is an open item in
   reads as blocking snapshots, and gets compressed memory recommended.
 - A swap subvolume whose SELinux label could not be copied stays
   `unlabeled_t`, and swaps all the same.
+- Whether the next start brings the mode back is read for zswap's switch
+  only, from LinuxIO's file and the kernel command line. On a kernel built
+  with zswap on and neither of them set, `zswap` reads as not saved though
+  it comes back, and `disk` after an `echo N` by hand reads as saved though
+  zswap returns; a file of the admin's own that sets zswap is not read
+  either; and zram started by hand, with nothing set to start it, reads as
+  saved.
+- A current row that is not saved for boot and cannot be chosen (zswap or
+  disk while another zram-generator file defines a device) says so and
+  offers no Apply; the row's reason says what to change first.
+- Applying `zswap` again asks for `zstd` like any switch to it, so a
+  compressor chosen by hand is replaced.
 - "Create a swap file" is offered while compressed memory only is the mode,
   and the host then reads `mixed` until a mode is applied.
 - A Create cut short by a crash or a power loss before `mkswap` wrote the

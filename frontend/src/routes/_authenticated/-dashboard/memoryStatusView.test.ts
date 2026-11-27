@@ -58,6 +58,62 @@ const diskHost = (overrides: Parameters<typeof swapStatus>[0] = {}) =>
 const fileView = (row: Partial<SwapFileRow>) =>
   swapFileViews(swapStatus({ swap_files: [swapFileRow(row)] }))[0];
 
+describe("a mode the next start would not bring back", () => {
+  const unsaved = diskHost({ mode: "zswap", mode_saved_for_boot: false });
+  const notes = (status: ReturnType<typeof swapStatus>) =>
+    rowViews(status).map((row) => [row.mode, row.unsaved]);
+
+  it("says so on the current row only", () => {
+    expect(notes(unsaved)).toEqual([
+      [
+        "zswap",
+        "On now, but not set for the next start. Apply to keep it after a restart.",
+      ],
+      ["zram", undefined],
+      ["disk", undefined],
+    ]);
+    expect(notes({ ...unsaved, mode_saved_for_boot: true })).toEqual([
+      ["zswap", undefined],
+      ["zram", undefined],
+      ["disk", undefined],
+    ]);
+  });
+
+  it("names no Apply on a row that cannot be applied", () => {
+    // Another zram-generator file defines a device: zswap cannot be chosen.
+    const stays = {
+      ...unsaved,
+      zram_generator_devices: [
+        {
+          device: "zram1",
+          max_zram_size: "",
+          path: "/etc/systemd/zram-generator.conf.d/extra.conf",
+          zram_fraction: "",
+          zram_size: "64",
+        },
+      ],
+      zram_provider: "zram-generator" as const,
+    };
+
+    expect(notes(stays)[0]).toEqual([
+      "zswap",
+      "On now, but not set for the next start.",
+    ]);
+    expect(canApply(stays, "zswap")).toBe(false);
+  });
+
+  it("leaves the banner to what is parked", () => {
+    expect(
+      bannerView({
+        ...unsaved,
+        can_drain: true,
+        devices: [swapFileDevice(GIB)],
+        drain_blocked_reason: "",
+      }).action,
+    ).toEqual({ blockedReason: undefined, canDrain: true, kind: "drain" });
+  });
+});
+
 describe("bannerView", () => {
   it("warns that programs will be closed when nothing absorbs overflow", () => {
     expect(bannerView(swapStatus({ devices: [], mode: "none" }))).toEqual({
@@ -807,6 +863,16 @@ describe("canApply", () => {
         "disk",
       ),
     ).toBe(false);
+  });
+
+  // zswap turned on by hand: the mode reads zswap, and a restart loses it.
+  it("is on for the current row while the next start would not bring it back", () => {
+    const status = diskHost({ mode: "zswap", mode_saved_for_boot: false });
+
+    expect(canApply(status, "zswap")).toBe(true);
+    expect(canApply({ ...status, mode_saved_for_boot: true }, "zswap")).toBe(
+      false,
+    );
   });
 });
 
