@@ -178,7 +178,7 @@ describe("connectAssistant", () => {
         protocolVersion: 1,
         agentCapabilities: {
           promptCapabilities: { image: true, embeddedContext: true },
-          sessionCapabilities: { delete: {} },
+          sessionCapabilities: { delete: {}, title: {} },
         },
         _meta: { steering: { supported: true } },
       }),
@@ -186,6 +186,7 @@ describe("connectAssistant", () => {
     const conn = await connectAssistant("claude", handlers(), agent.open);
     expect(conn.canSteer).toBe(true);
     expect(conn.canDeleteSession).toBe(true);
+    expect(conn.canRenameSession).toBe(true);
     expect(conn.promptCapabilities).toEqual({
       image: true,
       embeddedContext: true,
@@ -194,6 +195,7 @@ describe("connectAssistant", () => {
     const plain = await connectAssistant("gemini", handlers(), bare.open);
     expect(plain.canSteer).toBe(false);
     expect(plain.canDeleteSession).toBe(false);
+    expect(plain.canRenameSession).toBe(false);
     expect(plain.promptCapabilities).toEqual({
       image: false,
       embeddedContext: false,
@@ -417,7 +419,7 @@ describe("connectAssistant", () => {
     ).toEqual({ sessionId: "s1", prompt: [{ type: "text", text: "also" }] });
   });
 
-  it("sets config options and modes, and deletes sessions", async () => {
+  it("sets config options and modes, and deletes and renames sessions", async () => {
     const configOptions = [
       { id: "think", name: "Think", type: "boolean", currentValue: true },
     ];
@@ -426,6 +428,7 @@ describe("connectAssistant", () => {
       "session/set_config_option": () => ({ configOptions }),
       "session/set_mode": () => ({}),
       "session/delete": () => ({}),
+      "session/set_title": () => ({ title: "Disk check" }),
     });
     const conn = await connectAssistant("claude", handlers(), agent.open);
     expect(await conn.setConfigOption("s1", "model", "b")).toEqual(
@@ -434,6 +437,7 @@ describe("connectAssistant", () => {
     await conn.setConfigOption("s1", "think", true);
     await conn.setMode("s1", "plan");
     await conn.deleteSession("s1");
+    expect(await conn.renameSession("s1", " Disk  check ")).toBe("Disk check");
     const params = (method: string) =>
       agent.sent.filter((m) => m.method === method).map((m) => m.params);
     expect(params("session/set_config_option")).toEqual([
@@ -444,6 +448,9 @@ describe("connectAssistant", () => {
       { sessionId: "s1", modeId: "plan" },
     ]);
     expect(params("session/delete")).toEqual([{ sessionId: "s1" }]);
+    expect(params("session/set_title")).toEqual([
+      { sessionId: "s1", title: " Disk  check " },
+    ]);
   });
 
   it("forks and closes sessions when the agent advertises them", async () => {

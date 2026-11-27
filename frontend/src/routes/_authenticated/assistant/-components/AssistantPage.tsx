@@ -464,8 +464,12 @@ export default function AssistantPage({
             canDelete={state.canDeleteSession}
             canList={state.canListSessions}
             canLoad={state.canLoadSession}
+            canRename={state.canRenameSession}
             currentId={state.sessionId}
             onDelete={setDeleteTarget}
+            onRename={(sessionId, title) =>
+              void assistantStore.renameSession(sessionId, title)
+            }
             onSelect={(sessionId) =>
               void assistantStore.selectSession(sessionId)
             }

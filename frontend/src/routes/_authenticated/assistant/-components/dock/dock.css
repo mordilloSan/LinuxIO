@@ -293,22 +293,29 @@
   font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
-/* Delete shows on the row under the pointer or holding the focus. */
-.assistant-chats__delete {
+/* Rename and Delete show on the row under the pointer or holding the focus. */
+.assistant-chats__action {
   flex: 0 0 auto;
   margin-right: var(--app-space-4);
   opacity: 0;
 }
 
-.assistant-chats__row:hover .assistant-chats__delete,
-.assistant-chats__row:focus-within .assistant-chats__delete {
+.assistant-chats__row:hover .assistant-chats__action,
+.assistant-chats__row:focus-within .assistant-chats__action {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .assistant-chats__delete {
+  .assistant-chats__action {
     opacity: 1;
   }
+}
+
+/* The title being edited takes the whole row. */
+.assistant-chats__rename {
+  flex: 1;
+  min-width: 0;
+  margin: var(--app-space-4);
 }
 
 .assistant-chats__none {

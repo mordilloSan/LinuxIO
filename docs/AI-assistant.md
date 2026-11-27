@@ -587,7 +587,7 @@ advertises the matching capability.
     and its station rests: the adapter ends the call then, and tells of the
     command's own life only to a client that declares its `asyncTasks`
     extension, an ACP v2 background list or a terminal, none of which
-    LinuxIO does (read from the source of `claude-agent-acp` 0.102.0). A subagent's
+    LinuxIO does (read from the source of `claude-agent-acp`). A subagent's
     own calls fly from the core, not from the Agents station; a call a hook
     refused is an ordinary failure; and compaction is not a step.
   - *Card.* It shares the plugin pane's box, blending and resizing, is
@@ -678,6 +678,17 @@ advertises the matching capability.
 - **Delete.** When the agent advertises session deletion, each chat on the
   Chats card has a delete button behind a confirmation. Deleting the open
   chat starts a new one, and a running chat cannot be deleted.
+- **Rename.** When the agent advertises `sessionCapabilities.title`, each
+  chat on the Chats card has a rename button that turns its title into a
+  field: Enter or leaving the field saves, Escape keeps the old title, and
+  an empty or unchanged title sends nothing. The page sends
+  `session/set_title`, shows the new title at once, then the one the agent
+  answers with (it may trim or shorten it), or the old one with the error if
+  the agent refuses. The agent keeps the title with the chat, so it is the
+  title Claude Code's own session list shows for that profile, and no
+  generated title replaces it. Claude Code's adapter serves it from 0.105.0:
+  it renames an open chat through that chat's Claude Code and a saved one in
+  its transcript.
 - **Welcome screen.** A new chat shows up to four prompts, one click each.
   The host's open alerts that need a look come first (errors, then warnings,
   newest first; `info` alerts are left out), with a line saying how many
@@ -768,7 +779,8 @@ advertises the matching capability.
   `assistantFontSize`, so it follows them to another browser. The dock (its
   tabs and cards) keeps the app's body size whatever the chat's text size is.
 - **Titles.** A `session_info_update` title renames the chat on the Chats
-  card; untitled chats show their session id.
+  card; untitled chats show their session id, and their rename field starts
+  empty.
 
 ## Subagent sessions
 
@@ -781,7 +793,7 @@ replays none of it in a loaded chat. The types are `SubagentUpdate`,
 `StateUpdate` and `SessionMessage` in `@agentclientprotocol/sdk/unstable`.
 
 The form is unstable, so a new adapter pin can change it. What follows was
-read from the source of `claude-agent-acp` 0.102.0 (`dist/acp-agent.js`,
+read from the source of `claude-agent-acp` (`dist/acp-agent.js`,
 `native-subagents.js`, `subagent-replay.js`) and checked against a chat
 with the real adapter, recorded on 2026-11-13 with every update it sent:
 two subagents started at once, one of them in the background and starting

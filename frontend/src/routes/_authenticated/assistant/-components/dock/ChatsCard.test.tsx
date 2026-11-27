@@ -59,10 +59,12 @@ function setup(over: Partial<Parameters<typeof ChatsCard>[0]> = {}) {
     busy: false,
     canDelete: true,
     canLoad: true,
+    canRename: true,
     currentId: "s2",
     now: NOW,
     onClose: vi.fn(),
     onDelete: vi.fn(),
+    onRename: vi.fn(),
     onSelect: vi.fn(),
     open: true,
     room: null,
@@ -148,6 +150,80 @@ describe("ChatsCard", () => {
     expect(screen.queryByRole("button", { name: /^Delete / })).toBeNull();
   });
 
+  it("renames a chat in place on Enter and gives the focus back", async () => {
+    const { onRename } = setup();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Rename Full health check" }),
+    );
+    const field = screen.getByRole("textbox", { name: "Chat title" });
+    expect(field).toHaveFocus();
+    expect(field).toHaveValue("Full health check");
+    await userEvent.clear(field);
+    await userEvent.type(field, "  Disk check {Enter}");
+    expect(onRename).toHaveBeenCalledExactlyOnceWith("s1", "Disk check");
+    expect(screen.queryByRole("textbox", { name: "Chat title" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Rename Full health check" }),
+    ).toHaveFocus();
+  });
+
+  it("saves the title when the field loses the focus", async () => {
+    const { onRename } = setup();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Rename Full health check" }),
+    );
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Chat title" }),
+      "{End} today",
+    );
+    await userEvent.click(
+      screen.getByRole("textbox", { name: "Search chats" }),
+    );
+    expect(onRename).toHaveBeenCalledExactlyOnceWith(
+      "s1",
+      "Full health check today",
+    );
+  });
+
+  it("keeps the title on Escape, or when it is empty or unchanged", async () => {
+    const { onRename } = setup();
+    const rename = () =>
+      userEvent.click(
+        screen.getByRole("button", { name: "Rename Full health check" }),
+      );
+    const field = () => screen.getByRole("textbox", { name: "Chat title" });
+    // The page stops a running turn on an Escape nothing else handled.
+    const handled: boolean[] = [];
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") handled.push(event.defaultPrevented);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    await rename();
+    await userEvent.type(field(), "x{Escape}");
+    document.removeEventListener("keydown", onKeyDown);
+    expect(handled).toEqual([true]);
+    expect(
+      screen.getByRole("button", { name: "Rename Full health check" }),
+    ).toHaveFocus();
+    await rename();
+    await userEvent.clear(field());
+    await userEvent.type(field(), "   {Enter}");
+    await rename();
+    await userEvent.type(field(), "{Enter}");
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("starts an untitled chat's title empty", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "Rename s4" }));
+    expect(screen.getByRole("textbox", { name: "Chat title" })).toHaveValue("");
+  });
+
+  it("offers no rename where the agent cannot rename chats", () => {
+    setup({ canRename: false });
+    expect(screen.queryByRole("button", { name: /^Rename / })).toBeNull();
+  });
+
   it("opens no chat during a turn, and keeps the running chat", () => {
     setup({ busy: true });
     expect(
@@ -158,6 +234,9 @@ describe("ChatsCard", () => {
     ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Delete Full health check" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Rename Reboot gap on 8 Nov" }),
     ).toBeEnabled();
   });
 

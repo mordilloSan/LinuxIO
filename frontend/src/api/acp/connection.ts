@@ -93,6 +93,7 @@ export interface AssistantConnection {
   canLogout: boolean;
   canSteer: boolean;
   canDeleteSession: boolean;
+  canRenameSession: boolean;
   canFork: boolean;
   canClose: boolean;
   canResume: boolean;
@@ -112,6 +113,8 @@ export interface AssistantConnection {
   ): Promise<acp.SessionConfigOption[]>;
   setMode(sessionId: string, modeId: string): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
+  /** Names a chat; resolves with the title the agent stored. */
+  renameSession(sessionId: string, title: string): Promise<string>;
   /**
    * Forks a session into a new one that starts with its history. Some agents
    * (Claude) return the fork unregistered, so it is resumed before use.
@@ -260,6 +263,7 @@ export async function connectAssistant(
     canLogout: Boolean(caps.auth?.logout),
     canSteer: steering?.supported === true,
     canDeleteSession: Boolean(caps.sessionCapabilities?.delete),
+    canRenameSession: Boolean(caps.sessionCapabilities?.title),
     canFork: Boolean(caps.sessionCapabilities?.fork),
     canClose,
     canResume,
@@ -329,6 +333,13 @@ export async function connectAssistant(
       await connection.agent.request(acp.methods.agent.session.delete, {
         sessionId,
       });
+    },
+    async renameSession(sessionId, title) {
+      const result = await connection.agent.request(
+        acp.methods.agent.session.setTitle,
+        { sessionId, title },
+      );
+      return result.title;
     },
     async forkSession(sessionId) {
       const result = await connection.agent.request(

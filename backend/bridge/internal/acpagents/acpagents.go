@@ -83,7 +83,7 @@ var (
 	agents = map[string]Agent{
 		"claude": {
 			Package: "@agentclientprotocol/claude-agent-acp",
-			Version: "0.102.0",
+			Version: "0.113.0",
 			Bin:     "claude-agent-acp",
 			// The adapter's own copy of Claude Code is an optional dependency
 			// of its SDK; it runs the installed one instead.
@@ -95,7 +95,7 @@ var (
 		},
 		"gemini": {
 			Package: "@google/gemini-cli",
-			Version: "0.67.0",
+			Version: "0.71.1",
 			Bin:     "gemini",
 			// The folder it works in is its profile, which is the user's
 			// alone; untrusted, it would turn off MCP servers and every
@@ -107,7 +107,7 @@ var (
 		},
 		"codex": {
 			Package: "@agentclientprotocol/codex-acp",
-			Version: "2.6.0",
+			Version: "2.12.1",
 			Bin:     "codex-acp",
 			// The adapter hands its environment on to the Codex it runs.
 			ProfileEnv:    "CODEX_HOME",

@@ -1,5 +1,11 @@
 import { Icon } from "@iconify/react";
-import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from "react";
+import type {
+  CSSProperties,
+  MouseEvent,
+  ReactElement,
+  ReactNode,
+  Ref,
+} from "react";
 
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -20,6 +26,7 @@ export interface AppActionIconButtonProps {
   label?: ReactNode;
   loading?: boolean;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  ref?: Ref<HTMLButtonElement>;
   size?: "small" | "medium";
   tooltip?: boolean;
 }
@@ -39,6 +46,7 @@ export default function AppActionIconButton({
   label,
   loading = false,
   onClick,
+  ref,
   size = "small",
   tooltip,
 }: AppActionIconButtonProps) {
@@ -57,6 +65,7 @@ export default function AppActionIconButton({
         .join(" ")}
       disabled={isDisabled}
       onClick={onClick}
+      ref={ref}
       size={size}
       style={
         {

@@ -61,9 +61,11 @@ export default function AssistantDock({
   canList,
   canLoad,
   canDelete,
+  canRename,
   busy,
   onSelect,
   onDelete,
+  onRename,
   onStopAgent,
 }: {
   ref?: Ref<AssistantDockHandle>;
@@ -84,9 +86,11 @@ export default function AssistantDock({
   canList: boolean;
   canLoad: boolean;
   canDelete: boolean;
+  canRename: boolean;
   busy: boolean;
   onSelect: (sessionId: string) => void;
   onDelete: (chat: { sessionId: string; label: string }) => void;
+  onRename: (sessionId: string, title: string) => void;
   /** Stops one subagent, by its session id. */
   onStopAgent: (id: string) => void;
 }) {
@@ -168,6 +172,7 @@ export default function AssistantDock({
             busy={busy}
             canDelete={canDelete}
             canLoad={canLoad}
+            canRename={canRename}
             currentId={currentId}
             now={chats.now}
             order={ORDER.chats}
@@ -177,6 +182,7 @@ export default function AssistantDock({
               chatsTabRef.current?.focus();
             }}
             onDelete={onDelete}
+            onRename={onRename}
             onSelect={onSelect}
             open={chats.open}
             room={room}

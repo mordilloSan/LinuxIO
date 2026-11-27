@@ -78,6 +78,7 @@ export interface AssistantState {
   canLoadSession: boolean;
   canSteer: boolean;
   canDeleteSession: boolean;
+  canRenameSession: boolean;
   canFork: boolean;
   /** A side question is being forked; the panel shows "Opening…" meanwhile. */
   sideOpening: boolean;
@@ -147,6 +148,7 @@ const initialState = (): AssistantState => ({
   canLoadSession: false,
   canSteer: false,
   canDeleteSession: false,
+  canRenameSession: false,
   canFork: false,
   sideOpening: false,
   promptCapabilities: { image: false, embeddedContext: false },
@@ -388,6 +390,7 @@ async function openSession(
     canLoadSession: conn.canLoadSession,
     canSteer: conn.canSteer,
     canDeleteSession: conn.canDeleteSession,
+    canRenameSession: conn.canRenameSession,
     canFork: conn.canFork,
     promptCapabilities: conn.promptCapabilities,
   });
@@ -772,6 +775,33 @@ export const assistantStore = {
       if (isOpen) await assistantStore.newSession();
     } catch (error) {
       if (attempt === currentAttempt) setState({ error: errorMessage(error) });
+    }
+  },
+
+  /**
+   * Names a chat. The list shows the new title at once, then the one the
+   * agent stored (it may trim or shorten it), or the old one if it refuses.
+   */
+  async renameSession(sessionId: string, title: string) {
+    const conn = connection;
+    if (!conn?.canRenameSession) return;
+    const before = state.sessions.find((s) => s.sessionId === sessionId);
+    if (!before) return;
+    const retitle = (next: string | null | undefined) =>
+      setState({
+        sessions: state.sessions.map((s) =>
+          s.sessionId === sessionId ? { ...s, title: next } : s,
+        ),
+      });
+    const attempt = currentAttempt;
+    retitle(title);
+    try {
+      const stored = await conn.renameSession(sessionId, title);
+      if (attempt === currentAttempt) retitle(stored);
+    } catch (error) {
+      if (attempt !== currentAttempt) return;
+      retitle(before.title);
+      setState({ error: errorMessage(error) });
     }
   },
 

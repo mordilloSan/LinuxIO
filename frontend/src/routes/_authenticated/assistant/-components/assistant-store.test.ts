@@ -36,6 +36,7 @@ function fakeConnection(overrides: Partial<AssistantConnection> = {}) {
     canLogout: false,
     canSteer: false,
     canDeleteSession: false,
+    canRenameSession: false,
     canFork: false,
     canClose: false,
     canResume: false,
@@ -58,6 +59,7 @@ function fakeConnection(overrides: Partial<AssistantConnection> = {}) {
     setConfigOption: vi.fn(async () => []),
     setMode: vi.fn(async () => {}),
     deleteSession: vi.fn(async () => {}),
+    renameSession: vi.fn(async (_id: string, title: string) => title),
     forkSession: vi.fn(async () => ({
       sessionId: "s-side",
       modes: null,
@@ -998,6 +1000,36 @@ describe("assistantStore", () => {
     expect(assistantStore.getState()).toMatchObject({
       sessionId: "a",
       sessions: [{ sessionId: "a" }],
+    });
+  });
+
+  it("renaming a chat shows the title the agent stored", async () => {
+    const { conn, connector } = fakeConnection({
+      canRenameSession: true,
+      renameSession: vi.fn(async () => "Disk check"),
+    });
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    await assistantStore.renameSession("s-old", "  Disk   check ");
+    expect(conn.renameSession).toHaveBeenCalledWith("s-old", "  Disk   check ");
+    expect(assistantStore.getState().sessions).toMatchObject([
+      { sessionId: "s-old", title: "Disk check" },
+    ]);
+  });
+
+  it("a refused rename keeps the title and reports the error", async () => {
+    const { connector } = fakeConnection({
+      canRenameSession: true,
+      renameSession: vi.fn(async () => {
+        throw new Error("title refused");
+      }),
+    });
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    await assistantStore.renameSession("s-old", "New");
+    expect(assistantStore.getState()).toMatchObject({
+      sessions: [{ sessionId: "s-old", title: "Old chat" }],
+      error: "title refused",
     });
   });
 
