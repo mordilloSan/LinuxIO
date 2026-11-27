@@ -34,9 +34,8 @@ const UpdateCard = ({
 }: UpdateCardProps) => {
   const isDeferred = isDeferredUpdate(update);
   const packageName = updatePackageName(update.package_id);
-  const subtitle = [update.version, update.summary.trim()]
-    .filter(Boolean)
-    .join(" · ");
+  // The version is in the details panel's header, not on the card.
+  const subtitle = update.summary.trim();
 
   return (
     <SelectableCard label={`update ${packageName}`} onOpen={onOpen}>

@@ -27,7 +27,8 @@ describe("UpdateCard", () => {
     const availabilityChip = screen.getByText("Available later");
     expect(availabilityChip).toBeInTheDocument();
     expect(screen.getByText("demo")).toBeInTheDocument();
-    expect(screen.getByText("1.0 · Demo update")).toBeInTheDocument();
+    expect(screen.getByText("Demo update")).toBeInTheDocument();
+    expect(screen.queryByText(/1\.0/)).not.toBeInTheDocument();
     expect(
       screen.getByText(/commonly happens during phased rollouts/i),
     ).toBeInTheDocument();
@@ -68,7 +69,7 @@ describe("UpdateCard", () => {
       />,
     );
 
-    const subtitle = screen.getByText("1.0 · A long summary");
+    const subtitle = screen.getByText("A long summary");
     // An inline span would let the text run past the card's padding.
     expect(subtitle.tagName).toBe("DIV");
     expect(subtitle).toHaveClass("app-typo--nowrap");

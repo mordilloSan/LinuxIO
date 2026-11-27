@@ -50,10 +50,11 @@ test("a reload mid package update picks the same job up and completes it", async
       exact: true,
     })
     .click();
+  // The details panel's header names the version on offer.
+  await expect(page.getByText("2.0", { exact: true })).toBeVisible();
   const card = page
     .locator("div")
     .filter({ has: page.getByText("linuxio-e2e-slow", { exact: true }) })
-    .filter({ has: page.getByText("2.0 · ") })
     .filter({ has: page.getByRole("button", { name: "Update", exact: true }) })
     .last();
   // docs/packaging.md (Changelog): its source publishes no changelog, so the
@@ -107,10 +108,10 @@ test("a package update whose job host is killed is picked up from PackageKit and
       exact: true,
     })
     .click();
+  await expect(page.getByText("2.0", { exact: true })).toBeVisible();
   const card = page
     .locator("div")
     .filter({ has: page.getByText("linuxio-e2e-slow", { exact: true }) })
-    .filter({ has: page.getByText("2.0 · ") })
     .filter({ has: page.getByRole("button", { name: "Update", exact: true }) })
     .last();
   await card.getByRole("button", { name: "Update", exact: true }).click();

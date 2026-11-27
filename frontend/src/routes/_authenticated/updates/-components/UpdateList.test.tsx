@@ -66,7 +66,7 @@ const update = (package_id: string): Update => ({
   package_id,
   restart: 0,
   state: 0,
-  summary: package_id,
+  summary: `Summary of ${package_id}`,
   version: "1.0",
 });
 

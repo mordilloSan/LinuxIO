@@ -42,17 +42,20 @@ const UpdateChangelog = ({ packageId }: { packageId: string }) => {
         {changelog}
       </AppTypography>
       {homepage ? (
-        <AppLinkButton
-          href={homepage}
-          rel="noopener noreferrer"
-          size="small"
-          style={{ marginTop: 8 }}
-          target="_blank"
-          title={homepage}
-          variant="text"
+        <div
+          style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}
         >
-          Project page
-        </AppLinkButton>
+          <AppLinkButton
+            href={homepage}
+            rel="noopener noreferrer"
+            size="small"
+            target="_blank"
+            title={homepage}
+            variant="text"
+          >
+            Project page
+          </AppLinkButton>
+        </div>
       ) : null}
     </div>
   );

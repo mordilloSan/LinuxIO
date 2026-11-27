@@ -437,11 +437,14 @@ test.describe
       .click();
     await ui(page).toHaveURL(/\/updates\?package=/);
     const focusedUpdates = page.url();
-    // The card names the package; the version and the summary are below it.
+    // The card names the package with its summary below; the details
+    // panel's header names the version on offer.
+    await ui(
+      page.getByText(packageKitVersion(version), { exact: true }),
+    ).toBeVisible();
     const card = page
       .locator("div")
       .filter({ has: page.getByText("linuxio", { exact: true }) })
-      .filter({ has: page.getByText(`${packageKitVersion(version)} · `) })
       .filter({
         has: page.getByRole("button", { name: "Update", exact: true }),
       })
