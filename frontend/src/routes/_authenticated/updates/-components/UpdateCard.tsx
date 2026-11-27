@@ -1,174 +1,137 @@
 import type { Update } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import SelectableCard from "@/components/cards/SelectableCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppCollapse from "@/components/ui/AppCollapse";
-import AppLinkButton from "@/components/ui/AppLinkButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_LG } from "@/theme/constants";
 
-import { isDeferredUpdate } from "./packageUpdates";
+import { isDeferredUpdate, updatePackageName } from "./packageUpdates";
+
+// About the height the card had with its action row, so a card in the grid
+// and the focused one, which has the Update action, are the same size.
+const UPDATE_CARD_MIN_HEIGHT = 120;
 
 interface UpdateCardProps {
-  changelog: string | undefined;
-  /** The project's address, given when the update has no changelog. */
-  homepage?: string;
-  isCurrentPackage: boolean;
-  isExpanded: boolean;
-  isLoadingChangelog: boolean;
-  isUpdating: boolean;
-  onPrefetchChangelog: () => void;
-  onToggleChangelog: () => void;
-  onUpdate: () => void;
+  /** Set on a card in the list: the whole card opens the update's details. */
+  onOpen?: () => void;
+  onPrefetchChangelog?: () => void;
+  /**
+   * The Update action, shown on the focused card only, since a card that
+   * opens its details is a button itself.
+   */
+  onUpdate?: () => void;
+  selected?: boolean;
   update: Update;
 }
 
 const UpdateCard = ({
   update,
-  isExpanded,
-  isUpdating,
-  isCurrentPackage,
-  changelog,
-  homepage,
-  isLoadingChangelog,
+  onOpen,
   onPrefetchChangelog,
-  onToggleChangelog,
   onUpdate,
+  selected = false,
 }: UpdateCardProps) => {
   const isDeferred = isDeferredUpdate(update);
-  const packageName = update.package_id.split(";")[0] || update.package_id;
+  const packageName = updatePackageName(update.package_id);
   const subtitle = [update.version, update.summary.trim()]
     .filter(Boolean)
     .join(" · ");
 
   return (
-    <FrostedCard
-      accent
-      hoverLift
-      style={{
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        padding: CARD_PADDING_LG,
-      }}
-    >
-      <div
+    <SelectableCard label={`update ${packageName}`} onOpen={onOpen}>
+      <FrostedCard
+        accent
+        hoverLift
+        onMouseEnter={onPrefetchChangelog}
         style={{
-          alignItems: "flex-start",
+          boxSizing: "border-box",
           display: "flex",
-          gap: 8,
-          justifyContent: "space-between",
-          marginBottom: 16,
+          flexDirection: "column",
+          height: "100%",
+          minHeight: UPDATE_CARD_MIN_HEIGHT,
+          minWidth: 0,
+          padding: CARD_PADDING_LG,
+          width: "100%",
+          ...(selected && {
+            borderBottomColor: "var(--fc-accent)",
+            boxShadow: "var(--fc-lift-shadow)",
+          }),
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <AppTypography
-            fontWeight={700}
-            noWrap
-            style={{ lineHeight: 1.25 }}
-            variant="subtitle1"
-          >
-            {packageName}
-          </AppTypography>
-          {subtitle ? (
-            <AppTypography color="text.secondary" noWrap variant="caption">
-              {subtitle}
+        <div
+          style={{
+            alignItems: "flex-start",
+            display: "flex",
+            gap: 8,
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <AppTypography
+              component="div"
+              fontWeight={700}
+              noWrap
+              style={{ lineHeight: 1.25 }}
+              variant="subtitle1"
+            >
+              {packageName}
             </AppTypography>
+            {subtitle ? (
+              // A block, so noWrap's ellipsis applies; on the inline span a
+              // caption renders as, the text ran past the card's padding.
+              <AppTypography
+                color="text.secondary"
+                component="div"
+                noWrap
+                variant="caption"
+              >
+                {subtitle}
+              </AppTypography>
+            ) : null}
+          </div>
+          {isDeferred ? (
+            <Chip
+              color="warning"
+              label="Available later"
+              size="small"
+              variant="soft"
+            />
           ) : null}
         </div>
+
         {isDeferred ? (
-          <Chip
-            color="warning"
-            label="Available later"
-            size="small"
-            variant="soft"
-          />
+          <AppTypography
+            color="text.secondary"
+            style={{ marginTop: 12 }}
+            variant="body2"
+          >
+            This update is currently deferred by PackageKit. This commonly
+            happens during phased rollouts; try again later.
+          </AppTypography>
         ) : null}
-      </div>
 
-      {isDeferred ? (
-        <AppTypography color="text.secondary" variant="body2">
-          This update is currently deferred by PackageKit. This commonly happens
-          during phased rollouts; try again later.
-        </AppTypography>
-      ) : null}
-
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 8,
-          marginTop: 12,
-        }}
-      >
-        <AppButton
-          color="inherit"
-          onMouseEnter={onPrefetchChangelog}
-          onClick={onToggleChangelog}
-          size="small"
-          variant="text"
-        >
-          View Changelog
-        </AppButton>
-        <AppButton
-          disabled={isUpdating || isDeferred}
-          onClick={onUpdate}
-          size="small"
-          variant="outlined"
-        >
-          {isCurrentPackage ? (
-            <span style={{ alignItems: "center", display: "flex", gap: 6 }}>
-              <AppCircularProgress color="inherit" size={14} />
-              Updating
-            </span>
-          ) : (
-            "Update"
-          )}
-        </AppButton>
-      </div>
-
-      <AppCollapse in={isExpanded} unmountOnExit>
-        <AppTypography
-          component="div"
-          style={{ whiteSpace: "pre-wrap", marginTop: 16 }}
-          variant="body1"
-        >
-          {isLoadingChangelog ? (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                paddingTop: 16,
-                paddingBottom: 16,
-              }}
+        {!onOpen && onUpdate ? (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginTop: "auto",
+              paddingTop: 16,
+            }}
+          >
+            <AppButton
+              disabled={isDeferred}
+              onClick={onUpdate}
+              size="small"
+              variant="outlined"
             >
-              <AppCircularProgress size={20} />
-            </div>
-          ) : (
-            <>
-              <AppTypography color="text.secondary" variant="body2">
-                {changelog || "Loading..."}
-              </AppTypography>
-              {homepage ? (
-                <AppLinkButton
-                  href={homepage}
-                  rel="noopener noreferrer"
-                  size="small"
-                  style={{ marginTop: 8 }}
-                  target="_blank"
-                  title={homepage}
-                  variant="text"
-                >
-                  Project page
-                </AppLinkButton>
-              ) : null}
-            </>
-          )}
-        </AppTypography>
-      </AppCollapse>
-    </FrostedCard>
+              Update
+            </AppButton>
+          </div>
+        ) : null}
+      </FrostedCard>
+    </SelectableCard>
   );
 };
 

@@ -5,6 +5,9 @@ import { render, screen } from "@/test/render";
 
 import UpdateStatus from "./UpdateStatus";
 
+// The list reads the route's search; these tests are about the progress panel.
+vi.mock("./UpdateList", () => ({ default: () => null }));
+
 const baseProps = {
   onUpdateOne: vi.fn(),
   progress: 0,

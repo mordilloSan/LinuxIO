@@ -3,6 +3,11 @@ import type { Update } from "@/api";
 const PACKAGEKIT_INFO_BLOCKED = 9;
 const PACKAGEKIT_INFO_UNAVAILABLE = 25;
 
+/** The package's name, the first field of a PackageKit package ID. */
+export function updatePackageName(packageId: string): string {
+  return packageId.split(";")[0] || packageId;
+}
+
 export function isDeferredUpdate(update: Pick<Update, "info_enum">): boolean {
   return (
     update.info_enum === PACKAGEKIT_INFO_BLOCKED ||

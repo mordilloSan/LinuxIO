@@ -631,7 +631,7 @@ inherits its ancestor's.
 | `/storage/subvolumes` | `storage/subvolumes.tsx` | — | — | `fs`, `view` | redirects to `/storage/snapshots`, view `subvolumes` by default |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/updates` | `updates/route.tsx` | — | — | — | — |
-| `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
+| `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | `package` | — |
 | `/updates/history` | `updates/history.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
 | `/vm` | `vm/route.tsx` | `loadRouteQueries` ×2 | — | `handoffOperationId` | `requireAccess` libvirt, privileged |
 | `/vm/` | `vm/index.tsx` | — | — | — | — |

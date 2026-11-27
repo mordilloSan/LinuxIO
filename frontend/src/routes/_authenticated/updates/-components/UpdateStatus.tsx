@@ -72,7 +72,6 @@ const UpdateStatus = ({
       />
 
       <UpdateList
-        currentPackage={updatingPackage}
         isUpdating={recoveryPending || isUpdating}
         onUpdateClick={onUpdateOne}
         updates={updates}

@@ -43,6 +43,13 @@ test("a reload mid package update picks the same job up and completes it", async
 
   await signIn(page);
   await page.goto("/updates");
+  // Opening the card shows it with its Update action beside the changelog.
+  await page
+    .getByRole("button", {
+      name: "Open update linuxio-e2e-slow details",
+      exact: true,
+    })
+    .click();
   const card = page
     .locator("div")
     .filter({ has: page.getByText("linuxio-e2e-slow", { exact: true }) })
@@ -50,16 +57,13 @@ test("a reload mid package update picks the same job up and completes it", async
     .filter({ has: page.getByRole("button", { name: "Update", exact: true }) })
     .last();
   // docs/packaging.md (Changelog): its source publishes no changelog, so the
-  // card says there is none and links to the package's Homepage.
-  await card.getByRole("button", { name: "View Changelog" }).click();
-  await expect(card).toContainText(
-    "No changelog is available for this update",
-    { timeout: 30_000 },
-  );
+  // details say there is none and link to the package's Homepage.
   await expect(
-    card.getByRole("link", { name: "Project page" }),
+    page.getByText("No changelog is available for this update"),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("link", { name: "Project page" }),
   ).toHaveAttribute("href", "https://linuxio-e2e.invalid/slow");
-  await card.getByRole("button", { name: "View Changelog" }).click();
   await card.getByRole("button", { name: "Update", exact: true }).click();
   await waitForJob("packages.update", before, "running");
 
@@ -97,6 +101,12 @@ test("a package update whose job host is killed is picked up from PackageKit and
 
   await signIn(page);
   await page.goto("/updates");
+  await page
+    .getByRole("button", {
+      name: "Open update linuxio-e2e-slow details",
+      exact: true,
+    })
+    .click();
   const card = page
     .locator("div")
     .filter({ has: page.getByText("linuxio-e2e-slow", { exact: true }) })

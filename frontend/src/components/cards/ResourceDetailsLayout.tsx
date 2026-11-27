@@ -23,9 +23,10 @@ interface ResourceDetailsLayoutProps {
   summary: ReactNode;
   /**
    * "share" gives the summary a third of the row; "content" sizes it to its
-   * own width and hands the rest to the panel.
+   * own width and hands the rest to the panel; a `calc()` width, resolved
+   * against the row, fixes it, such as one column of the grid it came from.
    */
-  summaryWidth?: "share" | "content";
+  summaryWidth?: "share" | "content" | `calc(${string})`;
   title: string;
 }
 
@@ -76,9 +77,11 @@ const ResourceDetailsLayout = ({
             display: "flex",
             flex: isCompactLayout
               ? "0 0 auto"
-              : summaryWidth === "content"
-                ? "0 0 max-content"
-                : 1,
+              : summaryWidth === "share"
+                ? 1
+                : summaryWidth === "content"
+                  ? "0 0 max-content"
+                  : `0 0 ${summaryWidth}`,
             minWidth: 0,
             width: isCompactLayout ? "100%" : undefined,
           }}

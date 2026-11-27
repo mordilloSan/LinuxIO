@@ -430,6 +430,13 @@ test.describe
     );
     await offer.getByText("Open Updates", { exact: true }).click();
     await ui(page).toHaveURL(/\/updates$/);
+    // Opening the card shows it with its Update action beside the changelog,
+    // and keeps the open update in the address.
+    await page
+      .getByRole("button", { name: "Open update linuxio details", exact: true })
+      .click();
+    await ui(page).toHaveURL(/\/updates\?package=/);
+    const focusedUpdates = page.url();
     // The card names the package; the version and the summary are below it.
     const card = page
       .locator("div")
@@ -446,14 +453,14 @@ test.describe
     // docs/packaging.md (Changelog): B's changelog, the fixture release
     // notes the VM packages carry, read by PackageKit from the repository:
     // the apt Changelogs field on Ubuntu, updateinfo on Fedora.
-    await card.getByRole("button", { name: "View Changelog" }).click();
-    await ui(card).toContainText(
+    const changelog = page.getByText(
       "updates: show the package's changes on the Updates page (abc1234)",
-      { timeout: 60_000 },
     );
+    await ui(changelog).toBeVisible({ timeout: 60_000 });
     // As written: the spec's %changelog takes the text without expanding it.
-    await ui(card).toContainText("memory: keep 50% of %{name} free (def5678)");
-    await card.getByRole("button", { name: "View Changelog" }).click();
+    await ui(changelog).toContainText(
+      "memory: keep 50% of %{name} free (def5678)",
+    );
 
     // An update that does not go through leaves A installed and running, and
     // this session signed in: nothing but the package's own step restarts
@@ -485,7 +492,7 @@ test.describe
     const stillA = async (what: string) => {
       expect(await installedAndRunning(), what).toEqual(before);
       // The session lives, and the page offers B again.
-      await page.goto("/updates");
+      await page.goto(focusedUpdates);
       await ui(updateButton).toBeVisible({ timeout: 60_000 });
     };
 

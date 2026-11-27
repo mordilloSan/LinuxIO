@@ -20,20 +20,8 @@ const deferredUpdate: Update = {
 describe("UpdateCard", () => {
   it("keeps deferred updates visible while disabling only their Update action", async () => {
     const onUpdate = vi.fn();
-    const onPrefetchChangelog = vi.fn();
-    const onToggleChangelog = vi.fn();
     const { user } = render(
-      <UpdateCard
-        changelog={undefined}
-        isCurrentPackage={false}
-        isExpanded={false}
-        isLoadingChangelog={false}
-        isUpdating={false}
-        onPrefetchChangelog={onPrefetchChangelog}
-        onToggleChangelog={onToggleChangelog}
-        onUpdate={onUpdate}
-        update={deferredUpdate}
-      />,
+      <UpdateCard onUpdate={onUpdate} selected update={deferredUpdate} />,
     );
 
     const availabilityChip = screen.getByText("Available later");
@@ -47,35 +35,42 @@ describe("UpdateCard", () => {
     expect(updateAction).toBeDisabled();
     await user.click(updateAction);
     expect(onUpdate).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "View Changelog" }));
-    expect(onToggleChangelog).toHaveBeenCalledTimes(1);
-
-    await user.hover(screen.getByRole("button", { name: "View Changelog" }));
-    expect(onPrefetchChangelog).toHaveBeenCalledTimes(1);
   });
 
-  it("links to the project when the update has no changelog", () => {
-    render(
+  it("opens its details as a whole and holds no action of its own in the list", async () => {
+    const onOpen = vi.fn();
+    const onPrefetchChangelog = vi.fn();
+    const { user } = render(
       <UpdateCard
-        changelog="No changelog is available for this update"
-        homepage="https://www.docker.com"
-        isCurrentPackage={false}
-        isExpanded
-        isLoadingChangelog={false}
-        isUpdating={false}
-        onPrefetchChangelog={vi.fn()}
-        onToggleChangelog={vi.fn()}
+        onOpen={onOpen}
+        onPrefetchChangelog={onPrefetchChangelog}
         onUpdate={vi.fn()}
         update={{ ...deferredUpdate, info_enum: 11 }}
       />,
     );
 
-    expect(
-      screen.getByText("No changelog is available for this update"),
-    ).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "Project page" });
-    expect(link).toHaveAttribute("href", "https://www.docker.com");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    const opener = screen.getByRole("button", {
+      name: "Open update demo details",
+    });
+    expect(screen.getAllByRole("button")).toEqual([opener]);
+
+    await user.hover(screen.getByText("demo"));
+    expect(onPrefetchChangelog).toHaveBeenCalledTimes(1);
+    await user.click(opener);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("truncates a long summary with an ellipsis inside the card", () => {
+    render(
+      <UpdateCard
+        onOpen={vi.fn()}
+        update={{ ...deferredUpdate, summary: "A long summary" }}
+      />,
+    );
+
+    const subtitle = screen.getByText("1.0 · A long summary");
+    // An inline span would let the text run past the card's padding.
+    expect(subtitle.tagName).toBe("DIV");
+    expect(subtitle).toHaveClass("app-typo--nowrap");
   });
 });
