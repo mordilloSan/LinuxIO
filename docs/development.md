@@ -1070,7 +1070,9 @@ a real chat on the owner's Claude login, so the owner runs it. It installs
 the pinned adapter in `.cache/subagent-trace/agent` with npm, so the one the
 installed LinuxIO runs is untouched. It replaces
 `frontend/src/test/assistantSubagentTrace.json` and the version in its test's
-header only when the chat went as the tests replay it
+header only when the sessions, marks and stopped subagent are what the tests
+replay; what else the model did differently is then updated in the unit test
+and the browser spec by hand
 ([AI Assistant](./AI-assistant.md#subagent-sessions)).
 
 ## Distro and WireGuard icons

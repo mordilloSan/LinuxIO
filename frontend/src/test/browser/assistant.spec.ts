@@ -666,17 +666,17 @@ test("replays a recorded chat with subagents, stops one and loads the chat again
   // and a second message to the first.
   await input.fill("first");
   await page.keyboard.press("Enter");
-  await expect(page.getByText(/When I asked, it said/)).toBeVisible();
+  await expect(page.getByText("Summary:", { exact: true })).toBeVisible();
   await expect(input).toBeEnabled();
   const live = [
     [
       "Sent toReader A",
       "Read a.txt",
       "Count lines in a.txt",
-      "/srv/work/out-a.txt",
+      "Write out-a.txt",
     ],
     // Reader B's own calls, then the subagent it started with its call.
-    ["Sent toReader B", "Read b.txt", "Count lines in b.txt", "Read c.txt"],
+    ["Sent toReader B", "Read b.txt", "wc -l b.txt", "Read c.txt"],
     ["Sent toNested C", "Read c.txt"],
     ["Reader Areported"],
     // It answered the second message from what it knew: no calls.
@@ -712,7 +712,7 @@ test("replays a recorded chat with subagents, stops one and loads the chat again
   ).toEqual(["sleeper"]);
   await expect(agentsCard.getByRole("button", { name: "Stop" })).toHaveCount(0);
   await expect(
-    page.getByText(/The Sleeper subagent didn't report/),
+    page.getByText(/The Sleeper subagent was interrupted/),
   ).toBeVisible();
   await expect(input).toBeEnabled();
 
@@ -732,19 +732,18 @@ test("replays a recorded chat with subagents, stops one and loads the chat again
     agentsCard.getByText("Finished · general-purpose · Sonnet 5.5"),
   ).toBeVisible();
 
-  // The map: four subagents and the wakeup the chat scheduled at Agents,
-  // and their calls at Files and Shell.
+  // The map: four subagents at Agents, and their calls at Files and Shell.
   await agentsCard.getByRole("button", { name: "All agents" }).click();
   await agentsCard.getByRole("button", { name: /Claude Code/ }).click();
   await expect(
-    page.getByRole("img", { name: /^Activity map\..*Agents 5\b/ }),
+    page.getByRole("img", { name: /^Activity map\..*Agents 4\b/ }),
   ).toBeVisible();
 
   // Loading the chat again brings all of it back, from the agent's replay.
   await page.reload();
   await expect(input).toBeEnabled();
   await expect(
-    page.getByText(/The Sleeper subagent didn't report/),
+    page.getByText(/The Sleeper subagent was interrupted/),
   ).toBeVisible();
   expect(await rows()).toEqual([
     live[0],
@@ -756,9 +755,10 @@ test("replays a recorded chat with subagents, stops one and loads the chat again
     ["Reader Areported"],
     [
       "Sent toSleeper",
-      "Sleep for 40 seconds",
-      "Sleep for 40 seconds in background",
-      expect.any(String),
+      "sleep 40",
+      "Wait 40 seconds in background",
+      "ToolSearch",
+      "Wait for background sleep to finish",
     ],
   ]);
   // Nothing of a loaded chat runs, whatever its replay left open.

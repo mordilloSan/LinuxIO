@@ -109,7 +109,8 @@ const view = () => {
 const CARDS = {
   "Reader A": [
     "prompt 1",
-    "calls Read:ok Bash:ok Write:ok",
+    // It wrote out-a.txt with `echo` rather than the Write tool.
+    "calls Read:ok Bash:ok Bash:ok",
     "report 1",
     "prompt 2",
     "messages 1",
@@ -117,8 +118,9 @@ const CARDS = {
   ],
   "Reader B": ["prompt", "calls Read:ok Bash:ok", "report"],
   "Nested C": ["prompt", "calls Read:ok", "report"],
-  // Its first `sleep 40` was refused, the second went to the background.
-  Sleeper: ["prompt", "calls Bash:err Bash:ok Monitor:ok"],
+  // Its first `sleep 40` was refused, the second went to the background, and
+  // the loop it then waited in ended when it was stopped.
+  Sleeper: ["prompt", "calls Bash:err Bash:ok Search tools:ok Bash:err"],
 };
 
 beforeEach(() => {
@@ -171,9 +173,9 @@ describe("a recorded chat with subagents", () => {
       "to reader-b",
       "from reader-a",
       "to reader-a",
-      "call ScheduleWakeup",
       "from reader-b",
       "agent",
+      "call Bash",
       "from reader-a",
       "agent",
       "user",
@@ -209,32 +211,35 @@ describe("a recorded chat with subagents", () => {
       type: "general-purpose",
       model: "Sonnet 5.5",
       state: "finished",
-      // 7278 to 13591, then 15633 to 19877.
-      ranMs: 6313 + 4244,
+      // 5066 to 12959, then 15789 to 20892.
+      ranMs: 7893 + 5103,
     });
     expect(byLabel.Sleeper).toMatchObject({ state: "stopped", canStop: false });
 
-    // The map: four subagents and the wakeup the chat scheduled at Agents,
-    // their calls at their stations, and each call timed from when its input
-    // was written to its end.
-    expect(summary.tally.agents).toMatchObject({ count: 5, open: 0 });
-    const took = Object.fromEntries(
-      [...blocks, ...subagents.flatMap((child) => child.blocks)].flatMap(
-        (block) =>
+    // The map: four subagents at Agents, their calls at their stations, and
+    // each call timed from when its input was written to its end.
+    expect(summary.tally.agents).toMatchObject({ count: 4, open: 0 });
+    // By session, since the chat and the Sleeper both call ToolSearch.
+    const took = (list: readonly TranscriptBlock[]) =>
+      Object.fromEntries(
+        list.flatMap((block) =>
           block.kind === "tool" &&
           block.startedAt !== undefined &&
           block.endedAt !== undefined
             ? [[block.title, block.endedAt - block.startedAt]]
             : [],
-      ),
-    );
-    expect(took).toMatchObject({
-      // Its input was still written at 7258; the hook's update at 7266 is
-      // not the start.
-      ToolSearch: 12,
-      "wc -l b.txt": 1412,
-      ScheduleWakeup: 601,
+        ),
+      );
+    const blocksOf = (id: string) =>
+      subagents.find((child) => child.sessionId === id)?.blocks ?? [];
+    expect(took(blocks)).toEqual({
+      // Its input was written at 4178; the hook's update at 4191 is not the
+      // start.
+      ToolSearch: 18,
+      // The last of its input came at 17409, the hook's update at 38436.
+      "sleep 20; echo waited": 21030,
     });
+    expect(took(blocksOf("reader-b"))).toMatchObject({ "wc -l b.txt": 1541 });
     expect(summary.rows.some((row) => row.status === "run")).toBe(false);
   });
 
@@ -268,7 +273,8 @@ describe("a recorded chat with subagents", () => {
       "call ToolSearch",
       "to reader-a",
       "from reader-a",
-      "call ScheduleWakeup",
+      "agent",
+      "call Bash",
       "agent",
       "user",
       "to sleeper",
@@ -297,7 +303,7 @@ describe("a recorded chat with subagents", () => {
       model: "Sonnet 5.5",
       ranMs: null,
     });
-    expect(summary.tally.agents).toMatchObject({ count: 5, open: 0 });
+    expect(summary.tally.agents).toMatchObject({ count: 4, open: 0 });
     expect(summary.rows.some((row) => row.status === "run")).toBe(false);
   });
 });

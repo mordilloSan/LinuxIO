@@ -837,6 +837,10 @@ Stop button would, and loads the chat in a second adapter. It replaces the
 recording and moves the test's header only when the sessions, marks and the
 stopped subagent are what the tests replay and nothing asked for permission;
 otherwise it leaves the recording in `.cache/subagent-trace/trace.json`.
+The tests still hold the rows, calls, wording and times of one recording,
+and the model differs from chat to chat (a `sleep` where it once scheduled
+a wakeup, `echo` where it once used Write), so a new recording is followed
+by updating them, each change checked against the recording.
 Since it is a chat on the owner's Claude login, the owner runs it. The
 recording runs in the `auto` mode on Sonnet, whatever the profile's default
 model is (`MODEL=` names another of the adapter's models), and asks nothing; a permission request from
